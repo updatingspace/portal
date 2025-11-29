@@ -81,7 +81,6 @@ jobs:
     name: Publish backend image
     needs:
       - backend-lint
-      - frontend-lint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
