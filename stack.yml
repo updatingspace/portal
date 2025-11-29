@@ -32,6 +32,7 @@ services:
         - "traefik.http.routers.aef-vote-backend.priority=10"
         - "traefik.http.middlewares.aef-vote-backend-strip.stripprefix.prefixes=/api"
         - "traefik.http.routers.aef-vote-backend.middlewares=aef-vote-backend-strip"
+        - "com.centurylinklabs.watchtower.enable=true"
 
   frontend:
     image: ghcr.io/updatingspace/aef-vote-frontend:latest
@@ -47,6 +48,7 @@ services:
         - "traefik.http.routers.aef-vote-frontend.rule=Host(`aef-vote.updspace.com`) && PathPrefix(`/`)"
         - "traefik.http.routers.aef-vote-frontend.entrypoints=websecure"
         - "traefik.http.routers.aef-vote-frontend.tls=true"
+        - "com.centurylinklabs.watchtower.enable=true"
 
   db:
     image: postgres:16-alpine
