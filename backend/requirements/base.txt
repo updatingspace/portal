@@ -1,0 +1,7 @@
+django==5.2.8
+django-ninja==1.5.0
+pydantic==2.12.5
+django-allauth==65.4.1
+django-cors-headers==4.7.0
+email-validator==2.2.0
+psycopg[binary]==3.2.4

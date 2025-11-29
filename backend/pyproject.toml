@@ -1,0 +1,30 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "django==5.2.8",
+    "django-ninja==1.5.0",
+    "pydantic==2.12.5",
+    "django-allauth==65.4.1",
+    "django-cors-headers==4.7.0",
+    "email-validator==2.2.0",
+    "psycopg[binary]==3.2.4",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.6",
+    "django-debug-toolbar>=4.4.6,<4.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = []
