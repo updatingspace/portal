@@ -11,7 +11,7 @@ const rawBaseUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '__VITE_API_BASE_URL__';
 const normalizedEnvBase =
   rawBaseUrl === '__VITE_API_BASE_URL__' ? undefined : rawBaseUrl?.replace(/\/$/, '');
-const baseUrl = normalizedEnvBase ?? DEFAULT_API_BASE_URL;
+const baseUrl = (normalizedEnvBase ?? rawBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 const withLeadingSlash = (path: string) =>
   path.startsWith('/') ? path : `/${path}`;
