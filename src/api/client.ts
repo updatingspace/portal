@@ -7,10 +7,11 @@ export type ApiErrorKind =
   | 'unknown';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:8000/api';
-
-const baseUrl = (
-  import.meta.env.VITE_API_BASE_URL as string | undefined
-)?.replace(/\/$/, '') ?? DEFAULT_API_BASE_URL;
+const rawBaseUrl =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '__VITE_API_BASE_URL__';
+const normalizedEnvBase =
+  rawBaseUrl === '__VITE_API_BASE_URL__' ? undefined : rawBaseUrl?.replace(/\/$/, '');
+const baseUrl = normalizedEnvBase ?? DEFAULT_API_BASE_URL;
 
 const withLeadingSlash = (path: string) =>
   path.startsWith('/') ? path : `/${path}`;

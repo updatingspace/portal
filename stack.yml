@@ -14,12 +14,13 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       ENABLE_DEBUG_TOOLBAR: ${ENABLE_DEBUG_TOOLBAR:-False}
-      TELEGRAM_BOT_TOKEN: /run/secrets/telegram_bot_token
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
       TELEGRAM_LOGIN_MAX_AGE: ${TELEGRAM_LOGIN_MAX_AGE:-86400}
       TELEGRAM_REQUIRE_LINK_FOR_VOTING: ${TELEGRAM_REQUIRE_LINK_FOR_VOTING:-False}
       TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
     secrets:
       - django_secret_key
+      - telegram_bot_token
     networks:
       - aef-vote-internal
       - proxy
@@ -38,6 +39,9 @@ services:
 
   frontend:
     image: ghcr.io/updatingspace/aef-vote-frontend:latest
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://aef-vote.updspace.com/api}
+      VITE_TELEGRAM_BOT_NAME: ${VITE_TELEGRAM_BOT_NAME:-}
     networks:
       - proxy
     deploy:

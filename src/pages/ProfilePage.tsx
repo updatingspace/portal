@@ -66,7 +66,12 @@ export const ProfilePage: React.FC = () => {
   });
 
   const telegramContainerRef = useRef<HTMLDivElement | null>(null);
-  const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME as string | undefined;
+  const telegramBotNameRaw =
+    (import.meta.env.VITE_TELEGRAM_BOT_NAME as string | undefined) ?? '__VITE_TELEGRAM_BOT_NAME__';
+  const telegramBotName =
+    telegramBotNameRaw === '__VITE_TELEGRAM_BOT_NAME__'
+      ? undefined
+      : telegramBotNameRaw;
   const telegramCallbackName = 'aefTelegramAuth';
 
   const loadProfile = useCallback(async () => {
