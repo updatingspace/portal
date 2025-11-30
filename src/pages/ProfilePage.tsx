@@ -263,7 +263,7 @@ export const ProfilePage: React.FC = () => {
     if (typeof window === 'undefined') return;
     if (!telegramBotName || !telegramContainerRef.current) return;
 
-    const callbackWindow = window as TelegramCallbackWindow;
+    const callbackWindow = window as unknown as TelegramCallbackWindow;
     callbackWindow[telegramCallbackName] = (userData: TelegramWidgetPayload) => {
       handleTelegramAuth(userData);
     };
