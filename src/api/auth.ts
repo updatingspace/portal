@@ -46,10 +46,15 @@ type ApiUser = {
   username: string;
   email?: string | null;
   telegram_id?: number | null;
+  telegramId?: number | null;
   telegram_username?: string | null;
+  telegramUsername?: string | null;
   telegram_linked?: boolean;
+  telegramLinked?: boolean;
   is_staff?: boolean;
+  isStaff?: boolean;
   is_superuser?: boolean;
+  isSuperuser?: boolean;
 };
 
 const mapSession = (session: ApiSession): SessionInfo => ({
@@ -66,11 +71,11 @@ const mapUser = (user: ApiUser): UserInfo => ({
   id: user.id,
   username: user.username,
   email: user.email,
-  telegramId: (user as any).telegram_id ?? (user as any).telegramId ?? null,
-  telegramUsername: (user as any).telegram_username ?? (user as any).telegramUsername ?? null,
-  telegramLinked: Boolean((user as any).telegram_linked ?? (user as any).telegramLinked ?? false),
-  isStaff: (user as any).is_staff ?? (user as any).isStaff ?? false,
-  isSuperuser: (user as any).is_superuser ?? (user as any).isSuperuser ?? false,
+  telegramId: user.telegram_id ?? user.telegramId ?? null,
+  telegramUsername: user.telegram_username ?? user.telegramUsername ?? null,
+  telegramLinked: Boolean(user.telegram_linked ?? user.telegramLinked ?? false),
+  isStaff: user.is_staff ?? user.isStaff ?? false,
+  isSuperuser: user.is_superuser ?? user.isSuperuser ?? false,
 });
 
 export async function registerUser(payload: {

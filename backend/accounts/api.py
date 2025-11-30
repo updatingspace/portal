@@ -17,15 +17,15 @@ from .schemas import (
     TelegramAuthRequestSchema,
 )
 from .services import (
+    TelegramAccountConflictError,
+    TelegramAuthError,
+    TelegramAuthExpiredError,
+    TelegramConfigError,
     authenticate_with_telegram,
     create_local_user,
     delete_user_and_related,
     ensure_session_key,
     get_current_session_schema,
-    TelegramAccountConflictError,
-    TelegramAuthError,
-    TelegramAuthExpiredError,
-    TelegramConfigError,
     list_user_sessions,
     revoke_session_for_user,
     serialize_user,
@@ -95,7 +95,9 @@ def telegram_auth(request, payload: TelegramAuthRequestSchema):
     current_user = request.user if request.user.is_authenticated else None
 
     try:
-        user = authenticate_with_telegram(payload.model_dump(), current_user=current_user)
+        user = authenticate_with_telegram(
+            payload.model_dump(), current_user=current_user
+        )
     except TelegramAccountConflictError as exc:
         raise HttpError(409, str(exc)) from exc
     except TelegramAuthExpiredError as exc:

@@ -45,6 +45,9 @@ type TelegramWidgetPayload = {
   hash: string;
 };
 
+type TelegramCallback = (userData: TelegramWidgetPayload) => void;
+type TelegramCallbackWindow = Window & Record<string, TelegramCallback | undefined>;
+
 export const ProfilePage: React.FC = () => {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -260,7 +263,8 @@ export const ProfilePage: React.FC = () => {
     if (typeof window === 'undefined') return;
     if (!telegramBotName || !telegramContainerRef.current) return;
 
-    (window as any)[telegramCallbackName] = (userData: TelegramWidgetPayload) => {
+    const callbackWindow = window as TelegramCallbackWindow;
+    callbackWindow[telegramCallbackName] = (userData: TelegramWidgetPayload) => {
       handleTelegramAuth(userData);
     };
 
@@ -276,8 +280,8 @@ export const ProfilePage: React.FC = () => {
     telegramContainerRef.current.appendChild(script);
 
     return () => {
-      if ((window as any)[telegramCallbackName]) {
-        delete (window as any)[telegramCallbackName];
+      if (callbackWindow[telegramCallbackName]) {
+        delete callbackWindow[telegramCallbackName];
       }
     };
   }, [telegramBotName, telegramCallbackName, handleTelegramAuth]);

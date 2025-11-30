@@ -4,9 +4,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
-from accounts.services import user_has_telegram_link
 from django.conf import settings
 from django.db.models import Count, Prefetch
+
+from accounts.services import user_has_telegram_link
 
 from .data import seed_nominations_from_fixture, seed_votings_from_fixture
 from .models import Nomination, NominationOption, NominationVote, Voting
@@ -50,7 +51,9 @@ def _resolve_vote_permissions(user: Any) -> tuple[bool, bool]:
     if not is_authenticated:
         return False, False
 
-    require_telegram = bool(getattr(settings, "TELEGRAM_REQUIRE_LINK_FOR_VOTING", False))
+    require_telegram = bool(
+        getattr(settings, "TELEGRAM_REQUIRE_LINK_FOR_VOTING", False)
+    )
     if require_telegram and not user_has_telegram_link(user):
         return False, True
 

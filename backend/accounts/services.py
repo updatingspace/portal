@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 from allauth.account import app_settings as allauth_settings
 from allauth.account.models import EmailAddress
@@ -89,7 +90,9 @@ def validate_telegram_auth_payload(payload: dict[str, Any]) -> dict[str, Any]:
     required_fields = ["id", "first_name", "auth_date", "hash"]
     for field in required_fields:
         if payload.get(field) in (None, ""):
-            raise TelegramAuthError("Неполные данные Telegram: отсутствует обязательное поле")
+            raise TelegramAuthError(
+                "Неполные данные Telegram: отсутствует обязательное поле"
+            )
 
     secret_key = _get_telegram_secret_key()
 
@@ -178,7 +181,10 @@ def grant_privileges_for_telegram_ids(
 
 
 def _build_username_from_telegram(
-    telegram_id: int, username: str | None, first_name: str | None, last_name: str | None
+    telegram_id: int,
+    username: str | None,
+    first_name: str | None,
+    last_name: str | None,
 ) -> str:
     base = username or first_name or last_name or f"tg{telegram_id}"
     base_slug = slugify(base) or f"tg{telegram_id}"
