@@ -1,7 +1,10 @@
+import type { Game } from '../types/games';
+
 export type NominationOption = {
   id: string;
   title: string;
   imageUrl?: string;
+  game?: Game | null;
 };
 
 export type Voting = {

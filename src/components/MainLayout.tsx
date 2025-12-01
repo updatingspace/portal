@@ -1,11 +1,16 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 
+import { useAuth } from '../contexts/AuthContext';
+
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  const { user } = useAuth();
+  const isSuperuser = Boolean(user?.isSuperuser);
+
   return (
     <div className="app-root">
       <header className="app-header">
@@ -17,6 +22,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </NavLink>
 
           <nav className="app-header-nav">
+            {isSuperuser && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  'nav-link-secondary' + (isActive ? ' nav-link-secondary-active' : '')
+                }
+              >
+                Админка
+              </NavLink>
+            )}
             <NavLink
               to="/profile"
               className={({ isActive }) =>

@@ -4,12 +4,84 @@
     "title": "Игра года",
     "description": "Самая цельная и обсуждаемая новинка — за неё хочется спорить и перепроходить.",
     "options": [
-      { "id": "nom-1-opt-1", "title": "Baldur's Gate 3", "image_url": null },
-      { "id": "nom-1-opt-2", "title": "Alan Wake 2", "image_url": null },
-      { "id": "nom-1-opt-3", "title": "The Legend of Zelda: Tears of the Kingdom", "image_url": null },
-      { "id": "nom-1-opt-4", "title": "Marvel's Spider-Man 2", "image_url": null },
-      { "id": "nom-1-opt-5", "title": "Final Fantasy VII Rebirth", "image_url": null },
-      { "id": "nom-1-opt-6", "title": "Starfield", "image_url": null }
+      {
+        "id": "nom-1-opt-1",
+        "title": "Baldur's Gate 3",
+        "image_url": null,
+        "game": {
+          "title": "Baldur's Gate 3",
+          "genre": "RPG",
+          "studio": "Larian Studios",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "РПГ, где каждое решение меняет мир."
+        }
+      },
+      {
+        "id": "nom-1-opt-2",
+        "title": "Alan Wake 2",
+        "image_url": null,
+        "game": {
+          "title": "Alan Wake 2",
+          "genre": "Thriller",
+          "studio": "Remedy Entertainment",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Психологический триллер с кинематографичным сюжетом."
+        }
+      },
+      {
+        "id": "nom-1-opt-3",
+        "title": "The Legend of Zelda: Tears of the Kingdom",
+        "image_url": null,
+        "game": {
+          "title": "The Legend of Zelda: Tears of the Kingdom",
+          "genre": "Adventure",
+          "studio": "Nintendo",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Открытый мир и новые механики полета."
+        }
+      },
+      {
+        "id": "nom-1-opt-4",
+        "title": "Marvel's Spider-Man 2",
+        "image_url": null,
+        "game": {
+          "title": "Marvel's Spider-Man 2",
+          "genre": "Action",
+          "studio": "Insomniac Games",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Мстители против нового зла в Нью-Йорке."
+        }
+      },
+      {
+        "id": "nom-1-opt-5",
+        "title": "Final Fantasy VII Rebirth",
+        "image_url": null,
+        "game": {
+          "title": "Final Fantasy VII Rebirth",
+          "genre": "JRPG",
+          "studio": "Square Enix",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Продолжение культового JRPG с новой историей."
+        }
+      },
+      {
+        "id": "nom-1-opt-6",
+        "title": "Starfield",
+        "image_url": null,
+        "game": {
+          "title": "Starfield",
+          "genre": "Space RPG",
+          "studio": "Bethesda",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Космическая одиссея с упором на исследование."
+        }
+      }
     ]
   },
   {
@@ -17,11 +89,71 @@
     "title": "Лучший арт-дизайн",
     "description": "Самая выразительная визуальная стилистика — от интерфейса до окружения.",
     "options": [
-      { "id": "nom-2-opt-1", "title": "Pentiment", "image_url": null },
-      { "id": "nom-2-opt-2", "title": "Sea of Stars", "image_url": null },
-      { "id": "nom-2-opt-3", "title": "Ori and the Will of the Wisps", "image_url": null },
-      { "id": "nom-2-opt-4", "title": "Prince of Persia: The Lost Crown", "image_url": null },
-      { "id": "nom-2-opt-5", "title": "Hollow Knight: Silksong", "image_url": null }
+      {
+        "id": "nom-2-opt-1",
+        "title": "Pentiment",
+        "image_url": null,
+        "game": {
+          "title": "Pentiment",
+          "genre": "Narrative Adventure",
+          "studio": "Obsidian Entertainment",
+          "release_year": 2022,
+          "image_url": null,
+          "description": "Нарративный квест с историческим антуражем."
+        }
+      },
+      {
+        "id": "nom-2-opt-2",
+        "title": "Sea of Stars",
+        "image_url": null,
+        "game": {
+          "title": "Sea of Stars",
+          "genre": "JRPG",
+          "studio": "Sabotage Studio",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Ретро JRPG с тактическими боями и светлой атмосферой."
+        }
+      },
+      {
+        "id": "nom-2-opt-3",
+        "title": "Ori and the Will of the Wisps",
+        "image_url": null,
+        "game": {
+          "title": "Ori and the Will of the Wisps",
+          "genre": "Platformer",
+          "studio": "Moon Studios",
+          "release_year": 2020,
+          "image_url": null,
+          "description": "Платформер с душевной аурой и отличной музыкой."
+        }
+      },
+      {
+        "id": "nom-2-opt-4",
+        "title": "Prince of Persia: The Lost Crown",
+        "image_url": null,
+        "game": {
+          "title": "Prince of Persia: The Lost Crown",
+          "genre": "Action Platformer",
+          "studio": "Ubisoft Montpellier",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Возвращение классических платформенных боев."
+        }
+      },
+      {
+        "id": "nom-2-opt-5",
+        "title": "Hollow Knight: Silksong",
+        "image_url": null,
+        "game": {
+          "title": "Hollow Knight: Silksong",
+          "genre": "Metroidvania",
+          "studio": "Team Cherry",
+          "release_year": 2025,
+          "image_url": null,
+          "description": "Метроидвания с живописным миром и сложным геймплеем."
+        }
+      }
     ]
   },
   {
@@ -29,12 +161,84 @@
     "title": "Инди-прорыв",
     "description": "Независимая игра, о которой говорили громче всего.",
     "options": [
-      { "id": "nom-3-opt-1", "title": "Dave the Diver", "image_url": null },
-      { "id": "nom-3-opt-2", "title": "Dredge", "image_url": null },
-      { "id": "nom-3-opt-3", "title": "Chants of Sennaar", "image_url": null },
-      { "id": "nom-3-opt-4", "title": "Pizza Tower", "image_url": null },
-      { "id": "nom-3-opt-5", "title": "COCOON", "image_url": null },
-      { "id": "nom-3-opt-6", "title": "Slay the Princess", "image_url": null }
+      {
+        "id": "nom-3-opt-1",
+        "title": "Dave the Diver",
+        "image_url": null,
+        "game": {
+          "title": "Dave the Diver",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-3-opt-2",
+        "title": "Dredge",
+        "image_url": null,
+        "game": {
+          "title": "Dredge",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-3-opt-3",
+        "title": "Chants of Sennaar",
+        "image_url": null,
+        "game": {
+          "title": "Chants of Sennaar",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-3-opt-4",
+        "title": "Pizza Tower",
+        "image_url": null,
+        "game": {
+          "title": "Pizza Tower",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-3-opt-5",
+        "title": "COCOON",
+        "image_url": null,
+        "game": {
+          "title": "COCOON",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-3-opt-6",
+        "title": "Slay the Princess",
+        "image_url": null,
+        "game": {
+          "title": "Slay the Princess",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -42,11 +246,71 @@
     "title": "Сюжет и нарратив",
     "description": "История, которую сложно забыть.",
     "options": [
-      { "id": "nom-4-opt-1", "title": "Disco Elysium: The Final Cut", "image_url": null },
-      { "id": "nom-4-opt-2", "title": "Alan Wake 2", "image_url": null },
-      { "id": "nom-4-opt-3", "title": "Baldur's Gate 3", "image_url": null },
-      { "id": "nom-4-opt-4", "title": "God of War Ragnarök", "image_url": null },
-      { "id": "nom-4-opt-5", "title": "Citizen Sleeper", "image_url": null }
+      {
+        "id": "nom-4-opt-1",
+        "title": "Disco Elysium: The Final Cut",
+        "image_url": null,
+        "game": {
+          "title": "Disco Elysium: The Final Cut",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-4-opt-2",
+        "title": "Alan Wake 2",
+        "image_url": null,
+        "game": {
+          "title": "Alan Wake 2",
+          "genre": "Thriller",
+          "studio": "Remedy Entertainment",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Психологический триллер с кинематографичным сюжетом."
+        }
+      },
+      {
+        "id": "nom-4-opt-3",
+        "title": "Baldur's Gate 3",
+        "image_url": null,
+        "game": {
+          "title": "Baldur's Gate 3",
+          "genre": "RPG",
+          "studio": "Larian Studios",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "РПГ, где каждое решение меняет мир."
+        }
+      },
+      {
+        "id": "nom-4-opt-4",
+        "title": "God of War Ragnarök",
+        "image_url": null,
+        "game": {
+          "title": "God of War Ragnarök",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-4-opt-5",
+        "title": "Citizen Sleeper",
+        "image_url": null,
+        "game": {
+          "title": "Citizen Sleeper",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -54,12 +318,84 @@
     "title": "Саундтрек",
     "description": "Музыка, которая ведёт игру вперёд.",
     "options": [
-      { "id": "nom-5-opt-1", "title": "Final Fantasy VII Rebirth", "image_url": null },
-      { "id": "nom-5-opt-2", "title": "Hi-Fi Rush", "image_url": null },
-      { "id": "nom-5-opt-3", "title": "Sea of Stars", "image_url": null },
-      { "id": "nom-5-opt-4", "title": "Hollow Knight: Silksong", "image_url": null },
-      { "id": "nom-5-opt-5", "title": "The Legend of Zelda: Tears of the Kingdom", "image_url": null },
-      { "id": "nom-5-opt-6", "title": "Nier: Automata", "image_url": null }
+      {
+        "id": "nom-5-opt-1",
+        "title": "Final Fantasy VII Rebirth",
+        "image_url": null,
+        "game": {
+          "title": "Final Fantasy VII Rebirth",
+          "genre": "JRPG",
+          "studio": "Square Enix",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Продолжение культового JRPG с новой историей."
+        }
+      },
+      {
+        "id": "nom-5-opt-2",
+        "title": "Hi-Fi Rush",
+        "image_url": null,
+        "game": {
+          "title": "Hi-Fi Rush",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-5-opt-3",
+        "title": "Sea of Stars",
+        "image_url": null,
+        "game": {
+          "title": "Sea of Stars",
+          "genre": "JRPG",
+          "studio": "Sabotage Studio",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Ретро JRPG с тактическими боями и светлой атмосферой."
+        }
+      },
+      {
+        "id": "nom-5-opt-4",
+        "title": "Hollow Knight: Silksong",
+        "image_url": null,
+        "game": {
+          "title": "Hollow Knight: Silksong",
+          "genre": "Metroidvania",
+          "studio": "Team Cherry",
+          "release_year": 2025,
+          "image_url": null,
+          "description": "Метроидвания с живописным миром и сложным геймплеем."
+        }
+      },
+      {
+        "id": "nom-5-opt-5",
+        "title": "The Legend of Zelda: Tears of the Kingdom",
+        "image_url": null,
+        "game": {
+          "title": "The Legend of Zelda: Tears of the Kingdom",
+          "genre": "Adventure",
+          "studio": "Nintendo",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "Открытый мир и новые механики полета."
+        }
+      },
+      {
+        "id": "nom-5-opt-6",
+        "title": "Nier: Automata",
+        "image_url": null,
+        "game": {
+          "title": "Nier: Automata",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -67,11 +403,71 @@
     "title": "Кооперативный опыт",
     "description": "Лучшие впечатления плечом к плечу.",
     "options": [
-      { "id": "nom-6-opt-1", "title": "It Takes Two", "image_url": null },
-      { "id": "nom-6-opt-2", "title": "Helldivers 2", "image_url": null },
-      { "id": "nom-6-opt-3", "title": "Baldur's Gate 3", "image_url": null },
-      { "id": "nom-6-opt-4", "title": "Deep Rock Galactic", "image_url": null },
-      { "id": "nom-6-opt-5", "title": "Diablo IV", "image_url": null }
+      {
+        "id": "nom-6-opt-1",
+        "title": "It Takes Two",
+        "image_url": null,
+        "game": {
+          "title": "It Takes Two",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-6-opt-2",
+        "title": "Helldivers 2",
+        "image_url": null,
+        "game": {
+          "title": "Helldivers 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-6-opt-3",
+        "title": "Baldur's Gate 3",
+        "image_url": null,
+        "game": {
+          "title": "Baldur's Gate 3",
+          "genre": "RPG",
+          "studio": "Larian Studios",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "РПГ, где каждое решение меняет мир."
+        }
+      },
+      {
+        "id": "nom-6-opt-4",
+        "title": "Deep Rock Galactic",
+        "image_url": null,
+        "game": {
+          "title": "Deep Rock Galactic",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-6-opt-5",
+        "title": "Diablo IV",
+        "image_url": null,
+        "game": {
+          "title": "Diablo IV",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -79,12 +475,84 @@
     "title": "Сетевой мультиплеер",
     "description": "Соревновательные или командные режимы, куда хочется возвращаться.",
     "options": [
-      { "id": "nom-7-opt-1", "title": "Apex Legends", "image_url": null },
-      { "id": "nom-7-opt-2", "title": "Valorant", "image_url": null },
-      { "id": "nom-7-opt-3", "title": "Counter-Strike 2", "image_url": null },
-      { "id": "nom-7-opt-4", "title": "Fortnite", "image_url": null },
-      { "id": "nom-7-opt-5", "title": "Destiny 2", "image_url": null },
-      { "id": "nom-7-opt-6", "title": "Call of Duty: Modern Warfare III", "image_url": null }
+      {
+        "id": "nom-7-opt-1",
+        "title": "Apex Legends",
+        "image_url": null,
+        "game": {
+          "title": "Apex Legends",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-7-opt-2",
+        "title": "Valorant",
+        "image_url": null,
+        "game": {
+          "title": "Valorant",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-7-opt-3",
+        "title": "Counter-Strike 2",
+        "image_url": null,
+        "game": {
+          "title": "Counter-Strike 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-7-opt-4",
+        "title": "Fortnite",
+        "image_url": null,
+        "game": {
+          "title": "Fortnite",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-7-opt-5",
+        "title": "Destiny 2",
+        "image_url": null,
+        "game": {
+          "title": "Destiny 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-7-opt-6",
+        "title": "Call of Duty: Modern Warfare III",
+        "image_url": null,
+        "game": {
+          "title": "Call of Duty: Modern Warfare III",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -92,11 +560,71 @@
     "title": "Мобильная игра",
     "description": "Лучшее, что можно запустить на телефоне.",
     "options": [
-      { "id": "nom-8-opt-1", "title": "Honkai: Star Rail", "image_url": null },
-      { "id": "nom-8-opt-2", "title": "Genshin Impact", "image_url": null },
-      { "id": "nom-8-opt-3", "title": "Vampire Survivors", "image_url": null },
-      { "id": "nom-8-opt-4", "title": "Marvel Snap", "image_url": null },
-      { "id": "nom-8-opt-5", "title": "Brawl Stars", "image_url": null }
+      {
+        "id": "nom-8-opt-1",
+        "title": "Honkai: Star Rail",
+        "image_url": null,
+        "game": {
+          "title": "Honkai: Star Rail",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-8-opt-2",
+        "title": "Genshin Impact",
+        "image_url": null,
+        "game": {
+          "title": "Genshin Impact",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-8-opt-3",
+        "title": "Vampire Survivors",
+        "image_url": null,
+        "game": {
+          "title": "Vampire Survivors",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-8-opt-4",
+        "title": "Marvel Snap",
+        "image_url": null,
+        "game": {
+          "title": "Marvel Snap",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-8-opt-5",
+        "title": "Brawl Stars",
+        "image_url": null,
+        "game": {
+          "title": "Brawl Stars",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -104,12 +632,84 @@
     "title": "Дебют студии",
     "description": "Первый релиз команды, задавший высокую планку.",
     "options": [
-      { "id": "nom-9-opt-1", "title": "Stray", "image_url": null },
-      { "id": "nom-9-opt-2", "title": "Kena: Bridge of Spirits", "image_url": null },
-      { "id": "nom-9-opt-3", "title": "Planet of Lana", "image_url": null },
-      { "id": "nom-9-opt-4", "title": "The Pale Beyond", "image_url": null },
-      { "id": "nom-9-opt-5", "title": "NORCO", "image_url": null },
-      { "id": "nom-9-opt-6", "title": "Viewfinder", "image_url": null }
+      {
+        "id": "nom-9-opt-1",
+        "title": "Stray",
+        "image_url": null,
+        "game": {
+          "title": "Stray",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-9-opt-2",
+        "title": "Kena: Bridge of Spirits",
+        "image_url": null,
+        "game": {
+          "title": "Kena: Bridge of Spirits",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-9-opt-3",
+        "title": "Planet of Lana",
+        "image_url": null,
+        "game": {
+          "title": "Planet of Lana",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-9-opt-4",
+        "title": "The Pale Beyond",
+        "image_url": null,
+        "game": {
+          "title": "The Pale Beyond",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-9-opt-5",
+        "title": "NORCO",
+        "image_url": null,
+        "game": {
+          "title": "NORCO",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-9-opt-6",
+        "title": "Viewfinder",
+        "image_url": null,
+        "game": {
+          "title": "Viewfinder",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -117,11 +717,71 @@
     "title": "Ремейк / Ремастер",
     "description": "Переосмысление классики.",
     "options": [
-      { "id": "nom-10-opt-1", "title": "Resident Evil 4 (2023)", "image_url": null },
-      { "id": "nom-10-opt-2", "title": "Dead Space (2023)", "image_url": null },
-      { "id": "nom-10-opt-3", "title": "Metroid Prime Remastered", "image_url": null },
-      { "id": "nom-10-opt-4", "title": "System Shock (2023)", "image_url": null },
-      { "id": "nom-10-opt-5", "title": "The Last of Us Part I", "image_url": null }
+      {
+        "id": "nom-10-opt-1",
+        "title": "Resident Evil 4 (2023)",
+        "image_url": null,
+        "game": {
+          "title": "Resident Evil 4 (2023)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-10-opt-2",
+        "title": "Dead Space (2023)",
+        "image_url": null,
+        "game": {
+          "title": "Dead Space (2023)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-10-opt-3",
+        "title": "Metroid Prime Remastered",
+        "image_url": null,
+        "game": {
+          "title": "Metroid Prime Remastered",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-10-opt-4",
+        "title": "System Shock (2023)",
+        "image_url": null,
+        "game": {
+          "title": "System Shock (2023)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-10-opt-5",
+        "title": "The Last of Us Part I",
+        "image_url": null,
+        "game": {
+          "title": "The Last of Us Part I",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -129,12 +789,84 @@
     "title": "VR / AR проект",
     "description": "Опыт, делающий шлем оправданным.",
     "options": [
-      { "id": "nom-11-opt-1", "title": "Half-Life: Alyx", "image_url": null },
-      { "id": "nom-11-opt-2", "title": "Beat Saber", "image_url": null },
-      { "id": "nom-11-opt-3", "title": "Asgard's Wrath 2", "image_url": null },
-      { "id": "nom-11-opt-4", "title": "Resident Evil Village VR", "image_url": null },
-      { "id": "nom-11-opt-5", "title": "Gran Turismo 7 VR", "image_url": null },
-      { "id": "nom-11-opt-6", "title": "Pistol Whip", "image_url": null }
+      {
+        "id": "nom-11-opt-1",
+        "title": "Half-Life: Alyx",
+        "image_url": null,
+        "game": {
+          "title": "Half-Life: Alyx",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-11-opt-2",
+        "title": "Beat Saber",
+        "image_url": null,
+        "game": {
+          "title": "Beat Saber",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-11-opt-3",
+        "title": "Asgard's Wrath 2",
+        "image_url": null,
+        "game": {
+          "title": "Asgard's Wrath 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-11-opt-4",
+        "title": "Resident Evil Village VR",
+        "image_url": null,
+        "game": {
+          "title": "Resident Evil Village VR",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-11-opt-5",
+        "title": "Gran Turismo 7 VR",
+        "image_url": null,
+        "game": {
+          "title": "Gran Turismo 7 VR",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-11-opt-6",
+        "title": "Pistol Whip",
+        "image_url": null,
+        "game": {
+          "title": "Pistol Whip",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -142,11 +874,71 @@
     "title": "Игровой сервис",
     "description": "Проект, который живёт за счёт обновлений и событий.",
     "options": [
-      { "id": "nom-12-opt-1", "title": "Fortnite", "image_url": null },
-      { "id": "nom-12-opt-2", "title": "Destiny 2", "image_url": null },
-      { "id": "nom-12-opt-3", "title": "Final Fantasy XIV", "image_url": null },
-      { "id": "nom-12-opt-4", "title": "Warframe", "image_url": null },
-      { "id": "nom-12-opt-5", "title": "Sea of Thieves", "image_url": null }
+      {
+        "id": "nom-12-opt-1",
+        "title": "Fortnite",
+        "image_url": null,
+        "game": {
+          "title": "Fortnite",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-12-opt-2",
+        "title": "Destiny 2",
+        "image_url": null,
+        "game": {
+          "title": "Destiny 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-12-opt-3",
+        "title": "Final Fantasy XIV",
+        "image_url": null,
+        "game": {
+          "title": "Final Fantasy XIV",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-12-opt-4",
+        "title": "Warframe",
+        "image_url": null,
+        "game": {
+          "title": "Warframe",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-12-opt-5",
+        "title": "Sea of Thieves",
+        "image_url": null,
+        "game": {
+          "title": "Sea of Thieves",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -154,12 +946,84 @@
     "title": "Инновация в геймплее",
     "description": "Механики, которых раньше не хватало.",
     "options": [
-      { "id": "nom-13-opt-1", "title": "Death Stranding", "image_url": null },
-      { "id": "nom-13-opt-2", "title": "Immortality", "image_url": null },
-      { "id": "nom-13-opt-3", "title": "Return of the Obra Dinn", "image_url": null },
-      { "id": "nom-13-opt-4", "title": "The Case of the Golden Idol", "image_url": null },
-      { "id": "nom-13-opt-5", "title": "Baba Is You", "image_url": null },
-      { "id": "nom-13-opt-6", "title": "Tunic", "image_url": null }
+      {
+        "id": "nom-13-opt-1",
+        "title": "Death Stranding",
+        "image_url": null,
+        "game": {
+          "title": "Death Stranding",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-13-opt-2",
+        "title": "Immortality",
+        "image_url": null,
+        "game": {
+          "title": "Immortality",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-13-opt-3",
+        "title": "Return of the Obra Dinn",
+        "image_url": null,
+        "game": {
+          "title": "Return of the Obra Dinn",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-13-opt-4",
+        "title": "The Case of the Golden Idol",
+        "image_url": null,
+        "game": {
+          "title": "The Case of the Golden Idol",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-13-opt-5",
+        "title": "Baba Is You",
+        "image_url": null,
+        "game": {
+          "title": "Baba Is You",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-13-opt-6",
+        "title": "Tunic",
+        "image_url": null,
+        "game": {
+          "title": "Tunic",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -167,11 +1031,71 @@
     "title": "Локализация и перевод",
     "description": "Команда, которая сделала игру понятной и живой на русском.",
     "options": [
-      { "id": "nom-14-opt-1", "title": "Baldur's Gate 3", "image_url": null },
-      { "id": "nom-14-opt-2", "title": "Disco Elysium: The Final Cut", "image_url": null },
-      { "id": "nom-14-opt-3", "title": "Cyberpunk 2077: Phantom Liberty", "image_url": null },
-      { "id": "nom-14-opt-4", "title": "The Witcher 3: Wild Hunt", "image_url": null },
-      { "id": "nom-14-opt-5", "title": "God of War Ragnarök", "image_url": null }
+      {
+        "id": "nom-14-opt-1",
+        "title": "Baldur's Gate 3",
+        "image_url": null,
+        "game": {
+          "title": "Baldur's Gate 3",
+          "genre": "RPG",
+          "studio": "Larian Studios",
+          "release_year": 2023,
+          "image_url": null,
+          "description": "РПГ, где каждое решение меняет мир."
+        }
+      },
+      {
+        "id": "nom-14-opt-2",
+        "title": "Disco Elysium: The Final Cut",
+        "image_url": null,
+        "game": {
+          "title": "Disco Elysium: The Final Cut",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-14-opt-3",
+        "title": "Cyberpunk 2077: Phantom Liberty",
+        "image_url": null,
+        "game": {
+          "title": "Cyberpunk 2077: Phantom Liberty",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-14-opt-4",
+        "title": "The Witcher 3: Wild Hunt",
+        "image_url": null,
+        "game": {
+          "title": "The Witcher 3: Wild Hunt",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-14-opt-5",
+        "title": "God of War Ragnarök",
+        "image_url": null,
+        "game": {
+          "title": "God of War Ragnarök",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -179,12 +1103,84 @@
     "title": "Актёрская игра / перформанс",
     "description": "Запомнившиеся актёрские работы и озвучка.",
     "options": [
-      { "id": "nom-15-opt-1", "title": "Neil Newbon — Astarion (Baldur's Gate 3)", "image_url": null },
-      { "id": "nom-15-opt-2", "title": "Melanie Liburd — Saga Anderson (Alan Wake 2)", "image_url": null },
-      { "id": "nom-15-opt-3", "title": "Cameron Monaghan — Cal Kestis (Star Wars Jedi: Survivor)", "image_url": null },
-      { "id": "nom-15-opt-4", "title": "Christopher Judge — Kratos (God of War Ragnarök)", "image_url": null },
-      { "id": "nom-15-opt-5", "title": "Yuri Lowenthal — Peter Parker (Marvel's Spider-Man 2)", "image_url": null },
-      { "id": "nom-15-opt-6", "title": "Maggie Robertson — Lady Dimitrescu (Resident Evil Village)", "image_url": null }
+      {
+        "id": "nom-15-opt-1",
+        "title": "Neil Newbon — Astarion (Baldur's Gate 3)",
+        "image_url": null,
+        "game": {
+          "title": "Neil Newbon — Astarion (Baldur's Gate 3)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-15-opt-2",
+        "title": "Melanie Liburd — Saga Anderson (Alan Wake 2)",
+        "image_url": null,
+        "game": {
+          "title": "Melanie Liburd — Saga Anderson (Alan Wake 2)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-15-opt-3",
+        "title": "Cameron Monaghan — Cal Kestis (Star Wars Jedi: Survivor)",
+        "image_url": null,
+        "game": {
+          "title": "Cameron Monaghan — Cal Kestis (Star Wars Jedi: Survivor)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-15-opt-4",
+        "title": "Christopher Judge — Kratos (God of War Ragnarök)",
+        "image_url": null,
+        "game": {
+          "title": "Christopher Judge — Kratos (God of War Ragnarök)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-15-opt-5",
+        "title": "Yuri Lowenthal — Peter Parker (Marvel's Spider-Man 2)",
+        "image_url": null,
+        "game": {
+          "title": "Yuri Lowenthal — Peter Parker (Marvel's Spider-Man 2)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-15-opt-6",
+        "title": "Maggie Robertson — Lady Dimitrescu (Resident Evil Village)",
+        "image_url": null,
+        "game": {
+          "title": "Maggie Robertson — Lady Dimitrescu (Resident Evil Village)",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -192,11 +1188,71 @@
     "title": "Поддержка сообщества",
     "description": "Лучший пострелизный сервис, патчи и общение с игроками.",
     "options": [
-      { "id": "nom-16-opt-1", "title": "No Man's Sky", "image_url": null },
-      { "id": "nom-16-opt-2", "title": "Deep Rock Galactic", "image_url": null },
-      { "id": "nom-16-opt-3", "title": "Final Fantasy XIV", "image_url": null },
-      { "id": "nom-16-opt-4", "title": "Path of Exile", "image_url": null },
-      { "id": "nom-16-opt-5", "title": "Warframe", "image_url": null }
+      {
+        "id": "nom-16-opt-1",
+        "title": "No Man's Sky",
+        "image_url": null,
+        "game": {
+          "title": "No Man's Sky",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-16-opt-2",
+        "title": "Deep Rock Galactic",
+        "image_url": null,
+        "game": {
+          "title": "Deep Rock Galactic",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-16-opt-3",
+        "title": "Final Fantasy XIV",
+        "image_url": null,
+        "game": {
+          "title": "Final Fantasy XIV",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-16-opt-4",
+        "title": "Path of Exile",
+        "image_url": null,
+        "game": {
+          "title": "Path of Exile",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-16-opt-5",
+        "title": "Warframe",
+        "image_url": null,
+        "game": {
+          "title": "Warframe",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -204,12 +1260,84 @@
     "title": "Пиксель-арт чарм",
     "description": "Любовь к пикселям и анимации.",
     "options": [
-      { "id": "nom-17-opt-1", "title": "Stardew Valley", "image_url": null },
-      { "id": "nom-17-opt-2", "title": "Octopath Traveler II", "image_url": null },
-      { "id": "nom-17-opt-3", "title": "Chained Echoes", "image_url": null },
-      { "id": "nom-17-opt-4", "title": "Blasphemous 2", "image_url": null },
-      { "id": "nom-17-opt-5", "title": "Hyper Light Drifter", "image_url": null },
-      { "id": "nom-17-opt-6", "title": "Dead Cells", "image_url": null }
+      {
+        "id": "nom-17-opt-1",
+        "title": "Stardew Valley",
+        "image_url": null,
+        "game": {
+          "title": "Stardew Valley",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-17-opt-2",
+        "title": "Octopath Traveler II",
+        "image_url": null,
+        "game": {
+          "title": "Octopath Traveler II",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-17-opt-3",
+        "title": "Chained Echoes",
+        "image_url": null,
+        "game": {
+          "title": "Chained Echoes",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-17-opt-4",
+        "title": "Blasphemous 2",
+        "image_url": null,
+        "game": {
+          "title": "Blasphemous 2",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-17-opt-5",
+        "title": "Hyper Light Drifter",
+        "image_url": null,
+        "game": {
+          "title": "Hyper Light Drifter",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-17-opt-6",
+        "title": "Dead Cells",
+        "image_url": null,
+        "game": {
+          "title": "Dead Cells",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -217,11 +1345,71 @@
     "title": "Самая уютная",
     "description": "Игра, в которую уходишь за комфортом.",
     "options": [
-      { "id": "nom-18-opt-1", "title": "Unpacking", "image_url": null },
-      { "id": "nom-18-opt-2", "title": "A Short Hike", "image_url": null },
-      { "id": "nom-18-opt-3", "title": "Cozy Grove", "image_url": null },
-      { "id": "nom-18-opt-4", "title": "Spiritfarer", "image_url": null },
-      { "id": "nom-18-opt-5", "title": "Dorfromantik", "image_url": null }
+      {
+        "id": "nom-18-opt-1",
+        "title": "Unpacking",
+        "image_url": null,
+        "game": {
+          "title": "Unpacking",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-18-opt-2",
+        "title": "A Short Hike",
+        "image_url": null,
+        "game": {
+          "title": "A Short Hike",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-18-opt-3",
+        "title": "Cozy Grove",
+        "image_url": null,
+        "game": {
+          "title": "Cozy Grove",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-18-opt-4",
+        "title": "Spiritfarer",
+        "image_url": null,
+        "game": {
+          "title": "Spiritfarer",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-18-opt-5",
+        "title": "Dorfromantik",
+        "image_url": null,
+        "game": {
+          "title": "Dorfromantik",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   },
   {
@@ -229,12 +1417,84 @@
     "title": "Самая ожидаемая",
     "description": "Релизы, которые ждём всем чатом.",
     "options": [
-      { "id": "nom-19-opt-1", "title": "Hades II", "image_url": null },
-      { "id": "nom-19-opt-2", "title": "Hollow Knight: Silksong", "image_url": null },
-      { "id": "nom-19-opt-3", "title": "S.T.A.L.K.E.R. 2: Heart of Chornobyl", "image_url": null },
-      { "id": "nom-19-opt-4", "title": "Elder Scrolls VI", "image_url": null },
-      { "id": "nom-19-opt-5", "title": "Star Wars Outlaws", "image_url": null },
-      { "id": "nom-19-opt-6", "title": "Black Myth: Wukong", "image_url": null }
+      {
+        "id": "nom-19-opt-1",
+        "title": "Hades II",
+        "image_url": null,
+        "game": {
+          "title": "Hades II",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-19-opt-2",
+        "title": "Hollow Knight: Silksong",
+        "image_url": null,
+        "game": {
+          "title": "Hollow Knight: Silksong",
+          "genre": "Metroidvania",
+          "studio": "Team Cherry",
+          "release_year": 2025,
+          "image_url": null,
+          "description": "Метроидвания с живописным миром и сложным геймплеем."
+        }
+      },
+      {
+        "id": "nom-19-opt-3",
+        "title": "S.T.A.L.K.E.R. 2: Heart of Chornobyl",
+        "image_url": null,
+        "game": {
+          "title": "S.T.A.L.K.E.R. 2: Heart of Chornobyl",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-19-opt-4",
+        "title": "Elder Scrolls VI",
+        "image_url": null,
+        "game": {
+          "title": "Elder Scrolls VI",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-19-opt-5",
+        "title": "Star Wars Outlaws",
+        "image_url": null,
+        "game": {
+          "title": "Star Wars Outlaws",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      },
+      {
+        "id": "nom-19-opt-6",
+        "title": "Black Myth: Wukong",
+        "image_url": null,
+        "game": {
+          "title": "Black Myth: Wukong",
+          "genre": "Action",
+          "studio": "Indie Studio",
+          "release_year": 2024,
+          "image_url": null,
+          "description": "Хитовая игра с яркой подаче."
+        }
+      }
     ]
   }
 ]

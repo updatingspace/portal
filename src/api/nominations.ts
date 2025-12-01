@@ -1,3 +1,4 @@
+import { mapGame, type ApiGame } from './games';
 import { request } from './client';
 import type { Nomination, NominationOption, Voting } from '../data/nominations';
 
@@ -6,6 +7,7 @@ type ApiNominationOption = {
   title: string;
   imageUrl?: string | null;
   image_url?: string | null;
+  game?: ApiGame | null;
 };
 
 type ApiVoting = {
@@ -75,6 +77,7 @@ const mapOption = (option: ApiNominationOption): NominationOption => ({
   id: option.id,
   title: option.title,
   imageUrl: option.imageUrl ?? option.image_url ?? undefined,
+  game: option.game ? mapGame(option.game) : undefined,
 });
 
 const mapVoting = (value?: ApiVoting | null): Voting | null => {

@@ -15,6 +15,7 @@ import {
 import { isApiError } from '../api/client';
 import { notifyApiError } from '../utils/apiErrorHandling';
 import { toaster } from '../toaster';
+import { useAuth } from '../contexts/AuthContext';
 
 type AuthMode = 'login' | 'register';
 
@@ -49,6 +50,8 @@ type TelegramCallback = (userData: TelegramWidgetPayload) => void;
 type TelegramCallbackWindow = Window & Record<string, TelegramCallback | undefined>;
 
 export const ProfilePage: React.FC = () => {
+  const { setUser } = useAuth();
+
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState<AuthMode | null>(null);
@@ -79,16 +82,18 @@ export const ProfilePage: React.FC = () => {
     try {
       const data = await fetchProfile();
       setProfile(data);
+      setUser(data.user);
     } catch (err) {
       if (isApiError(err) && err.kind === 'unauthorized') {
         setProfile(null);
+        setUser(null);
       } else {
         notifyApiError(err, 'Не получилось получить профиль');
       }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     loadProfile();
@@ -214,6 +219,7 @@ export const ProfilePage: React.FC = () => {
         theme: 'info',
         autoHiding: 3500,
       });
+      setUser(null);
     } catch (err) {
       notifyApiError(err, 'Не получилось выйти');
     } finally {
@@ -227,6 +233,7 @@ export const ProfilePage: React.FC = () => {
       await revokeSession(sessionKey);
       if (profile?.sessions.some((session) => session.isCurrent && session.sessionKey === sessionKey)) {
         setProfile(null);
+        setUser(null);
       } else {
         await loadProfile();
       }
@@ -312,6 +319,7 @@ export const ProfilePage: React.FC = () => {
     try {
       await deleteAccount();
       setProfile(null);
+      setUser(null);
       toaster.add({
         name: `delete-${Date.now()}`,
         title: 'Аккаунт удалён',

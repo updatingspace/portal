@@ -350,13 +350,11 @@ export const NominationPage: React.FC = () => {
     <div className="page-section nomination-page">
       <div className="container">
         <div className="row">
-          {/* <aside className="col-md-3 col-lg-2 mb-4 mb-md-0">
-            <div className="bg-video-box">
-              Фоновое<br />видео<br />от Альжумже
-            </div>
-          </aside> */}
-
+          
           <section className="col-12 col-lg-10 mx-auto">
+            <div className="mt-3">
+              <Link to={votesListLink}>← Назад к голосованиям</Link>
+            </div>
             <h1 className="page-title">{nomination.title}</h1>
             <p className="text-muted">
               В ходе данного голосования вам доступен выбор одной игры из представленных вариантов.
@@ -489,9 +487,9 @@ export const NominationPage: React.FC = () => {
                         onClick={() => openOptionModal(option.id)}
                       >
                         <div className="option-card-cover">
-                          {option.imageUrl ? (
+                          {(option.imageUrl || option.game?.imageUrl) ? (
                             <img
-                              src={option.imageUrl}
+                              src={option.imageUrl ?? option.game?.imageUrl ?? undefined}
                               alt={`Обложка игры ${option.title}`}
                               className="option-card-cover-img"
                             />
@@ -499,16 +497,11 @@ export const NominationPage: React.FC = () => {
                             <div className="option-card-cover-placeholder">
                               <span className="option-card-cover-accent">Кадр игры</span>
                               <span className="option-card-cover-note">
-                                Живое превью добавим позже
+                                оно не нашлось, но мы уже добавляем живое превью.
                               </span>
                             </div>
                           )}
-                          <div className="option-card-overlay">
-                            {isUserChoice
-                              ? 'Ваш текущий выбор'
-                              : 'Нажмите, чтобы открыть детали'}
-                          </div>
-                          <div className="option-card-badge">Игра</div>
+                          <div className="option-card-badge">{option.game?.genre ? `Жанр: ${option.game.genre}` : 'Жанр - ?'}</div>
                         </div>
                         <div className="option-card-footer">
                           <div className="option-card-header">
@@ -518,6 +511,9 @@ export const NominationPage: React.FC = () => {
                                 Голосов: {optionVotes(option.id)}
                               </div>
                             )}
+                          </div>
+                          <div className="option-card-description text-muted small">
+                            {option.game?.description ?? 'Описание игры пока не добавлено.'}
                           </div>
                           <div className="option-card-subtitle text-muted">
                             {isUserChoice
@@ -602,13 +598,22 @@ export const NominationPage: React.FC = () => {
                         </div>
                       )}
                       <p className="text-muted">
-                        Заглушка: здесь появятся данные об игре, описания и галерея. Подключим API
-                        и покажем живые факты вместо статичного текста.
+                        {modalOption.game?.studio || 'Студия не указана'} ·{' '}
+                        {modalOption.game?.genre ?? 'Жанр не указан'}
                       </p>
+                      <div className="option-card-description text-muted">
+                        {modalOption.game?.description ?? 'Описание игры пока не добавлено.'}
+                      </div>
                       <ul className="option-modal-list text-muted">
-                        <li>Краткое описание, жанр и команда разработки.</li>
-                        <li>Скриншоты, трейлер и ссылки на соцсети проекта.</li>
-                        <li>Подробности можно будет листать прямо в модалке.</li>
+                        {modalOption.game?.releaseYear && (
+                          <li>Год релиза: {modalOption.game.releaseYear}</li>
+                        )}
+                        {modalOption.game?.title && (
+                          <li>Название: {modalOption.game.title}</li>
+                        )}
+                        {modalOption.game?.studio && (
+                          <li>Разработчик: {modalOption.game.studio}</li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -622,11 +627,6 @@ export const NominationPage: React.FC = () => {
                 />
               </Dialog>
             )}
-
-            <div className="mt-3">
-              <Link to={votesListLink}>← Назад к голосованиям</Link>
-            </div>
-
           </section>
         </div>
       </div>

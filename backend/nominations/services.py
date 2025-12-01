@@ -5,12 +5,13 @@ from collections.abc import Iterable
 from typing import Any
 
 from django.conf import settings
-from django.db.models import Count, Prefetch
+from django.db import IntegrityError
+from django.db.models import Count, Prefetch, Q
 
 from accounts.services import user_has_telegram_link
 
 from .data import seed_nominations_from_fixture, seed_votings_from_fixture
-from .models import Nomination, NominationOption, NominationVote, Voting
+from .models import Game, Nomination, NominationOption, NominationVote, Voting
 
 
 class NominationNotFoundError(LookupError):
@@ -37,13 +38,122 @@ VoteCounts = dict[str, int]
 
 OPTIONS_PREFETCH = Prefetch(
     "options",
-    queryset=NominationOption.objects.filter(is_active=True).order_by("order", "title"),
+    queryset=NominationOption.objects.filter(is_active=True)
+    .select_related("game")
+    .order_by("order", "title"),
 )
 VOTING_SELECT = ("voting",)
 NOMINATIONS_PREFETCH = Prefetch(
     "nominations",
     queryset=Nomination.objects.order_by("order", "title"),
 )
+
+
+def _serialize_game(game: Game) -> dict[str, Any]:
+    return {
+        "id": game.id,
+        "title": game.title,
+        "genre": game.genre or None,
+        "studio": game.studio or None,
+        "release_year": game.release_year,
+        "description": game.description or None,
+        "image_url": game.image_url or None,
+    }
+
+
+def list_games(search: str | None = None) -> list[dict[str, Any]]:
+    ensure_nominations_seeded()
+    games_qs = Game.objects.all()
+    if search:
+        games_qs = games_qs.filter(
+            Q(title__icontains=search)
+            | Q(genre__icontains=search)
+            | Q(studio__icontains=search)
+            | Q(description__icontains=search)
+        )
+    games = games_qs.order_by("title", "id")
+    return [_serialize_game(game) for game in games]
+
+
+def get_game_payload(game_id: str) -> dict[str, Any] | None:
+    ensure_nominations_seeded()
+    game = Game.objects.filter(id=game_id).first()
+    if not game:
+        return None
+    return _serialize_game(game)
+
+
+def update_game_from_payload(game_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    ensure_nominations_seeded()
+    game = Game.objects.filter(id=game_id).first()
+    if not game:
+        raise LookupError(game_id)
+
+    updated_fields: list[str] = []
+    for field in ("title", "genre", "studio", "description", "image_url"):
+        if field in data:
+            value = data.get(field)
+            normalized = value.strip() if isinstance(value, str) else value
+            if getattr(game, field) != (normalized or ""):
+                setattr(game, field, normalized or "")
+                updated_fields.append(field)
+
+    if "release_year" in data:
+        value = data.get("release_year")
+        release_year = None
+        if isinstance(value, int):
+            release_year = value
+        elif isinstance(value, str):
+            try:
+                release_year = int(value)
+            except (TypeError, ValueError):
+                release_year = None
+        if game.release_year != release_year:
+            game.release_year = release_year
+            updated_fields.append("release_year")
+
+    if updated_fields:
+        try:
+            game.save(update_fields=updated_fields)
+        except IntegrityError as exc:
+            raise ValueError("Игра с таким названием уже существует") from exc
+
+    return _serialize_game(game)
+
+
+def create_game_from_payload(data: dict[str, Any]) -> dict[str, Any]:
+    ensure_nominations_seeded()
+    title_value = data.get("title")
+    if not title_value or not (isinstance(title_value, str) and title_value.strip()):
+        raise ValueError("Название игры обязательно")
+
+    game = Game(
+        title=title_value.strip(),
+        genre=(data.get("genre") or "").strip(),
+        studio=(data.get("studio") or "").strip(),
+        description=(data.get("description") or "").strip(),
+        image_url=(data.get("image_url") or "").strip() or None,
+    )
+
+    release_year = None
+    if "release_year" in data:
+        value = data.get("release_year")
+        if isinstance(value, int):
+            release_year = value
+        elif isinstance(value, str):
+            try:
+                release_year = int(value)
+            except (TypeError, ValueError):
+                release_year = None
+    if release_year is not None:
+        game.release_year = release_year
+
+    try:
+        game.save()
+    except IntegrityError as exc:
+        raise ValueError("Игра с таким названием уже существует") from exc
+
+    return _serialize_game(game)
 
 
 def _resolve_vote_permissions(user: Any) -> tuple[bool, bool]:
@@ -162,6 +272,7 @@ def _serialize_option(option: NominationOption) -> dict[str, Any]:
         "id": option.id,
         "title": option.title,
         "image_url": option.image_url or None,
+        "game": _serialize_game(option.game) if option.game else None,
     }
 
 

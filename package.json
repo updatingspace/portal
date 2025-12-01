@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@gravity-ui/icons": "^2.16.0",
+    "@gravity-ui/navigation": "^3.10.1",
     "@gravity-ui/uikit": "^7.26.1",
     "bootstrap": "^5.3.8",
     "react": "^19.2.0",

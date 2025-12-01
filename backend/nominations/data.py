@@ -5,14 +5,24 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from django.utils import timezone
+from django.utils.text import slugify
 
 DEFAULT_VOTING_CODE = "main"
+
+
+class GameFixtureData(TypedDict, total=False):
+    title: str
+    genre: str | None
+    studio: str | None
+    release_year: int | None
+    image_url: str | None
 
 
 class NominationOptionData(TypedDict):
     id: str
     title: str
     image_url: str | None
+    game: GameFixtureData | None
 
 
 class NominationData(TypedDict):
@@ -48,14 +58,16 @@ def _load_fixture() -> list[NominationData]:
 
     nominations: list[NominationData] = []
     for item in raw:
-        options: list[NominationOptionData] = [
-            {
-                "id": str(opt["id"]),
-                "title": opt["title"],
-                "image_url": opt.get("image_url"),
-            }
-            for opt in item.get("options", [])
-        ]
+        options: list[NominationOptionData] = []
+        for opt in item.get("options", []):
+            options.append(
+                {
+                    "id": str(opt["id"]),
+                    "title": opt["title"],
+                    "image_url": opt.get("image_url"),
+                    "game": opt.get("game"),
+                }
+            )
         nominations.append(
             {
                 "id": str(item["id"]),
@@ -173,7 +185,7 @@ def seed_nominations_from_fixture(
     - If force=True, existing nominations/options are wiped before loading.
     - Returns True when anything was created/updated.
     """
-    from .models import Nomination, NominationOption, Voting
+    from .models import Game, Nomination, NominationOption, Voting
 
     db_alias = using or "default"
 
@@ -222,12 +234,29 @@ def seed_nominations_from_fixture(
 
         seen_option_ids: set[str] = set()
         for opt_index, option_data in enumerate(nomination_data.get("options", [])):
+            option_title = option_data["title"].strip()
+            game_metadata = option_data.get("game") or {}
+            release_year = game_metadata.get("release_year")
+            game_defaults = {
+                "genre": (game_metadata.get("genre") or "").strip(),
+                "studio": (game_metadata.get("studio") or "").strip(),
+                "release_year": release_year if isinstance(release_year, int) else None,
+                "description": (game_metadata.get("description") or "").strip(),
+                "image_url": game_metadata.get("image_url") or option_data.get("image_url"),
+            }
+            game_title = (game_metadata.get("title") or option_title).strip()
+            game, _ = Game.objects.using(db_alias).update_or_create(
+                title=game_title or option_title,
+                defaults=game_defaults,
+            )
+
             option, opt_created = NominationOption.objects.using(
                 db_alias
             ).update_or_create(
                 id=option_data["id"],
                 defaults={
                     "nomination": nomination,
+                    "game": game,
                     "title": option_data["title"],
                     "image_url": option_data.get("image_url"),
                     "order": opt_index,
@@ -235,9 +264,15 @@ def seed_nominations_from_fixture(
                 },
             )
             # Safety: align nomination in case the option already existed.
+            update_fields: list[str] = []
             if option.nomination_id != nomination.id:
                 option.nomination = nomination
-                option.save(update_fields=["nomination"])
+                update_fields.append("nomination")
+            if option.game_id != game.id:
+                option.game = game
+                update_fields.append("game")
+            if update_fields:
+                option.save(update_fields=update_fields)
             seen_option_ids.add(option.id)
             created_any = created_any or opt_created
 

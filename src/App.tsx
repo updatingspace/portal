@@ -5,6 +5,8 @@ import { HomePage } from './pages/HomePage';
 import { NominationPage } from './pages/NominationPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { VotingPage } from './pages/VotingPage';
+import { AdminPage } from './pages/AdminPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 
 const App: React.FC = () => {
   return (
@@ -15,7 +17,8 @@ const App: React.FC = () => {
         <Route path="/nominations" element={<Navigate to="/" replace />} />
         <Route path="/nominations/:id" element={<NominationPage />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </MainLayout>
   );
