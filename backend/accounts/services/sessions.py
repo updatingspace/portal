@@ -1,19 +1,19 @@
 from __future__ import annotations
-from dataclasses import dataclass
-import logging
-from typing import Iterable, Optional
 
-from django.utils import timezone
-from django.contrib.sessions.models import Session
-from django.contrib.auth import logout as dj_logout, get_user_model
-from ninja.errors import HttpError
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from allauth.usersessions.models import UserSession
+from django.contrib.auth import get_user_model
+from django.contrib.auth import logout as dj_logout
+from django.contrib.sessions.models import Session
+from django.utils import timezone
+from ninja.errors import HttpError
+from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
-from ninja_jwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-
+from accounts.transport.schemas import RevokeSessionsIn, SessionRowOut
 from core.models import UserSessionMeta, UserSessionToken
-from accounts.transport.schemas import SessionRowOut, RevokeSessionsIn
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ FORWARD_HEADERS = ("HTTP_X_REAL_IP", "HTTP_X_FORWARDED_FOR")
 @dataclass(slots=True)
 class SessionService:
     @staticmethod
-    def _client_ip(request) -> Optional[str]:
+    def _client_ip(request) -> str | None:
         for h in FORWARD_HEADERS:
             v = request.META.get(h)
             if v:
@@ -75,9 +75,7 @@ class SessionService:
     def touch(request, user: User, *, throttle_seconds: int = 15) -> None:
         token = SessionService._header_token(request)
         dj_key = SessionService._session_key(request)
-        if not (token or dj_key) or not getattr(
-            user, "is_authenticated", False
-        ):
+        if not (token or dj_key) or not getattr(user, "is_authenticated", False):
             return
 
         key_for_meta = dj_key or token
@@ -140,17 +138,13 @@ class SessionService:
                     if hasattr(us, field):
                         setattr(us, field, value)
                         changed = True
-            if not getattr(us, "user_agent", None) and hasattr(
-                us, "user_agent"
-            ):
+            if not getattr(us, "user_agent", None) and hasattr(us, "user_agent"):
                 us.user_agent = meta.user_agent
                 changed = True
             if hasattr(us, "ip") and not getattr(us, "ip", None):
                 us.ip = meta.ip or ""
                 changed = True
-            elif hasattr(us, "ip_address") and not getattr(
-                us, "ip_address", None
-            ):
+            elif hasattr(us, "ip_address") and not getattr(us, "ip_address", None):
                 us.ip_address = meta.ip or ""
                 changed = True
             if changed:
@@ -158,11 +152,9 @@ class SessionService:
 
     @staticmethod
     def _compose_row(
-        request, us: Optional[UserSession], meta: Optional[UserSessionMeta]
+        request, us: UserSession | None, meta: UserSessionMeta | None
     ) -> SessionRowOut:
-        s_key = getattr(us, "session_key", None) or getattr(
-            meta, "session_key", None
-        )
+        s_key = getattr(us, "session_key", None) or getattr(meta, "session_key", None)
         expires = None
         session_alive = False
         if s_key:
@@ -227,20 +219,14 @@ class SessionService:
         meta_list: Iterable[UserSessionMeta],
     ) -> list[SessionRowOut]:
         by_key_us = {
-            u.session_key: u
-            for u in us_list
-            if getattr(u, "session_key", None)
+            u.session_key: u for u in us_list if getattr(u, "session_key", None)
         }
         by_key_meta = {
-            m.session_key: m
-            for m in meta_list
-            if getattr(m, "session_key", None)
+            m.session_key: m for m in meta_list if getattr(m, "session_key", None)
         }
         all_keys = set(by_key_us) | set(by_key_meta)
         return [
-            SessionService._compose_row(
-                request, by_key_us.get(k), by_key_meta.get(k)
-            )
+            SessionService._compose_row(request, by_key_us.get(k), by_key_meta.get(k))
             for k in sorted(all_keys)
         ]
 
@@ -258,9 +244,7 @@ class SessionService:
             )
         )
         for m in maps:
-            ot = OutstandingToken.objects.filter(
-                user=user, jti=m.refresh_jti
-            ).first()
+            ot = OutstandingToken.objects.filter(user=user, jti=m.refresh_jti).first()
             if ot and not BlacklistedToken.objects.filter(token=ot).exists():
                 BlacklistedToken.objects.get_or_create(token=ot)
             m.revoked_at = when
@@ -297,9 +281,7 @@ class SessionService:
         revoked_ids, skipped_ids = [], []
 
         for us in qs:
-            if getattr(us, "ended_at", None) or getattr(
-                us, "revoked_at", None
-            ):
+            if getattr(us, "ended_at", None) or getattr(us, "revoked_at", None):
                 skipped_ids.append(us.session_key)
                 continue
 
@@ -346,9 +328,7 @@ class SessionService:
         }
 
     @staticmethod
-    def revoke_single(
-        request, *, sid: str, reason: Optional[str] = None
-    ) -> dict:
+    def revoke_single(request, *, sid: str, reason: str | None = None) -> dict:
         SessionService.assert_session_allowed(request)
         user: User = request.auth
         SessionService.touch(request, user)

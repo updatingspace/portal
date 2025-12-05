@@ -7,7 +7,6 @@ import type { Game } from '../../types/games';
 import { formatReleaseYear } from '../../utils/format';
 
 type GameGridProps = {
-  games: Game[];
   filteredGames: Game[];
   selectedGameId: string | null;
   search: string;
@@ -20,7 +19,6 @@ type GameGridProps = {
 };
 
 export const GameGrid: React.FC<GameGridProps> = ({
-  games,
   filteredGames,
   selectedGameId,
   search,

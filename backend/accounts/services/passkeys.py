@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
-from django.db import transaction
-
-from allauth.core import context
-from allauth.mfa.models import Authenticator
-from allauth.core.exceptions import ReauthenticationRequired
-from ninja.errors import HttpError
-from allauth.mfa.webauthn.internal import flows
-from allauth.mfa.webauthn.internal import auth as webauthn_auth
 from allauth.account.internal.flows.login import record_authentication
-from django.contrib.auth import login as dj_login
+from allauth.core import context
+from allauth.core.exceptions import ReauthenticationRequired
+from allauth.mfa.models import Authenticator
+from allauth.mfa.webauthn.internal import auth as webauthn_auth
+from allauth.mfa.webauthn.internal import flows
 from django.conf import settings
+from django.contrib.auth import login as dj_login
+from django.db import transaction
+from ninja.errors import HttpError
 
-from accounts.transport.schemas import AuthenticatorsOut, AuthenticatorOut
+from accounts.transport.schemas import AuthenticatorOut, AuthenticatorsOut
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +25,7 @@ class PasskeyService:
     @staticmethod
     def list_authenticators(user) -> AuthenticatorsOut:
         auths = (
-            Authenticator.objects.filter(
-                user=user, type=Authenticator.Type.WEBAUTHN
-            )
+            Authenticator.objects.filter(user=user, type=Authenticator.Type.WEBAUTHN)
             .order_by("-created_at")
             .all()
         )
@@ -39,9 +36,9 @@ class PasskeyService:
                     name=a.data.get("name"),
                     type="webauthn",
                     created_at=int(a.created_at.timestamp()),
-                    last_used_at=int(a.last_used_at.timestamp())
-                    if a.last_used_at
-                    else None,
+                    last_used_at=(
+                        int(a.last_used_at.timestamp()) if a.last_used_at else None
+                    ),
                     is_passwordless=bool(
                         a.data.get("credential", {})
                         .get("clientExtensionResults", {})
@@ -67,12 +64,12 @@ class PasskeyService:
                 return flows.begin_registration(
                     request, user, passwordless, signup=False
                 )
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "Passkey registration requires reauthentication",
                 extra={"user_id": getattr(user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
 
     @staticmethod
     def complete_registration(request, name: str, credential: dict):
@@ -90,12 +87,12 @@ class PasskeyService:
                     },
                 )
                 return auth, rc
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "Passkey registration completion requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
 
     @staticmethod
     @transaction.atomic
@@ -108,12 +105,12 @@ class PasskeyService:
         try:
             with context.request_context(request):
                 flows.remove_authenticators(request, auths)
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "Passkey removal requires reauthentication",
                 extra={"user_id": getattr(user, "id", None), "ids": list(ids)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
         logger.info(
             "Passkeys removed",
             extra={
@@ -135,12 +132,12 @@ class PasskeyService:
         try:
             with context.request_context(request):
                 flows.rename_authenticator(request, auth, new_name)
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "Passkey rename requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
         logger.info(
             "Passkey renamed",
             extra={
@@ -162,9 +159,7 @@ class PasskeyService:
     def complete_login(request, credential: dict):
         with context.request_context(request):
             user = webauthn_auth.extract_user_from_response(credential)
-            authenticator = webauthn_auth.complete_authentication(
-                user, credential
-            )
+            authenticator = webauthn_auth.complete_authentication(user, credential)
             record_authentication(
                 request,
                 method="mfa",

@@ -1,6 +1,5 @@
 import React from 'react';
-import { Button, Dialog, TextInput } from '@gravity-ui/uikit';
-import Pencil from '@gravity-ui/icons/Pencil';
+import { Dialog, TextInput } from '@gravity-ui/uikit';
 
 import type { Game } from '../../types/games';
 

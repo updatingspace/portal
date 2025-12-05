@@ -148,7 +148,13 @@ class NominationOptionAdmin(admin.ModelAdmin):
         "order",
         "updated_at",
     )
-    search_fields = ("title", "id", "nomination__title", "nomination__id", "game__title")
+    search_fields = (
+        "title",
+        "id",
+        "nomination__title",
+        "nomination__id",
+        "game__title",
+    )
     list_filter = ("is_active", "nomination", "game")
     ordering = ("nomination__order", "order", "title")
     readonly_fields = ("created_at", "updated_at")

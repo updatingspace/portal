@@ -1,20 +1,23 @@
 from __future__ import annotations
-from dataclasses import dataclass
-import logging
 
-from django.contrib.auth import get_user_model, logout as dj_logout
-from ninja.errors import HttpError
-from ninja_jwt.tokens import RefreshToken
+import logging
+from dataclasses import dataclass
+
+from allauth.account.models import EmailAddress
 from allauth.mfa.adapter import get_adapter as get_mfa_adapter
 from allauth.socialaccount.models import SocialAccount
-from allauth.account.models import EmailAddress
-from core.models import UserSessionMeta, UserSessionToken
+from django.contrib.auth import get_user_model
+from django.contrib.auth import logout as dj_logout
+from ninja.errors import HttpError
+from ninja_jwt.tokens import RefreshToken
+
 from accounts.transport.schemas import (
+    ProfileOut,
     TokenPairOut,
     TokenRefreshIn,
     TokenRefreshOut,
-    ProfileOut,
 )
+from core.models import UserSessionMeta, UserSessionToken
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -30,12 +33,8 @@ class AuthService:
         dj_key = request.session.session_key or ""
 
         meta = (
-            UserSessionMeta.objects.filter(
-                user=user, session_token=token
-            ).first()
-            or UserSessionMeta.objects.filter(
-                user=user, session_key=dj_key
-            ).first()
+            UserSessionMeta.objects.filter(user=user, session_token=token).first()
+            or UserSessionMeta.objects.filter(user=user, session_key=dj_key).first()
         )
         if not meta:
             meta = UserSessionMeta.objects.create(
@@ -77,9 +76,7 @@ class AuthService:
             raise HttpError(401, "Not authenticated")
         has_2fa = get_mfa_adapter().is_mfa_enabled(user)
         providers = list(
-            SocialAccount.objects.filter(user=user).values_list(
-                "provider", flat=True
-            )
+            SocialAccount.objects.filter(user=user).values_list("provider", flat=True)
         )
         primary = EmailAddress.objects.filter(user=user, primary=True).first()
         return ProfileOut(
@@ -97,8 +94,8 @@ class AuthService:
 
     @staticmethod
     def change_password(user: User, current: str, new: str) -> None:
-        from django.core.exceptions import ValidationError
         from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
 
         if not user.check_password(current):
             logger.warning(
@@ -128,7 +125,7 @@ class AuthService:
                     "errors": e.messages,
                 },
             )
-            raise HttpError(400, "; ".join(e.messages))
+            raise HttpError(400, "; ".join(e.messages)) from e
         user.set_password(new)
         user.save(update_fields=["password"])
         logger.info(
@@ -140,9 +137,9 @@ class AuthService:
     def refresh_pair(payload: TokenRefreshIn) -> TokenRefreshOut:
         try:
             rt = RefreshToken(payload.refresh)
-        except Exception:
+        except Exception as err:
             logger.warning("Refresh token rejected: invalid token structure")
-            raise HttpError(401, "invalid refresh")
+            raise HttpError(401, "invalid refresh") from err
         user = User.objects.filter(pk=rt.get("user_id")).first()
         if not user:
             logger.warning("Refresh token rejected: unknown user")
@@ -154,6 +151,4 @@ class AuthService:
                 "user_id": getattr(user, "id", None),
             },
         )
-        return TokenRefreshOut(
-            refresh=str(new_refresh), access=str(rt.access_token)
-        )
+        return TokenRefreshOut(refresh=str(new_refresh), access=str(rt.access_token))

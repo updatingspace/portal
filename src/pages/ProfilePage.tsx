@@ -115,8 +115,8 @@ export default function ProfilePage() {
           data: { reason },
           error: e,
         });
-      } finally {
-        if (cancelledRef?.current) return;
+      }
+      if (!cancelledRef?.current) {
         setLoading(false);
       }
     },

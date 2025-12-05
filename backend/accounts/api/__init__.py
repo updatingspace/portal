@@ -1,4 +1,4 @@
-from ninja import Router, NinjaAPI
+from ninja import NinjaAPI, Router
 
 from accounts.api.exception_handlers import install_http_error_handler
 from accounts.api.router import account_router

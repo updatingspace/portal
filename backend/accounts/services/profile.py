@@ -1,10 +1,11 @@
 from __future__ import annotations
-from typing import Optional
-from dataclasses import dataclass
+
 import logging
+from dataclasses import dataclass
+
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
+from django.db import transaction
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class ProfileService:
     @staticmethod
     @transaction.atomic
     def update_name(
-        user: User, *, first: Optional[str] = None, last: Optional[str] = None
+        user: User, *, first: str | None = None, last: str | None = None
     ) -> None:
         to_update: list[str] = []
         if first is not None:

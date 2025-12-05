@@ -39,3 +39,8 @@ ignore = []
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[dependency-groups]
+dev = [
+    "black>=25.11.0",
+]

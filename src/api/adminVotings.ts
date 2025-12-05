@@ -72,5 +72,8 @@ export async function updateAdminVotingMeta(
   _id: string,
   _payload: { title?: string; description?: string | null },
 ): Promise<AdminVoting> {
+  // Keep signature for future API support; mark params as used to satisfy linting.
+  void _id;
+  void _payload;
   throw new ApiError('Редактирование голосований пока не поддержано API', { kind: 'forbidden' });
 }

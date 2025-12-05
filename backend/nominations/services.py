@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
-import logging
 from typing import Any
 
 from django.conf import settings

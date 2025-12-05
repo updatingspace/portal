@@ -56,11 +56,16 @@ const parseErrorMessage = async (response: Response) => {
   return null;
 };
 
-async function fetchJsonWithHeaders(
+type AuthResponseMeta = {
+  meta?: { session_token?: string | null } | null;
+  session_token?: string | null;
+};
+
+async function fetchJsonWithHeaders<T = unknown>(
   path: string,
   init: RequestInit,
   { includeSessionToken = false }: { includeSessionToken?: boolean } = {},
-): Promise<{ data: any; response: Response }> {
+): Promise<{ data: T; response: Response }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined),
@@ -84,7 +89,7 @@ async function fetchJsonWithHeaders(
       kind: statusToKind(response.status),
     });
   }
-  const data = response.status === 204 ? null : await response.json();
+  const data = (response.status === 204 ? null : await response.json()) as T;
   return { data, response };
 }
 
@@ -94,7 +99,7 @@ export async function headlessLogin(
   mfa_code?: string,
   recovery_code?: string,
 ): Promise<{ token: string; meta?: unknown }> {
-  const { data, response } = await fetchJsonWithHeaders(
+  const { data, response } = await fetchJsonWithHeaders<AuthResponseMeta>(
     '/auth/login',
     {
       method: 'POST',
@@ -118,7 +123,7 @@ export async function headlessSignup(
   email: string | null,
   password: string,
 ): Promise<{ token: string; meta?: unknown }> {
-  const { data, response } = await fetchJsonWithHeaders(
+  const { data, response } = await fetchJsonWithHeaders<AuthResponseMeta>(
     '/auth/signup',
     {
       method: 'POST',
@@ -202,8 +207,8 @@ export async function changePassword(payload: {
 }
 
 export async function listSessionsHeadless(): Promise<SessionRow[]> {
-  const data = await request<{ sessions: SessionRow[] }>('/auth/sessions');
-  return Array.isArray((data as any)?.sessions) ? data.sessions : [];
+  const data = await request<{ sessions?: SessionRow[] | null }>('/auth/sessions');
+  return Array.isArray(data.sessions) ? data.sessions : [];
 }
 
 export async function revokeSessionHeadless(
@@ -243,11 +248,11 @@ export async function doSignupAndLogin(payload: {
   return headlessSignup(payload.username, payload.email, payload.password);
 }
 
-export async function beginPasskeyLogin(): Promise<{ request_options: any }> {
+export async function beginPasskeyLogin(): Promise<{ request_options: PublicKeyRequestOptions }> {
   return request('/auth/passkeys/login/begin', { method: 'POST' });
 }
 
-export async function completePasskeyLogin(credential: any): Promise<void> {
+export async function completePasskeyLogin(credential: WebAuthnAssertion): Promise<void> {
   const res = await request<{ meta: { session_token: string } }>('/auth/passkeys/login/complete', {
     method: 'POST',
     body: { credential },
@@ -319,15 +324,49 @@ export async function regenerateRecoveryCodes(): Promise<string[]> {
 }
 
 // ----- Passkeys / WebAuthn -----
-export async function passkeysBegin(passwordless = false): Promise<{ creation_options: any }> {
+type PublicKeyRequestOptions = PublicKeyCredentialRequestOptions | { publicKey: PublicKeyCredentialRequestOptions };
+type PublicKeyCreationOptions =
+  | PublicKeyCredentialCreationOptions
+  | { publicKey: PublicKeyCredentialCreationOptions };
+
+export type WebAuthnAssertion = {
+  id: string;
+  rawId?: string;
+  type: string;
+  response: {
+    clientDataJSON?: string;
+    authenticatorData?: string;
+    signature?: string;
+    userHandle?: string | null;
+  };
+};
+
+export type WebAuthnAttestation = {
+  id?: string;
+  rawId?: string;
+  type?: string;
+  clientExtensionResults?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+};
+
+export type AuthenticatorSummary = {
+  id: string;
+  type: string;
+  name?: string | null;
+  is_passwordless?: boolean;
+  created_at?: number;
+  last_used_at?: number | null;
+};
+
+export async function passkeysBegin(passwordless = false): Promise<{ creation_options: PublicKeyCreationOptions }> {
   return request('/auth/passkeys/begin', { method: 'POST', body: { passwordless } });
 }
 
 export async function passkeysComplete(payload: {
   name: string;
-  credential: any;
+  credential: WebAuthnAttestation;
   passwordless?: boolean;
-}): Promise<{ ok: boolean; authenticator?: any; recovery_codes?: string[] | null }> {
+}): Promise<{ ok: boolean; authenticator?: AuthenticatorSummary; recovery_codes?: string[] | null }> {
   return request('/auth/passkeys/complete', {
     method: 'POST',
     body: {
@@ -338,8 +377,8 @@ export async function passkeysComplete(payload: {
   });
 }
 
-export async function listAuthenticators(): Promise<any[]> {
-  const data = await request<{ authenticators: any[] }>('/auth/passkeys');
+export async function listAuthenticators(): Promise<AuthenticatorSummary[]> {
+  const data = await request<{ authenticators: AuthenticatorSummary[] }>('/auth/passkeys');
   return data.authenticators ?? [];
 }
 

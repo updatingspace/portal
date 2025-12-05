@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from ninja.security.base import AuthBase
-
-from allauth.headless.internal.sessionkit import (
-    authenticate_by_x_session_token,
-)
 from allauth.account.internal.flows.login import (
     AUTHENTICATION_METHODS_SESSION_KEY,
     record_authentication,
 )
+from allauth.headless.internal.sessionkit import (
+    authenticate_by_x_session_token,
+)
+from ninja.security.base import AuthBase
 
 
 class SessionTokenAuth(AuthBase):

@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import logging
-from typing import Optional
-
-from django.shortcuts import get_object_or_404
-from ninja.errors import HttpError
+from dataclasses import dataclass
 
 from allauth.core import context
 from allauth.core.exceptions import ReauthenticationRequired
 from allauth.mfa.adapter import get_adapter as get_mfa_adapter
 from allauth.mfa.models import Authenticator
+from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
 from allauth.mfa.totp.forms import ActivateTOTPForm, DeactivateTOTPForm
 from allauth.mfa.totp.internal import flows as totp_flows
-from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+from django.shortcuts import get_object_or_404
+from ninja.errors import HttpError
 
 from accounts.transport.schemas import (
     MfaStatusOut,
@@ -49,16 +47,15 @@ class MfaService:
                 adapter = get_mfa_adapter()
                 otpauth_url = adapter.build_totp_url(request.user, secret)
                 totp_svg = adapter.build_totp_svg(otpauth_url)
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "TOTP setup requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
-        svg_data_uri = (
-            "data:image/svg+xml;base64,"
-            + base64.b64encode(totp_svg.encode("utf-8")).decode("utf-8")
-        )
+            raise HttpError(401, "reauth_required") from err
+        svg_data_uri = "data:image/svg+xml;base64," + base64.b64encode(
+            totp_svg.encode("utf-8")
+        ).decode("utf-8")
         logger.info(
             "TOTP setup initiated",
             extra={"user_id": getattr(request.user, "id", None)},
@@ -75,9 +72,7 @@ class MfaService:
         clean_code = (code or "").strip().replace(" ", "").replace("-", "")
         try:
             with context.request_context(request):
-                form = ActivateTOTPForm(
-                    user=request.user, data={"code": clean_code}
-                )
+                form = ActivateTOTPForm(user=request.user, data={"code": clean_code})
                 if not form.is_valid():
                     logger.info(
                         "TOTP confirmation failed validation",
@@ -102,12 +97,12 @@ class MfaService:
                     extra={"user_id": getattr(request.user, "id", None)},
                 )
                 return None
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "TOTP confirmation requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
 
     @staticmethod
     def totp_disable(request) -> None:
@@ -129,12 +124,12 @@ class MfaService:
                     )
                     raise HttpError(400, form.errors)
                 totp_flows.deactivate_totp(request, auth)
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "TOTP disable requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
         logger.info(
             "TOTP disabled",
             extra={
@@ -159,12 +154,12 @@ class MfaService:
                     extra={"user_id": getattr(request.user, "id", None)},
                 )
                 return codes
-        except ReauthenticationRequired:
+        except ReauthenticationRequired as err:
             logger.warning(
                 "Recovery code regeneration requires reauthentication",
                 extra={"user_id": getattr(request.user, "id", None)},
             )
-            raise HttpError(401, "reauth_required")
+            raise HttpError(401, "reauth_required") from err
         raise HttpError(400, "unable to regenerate codes")
 
 

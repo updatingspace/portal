@@ -1,6 +1,5 @@
 import React from 'react';
-import { Card, Dialog, Icon, Loader } from '@gravity-ui/uikit';
-import Pencil from '@gravity-ui/icons/Pencil';
+import { Card, Dialog, Loader } from '@gravity-ui/uikit';
 
 import type { Nomination } from '../../data/nominations';
 

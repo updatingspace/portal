@@ -1,37 +1,38 @@
 from __future__ import annotations
-from typing import Optional, List
+
 from datetime import datetime
+
 from ninja import Schema
 
 
 # ---------- Generic ----------
 class FieldErrorItem(Schema):
     message: str
-    code: Optional[str] = None
+    code: str | None = None
 
 
 class ErrorOut(Schema):
     detail: str
     code: int | None = None
     # Optional structured validation payload (e.g., Django form errors)
-    errors: Optional[dict[str, list[FieldErrorItem]]] = None
+    errors: dict[str, list[FieldErrorItem]] | None = None
     # Convenience: first message per field (flat)
-    fields: Optional[dict[str, str]] = None
+    fields: dict[str, str] | None = None
 
 
 class OkOut(Schema):
     ok: bool
-    message: Optional[str] = None
+    message: str | None = None
 
 
 # ---------- Profile / Email ----------
 class ProfileUpdateIn(Schema):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
 
 
 class EmailStatusOut(Schema):
-    email: Optional[str] = None
+    email: str | None = None
     verified: bool = False
 
 
@@ -41,16 +42,16 @@ class ChangeEmailIn(Schema):
 
 # ---------- Sessions ----------
 class SessionRowOut(Schema):
-    id: Optional[str]
-    user_agent: Optional[str]
-    ip: Optional[str]
-    created: Optional[datetime]
-    last_seen: Optional[datetime]
-    expires: Optional[datetime]
+    id: str | None
+    user_agent: str | None
+    ip: str | None
+    created: datetime | None
+    last_seen: datetime | None
+    expires: datetime | None
     current: bool
     revoked: bool
-    revoked_reason: Optional[str]
-    revoked_at: Optional[datetime]
+    revoked_reason: str | None
+    revoked_at: datetime | None
 
 
 class SessionsOut(Schema):
@@ -66,15 +67,15 @@ class RevokeSessionsIn(Schema):
 class RevokeOut(Schema):
     ok: bool
     # bulk
-    reason: Optional[str] = None
-    current: Optional[str] = None
-    revoked_ids: Optional[list[str]] = None
-    skipped_ids: Optional[list[str]] = None
-    count: Optional[int] = None
+    reason: str | None = None
+    current: str | None = None
+    revoked_ids: list[str] | None = None
+    skipped_ids: list[str] | None = None
+    count: int | None = None
     # single
-    id: Optional[str] = None
-    revoked_reason: Optional[str] = None
-    revoked_at: Optional[str] = None
+    id: str | None = None
+    revoked_reason: str | None = None
+    revoked_at: str | None = None
 
 
 # ---------- Auth / JWT ----------
@@ -89,7 +90,7 @@ class TokenRefreshIn(Schema):
 
 class TokenRefreshOut(Schema):
     refresh: str
-    access: Optional[str] = None
+    access: str | None = None
 
 
 class ChangePasswordIn(Schema):
@@ -101,12 +102,12 @@ class ProfileOut(Schema):
     username: str
     email: str
     has_2fa: bool
-    oauth_providers: List[str]
+    oauth_providers: list[str]
     is_staff: bool = False
     is_superuser: bool = False
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
     email_verified: bool = False
 
 
@@ -122,13 +123,13 @@ class LoginOut(Schema):
 class LoginIn(Schema):
     email: str
     password: str
-    mfa_code: Optional[str] = None
-    recovery_code: Optional[str] = None
+    mfa_code: str | None = None
+    recovery_code: str | None = None
 
 
 class SignupIn(Schema):
     username: str
-    email: Optional[str] = None
+    email: str | None = None
     password: str
 
 

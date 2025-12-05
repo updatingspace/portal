@@ -33,6 +33,7 @@ export const AuthUIProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   return <AuthUIContext.Provider value={value}>{children}</AuthUIContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuthUI = (): AuthUIValue => {
   const ctx = useContext(AuthUIContext);
   if (!ctx) {
@@ -40,4 +41,3 @@ export const useAuthUI = (): AuthUIValue => {
   }
   return ctx;
 };
-

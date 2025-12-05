@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import logging
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from ninja.errors import HttpError
+
 from allauth.account.adapter import get_adapter as get_account_adapter
 from allauth.account.models import EmailAddress
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from email_validator import EmailNotValidError, validate_email
+from ninja.errors import HttpError
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ class EmailService:
         try:
             email = get_account_adapter().clean_email(new_email or "")
             validate_email(email, check_deliverability=False)
-        except (EmailNotValidError, Exception):
+        except (EmailNotValidError, Exception) as err:
             logger.info(
                 "Email change rejected: invalid email",
                 extra={
@@ -32,7 +34,7 @@ class EmailService:
                     "email": new_email,
                 },
             )
-            raise HttpError(400, "Invalid email")
+            raise HttpError(400, "Invalid email") from err
         if not email:
             raise HttpError(400, "Invalid email")
 
@@ -56,9 +58,7 @@ class EmailService:
                     "Email change rejected: email already verified by another user",
                     extra={"user_id": getattr(user, "id", None), "email": email},
                 )
-                raise HttpError(
-                    400, "Этот email уже используется другим аккаунтом"
-                )
+                raise HttpError(400, "Этот email уже используется другим аккаунтом")
 
         addr, _ = EmailAddress.objects.get_or_create(
             user=user,

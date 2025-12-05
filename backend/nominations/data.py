@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from django.utils import timezone
-from django.utils.text import slugify
 
 DEFAULT_VOTING_CODE = "main"
 
@@ -249,7 +248,8 @@ def seed_nominations_from_fixture(
                 "studio": (game_metadata.get("studio") or "").strip(),
                 "release_year": release_year if isinstance(release_year, int) else None,
                 "description": (game_metadata.get("description") or "").strip(),
-                "image_url": game_metadata.get("image_url") or option_data.get("image_url"),
+                "image_url": game_metadata.get("image_url")
+                or option_data.get("image_url"),
             }
             game_title = (game_metadata.get("title") or option_title).strip()
             game, _ = Game.objects.using(db_alias).update_or_create(

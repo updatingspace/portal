@@ -1,7 +1,8 @@
 from ninja import Router
+
 from accounts.api.security import session_token_auth
-from accounts.transport.schemas import ErrorOut, ProvidersOut, OAuthLinkOut
 from accounts.services.oauth import OAuthService
+from accounts.transport.schemas import ErrorOut, OAuthLinkOut, ProvidersOut
 
 router_oauth = Router(tags=["OAuth"], auth=[session_token_auth])
 

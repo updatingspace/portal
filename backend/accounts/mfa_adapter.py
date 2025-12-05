@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from django.conf import settings
 from allauth.mfa.adapter import DefaultMFAAdapter
+from django.conf import settings
 
 
 class CustomMFAAdapter(DefaultMFAAdapter):

@@ -1,17 +1,19 @@
-from ninja import Router, Body
+from ninja import Body, Router
+
 from accounts.api.security import session_token_auth
+from accounts.services.auth import AuthService
 from accounts.transport.schemas import (
+    ChangePasswordIn,
     ErrorOut,
     OkOut,
+    ProfileOut,
     TokenPairOut,
     TokenRefreshIn,
     TokenRefreshOut,
-    ChangePasswordIn,
-    ProfileOut,
 )
-from accounts.services.auth import AuthService
 
 auth_router = Router(tags=["Auth"])
+REQUIRED_BODY = Body(...)
 
 
 @auth_router.post(
@@ -55,7 +57,7 @@ def me(request):
     summary="Change password (requires current password)",
     operation_id="auth_change_password",
 )
-def change_password(request, payload: ChangePasswordIn = Body(...)):
+def change_password(request, payload: ChangePasswordIn = REQUIRED_BODY):
     AuthService.change_password(
         request.auth, payload.current_password, payload.new_password
     )
@@ -68,5 +70,5 @@ def change_password(request, payload: ChangePasswordIn = Body(...)):
     summary="Refresh JWT pair",
     operation_id="auth_refresh",
 )
-def refresh_pair(request, payload: TokenRefreshIn = Body(...)):
+def refresh_pair(request, payload: TokenRefreshIn = REQUIRED_BODY):
     return AuthService.refresh_pair(payload)

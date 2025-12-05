@@ -319,6 +319,7 @@ export const AdminPage: React.FC = () => {
           setSelectedVotingId(data[0].id);
         }
       } catch (error) {
+        notifyApiError(error, 'Не удалось загрузить голосования из API, показываем заглушку.');
         setVotingsError('Не удалось загрузить голосования из API, показываем заглушку.');
         const filtered = fallbackVotings.filter((item) =>
           item.title.toLowerCase().includes(query.toLowerCase()),
@@ -377,7 +378,7 @@ export const AdminPage: React.FC = () => {
         setIsPreviewLoading(false);
       }
     },
-    [notifyApiError],
+    [],
   );
 
   const nominationColumns = useMemo(
@@ -415,6 +416,7 @@ export const AdminPage: React.FC = () => {
           description: fallbackDetail.description ?? '',
         });
         setVotingsError('Не получилось получить детали из API, работаем с заглушкой.');
+        notifyApiError(error, 'Не получилось получить детали голосования');
       } finally {
         setIsDetailLoading(false);
       }
@@ -913,7 +915,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               ) : (
                 <GameGrid
-                  games={games}
                   filteredGames={filteredGames}
                   selectedGameId={selectedGameId}
                   search={gameSearch}

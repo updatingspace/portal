@@ -1,39 +1,42 @@
-from django.db import transaction
-from ninja import Router, File, Body
-from ninja.files import UploadedFile
-from ninja.errors import HttpError
 from django.contrib.auth import get_user_model
+from django.db import transaction
+from ninja import Body, File, Router
+from ninja.errors import HttpError
+from ninja.files import UploadedFile
+
 from accounts.api.security import session_token_auth
+from accounts.services.emailing import EmailService
+from accounts.services.mfa import MfaService
+from accounts.services.passkeys import PasskeyService
+from accounts.services.profile import ProfileService
+from accounts.services.sessions import SessionService
 from accounts.transport.schemas import (
-    OkOut,
-    ChangeEmailIn,
-    ProfileUpdateIn,
-    EmailStatusOut,
-    SessionsOut,
-    RevokeSessionsIn,
-    ErrorOut,
-    RevokeOut,
     AuthenticatorsOut,
+    ChangeEmailIn,
+    EmailStatusOut,
+    ErrorOut,
+    MfaStatusOut,
+    OkOut,
     PasskeyBeginIn,
     PasskeyBeginOut,
     PasskeyCompleteIn,
     PasskeyCompleteOut,
     PasskeyDeleteIn,
     PasskeyRenameIn,
-    MfaStatusOut,
+    ProfileUpdateIn,
+    RecoveryCodesOut,
+    RevokeOut,
+    RevokeSessionsIn,
+    SessionsOut,
     TotpBeginOut,
     TotpConfirmIn,
     TotpConfirmOut,
-    RecoveryCodesOut,
 )
-from accounts.services.profile import ProfileService
-from accounts.services.emailing import EmailService
-from accounts.services.sessions import SessionService
-from accounts.services.passkeys import PasskeyService
-from accounts.services.mfa import MfaService
 
 User = get_user_model()
 account_router = Router(tags=["Account"], auth=[session_token_auth])
+REQUIRED_BODY = Body(...)
+REQUIRED_FILE = File(...)
 
 
 def _require_authenticated_user(request) -> User:
@@ -52,11 +55,9 @@ def _require_authenticated_user(request) -> User:
     operation_id="account_update_profile",
 )
 @transaction.atomic
-def account_update_profile(request, payload: ProfileUpdateIn = Body(...)):
+def account_update_profile(request, payload: ProfileUpdateIn = REQUIRED_BODY):
     user = _require_authenticated_user(request)
-    ProfileService.update_name(
-        user, first=payload.first_name, last=payload.last_name
-    )
+    ProfileService.update_name(user, first=payload.first_name, last=payload.last_name)
     return OkOut(ok=True, message="Профиль обновлён")
 
 
@@ -66,16 +67,14 @@ def account_update_profile(request, payload: ProfileUpdateIn = Body(...)):
     summary="Upload/replace user avatar",
     operation_id="account_upload_avatar",
 )
-def upload_avatar(request, avatar: UploadedFile = File(...)):
+def upload_avatar(request, avatar: UploadedFile = REQUIRED_FILE):
     user = _require_authenticated_user(request)
     SessionService.assert_session_allowed(request)
     SessionService.touch(request, user)
     updated = ProfileService.save_avatar(user, avatar)
     if updated:
         return OkOut(ok=True, message="Аватар обновлён")
-    return OkOut(
-        ok=True, message="Поле avatar отсутствует в модели пользователя"
-    )
+    return OkOut(ok=True, message="Поле avatar отсутствует в модели пользователя")
 
 
 @account_router.get(
@@ -96,12 +95,10 @@ def account_email_status(request):
     operation_id="account_change_email",
 )
 @transaction.atomic
-def account_change_email(request, payload: ChangeEmailIn = Body(...)):
+def account_change_email(request, payload: ChangeEmailIn = REQUIRED_BODY):
     user = _require_authenticated_user(request)
     EmailService.request_change(request, user, new_email=payload.new_email)
-    return OkOut(
-        ok=True, message="Проверьте почту, чтобы подтвердить новый адрес"
-    )
+    return OkOut(ok=True, message="Проверьте почту, чтобы подтвердить новый адрес")
 
 
 @account_router.post(
@@ -135,9 +132,7 @@ def list_sessions(request):
     summary="Revoke sessions in bulk",
     operation_id="account_revoke_sessions_bulk",
 )
-def revoke_sessions_bulk(
-    request, payload: RevokeSessionsIn = Body(...)
-):
+def revoke_sessions_bulk(request, payload: RevokeSessionsIn = REQUIRED_BODY):
     _require_authenticated_user(request)
     return SessionService.revoke_bulk(request, payload)
 
@@ -148,9 +143,7 @@ def revoke_sessions_bulk(
     summary="Revoke sessions in bulk (compat)",
     operation_id="account_revoke_sessions_bulk_compat",
 )
-def revoke_sessions_bulk_compat(
-    request, payload: RevokeSessionsIn = Body(...)
-):
+def revoke_sessions_bulk_compat(request, payload: RevokeSessionsIn = REQUIRED_BODY):
     _require_authenticated_user(request)
     return SessionService.revoke_bulk(request, payload)
 
@@ -183,7 +176,7 @@ def list_passkeys(request):
     summary="Begin WebAuthn registration ceremony",
     operation_id="passkeys_begin",
 )
-def passkeys_begin(request, payload: PasskeyBeginIn = Body(...)):
+def passkeys_begin(request, payload: PasskeyBeginIn = REQUIRED_BODY):
     user = _require_authenticated_user(request)
     options = PasskeyService.begin_registration(
         request, user, passwordless=payload.passwordless
@@ -197,7 +190,7 @@ def passkeys_begin(request, payload: PasskeyBeginIn = Body(...)):
     summary="Delete WebAuthn authenticators",
     operation_id="passkeys_delete",
 )
-def delete_passkeys(request, payload: PasskeyDeleteIn = Body(...)):
+def delete_passkeys(request, payload: PasskeyDeleteIn = REQUIRED_BODY):
     user = _require_authenticated_user(request)
     count = PasskeyService.delete(request, user, payload.ids)
     return OkOut(ok=True, message=f"Удалено {count} Passkey")
@@ -209,7 +202,7 @@ def delete_passkeys(request, payload: PasskeyDeleteIn = Body(...)):
     summary="Rename WebAuthn authenticator",
     operation_id="passkeys_rename",
 )
-def rename_passkey(request, payload: PasskeyRenameIn = Body(...)):
+def rename_passkey(request, payload: PasskeyRenameIn = REQUIRED_BODY):
     _require_authenticated_user(request)
     PasskeyService.rename(
         request,
@@ -225,7 +218,7 @@ def rename_passkey(request, payload: PasskeyRenameIn = Body(...)):
     summary="Complete WebAuthn registration",
     operation_id="passkeys_complete",
 )
-def passkeys_complete(request, payload: PasskeyCompleteIn = Body(...)):
+def passkeys_complete(request, payload: PasskeyCompleteIn = REQUIRED_BODY):
     _require_authenticated_user(request)
     name = payload.name or "Passkey"
     auth, rc = PasskeyService.complete_registration(
@@ -241,9 +234,9 @@ def passkeys_complete(request, payload: PasskeyCompleteIn = Body(...)):
         "name": auth.data.get("name"),
         "type": "webauthn",
         "created_at": int(auth.created_at.timestamp()),
-        "last_used_at": int(auth.last_used_at.timestamp())
-        if auth.last_used_at
-        else None,
+        "last_used_at": (
+            int(auth.last_used_at.timestamp()) if auth.last_used_at else None
+        ),
         "is_passwordless": bool(
             auth.data.get("credential", {})
             .get("clientExtensionResults", {})
@@ -251,9 +244,7 @@ def passkeys_complete(request, payload: PasskeyCompleteIn = Body(...)):
             .get("rk")
         ),
     }
-    return PasskeyCompleteOut(
-        ok=True, authenticator=auth_out, recovery_codes=rc_codes
-    )
+    return PasskeyCompleteOut(ok=True, authenticator=auth_out, recovery_codes=rc_codes)
 
 
 @account_router.get(
@@ -284,7 +275,7 @@ def mfa_totp_begin(request):
     summary="Confirm TOTP code and activate",
     operation_id="mfa_totp_confirm",
 )
-def mfa_totp_confirm(request, payload: TotpConfirmIn = Body(...)):
+def mfa_totp_confirm(request, payload: TotpConfirmIn = REQUIRED_BODY):
     _require_authenticated_user(request)
     rc = MfaService.totp_confirm(request, payload.code)
     return TotpConfirmOut(ok=True, recovery_codes=rc)

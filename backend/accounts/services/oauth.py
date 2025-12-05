@@ -1,11 +1,13 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import logging
+from dataclasses import dataclass
 from urllib.parse import urlencode
-from django.urls import reverse, NoReverseMatch
-from django.conf import settings as dj_settings
-from allauth.socialaccount.providers import registry
+
 from allauth.socialaccount.models import SocialApp
+from allauth.socialaccount.providers import registry
+from django.conf import settings as dj_settings
+from django.urls import NoReverseMatch, reverse
 from ninja.errors import HttpError
 
 logger = logging.getLogger(__name__)
@@ -17,9 +19,7 @@ class OAuthService:
     def configured_provider_ids() -> set[str]:
         from_db = set(SocialApp.objects.values_list("provider", flat=True))
         from_settings = set()
-        providers_cfg = (
-            getattr(dj_settings, "SOCIALACCOUNT_PROVIDERS", {}) or {}
-        )
+        providers_cfg = getattr(dj_settings, "SOCIALACCOUNT_PROVIDERS", {}) or {}
         for pid, conf in providers_cfg.items():
             apps = conf.get("APPS") or conf.get("apps")
             if apps:
@@ -41,9 +41,7 @@ class OAuthService:
         return providers
 
     @staticmethod
-    def link_provider(
-        provider: str, next_path: str = "/account/security"
-    ) -> dict:
+    def link_provider(provider: str, next_path: str = "/account/security") -> dict:
         installed = {pid for pid, _ in registry.as_choices()}
         if provider not in installed:
             logger.warning(
@@ -52,14 +50,12 @@ class OAuthService:
             )
             raise HttpError(404, "unknown provider")
         try:
-            path = reverse(
-                "socialaccount_login", kwargs={"provider": provider}
-            )
+            path = reverse("socialaccount_login", kwargs={"provider": provider})
         except NoReverseMatch:
             try:
                 path = reverse(f"{provider}_login")
-            except NoReverseMatch:
-                raise HttpError(404, "unknown provider")
+            except NoReverseMatch as inner_err:
+                raise HttpError(404, "unknown provider") from inner_err
         method = (
             "GET"
             if getattr(dj_settings, "SOCIALACCOUNT_LOGIN_ON_GET", False)

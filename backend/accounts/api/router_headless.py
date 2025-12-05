@@ -1,18 +1,20 @@
-from ninja import Router, Body
+from ninja import Body, Router
 from ninja.responses import Response
+
+from accounts.services.headless import HeadlessService
+from accounts.services.passkeys import PasskeyService
 from accounts.transport.schemas import (
     ErrorOut,
-    LoginOut,
     LoginIn,
+    LoginOut,
     PasskeyLoginBeginOut,
     PasskeyLoginCompleteIn,
     PasskeyLoginOut,
+    SignupIn,
 )
-from accounts.services.headless import HeadlessService
-from accounts.services.passkeys import PasskeyService
-from accounts.transport.schemas import SignupIn
 
 headless_router = Router(tags=["Auth"])
+REQUIRED_BODY = Body(...)
 
 
 @headless_router.post(
@@ -21,7 +23,7 @@ headless_router = Router(tags=["Auth"])
     summary="Headless login, issues X-Session-Token",
     operation_id="headless_login",
 )
-def login(request, payload: LoginIn = Body(...)):
+def login(request, payload: LoginIn = REQUIRED_BODY):
     st = HeadlessService.login(
         request,
         payload.email,
@@ -30,9 +32,8 @@ def login(request, payload: LoginIn = Body(...)):
         recovery_code=getattr(payload, "recovery_code", None),
     )
     body = {"meta": {"session_token": st}}
-    return Response(
-        body, headers={"X-Session-Token": st, "Cache-Control": "no-store"}
-    )
+    return Response(body, headers={"X-Session-Token": st, "Cache-Control": "no-store"})
+
 
 @headless_router.post(
     "/signup",
@@ -40,7 +41,7 @@ def login(request, payload: LoginIn = Body(...)):
     summary="Headless signup + login, issues X-Session-Token",
     operation_id="headless_signup",
 )
-def signup(request, payload: SignupIn = Body(...)):
+def signup(request, payload: SignupIn = REQUIRED_BODY):
     st = HeadlessService.signup(
         request, payload.username, payload.email, payload.password
     )
@@ -67,9 +68,7 @@ def passkey_login_begin(request):
     summary="Complete passkey authentication",
     operation_id="headless_passkey_login_complete",
 )
-def passkey_login_complete(
-    request, payload: PasskeyLoginCompleteIn = Body(...)
-):
+def passkey_login_complete(request, payload: PasskeyLoginCompleteIn = REQUIRED_BODY):
     user, _ = PasskeyService.complete_login(request, payload.credential)
     st = HeadlessService.issue_session_token(request)
     return Response(

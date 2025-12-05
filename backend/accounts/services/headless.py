@@ -1,18 +1,19 @@
 from __future__ import annotations
-from dataclasses import dataclass
-import logging
 
-from django.conf import settings
-from django.utils.module_loading import import_string
-from django.contrib.auth import authenticate
-from django.contrib.auth import login as dj_login
+import logging
+from dataclasses import dataclass
+
 from allauth.account.forms import SignupForm
-from allauth.account.utils import perform_login
 from allauth.account.internal.flows.login import record_authentication
+from allauth.account.utils import perform_login
 from allauth.mfa.adapter import get_adapter as get_mfa_adapter
 from allauth.mfa.models import Authenticator
-from allauth.mfa.totp.internal.auth import TOTP
 from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+from allauth.mfa.totp.internal.auth import TOTP
+from django.conf import settings
+from django.contrib.auth import authenticate
+from django.contrib.auth import login as dj_login
+from django.utils.module_loading import import_string
 from ninja.errors import HttpError
 
 logger = logging.getLogger(__name__)
@@ -59,9 +60,7 @@ class HeadlessService:
                 extra={"user_id": getattr(user_obj, "id", None), "email": email},
             )
             raise HttpError(400, "invalid credentials")
-        record_authentication(
-            request, method="password", email=email.strip()
-        )
+        record_authentication(request, method="password", email=email.strip())
 
         adapter = get_mfa_adapter()
         mfa_enabled = adapter.is_mfa_enabled(user)
@@ -94,9 +93,7 @@ class HeadlessService:
             elif rc_auth and RecoveryCodes(rc_auth).validate_code(code):
                 validated = True
                 mfa_used = "recovery_code"
-                record_authentication(
-                    request, method="mfa", type="recovery_codes"
-                )
+                record_authentication(request, method="mfa", type="recovery_codes")
             if not validated:
                 logger.warning(
                     "Headless login failed: invalid MFA code",
@@ -109,7 +106,9 @@ class HeadlessService:
                 raise HttpError(400, "invalid_mfa_code")
 
         # Bypass allauth stage controller to stay headless and avoid redirects.
-        dj_login(request, user, backend=user.backend if hasattr(user, "backend") else None)
+        dj_login(
+            request, user, backend=user.backend if hasattr(user, "backend") else None
+        )
         logger.info(
             "Headless login succeeded",
             extra={
@@ -122,9 +121,7 @@ class HeadlessService:
         return HeadlessService.issue_session_token(request)
 
     @staticmethod
-    def signup(
-        request, username: str, email: str | None, password: str
-    ) -> str:
+    def signup(request, username: str, email: str | None, password: str) -> str:
         form = SignupForm(
             data={
                 "username": username,
@@ -144,9 +141,7 @@ class HeadlessService:
             )
             raise HttpError(400, form.errors.as_json())
         user = form.save(request)
-        record_authentication(
-            request, method="password", username=username.strip()
-        )
+        record_authentication(request, method="password", username=username.strip())
         perform_login(request, user)
         logger.info(
             "Headless signup succeeded",

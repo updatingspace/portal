@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from unittest.mock import patch
 
-import time
 from allauth.account.models import EmailAddress
 from allauth.mfa import app_settings as mfa_app_settings
 from allauth.mfa.totp.internal import auth as totp_auth
@@ -50,7 +50,10 @@ class AccountsApiTests(TestCase):
         )
 
     def login_and_get_token(
-        self, client: Client | None = None, email: str | None = None, password: str | None = None
+        self,
+        client: Client | None = None,
+        email: str | None = None,
+        password: str | None = None,
     ) -> str:
         client = client or self.client
         resp = post_json(
@@ -79,7 +82,11 @@ class AccountsApiTests(TestCase):
         self.assertFalse(data["is_superuser"])
 
     def test_headless_login_rejects_invalid_credentials(self):
-        resp = post_json(self.client, "/api/auth/login", {"email": self.user.email, "password": "wrong"})
+        resp = post_json(
+            self.client,
+            "/api/auth/login",
+            {"email": self.user.email, "password": "wrong"},
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("invalid credentials", resp.json()["detail"])
 
@@ -93,7 +100,9 @@ class AccountsApiTests(TestCase):
         self.assertIn("access", payload)
         self.assertIn("refresh", payload)
         self.assertTrue(
-            UserSessionMeta.objects.filter(user=self.user, session_key=self.client.session.session_key).exists()
+            UserSessionMeta.objects.filter(
+                user=self.user, session_key=self.client.session.session_key
+            ).exists()
         )
         self.assertTrue(UserSessionToken.objects.filter(user=self.user).exists())
 
@@ -180,7 +189,9 @@ class AccountsApiTests(TestCase):
         self.assertEqual(self.user.first_name, "Alice")
         self.assertEqual(self.user.last_name, "Smith")
 
-        fake_avatar = SimpleUploadedFile("avatar.png", b"binarydata", content_type="image/png")
+        fake_avatar = SimpleUploadedFile(
+            "avatar.png", b"binarydata", content_type="image/png"
+        )
         resp_avatar = self.client.post(
             "/api/auth/avatar",
             data={"avatar": fake_avatar},
@@ -242,7 +253,9 @@ class AccountsApiTests(TestCase):
 
     def test_sessions_listing_and_revocation(self):
         token = self.login_and_get_token()
-        resp_sessions = self.client.get("/api/auth/sessions", HTTP_X_SESSION_TOKEN=token)
+        resp_sessions = self.client.get(
+            "/api/auth/sessions", HTTP_X_SESSION_TOKEN=token
+        )
         self.assertEqual(resp_sessions.status_code, 200)
         sessions = resp_sessions.json()["sessions"]
         self.assertTrue(any(s["current"] for s in sessions))
@@ -255,7 +268,9 @@ class AccountsApiTests(TestCase):
 
         # Создаём вторую сессию для массового отключения
         other_client = Client()
-        token_other = self.login_and_get_token(other_client, self.user.email, self.password)
+        token_other = self.login_and_get_token(
+            other_client, self.user.email, self.password
+        )
         other_client.get("/api/auth/sessions", HTTP_X_SESSION_TOKEN=token_other)
         second_key = other_client.session.session_key
 
@@ -276,7 +291,11 @@ class AccountsApiTests(TestCase):
         UserSessionMeta.objects.update_or_create(
             user=self.user,
             session_key=session_key,
-            defaults={"session_token": token, "revoked_at": timezone.now(), "revoked_reason": "manual"},
+            defaults={
+                "session_token": token,
+                "revoked_at": timezone.now(),
+                "revoked_reason": "manual",
+            },
         )
         resp = self.client.get("/api/auth/sessions", HTTP_X_SESSION_TOKEN=token)
         self.assertEqual(resp.status_code, 401)
@@ -291,9 +310,15 @@ class AccountsApiTests(TestCase):
         token = self.login_and_get_token()
 
         with patch(
-            "accounts.services.oauth.OAuthService.configured_provider_ids", return_value={"dummy"}
-        ), patch("accounts.services.oauth.registry.as_choices", return_value=[("dummy", "Dummy")]):
-            resp_list = self.client.get("/api/auth/oauth/providers", HTTP_X_SESSION_TOKEN=token)
+            "accounts.services.oauth.OAuthService.configured_provider_ids",
+            return_value={"dummy"},
+        ), patch(
+            "accounts.services.oauth.registry.as_choices",
+            return_value=[("dummy", "Dummy")],
+        ):
+            resp_list = self.client.get(
+                "/api/auth/oauth/providers", HTTP_X_SESSION_TOKEN=token
+            )
             self.assertEqual(resp_list.status_code, 200)
             providers = resp_list.json()["providers"]
             self.assertEqual(providers, [{"id": "dummy", "name": "Dummy"}])
@@ -304,8 +329,12 @@ class AccountsApiTests(TestCase):
         self.assertEqual(resp_unknown.status_code, 404)
 
         with patch(
-            "accounts.services.oauth.OAuthService.configured_provider_ids", return_value={"dummy"}
-        ), patch("accounts.services.oauth.registry.as_choices", return_value=[("dummy", "Dummy")]), patch(
+            "accounts.services.oauth.OAuthService.configured_provider_ids",
+            return_value={"dummy"},
+        ), patch(
+            "accounts.services.oauth.registry.as_choices",
+            return_value=[("dummy", "Dummy")],
+        ), patch(
             "accounts.services.oauth.reverse", return_value="/dummy/login/"
         ):
             resp_link = self.client.get(
@@ -319,7 +348,9 @@ class AccountsApiTests(TestCase):
     def test_mfa_totp_full_flow(self):
         token = self.login_and_get_token()
 
-        resp_status = self.client.get("/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token)
+        resp_status = self.client.get(
+            "/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token
+        )
         self.assertEqual(resp_status.status_code, 200)
         self.assertFalse(resp_status.json()["has_totp"])
 
@@ -345,7 +376,9 @@ class AccountsApiTests(TestCase):
         self.assertTrue(confirm_payload["ok"])
         self.assertTrue(confirm_payload["recovery_codes"])
 
-        resp_status_after = self.client.get("/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token)
+        resp_status_after = self.client.get(
+            "/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token
+        )
         self.assertEqual(resp_status_after.status_code, 200)
         data_after = resp_status_after.json()
         self.assertTrue(data_after["has_totp"])
@@ -357,7 +390,9 @@ class AccountsApiTests(TestCase):
             HTTP_X_SESSION_TOKEN=token,
         )
         self.assertEqual(resp_disable.status_code, 200)
-        resp_status_final = self.client.get("/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token)
+        resp_status_final = self.client.get(
+            "/api/auth/mfa/status", HTTP_X_SESSION_TOKEN=token
+        )
         self.assertEqual(resp_status_final.status_code, 200)
         self.assertFalse(resp_status_final.json()["has_totp"])
 

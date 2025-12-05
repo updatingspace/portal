@@ -7,6 +7,7 @@ import {
   doLogin,
   doSignupAndLogin,
   ApiError,
+  type WebAuthnAssertion,
 } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -27,12 +28,42 @@ export default function AuthModal({ open = false, onClose }) {
 
   const toaster = useToaster();
   const isLogin = mode === "login";
-  const isMfa = mode === "mfa";
   const title = useMemo(() => {
     if (mode === "signup") return "Регистрация";
     if (mode === "mfa") return "Подтвердите код";
     return "Вход";
   }, [mode]);
+
+  type ErrorResponseData = {
+    errors?: { message?: string }[];
+    detail?: unknown;
+    message?: unknown;
+  };
+
+  const extractMessageFromResponse = (error: unknown): string | undefined => {
+    if (typeof error !== "object" || error === null || !("response" in error)) {
+      return undefined;
+    }
+    const response = (error as { response?: { data?: ErrorResponseData } }).response;
+    const data = response?.data;
+    if (Array.isArray(data?.errors) && typeof data.errors[0]?.message === "string") {
+      return data.errors[0].message;
+    }
+    if (typeof data?.detail === "string") return data.detail;
+    if (typeof data?.message === "string") return data.message;
+    return undefined;
+  };
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    const msgFromResponse = extractMessageFromResponse(error);
+    if (msgFromResponse) return msgFromResponse;
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "object" && error && "message" in error && typeof (error as { message?: unknown }).message === "string") {
+      return (error as { message?: string }).message ?? fallback;
+    }
+    if (typeof error === "string") return error;
+    return fallback;
+  };
 
   function resetForms() {
     setEmail("");
@@ -109,13 +140,8 @@ export default function AuthModal({ open = false, onClose }) {
         });
       }
       close();
-    } catch (ex: any) {
-      const r = ex?.response;
-      const msg =
-        r?.data?.errors?.[0]?.message ||
-        r?.data?.detail ||
-        r?.data?.message ||
-        ex?.message;
+    } catch (ex: unknown) {
+      const msg = extractMessageFromResponse(ex) ?? (ex instanceof Error ? ex.message : undefined);
       const isMfa =
         (ex instanceof ApiError && ex.status === 401 && ex.message === "mfa_required") ||
         (typeof msg === "string" && msg.toLowerCase().includes("mfa"));
@@ -154,13 +180,8 @@ export default function AuthModal({ open = false, onClose }) {
         });
       }
       close();
-    } catch (ex: any) {
-      const r = ex?.response;
-      const msg =
-        r?.data?.errors?.[0]?.message ||
-        r?.data?.detail ||
-        r?.data?.message ||
-        "Ошибка регистрации";
+    } catch (ex: unknown) {
+      const msg = getErrorMessage(ex, "Ошибка регистрации");
       toaster.add({ title: msg, theme: "danger" });
     } finally {
       setBusy(false);
@@ -190,11 +211,8 @@ export default function AuthModal({ open = false, onClose }) {
         });
       }
       close();
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Код не подошёл";
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, "Код не подошёл");
       toaster.add({ title: msg, theme: "danger" });
     } finally {
       setBusy(false);
@@ -209,36 +227,39 @@ export default function AuthModal({ open = false, onClose }) {
     setBusy(true);
     try {
       const { request_options } = await beginPasskeyLogin();
-      const opts = request_options?.publicKey || request_options;
-      const decode = (b64?: string) =>
-        b64 ? Uint8Array.from(atob(b64.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)) : undefined;
+      const opts: PublicKeyCredentialRequestOptions =
+        (request_options as { publicKey?: PublicKeyCredentialRequestOptions }).publicKey ||
+        (request_options as PublicKeyCredentialRequestOptions);
+      const decode = (b64: string) =>
+        Uint8Array.from(atob(b64.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
       // Normalize options into proper ArrayBuffers
-      if (opts.challenge) opts.challenge = decode(opts.challenge);
+      if (typeof opts.challenge === "string") opts.challenge = decode(opts.challenge);
       if (Array.isArray(opts.allowCredentials)) {
-        opts.allowCredentials = opts.allowCredentials.map((c: any) => ({
+        opts.allowCredentials = opts.allowCredentials.map((c) => ({
           ...c,
-          id: decode(c.id),
+          id: typeof c.id === "string" ? decode(c.id) : c.id,
         }));
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cred: any = await navigator.credentials.get({ publicKey: opts });
-      if (!cred) throw new Error("no_credential");
+      const credential = await navigator.credentials.get({ publicKey: opts });
+      if (!credential) throw new Error("no_credential");
+      if (!(credential instanceof PublicKeyCredential)) {
+        throw new Error("unexpected_credential");
+      }
       const enc = (buf?: ArrayBuffer | null) =>
         buf ? btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") : undefined;
-      const credential = {
-        id: cred.id,
-        rawId: enc(cred.rawId),
-        type: cred.type,
+      const assertionResponse = credential.response as AuthenticatorAssertionResponse;
+      const assertionPayload: WebAuthnAssertion = {
+        id: credential.id,
+        rawId: enc(credential.rawId),
+        type: credential.type,
         response: {
-          clientDataJSON: enc(cred.response.clientDataJSON),
-          authenticatorData: enc(
-            (cred.response as AuthenticatorAssertionResponse).authenticatorData,
-          ),
-          signature: enc((cred.response as AuthenticatorAssertionResponse).signature),
-          userHandle: enc((cred.response as AuthenticatorAssertionResponse).userHandle || undefined),
+          clientDataJSON: enc(credential.response.clientDataJSON),
+          authenticatorData: enc(assertionResponse.authenticatorData),
+          signature: enc(assertionResponse.signature),
+          userHandle: enc(assertionResponse.userHandle || undefined),
         },
       };
-      await completePasskeyLogin(credential);
+      await completePasskeyLogin(assertionPayload);
       const p = await refreshProfile();
       if (p) {
         toaster.add({
@@ -248,12 +269,8 @@ export default function AuthModal({ open = false, onClose }) {
         });
       }
       close();
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Не удалось войти по Passkey";
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, "Не удалось войти по Passkey");
       toaster.add({ title: msg, theme: "danger" });
     } finally {
       setBusy(false);

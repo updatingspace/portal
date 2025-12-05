@@ -15,15 +15,16 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from allauth.account import views as allauth_account_views
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 from ninja import NinjaAPI
 
-from allauth.account import views as allauth_account_views
-from accounts.api import router as auth_router, install as install_accounts_api
-from nominations.games_api import router as games_router
+from accounts.api import install as install_accounts_api
+from accounts.api import router as auth_router
 from nominations.api import router as nominations_router
+from nominations.games_api import router as games_router
 from votings.api import router as votings_router
 
 api = NinjaAPI(title="AEF Vote API", version="0.1.0")
