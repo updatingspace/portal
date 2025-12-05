@@ -34,6 +34,8 @@ jobs:
         run: ruff check backend
       - name: Django check
         run: python backend/manage.py check
+      - name: Run Django tests
+        run: python backend/manage.py test
 
   frontend-lint:
     name: Frontend lint
@@ -48,10 +50,24 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+  frontend-typecheck:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
   frontend-build:
     name: Build and publish frontend image
     needs:
       - frontend-lint
+      - frontend-typecheck
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
