@@ -2,6 +2,7 @@ import type { ToastProps } from '@gravity-ui/uikit';
 import type { ApiErrorKind } from '../api/client';
 import { isApiError } from '../api/client';
 import { toaster } from '../toaster';
+import { logger, type LogLevel } from './logger';
 
 type ErrorMeta = {
   title: string;
@@ -49,6 +50,15 @@ const ERROR_META: Record<ApiErrorKind, ErrorMeta> = {
   },
 };
 
+const ERROR_LOG_LEVEL: Record<ApiErrorKind, LogLevel> = {
+  network: 'error',
+  unauthorized: 'warn',
+  forbidden: 'warn',
+  not_found: 'info',
+  server: 'critical',
+  unknown: 'error',
+};
+
 const resolveKind = (error: unknown): ApiErrorKind => {
   if (isApiError(error)) return error.kind;
   return 'unknown';
@@ -68,6 +78,19 @@ export const notifyApiError = (error: unknown, context: string) => {
     serverMessage && !baseContent.includes(serverMessage)
       ? `${baseContent} ${serverMessage}`
       : baseContent;
+
+  const logLevel = ERROR_LOG_LEVEL[kind] ?? 'error';
+  logger[logLevel]('API error', {
+    area: 'api',
+    event: 'request_failed',
+    data: {
+      kind,
+      context,
+      title,
+      description,
+    },
+    error,
+  });
 
   toaster.add({
     name: `${kind}-${Date.now()}`,

@@ -15,16 +15,20 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from allauth.account import views as allauth_account_views
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from ninja import NinjaAPI
 
+from accounts.api import install as install_accounts_api
 from accounts.api import router as auth_router
 from nominations.api import router as nominations_router
+from nominations.games_api import router as games_router
 from votings.api import router as votings_router
 
 api = NinjaAPI(title="AEF Vote API", version="0.1.0")
+install_accounts_api(api)
 
 
 @api.get("/health")
@@ -35,10 +39,16 @@ def healthcheck(request):
 api.add_router("/nominations", nominations_router)
 api.add_router("/votings", votings_router)
 api.add_router("/auth", auth_router)
+api.add_router("/games", games_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
+    re_path(
+        r"^accounts/confirm-email/(?P<key>[-:\w]+)/$",
+        allauth_account_views.confirm_email,
+        name="account_confirm_email",
+    ),
 ]
 
 if settings.DEBUG and "debug_toolbar" in settings.INSTALLED_APPS:

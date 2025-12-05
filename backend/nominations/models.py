@@ -6,6 +6,49 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 
+class Game(models.Model):
+    id = models.SlugField(
+        max_length=128,
+        primary_key=True,
+        blank=True,
+        help_text="Стабильный идентификатор игры; не меняйте после создания.",
+    )
+    title = models.CharField(max_length=255, unique=True)
+    genre = models.CharField(max_length=255, blank=True, default="")
+    studio = models.CharField(max_length=255, blank=True, default="")
+    release_year = models.PositiveIntegerField(null=True, blank=True)
+    description = models.TextField(blank=True)
+    image_url = models.URLField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("title", "id")
+        verbose_name = "Игра"
+        verbose_name_plural = "Игры"
+
+    def __str__(self) -> str:
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = self._generate_id()
+        super().save(*args, **kwargs)
+
+    def _generate_id(self) -> str:
+        base_slug = slugify(self.title or "") or "game"
+        max_length = self._meta.get_field("id").max_length
+        candidate = base_slug[:max_length]
+        suffix_index = 1
+        while self.__class__.objects.exclude(pk=self.pk).filter(id=candidate).exists():
+            suffix = f"-{suffix_index}"
+            trunc_length = max(max_length - len(suffix), 1)
+            base_part = base_slug[:trunc_length] or "game"
+            candidate = f"{base_part}{suffix}"
+            suffix_index += 1
+        return candidate
+
+
 class Voting(models.Model):
     code = models.SlugField(
         max_length=64,
@@ -144,6 +187,14 @@ class NominationOption(models.Model):
         max_length=64,
         primary_key=True,
         help_text="Используется как стабильный идентификатор в API; не меняйте после создания.",
+    )
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.SET_NULL,
+        related_name="options",
+        null=True,
+        blank=True,
+        help_text="Связанная игра с расширенными метаданными.",
     )
     nomination = models.ForeignKey(
         Nomination,

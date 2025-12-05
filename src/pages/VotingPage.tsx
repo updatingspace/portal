@@ -6,6 +6,7 @@ import type { ApiError } from '../api/client';
 import { fetchNominations } from '../api/nominations';
 import type { Nomination } from '../data/nominations';
 import { getApiErrorMeta, notifyApiError } from '../utils/apiErrorHandling';
+import { logger } from '../utils/logger';
 
 type VoteStatus = 'active' | 'paused' | 'expired';
 
@@ -44,10 +45,20 @@ export const VotingPage: React.FC = () => {
     setIsLoading(true);
     setItems([]);
     setError(null);
+    logger.info('Loading nominations', {
+      area: 'nominations',
+      event: 'load_list',
+      data: { votingId },
+    });
 
     try {
       const data = await fetchNominations(votingId);
       setItems(data);
+      logger.info('Nominations loaded', {
+        area: 'nominations',
+        event: 'load_list',
+        data: { votingId, count: data.length },
+      });
     } catch (err) {
       notifyApiError(err, 'Не получилось загрузить номинации');
       setError(err as ApiError);

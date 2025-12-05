@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@gravity-ui/icons": "^2.16.0",
+    "@gravity-ui/navigation": "^3.10.1",
     "@gravity-ui/uikit": "^7.26.1",
     "bootstrap": "^5.3.8",
     "react": "^19.2.0",
@@ -20,6 +22,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
+    "@types/prop-types": "^15.7.15",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

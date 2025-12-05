@@ -40,7 +40,7 @@ class NominationsApiTests(TestCase):
         response = post_json(
             client,
             "/api/auth/login",
-            {"login": self.user.username, "password": self.password},
+            {"email": self.user.email, "password": self.password},
         )
         self.assertEqual(response.status_code, 200)
         return client

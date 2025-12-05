@@ -1,7 +1,11 @@
+import type { Game } from '../types/games';
+
 export type NominationOption = {
   id: string;
   title: string;
   imageUrl?: string;
+  game?: Game | null;
+  counts?: Record<string, number>;
 };
 
 export type Voting = {
@@ -19,6 +23,7 @@ export type Nomination = {
   id: string;          // строковый id для маршрута
   title: string;
   description?: string;
+  status?: 'draft' | 'active' | 'archived';
   options: NominationOption[];
   counts?: Record<string, number>;
   userVote?: string | null;

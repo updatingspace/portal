@@ -1,7 +1,14 @@
 from django import forms
 from django.contrib import admin
 
-from .models import Nomination, NominationOption, NominationVote, Voting, VotingSettings
+from .models import (
+    Game,
+    Nomination,
+    NominationOption,
+    NominationVote,
+    Voting,
+    VotingSettings,
+)
 
 
 @admin.register(Voting)
@@ -76,6 +83,7 @@ class NominationOptionInline(admin.TabularInline):
     fields = (
         "id",
         "title",
+        "game",
         "image_url",
         "order",
         "is_active",
@@ -85,6 +93,7 @@ class NominationOptionInline(admin.TabularInline):
     readonly_fields = ("created_at", "updated_at")
     prepopulated_fields = {"id": ("title",)}
     ordering = ("order", "title")
+    autocomplete_fields = ("game",)
     show_change_link = True
 
     def get_prepopulated_fields(self, request, obj=None):
@@ -130,13 +139,64 @@ class NominationAdmin(admin.ModelAdmin):
 
 @admin.register(NominationOption)
 class NominationOptionAdmin(admin.ModelAdmin):
-    list_display = ("title", "id", "nomination", "is_active", "order", "updated_at")
-    search_fields = ("title", "id", "nomination__title", "nomination__id")
-    list_filter = ("is_active", "nomination")
+    list_display = (
+        "title",
+        "id",
+        "nomination",
+        "game",
+        "is_active",
+        "order",
+        "updated_at",
+    )
+    search_fields = (
+        "title",
+        "id",
+        "nomination__title",
+        "nomination__id",
+        "game__title",
+    )
+    list_filter = ("is_active", "nomination", "game")
     ordering = ("nomination__order", "order", "title")
     readonly_fields = ("created_at", "updated_at")
     prepopulated_fields = {"id": ("title",)}
-    autocomplete_fields = ("nomination",)
+    autocomplete_fields = ("nomination", "game")
+
+    def get_prepopulated_fields(self, request, obj=None):
+        if obj and obj.pk:
+            return {}
+        return super().get_prepopulated_fields(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.pk:
+            return ("id",) + self.readonly_fields
+        return self.readonly_fields
+
+
+@admin.register(Game)
+class GameAdmin(admin.ModelAdmin):
+    list_display = ("title", "id", "genre", "studio", "release_year", "updated_at")
+    search_fields = ("title", "id", "genre", "studio")
+    list_filter = ("genre", "studio")
+    ordering = ("title", "id")
+    readonly_fields = ("created_at", "updated_at")
+    prepopulated_fields = {"id": ("title",)}
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "id",
+                    "title",
+                    "genre",
+                    "studio",
+                    "release_year",
+                    "description",
+                    "image_url",
+                )
+            },
+        ),
+        ("Служебные поля", {"fields": ("created_at", "updated_at")}),
+    )
 
     def get_prepopulated_fields(self, request, obj=None):
         if obj and obj.pk:

@@ -16,10 +16,39 @@ class CamelSchema(Schema):
     model_config = ConfigDict(populate_by_name=True, alias_generator=_to_camel)
 
 
+class GameSchema(CamelSchema):
+    id: str
+    title: str
+    genre: str | None = None
+    studio: str | None = None
+    release_year: int | None = None
+    description: str | None = None
+    image_url: str | None = None
+
+
+class GameCreateSchema(CamelSchema):
+    title: str
+    genre: str | None = None
+    studio: str | None = None
+    release_year: int | None = None
+    description: str | None = None
+    image_url: str | None = None
+
+
+class GameUpdateSchema(CamelSchema):
+    title: str | None = None
+    genre: str | None = None
+    studio: str | None = None
+    release_year: int | None = None
+    description: str | None = None
+    image_url: str | None = None
+
+
 class NominationOptionSchema(CamelSchema):
     id: str
     title: str
     image_url: str | None = None
+    game: GameSchema | None = None
 
 
 class VotingSchema(CamelSchema):

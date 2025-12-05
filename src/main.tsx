@@ -15,14 +15,20 @@ import './index.css';
 
 import App from './App';
 import { toaster } from './toaster';
+import { AuthProvider } from './contexts/AuthContext';
+import { AuthUIProvider } from './contexts/AuthUIContext';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider theme="light">
       <ToasterProvider toaster={toaster}>
         <BrowserRouter>
-          <App />
-          <ToasterComponent />
+          <AuthProvider>
+            <AuthUIProvider>
+              <App />
+              <ToasterComponent />
+            </AuthUIProvider>
+          </AuthProvider>
         </BrowserRouter>
       </ToasterProvider>
     </ThemeProvider>

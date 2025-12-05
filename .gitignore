@@ -25,3 +25,8 @@ secrets/
 *.njsproj
 *.sln
 *.sw?
+
+# Database files
+*.sqlite
+*.sqlite3
+backend/aef_backend/db.sqlite3
