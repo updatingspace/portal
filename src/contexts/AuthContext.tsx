@@ -7,10 +7,31 @@ import React, {
   useState,
 } from 'react';
 
-import { fetchProfile } from '../api/auth';
-import type { UserInfo } from '../api/auth';
 import { isApiError } from '../api/client';
+import type { AccountProfile } from '../services/api';
+import { me as fetchProfile } from '../services/api';
 import { notifyApiError } from '../utils/apiErrorHandling';
+import { logger } from '../utils/logger';
+
+export type UserInfo = {
+  username: string;
+  email: string | null;
+  isSuperuser: boolean;
+  isStaff: boolean;
+  firstName?: string | null;
+  lastName?: string | null;
+  emailVerified?: boolean;
+};
+
+const mapProfileToUser = (profile: AccountProfile): UserInfo => ({
+  username: profile.username,
+  email: profile.email ?? null,
+  isSuperuser: profile.is_superuser ?? false,
+  isStaff: profile.is_staff ?? false,
+  firstName: profile.first_name ?? null,
+  lastName: profile.last_name ?? null,
+  emailVerified: profile.email_verified ?? false,
+});
 
 type AuthContextValue = {
   user: UserInfo | null;
@@ -34,15 +55,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = useCallback(async () => {
     setIsLoading(true);
+    logger.info('Refreshing profile', {
+      area: 'auth',
+      event: 'refresh_profile',
+    });
 
     try {
       const profile = await fetchProfile();
-      setUser(profile.user);
-      return profile.user;
+      const mapped = mapProfileToUser(profile);
+      setUser(mapped);
+      logger.info('Profile refreshed', {
+        area: 'auth',
+        event: 'refresh_profile',
+        data: {
+          username: mapped.username,
+          emailVerified: mapped.emailVerified,
+          isStaff: mapped.isStaff,
+        },
+      });
+      return mapped;
     } catch (error) {
       if (isApiError(error)) {
         if (error.kind === 'unauthorized') {
           setUser(null);
+          logger.warn('Profile refresh unauthorized, clearing session', {
+            area: 'auth',
+            event: 'refresh_profile',
+            data: { reason: 'unauthorized' },
+            error,
+          });
         } else {
           notifyApiError(error, 'Не получилось обновить профиль');
         }

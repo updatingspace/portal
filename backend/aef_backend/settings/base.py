@@ -65,8 +65,15 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sites",
     "corsheaders",
+    "core",
     "allauth",
     "allauth.account",
+    "allauth.socialaccount",
+    "allauth.usersessions",
+    "allauth.mfa",
+    "allauth.headless",
+    "ninja_jwt",
+    "ninja_jwt.token_blacklist",
     "accounts",
     "nominations",
 ]
@@ -141,12 +148,40 @@ ACCOUNT_USERNAME_REQUIRED = True
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_SESSION_REMEMBER = True
+ALLAUTH_MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = read_env_flag(
+    "ALLAUTH_MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN", DEBUG
+)
+# allauth-mfa config for passkeys/local dev
+MFA_ADAPTER = "accounts.mfa_adapter.CustomMFAAdapter"
+MFA_SUPPORTED_TYPES = ["recovery_codes", "totp", "webauthn"]
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = read_env_flag(
+    "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN", DEBUG
+)
+MFA_PASSKEY_LOGIN_ENABLED = True
+MFA_PASSKEY_SIGNUP_ENABLED = False
+MFA_WEBAUTHN_RP_ID = read_env("MFA_WEBAUTHN_RP_ID", "localhost")
+MFA_WEBAUTHN_RP_NAME = read_env("MFA_WEBAUTHN_RP_NAME", "AEF Vote")
 
 CORS_ALLOWED_ORIGINS = read_env_list(
     "CORS_ALLOWED_ORIGINS",
     [],
 )
 CORS_ALLOW_CREDENTIALS = True
+try:
+    from corsheaders.defaults import default_headers
+
+    CORS_ALLOW_HEADERS = list(default_headers) + ["X-Session-Token"]
+except Exception:
+    CORS_ALLOW_HEADERS = [
+        "accept",
+        "accept-language",
+        "content-language",
+        "content-type",
+        "origin",
+        "authorization",
+        "x-requested-with",
+        "x-session-token",
+    ]
 
 TELEGRAM_BOT_TOKEN = read_secret("TELEGRAM_BOT_TOKEN", "")
 try:
@@ -164,3 +199,44 @@ for raw_value in read_env_list("TELEGRAM_ADMIN_IDS", []):
     except (TypeError, ValueError):
         # Игнорируем нечисловые значения, чтобы не ломать загрузку настроек
         continue
+
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.sessions.SessionTokenStrategy"
+
+NINJA_JWT = {
+    "TOKEN_BLACKLIST_ENABLED": True,
+}
+
+APP_LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        }
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": APP_LOG_LEVEL,
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.security": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}

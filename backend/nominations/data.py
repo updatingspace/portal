@@ -96,8 +96,15 @@ def seed_votings_from_fixture(force: bool = False, using: str | None = None) -> 
 
     db_alias = using or "default"
 
-    if not force and Voting.objects.using(db_alias).exists():
-        return False
+    if not force:
+        existing_codes = set(
+            Voting.objects.using(db_alias).values_list("code", flat=True)
+        )
+        missing = {
+            str(item.get("code", DEFAULT_VOTING_CODE)).lower() for item in VOTINGS
+        } - existing_codes
+        if not missing:
+            return False
 
     if force:
         Voting.objects.using(db_alias).all().delete()

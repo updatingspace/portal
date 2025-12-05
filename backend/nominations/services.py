@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+import logging
 from typing import Any
 
 from django.conf import settings
@@ -12,6 +13,8 @@ from accounts.services import user_has_telegram_link
 
 from .data import seed_nominations_from_fixture, seed_votings_from_fixture
 from .models import Game, Nomination, NominationOption, NominationVote, Voting
+
+logger = logging.getLogger(__name__)
 
 
 class NominationNotFoundError(LookupError):
@@ -72,6 +75,10 @@ def list_games(search: str | None = None) -> list[dict[str, Any]]:
             | Q(description__icontains=search)
         )
     games = games_qs.order_by("title", "id")
+    logger.info(
+        "Games listed",
+        extra={"search": search, "count": games.count()},
+    )
     return [_serialize_game(game) for game in games]
 
 
@@ -79,7 +86,15 @@ def get_game_payload(game_id: str) -> dict[str, Any] | None:
     ensure_nominations_seeded()
     game = Game.objects.filter(id=game_id).first()
     if not game:
+        logger.warning(
+            "Game payload requested for unknown game",
+            extra={"game_id": game_id},
+        )
         return None
+    logger.info(
+        "Game payload fetched",
+        extra={"game_id": game_id},
+    )
     return _serialize_game(game)
 
 
@@ -87,6 +102,10 @@ def update_game_from_payload(game_id: str, data: dict[str, Any]) -> dict[str, An
     ensure_nominations_seeded()
     game = Game.objects.filter(id=game_id).first()
     if not game:
+        logger.warning(
+            "Game update failed: game not found",
+            extra={"game_id": game_id},
+        )
         raise LookupError(game_id)
 
     updated_fields: list[str] = []
@@ -116,7 +135,18 @@ def update_game_from_payload(game_id: str, data: dict[str, Any]) -> dict[str, An
         try:
             game.save(update_fields=updated_fields)
         except IntegrityError as exc:
+            logger.warning(
+                "Game update failed: duplicate title",
+                extra={"game_id": game_id, "title": getattr(game, "title", None)},
+            )
             raise ValueError("Игра с таким названием уже существует") from exc
+        logger.info(
+            "Game updated",
+            extra={
+                "game_id": game_id,
+                "fields": updated_fields,
+            },
+        )
 
     return _serialize_game(game)
 
@@ -125,6 +155,7 @@ def create_game_from_payload(data: dict[str, Any]) -> dict[str, Any]:
     ensure_nominations_seeded()
     title_value = data.get("title")
     if not title_value or not (isinstance(title_value, str) and title_value.strip()):
+        logger.info("Game create rejected: missing title")
         raise ValueError("Название игры обязательно")
 
     game = Game(
@@ -151,7 +182,15 @@ def create_game_from_payload(data: dict[str, Any]) -> dict[str, Any]:
     try:
         game.save()
     except IntegrityError as exc:
+        logger.warning(
+            "Game create failed: duplicate title",
+            extra={"title": getattr(game, "title", None)},
+        )
         raise ValueError("Игра с таким названием уже существует") from exc
+    logger.info(
+        "Game created",
+        extra={"game_id": game.id, "title": game.title},
+    )
 
     return _serialize_game(game)
 
@@ -375,6 +414,13 @@ def record_vote(
 ) -> tuple[VoteCounts | None, Nomination]:
     nomination = get_nomination(nomination_id)
     if not nomination:
+        logger.warning(
+            "Vote rejected: nomination not found",
+            extra={
+                "nomination_id": nomination_id,
+                "user_id": getattr(user, "id", None),
+            },
+        )
         raise NominationNotFoundError(nomination_id)
 
     option = next(
@@ -386,15 +432,39 @@ def record_vote(
         None,
     )
     if not option:
+        logger.warning(
+            "Vote rejected: option not found",
+            extra={
+                "nomination_id": nomination_id,
+                "option_id": option_id,
+                "user_id": getattr(user, "id", None),
+            },
+        )
         raise OptionNotFoundError(option_id)
 
     voting = nomination.voting
     if not voting.is_open or not nomination.is_active or not voting.is_active:
+        logger.warning(
+            "Vote rejected: voting closed",
+            extra={
+                "nomination_id": nomination_id,
+                "voting_id": getattr(voting, "id", None),
+                "option_id": option_id,
+                "user_id": getattr(user, "id", None),
+            },
+        )
         raise VotingClosedError(voting.deadline_at)
 
     can_vote, requires_telegram_link = _resolve_vote_permissions(user)
     if not can_vote:
         if requires_telegram_link:
+            logger.warning(
+                "Vote rejected: telegram link required",
+                extra={
+                    "nomination_id": nomination_id,
+                    "user_id": getattr(user, "id", None),
+                },
+            )
             raise TelegramLinkRequiredError(
                 "Для голосования привяжите Telegram в профиле"
             )
@@ -404,6 +474,15 @@ def record_vote(
         user=user,
         nomination=nomination,
         defaults={"option": option},
+    )
+    logger.info(
+        "Vote recorded",
+        extra={
+            "nomination_id": nomination_id,
+            "option_id": option_id,
+            "user_id": getattr(user, "id", None),
+            "voting_id": getattr(voting, "code", None),
+        },
     )
 
     counts = get_vote_counts(nomination_id) if voting.expose_vote_counts else None

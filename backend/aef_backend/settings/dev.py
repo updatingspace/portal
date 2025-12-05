@@ -19,6 +19,9 @@ CORS_ALLOWED_ORIGINS = read_env_list(
     ["http://localhost:5173", "http://frontend:5173"],
 )
 
+# Allow passkey on localhost in dev
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True
+
 postgres_host = read_env("POSTGRES_HOST")
 
 if postgres_host:

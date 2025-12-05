@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Loader } from '@gravity-ui/uikit';
+import { Button, Loader } from '@gravity-ui/uikit';
 
 import type { ApiError } from '../api/client';
 import { fetchVotingCatalog } from '../api/votings';
@@ -9,100 +9,15 @@ import {
   getApiErrorMeta,
   notifyApiError,
 } from '../utils/apiErrorHandling';
-
-type VoteStatus = 'active' | 'paused' | 'expired';
-
-type DecoratedVoting = {
-  id: string;
-  title: string;
-  description?: string;
-  status: VoteStatus;
-  deadline: Date | null;
-  deadlineValue: number;
-  palette: readonly [string, string];
-  nominationCount: number;
-  isOpen: boolean;
-  isActive: boolean;
-};
-
-const accentPalettes: readonly [string, string][] = [
-  ['#0094d9', '#7c5bff'],
-  ['#ff6a00', '#ff9a3c'],
-  ['#00a37a', '#00c6d9'],
-  ['#0070c0', '#00b7ff'],
-];
-
-const updatesFeed = [
-  {
-    id: 'release',
-    tone: 'success',
-    title: 'AEF-Vote запустили как портал честных голосований',
-    text: 'Рефреш главной, новая логика сортировки по дедлайнам и яркая витрина с голосованиями.',
-    badge: 'новое',
-  },
-  {
-    id: 'modules',
-    tone: 'warning',
-    title: 'Модуль уведомлений временно выключен',
-    text: 'Пуши пока не раздаем: рассказываем прямо здесь, пока починим.',
-    badge: 'ограничение',
-  },
-  {
-    id: 'analytics',
-    tone: 'info',
-    title: 'Готовим аналитику по голосам',
-    text: 'В планах графики и история изменений; пока показываем только финальные итоги.',
-    badge: 'в разработке',
-  },
-];
-
-const parseDeadline = (value?: string | null): Date | null => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const formatDeadline = (deadline: Date | null) => {
-  if (!deadline) return 'Дедлайн не назначен';
-  return deadline.toLocaleString('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-};
-
-const statusLabel: Record<VoteStatus, string> = {
-  active: 'Активно',
-  paused: 'На паузе',
-  expired: 'Завершено',
-};
-
-const formatTimeLeft = (deadline: Date | null, status: VoteStatus, nowTs: number) => {
-  if (!deadline) {
-    return status === 'expired' ? 'Завершенно принудительно' : 'Дедлайн уточняется';
-  }
-
-  const diffMs = deadline.getTime() - nowTs;
-
-  if (status === 'expired' || diffMs <= 0) {
-    return `Завершено: ${deadline.toLocaleDateString('ru-RU', { dateStyle: 'medium' })}`;
-  }
-
-  const minutesTotal = Math.floor(diffMs / (1000 * 60));
-  const days = Math.floor(minutesTotal / (60 * 24));
-  const hours = Math.floor((minutesTotal - days * 24 * 60) / 60);
-
-  if (days > 0) {
-    return `Осталось ≈ ${days}д ${hours}ч`;
-  }
-
-  const restHours = Math.floor(minutesTotal / 60);
-  if (restHours > 0) {
-    return `Осталось ≈ ${restHours}ч`;
-  }
-
-  const restMinutes = Math.max(1, minutesTotal);
-  return `Осталось минут: ${restMinutes}`;
-};
+import { audienceNeeds, accentPalettes, updatesFeed, voteModeHints, voteStages } from './HomePage/constants';
+import { AudienceSection } from './HomePage/components/AudienceSection';
+import { HomeHero } from './HomePage/components/HomeHero';
+import { ModesSection } from './HomePage/components/ModesSection';
+import { StagesSection } from './HomePage/components/StagesSection';
+import { UpdatesSection } from './HomePage/components/UpdatesSection';
+import { VotingCard } from './HomePage/components/VotingCard';
+import { formatDeadline, parseDeadline } from './HomePage/utils';
+import type { DecoratedVoting, VoteStatus } from './HomePage/types';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -182,148 +97,35 @@ export const HomePage: React.FC = () => {
     [decoratedVotings],
   );
 
+  const nextDeadlineItem = useMemo(
+    () => activeItems.find((item) => item.deadline) ?? null,
+    [activeItems],
+  );
+
+  const nextDeadlineLabel = nextDeadlineItem
+    ? formatDeadline(nextDeadlineItem.deadline)
+    : 'Дедлайн уточняется';
+
   const openVoting = (id: string) => navigate(`/votings/${id}`);
-
-  const handleCardKeyDown = (
-    event: React.KeyboardEvent<HTMLDivElement>,
-    id: string,
-  ) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openVoting(id);
-    }
-  };
-
-  const renderVotingCard = (item: DecoratedVoting) => {
-    const deadlineLabel = formatDeadline(item.deadline);
-    const timeLeftLabel = formatTimeLeft(item.deadline, item.status, nowTs);
-    const shortDeadline = item.deadline
-      ? item.deadline.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' })
-      : 'без даты';
-
-    return (
-      <div
-        key={item.id}
-        className={`vote-card${item.status === 'expired' ? ' vote-card-expired' : ''}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => openVoting(item.id)}
-        onKeyDown={(event) => handleCardKeyDown(event, item.id)}
-      >
-        <div
-          className="vote-card-cover"
-          style={{
-            background: `linear-gradient(135deg, ${item.palette[0]} 0%, ${item.palette[1]} 100%)`,
-          }}
-        >
-          <div className="vote-card-cover-top">
-            <span className={`vote-status vote-status-${item.status}`}>
-              {statusLabel[item.status]}
-            </span>
-            <span className="vote-card-deadline-tag">
-              {item.status === 'expired' ? 'финиш' : 'дедлайн'} · {shortDeadline}
-            </span>
-          </div>
-          <div className="vote-card-cover-title">{item.title}</div>
-        </div>
-
-        <div className="vote-card-body">
-          <div className="vote-card-title">{item.title}</div>
-          <p className="vote-card-desc">
-            {item.description ?? 'Кратко о голосовании, правила и обсуждение откроются позже.'}
-          </p>
-          <div className="vote-card-meta">
-            <span className="text-muted small">
-              {item.nominationCount} номинаций
-            </span>
-          </div>
-          <div className="vote-card-footer">
-            <div className="vote-card-meta">
-              <div className="vote-card-deadline">{deadlineLabel}</div>
-              <div className="vote-card-timer">{timeLeftLabel}</div>
-            </div>
-            <Button
-              size="s"
-              view={item.status === 'expired' ? 'flat-secondary' : 'outlined'}
-              onClick={(event) => {
-                event.stopPropagation();
-                openVoting(item.id);
-              }}
-            >
-              Открыть
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const featuredVotingId = useMemo(() => {
-    if (activeItems.length) {
-      const mainVoting = activeItems.find((item) => item.id === 'main');
-      return mainVoting ? mainVoting.id : activeItems[0].id;
-    }
-    return decoratedVotings[0]?.id ?? null;
-  }, [activeItems, decoratedVotings]);
 
   return (
     <div className="page-section home-page">
       <div className="container">
-        <section className="home-hero">
-          <div className="home-hero-kicker">AEF-Vote</div>
-          <h1 className="home-hero-title">Портал Голосований</h1>
-          <p className="home-hero-text">
-            Создаем прозрачные условия честностных голосований внутри сообщества AEF.
-          </p>
-          <div className="home-hero-actions">
-            <Button
-              size="l"
-              onClick={() => {
-                if (featuredVotingId) {
-                  openVoting(featuredVotingId);
-                }
-              }}
-              disabled={!featuredVotingId}
-            >
-              К активным голосованиям
-            </Button>
-            <Button size="l" view="outlined" onClick={() => navigate('/profile')}>
-              Профиль и сессии
-            </Button>
-          </div>
-        </section>
+        <HomeHero
+          activeCount={activeItems.length}
+          archivedCount={archivedItems.length}
+          nextDeadlineLabel={nextDeadlineLabel}
+        />
 
-        <section className="home-updates" aria-label="Изменения и новости">
-          <div className="home-section-head">
-            <div>
-              <div className="home-section-title">Последние новости</div>
-              {/* <div className="home-section-subtitle">
-                Рассказываем что работает, а что в перспективе изменений
-              </div> */}
-            </div>
-            {/* <span className="home-section-hint">Всегда наверху главной</span> */}
-          </div>
-          <div className="home-updates-grid">
-            {updatesFeed.map((note) => (
-              <Card key={note.id} className={`update-card update-card-${note.tone}`}>
-                <div className="update-card-top">
-                  <span className={`update-pill update-pill-${note.tone}`}>{note.badge}</span>
-                  <span className="update-meta">AEF-Vote · портал</span>
-                </div>
-                <div className="update-title">{note.title}</div>
-                <p className="update-text">{note.text}</p>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <AudienceSection items={audienceNeeds} />
+        <StagesSection stages={voteStages} />
+        <ModesSection hints={voteModeHints} />
+        <UpdatesSection items={updatesFeed} />
 
         <section className="home-section" aria-label="Актуальные голосования">
           <div className="home-section-head">
             <div>
               <div className="home-section-title">Актуальные голосования</div>
-              {/* <div className="home-section-subtitle">
-                Текущие потоки голосований, отсортированы по дате завершения
-              </div> */}
             </div>
             <div className="home-section-actions">
               {isLoading ? <Loader size="s" /> : null}
@@ -357,8 +159,10 @@ export const HomePage: React.FC = () => {
             </div>
           ) : activeItems.length ? (
             <div className="vote-grid">
-            {activeItems.map((item) => renderVotingCard(item))}
-          </div>
+              {activeItems.map((item) => (
+                <VotingCard key={item.id} item={item} nowTs={nowTs} onOpen={openVoting} />
+              ))}
+            </div>
           ) : (
             <div className="status-block status-block-warning">
               <div className="status-title">Активных голосований пока нет</div>
@@ -386,7 +190,9 @@ export const HomePage: React.FC = () => {
             </div>
           ) : archivedItems.length ? (
             <div className="vote-grid">
-              {archivedItems.map((item) => renderVotingCard(item))}
+              {archivedItems.map((item) => (
+                <VotingCard key={item.id} item={item} nowTs={nowTs} onOpen={openVoting} />
+              ))}
             </div>
           ) : (
             <div className="status-block status-block-info">

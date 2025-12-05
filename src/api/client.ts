@@ -1,3 +1,6 @@
+import { getSessionToken } from './sessionToken';
+import { logger } from '../utils/logger';
+
 export type ApiErrorKind =
   | 'network'
   | 'unauthorized'
@@ -12,9 +15,15 @@ const rawBaseUrl =
 const normalizedEnvBase =
   rawBaseUrl === '__VITE_API_BASE_URL__' ? undefined : rawBaseUrl?.replace(/\/$/, '');
 const baseUrl = (normalizedEnvBase ?? rawBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/$/, '');
+export const apiBaseUrl = baseUrl;
 
 const withLeadingSlash = (path: string) =>
   path.startsWith('/') ? path : `/${path}`;
+
+const nowMs = () =>
+  typeof performance !== 'undefined' && performance.now
+    ? performance.now()
+    : Date.now();
 
 export class ApiError extends Error {
   public status?: number;
@@ -60,7 +69,11 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 };
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const url = `${baseUrl}${withLeadingSlash(path)}`;
+  const normalizedPath = withLeadingSlash(path);
+  const url = `${baseUrl}${normalizedPath}`;
+  const sessionToken = getSessionToken();
+  const method = (options.method ?? 'GET').toUpperCase();
+  const startedAt = nowMs();
 
   let response: Response;
   try {
@@ -68,12 +81,19 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
         ...(options.headers ?? {}),
       },
       credentials: 'include',
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
   } catch (error) {
+    logger.error('API request failed: network error', {
+      area: 'api',
+      event: 'request_failed',
+      data: { url: normalizedPath, method },
+      error,
+    });
     throw new ApiError('Не удалось подключиться к API', {
       kind: 'network',
       cause: error,
@@ -81,14 +101,43 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (!response.ok) {
+    const durationMs = Math.round(nowMs() - startedAt);
     const messageFromBody = await parseErrorMessage(response);
     const message = messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
+    const level =
+      response.status >= 500
+        ? 'critical'
+        : response.status === 400
+          ? 'info'
+          : 'warn';
+    logger[level]('API request returned error', {
+      area: 'api',
+      event: 'response_failed',
+      data: {
+        url: normalizedPath,
+        method,
+        status: response.status,
+        duration_ms: durationMs,
+      },
+      error: messageFromBody ?? message,
+    });
 
     throw new ApiError(message, {
       status: response.status,
       kind: statusToKind(response.status),
     });
   }
+
+  logger.debug('API request completed', {
+    area: 'api',
+    event: 'response_ok',
+    data: {
+      url: normalizedPath,
+      method,
+      status: response.status,
+      duration_ms: Math.round(nowMs() - startedAt),
+    },
+  });
 
   if (response.status === 204) {
     return undefined as T;

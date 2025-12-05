@@ -17,15 +17,17 @@ Including another URLconf
 
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from ninja import NinjaAPI
 
-from accounts.api import router as auth_router
+from allauth.account import views as allauth_account_views
+from accounts.api import router as auth_router, install as install_accounts_api
 from nominations.games_api import router as games_router
 from nominations.api import router as nominations_router
 from votings.api import router as votings_router
 
 api = NinjaAPI(title="AEF Vote API", version="0.1.0")
+install_accounts_api(api)
 
 
 @api.get("/health")
@@ -41,6 +43,11 @@ api.add_router("/games", games_router)
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
+    re_path(
+        r"^accounts/confirm-email/(?P<key>[-:\w]+)/$",
+        allauth_account_views.confirm_email,
+        name="account_confirm_email",
+    ),
 ]
 
 if settings.DEBUG and "debug_toolbar" in settings.INSTALLED_APPS:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from ninja import Router
 from ninja.errors import HttpError
 
@@ -12,12 +14,20 @@ from .services import (
 )
 
 router = Router(tags=["games"])
+logger = logging.getLogger(__name__)
 
 
 def _require_superuser(request) -> None:
     if not request.user.is_authenticated or not getattr(
         request.user, "is_superuser", False
     ):
+        logger.warning(
+            "Superuser access denied for games API",
+            extra={
+                "user_id": getattr(getattr(request, "user", None), "id", None),
+                "path": getattr(request, "path", None),
+            },
+        )
         raise HttpError(403, "Требуются права суперпользователя")
 
 

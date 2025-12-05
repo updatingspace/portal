@@ -1,7 +1,12 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Avatar, Button, DropdownMenu } from '@gravity-ui/uikit';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useAuthUI } from '../contexts/AuthUIContext';
+import AuthModal from './AuthModal';
+import { clearSessionToken } from '../api/sessionToken';
+import { logout } from '../services/api';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -9,7 +14,37 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { user } = useAuth();
+  const { openAuthModal, closeAuthModal, isAuthModalOpen, setAuthMode } = useAuthUI();
+  const navigate = useNavigate();
+  const { setUser } = useAuth();
   const isSuperuser = Boolean(user?.isSuperuser);
+
+  const userMenuItems = useMemo(
+    () =>
+      user
+        ? [
+            { action: () => navigate('/profile'), text: 'Безопасность', data: 'profile' },
+            ...(isSuperuser
+              ? [{ action: () => navigate('/admin'), text: 'Админка', data: 'admin' }]
+              : []),
+            {
+              action: async () => {
+                try {
+                  await logout();
+                } catch {
+                  /* ignore */
+                }
+                clearSessionToken();
+                setUser(null);
+                navigate('/');
+              },
+              text: 'Выйти',
+              data: 'logout',
+            },
+          ]
+        : [],
+    [isSuperuser, navigate, setUser, user],
+  );
 
   return (
     <div className="app-root">
@@ -22,24 +57,29 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </NavLink>
 
           <nav className="app-header-nav">
-            {isSuperuser && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  'nav-link-secondary' + (isActive ? ' nav-link-secondary-active' : '')
-                }
-              >
-                Админка
-              </NavLink>
+            {!user && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar size="m" theme="warning" />
+                <Button size="m" view="outlined" onClick={() => openAuthModal('login')}>
+                  Войти
+                </Button>
+              </div>
             )}
-            <NavLink
-              to="/profile"
-              className={({ isActive }) =>
-                'nav-link-secondary' + (isActive ? ' nav-link-secondary-active' : '')
-              }
-            >
-              Профиль
-            </NavLink>
+            {user && (
+              <DropdownMenu
+                items={userMenuItems}
+                onItemClick={(item) => item.action?.()}
+                renderSwitcher={(props) => (
+                  <div
+                    {...props}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                  >
+                    <Avatar size="m" theme="info" name={user.username} />
+                    <span>{user.username}</span>
+                  </div>
+                )}
+              />
+            )}
           </nav>
         </div>
       </header>
@@ -47,6 +87,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <main className="app-main">
         {children}
       </main>
+
+      <AuthModal
+        open={isAuthModalOpen}
+        onClose={() => {
+          closeAuthModal();
+          setAuthMode('login');
+        }}
+      />
     </div>
   );
 };
