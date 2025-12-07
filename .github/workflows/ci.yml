@@ -15,6 +15,22 @@ on:
       - master
 
 jobs:
+  generate-build-id:
+    name: Generate BUILD_ID
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.build_id.outputs.BUILD_ID }}
+    steps:
+      - name: Generate BUILD_ID
+        id: build_id
+        run: |
+          BUILD_DATE=$(date -u +%Y.%m.%d)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          BUILD_ID="${BUILD_DATE}-${{ github.run_number }}-${SHORT_SHA}"
+          echo "BUILD_ID=${BUILD_ID}" >> $GITHUB_OUTPUT
+          echo "Build ID: ${BUILD_ID}"
+
   backend-lint:
     name: Black / Ruff / Django check
     runs-on: ubuntu-latest
@@ -68,18 +84,11 @@ jobs:
     needs:
       - frontend-lint
       - frontend-typecheck
+      - generate-build-id
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Generate BUILD_ID
-        id: build_id
-        run: |
-          BUILD_DATE=$(date -u +%Y.%m.%d)
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          BUILD_ID="${BUILD_DATE}-${{ github.run_number }}-${SHORT_SHA}"
-          echo "BUILD_ID=${BUILD_ID}" >> $GITHUB_OUTPUT
-          echo "Build ID: ${BUILD_ID}"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -87,7 +96,7 @@ jobs:
         run: npm ci
       - name: Run frontend build
         env:
-          VITE_BUILD_ID: ${{ steps.build_id.outputs.BUILD_ID }}
+          VITE_BUILD_ID: ${{ needs.generate-build-id.outputs.build_id }}
         run: npm run build
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v2
@@ -101,26 +110,19 @@ jobs:
           context: .
           file: Dockerfile.frontend
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:latest,ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:${{ steps.build_id.outputs.BUILD_ID }}
+          tags: ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:latest,ghcr.io/${{ github.repository_owner }}/aef-vote-frontend:${{ needs.generate-build-id.outputs.build_id }}
           build-args: |
-            VITE_BUILD_ID=${{ steps.build_id.outputs.BUILD_ID }}
+            VITE_BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}
 
   publish:
     name: Publish backend image
     needs:
       - backend-lint
+      - generate-build-id
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Generate BUILD_ID
-        id: build_id
-        run: |
-          BUILD_DATE=$(date -u +%Y.%m.%d)
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          BUILD_ID="${BUILD_DATE}-${{ github.run_number }}-${SHORT_SHA}"
-          echo "BUILD_ID=${BUILD_ID}" >> $GITHUB_OUTPUT
-          echo "Build ID: ${BUILD_ID}"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v2
         with:
@@ -133,6 +135,6 @@ jobs:
           context: backend
           file: backend/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/aef-vote-backend:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/aef-vote-backend:latest,ghcr.io/${{ github.repository_owner }}/aef-vote-backend:${{ steps.build_id.outputs.BUILD_ID }}
+          tags: ghcr.io/${{ github.repository_owner }}/aef-vote-backend:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/aef-vote-backend:latest,ghcr.io/${{ github.repository_owner }}/aef-vote-backend:${{ needs.generate-build-id.outputs.build_id }}
           build-args: |
-            BUILD_ID=${{ steps.build_id.outputs.BUILD_ID }}
+            BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}

@@ -97,14 +97,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {children}
       </main>
 
-      <footer className="app-footer" style={{ 
-        padding: '1rem', 
-        textAlign: 'center', 
-        fontSize: '0.875rem', 
-        color: '#666',
-        borderTop: '1px solid #e0e0e0',
-        marginTop: 'auto'
-      }}>
+      <footer className="app-footer">
         <div className="container">
           Build: {getBuildId()}
         </div>
