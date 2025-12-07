@@ -7,6 +7,7 @@ import { useAuthUI } from '../contexts/AuthUIContext';
 import AuthModal from './AuthModal';
 import { clearSessionToken } from '../api/sessionToken';
 import { logout } from '../services/api';
+import { getBuildId } from '../utils/version';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -95,6 +96,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <main className="app-main">
         {children}
       </main>
+
+      <footer className="app-footer">
+        <div className="container">
+          Build: {getBuildId()}
+        </div>
+      </footer>
 
       <AuthModal
         open={isAuthModalOpen}

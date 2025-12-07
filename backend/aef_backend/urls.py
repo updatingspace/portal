@@ -15,6 +15,8 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+import os
+
 from allauth.account import views as allauth_account_views
 from django.conf import settings
 from django.conf.urls.static import static
@@ -36,6 +38,16 @@ install_accounts_api(api)
 @api.get("/health")
 def healthcheck(request):
     return {"status": "ok"}
+
+
+@api.get("/version")
+def version(request):
+    """Return application version information including BUILD_ID."""
+    build_id = os.environ.get("BUILD_ID", "dev")
+    return {
+        "build_id": build_id,
+        "api_version": "0.1.0",
+    }
 
 
 api.add_router("/nominations", nominations_router)
