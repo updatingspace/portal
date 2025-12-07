@@ -35,12 +35,23 @@ class NominationsApiTests(TestCase):
             password=self.password,
         )
 
+    def _form_token(self, purpose: str = "login") -> str:
+        resp = self.client.get(f"/api/auth/form_token?purpose={purpose}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        return data["form_token"]
+
     def _login(self, client: Client | None = None):
         client = client or self.client
+        form_token = self._form_token("login")
         response = post_json(
             client,
             "/api/auth/login",
-            {"email": self.user.email, "password": self.password},
+            {
+                "email": self.user.email,
+                "password": self.password,
+                "form_token": form_token,
+            },
         )
         self.assertEqual(response.status_code, 200)
         return client

@@ -52,16 +52,33 @@ class HeadlessService:
                 "Headless login failed: user not found",
                 extra={"email": email.strip().lower()},
             )
-            raise HttpError(400, "invalid credentials")
+            raise HttpError(
+                401,
+                {
+                    "code": "INVALID_CREDENTIALS",
+                    "message": "Неверный логин или пароль",
+                },
+            )
         user = authenticate(
-            request, username=getattr(user_obj, "username", ""), password=password
+            request,
+            username=getattr(user_obj, "username", ""),
+            password=password,
         )
         if not user:
             logger.warning(
                 "Headless login failed: invalid password",
-                extra={"user_id": getattr(user_obj, "id", None), "email": email},
+                extra={
+                    "user_id": getattr(user_obj, "id", None),
+                    "email": email,
+                },
             )
-            raise HttpError(400, "invalid credentials")
+            raise HttpError(
+                401,
+                {
+                    "code": "INVALID_CREDENTIALS",
+                    "message": "Неверный логин или пароль",
+                },
+            )
         record_authentication(request, method="password", email=email.strip())
 
         adapter = get_mfa_adapter()
@@ -78,7 +95,10 @@ class HeadlessService:
                         "mfa_enabled": True,
                     },
                 )
-                raise HttpError(401, "mfa_required")
+                raise HttpError(
+                    401,
+                    {"code": "MFA_REQUIRED", "message": "Требуется код MFA"},
+                )
             totp_auth = Authenticator.objects.filter(
                 user=user, type=Authenticator.Type.TOTP
             ).first()
@@ -105,11 +125,19 @@ class HeadlessService:
                         "mfa_enabled": True,
                     },
                 )
-                raise HttpError(400, "invalid_mfa_code")
+                raise HttpError(
+                    401,
+                    {
+                        "code": "INVALID_CREDENTIALS",
+                        "message": "Неверный код подтверждения",
+                    },
+                )
 
         # Bypass allauth stage controller to stay headless and avoid redirects.
         dj_login(
-            request, user, backend=user.backend if hasattr(user, "backend") else None
+            request,
+            user,
+            backend=user.backend if hasattr(user, "backend") else None,
         )
         logger.info(
             "Headless login succeeded",
@@ -124,6 +152,21 @@ class HeadlessService:
 
     @staticmethod
     def signup(request, username: str, email: str | None, password: str) -> str:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        if email and User.objects.filter(email__iexact=email.strip()).exists():
+            logger.info(
+                "Signup rejected: email already exists",
+                extra={"username": username, "email": email},
+            )
+            raise HttpError(
+                409,
+                {
+                    "code": "EMAIL_ALREADY_EXISTS",
+                    "message": ("Пользователь с таким e-mail уже зарегистрирован"),
+                },
+            )
         form = SignupForm(
             data={
                 "username": username,

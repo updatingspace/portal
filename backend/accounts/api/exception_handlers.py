@@ -45,9 +45,12 @@ def install_http_error_handler(api: NinjaAPI) -> None:
         if raw_detail is None:
             raw_detail = str(exc)
         user = getattr(request, "user", None)
-        level = logging.INFO if status == 400 else logging.WARNING
         if status >= 500:
             level = logging.CRITICAL
+        elif status in (400, 401, 403, 404, 409, 429):
+            level = logging.INFO
+        else:
+            level = logging.WARNING
         logger.log(
             level,
             "HTTP error handled",
@@ -60,19 +63,48 @@ def install_http_error_handler(api: NinjaAPI) -> None:
             },
         )
         errors, fields = _normalize_form_errors(str(raw_detail))
+        payload_detail = raw_detail
+        payload_code = None
+        payload_message = None
+        payload_details = None
+        if isinstance(raw_detail, dict):
+            payload_code = raw_detail.get("code") or None
+            payload_message = raw_detail.get("message") or None
+            payload_details = raw_detail.get("details") or None
         if errors:
+            payload_code = payload_code or "VALIDATION_ERROR"
+            payload_message = payload_message or "Проверьте введённые данные"
+            payload_details = payload_details or {
+                "errors": errors,
+                "fields": fields,
+            }
             return api.create_response(
                 request,
                 ErrorOut(
-                    detail="validation_error",
-                    code=status,
+                    code=payload_code,
+                    message=payload_message,
+                    details=payload_details,
                     errors=errors,
                     fields=fields,
+                    status=status,
+                    detail=str(payload_detail),
                 ),
                 status=status,
             )
+        if isinstance(raw_detail, str):
+            payload_message = payload_message or raw_detail
+        if not payload_code:
+            payload_code = "HTTP_ERROR" if status < 500 else "SERVER_ERROR"
+        if not payload_message:
+            payload_message = "Произошла ошибка"
         return api.create_response(
             request,
-            ErrorOut(detail=str(raw_detail), code=status),
+            ErrorOut(
+                code=str(payload_code),
+                message=str(payload_message),
+                details=payload_details,
+                status=status,
+                detail=str(payload_detail),
+            ),
             status=status,
         )

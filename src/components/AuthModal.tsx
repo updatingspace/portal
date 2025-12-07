@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, TextInput, useToaster, type ToastProps } from "@gravity-ui/uikit";
 import {
@@ -6,6 +6,7 @@ import {
   completePasskeyLogin,
   doLogin,
   doSignupAndLogin,
+  fetchFormToken,
   ApiError,
   type WebAuthnAssertion,
 } from "../services/api";
@@ -21,6 +22,12 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
   const [busy, setBusy] = useState(false);
   const { refreshProfile } = useAuth();
 
+  const [loginFormToken, setLoginFormToken] = useState<string | null>(null);
+  const [signupFormToken, setSignupFormToken] = useState<string | null>(null);
+  const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null);
+  const [signupCooldownUntil, setSignupCooldownUntil] = useState<number | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaDigits, setMfaDigits] = useState<string[]>(Array(6).fill(""));
@@ -33,11 +40,19 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
 
   const toaster = useToaster();
   const toastSeq = useRef(0);
-  const addToast = (payload: Omit<ToastProps, "name"> & { name?: string }) =>
-    toaster.add({
-      name: payload.name ?? `auth-${Date.now()}-${toastSeq.current++}`,
-      ...payload,
-    });
+  const addToast = useCallback(
+    (payload: Omit<ToastProps, "name"> & { name?: string }) =>
+      toaster.add({
+        name: payload.name ?? `auth-${Date.now()}-${toastSeq.current++}`,
+        ...payload,
+      }),
+    [toaster],
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const isLogin = mode === "login";
   const title = useMemo(() => {
     if (mode === "signup") return "Регистрация";
@@ -51,7 +66,7 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     message?: unknown;
   };
 
-  const extractMessageFromResponse = (error: unknown): string | undefined => {
+  const extractMessageFromResponse = useCallback((error: unknown): string | undefined => {
     if (typeof error !== "object" || error === null || !("response" in error)) {
       return undefined;
     }
@@ -63,18 +78,57 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     if (typeof data?.detail === "string") return data.detail;
     if (typeof data?.message === "string") return data.message;
     return undefined;
-  };
+  }, []);
 
-  const getErrorMessage = (error: unknown, fallback: string): string => {
-    const msgFromResponse = extractMessageFromResponse(error);
-    if (msgFromResponse) return msgFromResponse;
-    if (error instanceof Error && error.message) return error.message;
-    if (typeof error === "object" && error && "message" in error && typeof (error as { message?: unknown }).message === "string") {
-      return (error as { message?: string }).message ?? fallback;
+  const getErrorMessage = useCallback(
+    (error: unknown, fallback: string): string => {
+      const msgFromResponse = extractMessageFromResponse(error);
+      if (msgFromResponse) return msgFromResponse;
+      if (error instanceof Error && error.message) return error.message;
+      if (
+        typeof error === "object" &&
+        error &&
+        "message" in error &&
+        typeof (error as { message?: unknown }).message === "string"
+      ) {
+        return (error as { message?: string }).message ?? fallback;
+      }
+      if (typeof error === "string") return error;
+      return fallback;
+    },
+    [extractMessageFromResponse],
+  );
+
+  const loginCooldownLeft = loginCooldownUntil
+    ? Math.max(0, Math.ceil((loginCooldownUntil - nowTs) / 1000))
+    : 0;
+  const signupCooldownLeft = signupCooldownUntil
+    ? Math.max(0, Math.ceil((signupCooldownUntil - nowTs) / 1000))
+    : 0;
+
+  const loadLoginFormToken = useCallback(async () => {
+    try {
+      const issued = await fetchFormToken("login");
+      setLoginFormToken(issued.token);
+      return issued.token;
+    } catch (err) {
+      const msg = getErrorMessage(err, "Не удалось получить токен формы");
+      addToast({ title: msg, theme: "danger" });
+      return null;
     }
-    if (typeof error === "string") return error;
-    return fallback;
-  };
+  }, [addToast, getErrorMessage]);
+
+  const loadSignupFormToken = useCallback(async () => {
+    try {
+      const issued = await fetchFormToken("register");
+      setSignupFormToken(issued.token);
+      return issued.token;
+    } catch (err) {
+      const msg = getErrorMessage(err, "Не удалось получить токен формы");
+      addToast({ title: msg, theme: "danger" });
+      return null;
+    }
+  }, [addToast, getErrorMessage]);
 
   function resetForms() {
     setEmail("");
@@ -85,6 +139,10 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     setSuEmail("");
     setSuPassword("");
     setSuPassword2("");
+    setLoginFormToken(null);
+    setSignupFormToken(null);
+    setLoginCooldownUntil(null);
+    setSignupCooldownUntil(null);
   }
 
   function close() {
@@ -100,6 +158,18 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
       setBusy(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open && (mode === "login" || mode === "mfa")) {
+      loadLoginFormToken();
+    }
+  }, [open, mode, loadLoginFormToken]);
+
+  useEffect(() => {
+    if (open && mode === "signup") {
+      loadSignupFormToken();
+    }
+  }, [open, mode, loadSignupFormToken]);
 
   useEffect(() => {
     setMfaDigits(Array(recoveryMode ? 8 : 6).fill(""));
@@ -141,7 +211,40 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     if (err) return addToast({ title: err, theme: "warning" });
     setBusy(true);
     try {
-      await doLogin({ email, password });
+      const token = loginFormToken ?? (await loadLoginFormToken());
+      const res = await doLogin({ email, password, form_token: token ?? undefined });
+      if (!res.ok) {
+        if (res.code === "LOGIN_RATE_LIMITED") {
+          const retry = (res.retryAfterSeconds ?? 300) * 1000;
+          setLoginCooldownUntil(Date.now() + retry);
+          addToast({
+            title: "Слишком много попыток",
+            content: `Попробуйте снова через ${Math.ceil((res.retryAfterSeconds ?? 300))} секунд`,
+            theme: "warning",
+          });
+          return;
+        }
+        if (res.code === "INVALID_FORM_TOKEN") {
+          await loadLoginFormToken();
+          addToast({ title: "Обновили токен формы, попробуйте ещё раз", theme: "info" });
+          return;
+        }
+        if (res.code === "MFA_REQUIRED") {
+          setMode("mfa");
+          addToast({
+            title: "Требуется код 2FA",
+            theme: "info",
+            content: "Введите 6-значный код из приложения.",
+          });
+          return;
+        }
+        if (res.code === "INVALID_CREDENTIALS") {
+          addToast({ title: "Неверный логин или пароль", theme: "danger" });
+          return;
+        }
+        addToast({ title: res.message ?? "Ошибка входа", theme: "danger" });
+        return;
+      }
       const p = await refreshProfile();
       if (p) {
         addToast({
@@ -177,11 +280,36 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     if (err) return addToast({ title: err, theme: "warning" });
     setBusy(true);
     try {
-      await doSignupAndLogin({
+      const token = signupFormToken ?? (await loadSignupFormToken());
+      const res = await doSignupAndLogin({
         username: suUsername.trim(),
         email: suEmail.trim(),
         password: suPassword,
+        form_token: token ?? undefined,
       });
+      if (!res.ok) {
+        if (res.code === "REGISTER_RATE_LIMITED") {
+          const retry = (res.retryAfterSeconds ?? 600) * 1000;
+          setSignupCooldownUntil(Date.now() + retry);
+          addToast({
+            title: "Слишком много попыток",
+            content: `Попробуйте снова через ${Math.ceil((res.retryAfterSeconds ?? 600))} секунд`,
+            theme: "warning",
+          });
+          return;
+        }
+        if (res.code === "INVALID_FORM_TOKEN") {
+          await loadSignupFormToken();
+          addToast({ title: "Обновили токен формы, попробуйте ещё раз", theme: "info" });
+          return;
+        }
+        if (res.code === "EMAIL_ALREADY_EXISTS") {
+          addToast({ title: "Пользователь с таким e-mail уже есть", theme: "danger" });
+          return;
+        }
+        addToast({ title: res.message ?? "Ошибка регистрации", theme: "danger" });
+        return;
+      }
       const p = await refreshProfile();
       if (p) {
         addToast({
@@ -212,7 +340,35 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
     }
     setBusy(true);
     try {
-      await doLogin({ email, password, mfa_code: code });
+      const token = loginFormToken ?? (await loadLoginFormToken());
+      const res = await doLogin({ email, password, mfa_code: code, form_token: token ?? undefined });
+      if (!res.ok) {
+        if (res.code === "LOGIN_RATE_LIMITED") {
+          const retry = (res.retryAfterSeconds ?? 300) * 1000;
+          setLoginCooldownUntil(Date.now() + retry);
+          addToast({
+            title: "Слишком много попыток",
+            content: `Попробуйте снова через ${Math.ceil((res.retryAfterSeconds ?? 300))} секунд`,
+            theme: "warning",
+          });
+          return;
+        }
+        if (res.code === "INVALID_FORM_TOKEN") {
+          await loadLoginFormToken();
+          addToast({ title: "Обновили токен формы, попробуйте ещё раз", theme: "info" });
+          return;
+        }
+        if (res.code === "INVALID_CREDENTIALS") {
+          addToast({ title: "Код не подошёл", theme: "danger" });
+          return;
+        }
+        if (res.code === "MFA_REQUIRED") {
+          addToast({ title: "Требуется код 2FA", theme: "info" });
+          return;
+        }
+        addToast({ title: res.message ?? "Ошибка входа", theme: "danger" });
+        return;
+      }
       const p = await refreshProfile();
       if (p) {
         addToast({
@@ -328,8 +484,9 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
               loading={busy}
               width="max"
               type="submit"
+              disabled={busy || loginCooldownLeft > 0}
             >
-              Войти
+              {loginCooldownLeft > 0 ? `Подождите ${loginCooldownLeft}с` : "Войти"}
             </Button>
             <Button
               view="outlined"
@@ -337,7 +494,7 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
               width="max"
               type="button"
               onClick={onPasskeyLogin}
-              disabled={busy}
+              disabled={busy || loginCooldownLeft > 0}
             >
               Войти с Passkey
             </Button>
@@ -410,8 +567,11 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
               loading={busy}
               width="max"
               type="submit"
+              disabled={busy || signupCooldownLeft > 0}
             >
-              Создать аккаунт
+              {signupCooldownLeft > 0
+                ? `Подождите ${signupCooldownLeft}с`
+                : "Создать аккаунт"}
             </Button>
             <Button
               view="outlined"
@@ -490,8 +650,15 @@ export default function AuthModal({ open = false, onClose }: AuthModalProps) {
               <Button view="flat" onClick={() => setMode("login")} disabled={busy}>
                 Назад
               </Button>
-              <Button view="action" type="submit" loading={busy}>
-                Подтвердить код
+              <Button
+                view="action"
+                type="submit"
+                loading={busy}
+                disabled={busy || loginCooldownLeft > 0}
+              >
+                {loginCooldownLeft > 0
+                  ? `Подождите ${loginCooldownLeft}с`
+                  : "Подтвердить код"}
               </Button>
             </div>
           </form>

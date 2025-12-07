@@ -12,12 +12,19 @@ class FieldErrorItem(Schema):
 
 
 class ErrorOut(Schema):
-    detail: str
-    code: int | None = None
+    # Machine-readable error code, e.g. INVALID_CREDENTIALS
+    code: str
+    # Human-readable message for UI display
+    message: str
+    # Optional structured payload for debugging or validation details
+    details: dict | None = None
     # Optional structured validation payload (e.g., Django form errors)
     errors: dict[str, list[FieldErrorItem]] | None = None
     # Convenience: first message per field (flat)
     fields: dict[str, str] | None = None
+    # Legacy fields kept for backward compatibility with older clients
+    detail: str | None = None
+    status: int | None = None
 
 
 class OkOut(Schema):
@@ -128,6 +135,9 @@ class SessionMetaOut(Schema):
 
 class LoginOut(Schema):
     meta: SessionMetaOut
+    user: ProfileOut | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
 
 
 class LoginIn(Schema):
@@ -135,12 +145,23 @@ class LoginIn(Schema):
     password: str
     mfa_code: str | None = None
     recovery_code: str | None = None
+    form_token: str | None = None
 
 
 class SignupIn(Schema):
     username: str
     email: str | None = None
     password: str
+    form_token: str | None = None
+
+
+class CurrentUserOut(Schema):
+    user: ProfileOut | None
+
+
+class FormTokenOut(Schema):
+    form_token: str
+    expires_in: int
 
 
 # ---------- OAuth linking ----------
@@ -270,6 +291,8 @@ for _m in (
     TotpBeginOut,
     TotpConfirmIn,
     TotpConfirmOut,
+    CurrentUserOut,
+    FormTokenOut,
 ):
     try:
         _m.model_rebuild()

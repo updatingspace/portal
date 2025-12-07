@@ -34,8 +34,8 @@ export const nominationsApiMock = {
 
 export const serviceApiMock = {
   ApiError,
-  headlessLogin: vi.fn(async () => ({ token: 'token' })),
-  headlessSignup: vi.fn(async () => ({ token: 'token' })),
+  headlessLogin: vi.fn(async () => ({ ok: true as const, token: 'token' })),
+  headlessSignup: vi.fn(async () => ({ ok: true as const, token: 'token' })),
   me: vi.fn(async () => createSuperuserProfile()),
   updateProfile: vi.fn(async () => ({ ok: true })),
   uploadAvatar: vi.fn(async () => ({
@@ -57,8 +57,8 @@ export const serviceApiMock = {
   listSessionsHeadless: vi.fn(async () => []),
   revokeSessionHeadless: vi.fn(async (id: string | null) => ({ ok: true, id, revoked_reason: null })),
   bulkRevokeSessionsHeadless: vi.fn(async () => ({ ok: true, revoked_ids: [] as string[] })),
-  doLogin: vi.fn(async () => ({ token: 'token' })),
-  doSignupAndLogin: vi.fn(async () => ({ token: 'token' })),
+  doLogin: vi.fn(async () => ({ ok: true as const, token: 'token' })),
+  doSignupAndLogin: vi.fn(async () => ({ ok: true as const, token: 'token' })),
   beginPasskeyLogin: vi.fn(async () => ({ request_options: {} })),
   completePasskeyLogin: vi.fn(async () => undefined),
   logout: vi.fn(async () => undefined),
@@ -129,8 +129,8 @@ export const resetAllApiMocks = () => {
   nominationsApiMock.voteForOption.mockReset().mockResolvedValue(createVoteResult());
 
   const superuserProfile: AccountProfile = createSuperuserProfile();
-  serviceApiMock.headlessLogin.mockReset().mockResolvedValue({ token: 'token' });
-  serviceApiMock.headlessSignup.mockReset().mockResolvedValue({ token: 'token' });
+  serviceApiMock.headlessLogin.mockReset().mockResolvedValue({ ok: true, token: 'token' });
+  serviceApiMock.headlessSignup.mockReset().mockResolvedValue({ ok: true, token: 'token' });
   serviceApiMock.me.mockReset().mockResolvedValue(superuserProfile);
   serviceApiMock.updateProfile.mockReset().mockResolvedValue({ ok: true });
   serviceApiMock.uploadAvatar.mockReset().mockResolvedValue({
@@ -152,8 +152,8 @@ export const resetAllApiMocks = () => {
   serviceApiMock.listSessionsHeadless.mockReset().mockResolvedValue([]);
   serviceApiMock.revokeSessionHeadless.mockReset().mockResolvedValue({ ok: true, id: null, revoked_reason: null });
   serviceApiMock.bulkRevokeSessionsHeadless.mockReset().mockResolvedValue({ ok: true, revoked_ids: [] });
-  serviceApiMock.doLogin.mockReset().mockResolvedValue({ token: 'token' });
-  serviceApiMock.doSignupAndLogin.mockReset().mockResolvedValue({ token: 'token' });
+  serviceApiMock.doLogin.mockReset().mockResolvedValue({ ok: true, token: 'token' });
+  serviceApiMock.doSignupAndLogin.mockReset().mockResolvedValue({ ok: true, token: 'token' });
   serviceApiMock.beginPasskeyLogin.mockReset().mockResolvedValue({ request_options: {} });
   serviceApiMock.completePasskeyLogin.mockReset().mockResolvedValue(undefined);
   serviceApiMock.logout.mockReset().mockResolvedValue(undefined);

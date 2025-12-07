@@ -37,7 +37,7 @@ def get_all_votings(request):
     return list_votings_overview(include_non_public=include_non_public)
 
 
-@router.get("/feed", response=list[VotingFeedSchema])
+@router.get("/feed", response=list[VotingFeedSchema], auth=None)
 def get_votings_feed(request, limit: int = 20):
     """
     Облегченный список активных голосований для главной страницы:

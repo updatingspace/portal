@@ -1,4 +1,4 @@
-import { getSessionToken } from './sessionToken';
+import { clearSessionToken, getSessionToken } from './sessionToken';
 import { logger } from '../utils/logger';
 
 export type ApiErrorKind =
@@ -107,9 +107,45 @@ const parseErrorMessage = async (
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
+  /** Additional codes to treat as business (non-throw) errors */
+  treatAsBusiness?: string[];
+  /** Do not auto-clear session tokens on 401 */
+  skipAuthClear?: boolean;
 };
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export type BusinessError = {
+  code?: string;
+  message?: string;
+  details?: unknown;
+};
+
+export type ApiResponse<T> =
+  | { ok: true; status: number; data: T; headers: Headers; durationMs: number }
+  | { ok: false; status: number; error: BusinessError; headers: Headers; durationMs: number };
+
+const BUSINESS_CODES = new Set([
+  'INVALID_CREDENTIALS',
+  'INVALID_OR_EXPIRED_TOKEN',
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'MFA_REQUIRED',
+  'LOGIN_RATE_LIMITED',
+  'REGISTER_RATE_LIMITED',
+  'INVALID_FORM_TOKEN',
+  'EMAIL_ALREADY_EXISTS',
+  'VALIDATION_ERROR',
+]);
+
+const isBusinessCase = (status: number, code: string | undefined, extra?: string[]) => {
+  const codeUpper = code?.toUpperCase();
+  if (!codeUpper && !extra?.length) return false;
+  const isKnown = codeUpper ? BUSINESS_CODES.has(codeUpper) : false;
+  const isExtra = codeUpper && extra?.some((c) => c.toUpperCase() === codeUpper);
+  const businessStatus = status === 400 || status === 401 || status === 403 || status === 409 || status === 429;
+  return businessStatus && (isKnown || isExtra || Boolean(codeUpper));
+};
+
+export async function requestResult<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
   const normalizedPath = withLeadingSlash(path);
   const url = `${baseUrl}${normalizedPath}`;
   const sessionToken = getSessionToken();
@@ -141,49 +177,90 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     });
   }
 
-  if (!response.ok) {
-    const durationMs = Math.round(nowMs() - startedAt);
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message = messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    const level =
-      response.status >= 500
-        ? 'critical'
-        : response.status === 400
-          ? 'info'
-          : 'warn';
-    logger[level]('API request returned error', {
+  const durationMs = Math.round(nowMs() - startedAt);
+  const { message: messageFromBody, details } = await parseErrorMessage(response);
+  const codeFromBody =
+    details && typeof details === 'object' && typeof (details as { code?: unknown }).code === 'string'
+      ? ((details as { code?: string }).code as string)
+      : undefined;
+  const message = messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
+
+  if (response.ok) {
+    logger.debug('API request completed', {
       area: 'api',
-      event: 'response_failed',
+      event: 'response_ok',
       data: {
         url: normalizedPath,
         method,
         status: response.status,
         duration_ms: durationMs,
       },
-      error: messageFromBody ?? message,
     });
 
+    if (response.status === 204) {
+      return { ok: true, status: response.status, data: undefined as T, headers: response.headers, durationMs };
+    }
+
+    const data = (await response.json()) as T;
+    return { ok: true, status: response.status, data, headers: response.headers, durationMs };
+  }
+
+  const businessCase = isBusinessCase(response.status, codeFromBody, options.treatAsBusiness);
+  if (businessCase) {
+    if (response.status === 401 && codeFromBody === 'INVALID_OR_EXPIRED_TOKEN' && !options.skipAuthClear) {
+      clearSessionToken();
+    }
+    const level = response.status === 401 ? 'info' : response.status === 403 ? 'warn' : 'info';
+    logger[level]('API request returned business error', {
+      area: 'api',
+      event: 'response_business_error',
+      data: { url: normalizedPath, method, status: response.status, duration_ms: durationMs, code: codeFromBody },
+      error: message,
+    });
+    return {
+      ok: false,
+      status: response.status,
+      error: { code: codeFromBody, message, details },
+      headers: response.headers,
+      durationMs,
+    };
+  }
+
+  if (response.status >= 500) {
+    logger.critical('API request returned server error', {
+      area: 'api',
+      event: 'response_failed',
+      data: { url: normalizedPath, method, status: response.status, duration_ms: durationMs },
+      error: message,
+    });
     throw new ApiError(message, {
       status: response.status,
-      kind: statusToKind(response.status),
+      kind: 'server',
       details,
     });
   }
 
-  logger.debug('API request completed', {
+  logger.warn('API request returned error', {
     area: 'api',
-    event: 'response_ok',
-    data: {
-      url: normalizedPath,
-      method,
-      status: response.status,
-      duration_ms: Math.round(nowMs() - startedAt),
-    },
+    event: 'response_failed',
+    data: { url: normalizedPath, method, status: response.status, duration_ms: durationMs },
+    error: message,
   });
+  throw new ApiError(message, {
+    status: response.status,
+    kind: statusToKind(response.status),
+    details,
+  });
+}
 
-  if (response.status === 204) {
-    return undefined as T;
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const result = await requestResult<T>(path, options);
+  if (!result.ok) {
+    throw new ApiError(result.error.message ?? `Запрос завершился с ошибкой (${result.status})`, {
+      status: result.status,
+      kind: statusToKind(result.status),
+      details: result.error.details,
+    });
   }
-
-  return response.json() as Promise<T>;
+  return result.data;
 }

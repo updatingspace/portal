@@ -373,15 +373,18 @@ def list_votings_feed(
         .annotate(nomination_count=Count("nominations"))
         .order_by(F("deadline_at").asc(nulls_last=True), "order", "title")
     )
-    if not include_non_public:
-        qs = qs.filter(is_public=True)
-    qs = qs[: max(1, limit)]
-
     feed: list[dict[str, Any]] = []
     for voting in qs:
+        if not include_non_public and not voting.is_public:
+            continue
+
         payload = _serialize_voting(voting)
         payload["nomination_count"] = getattr(voting, "nomination_count", 0)
         feed.append(payload)
+
+        if len(feed) >= max(1, limit):
+            break
+
     return feed
 
 

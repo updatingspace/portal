@@ -1,10 +1,10 @@
+from allauth.headless.contrib.ninja.security import x_session_token_auth
 from ninja import Router
 
-from accounts.api.security import session_token_auth
 from accounts.services.oauth import OAuthService
 from accounts.transport.schemas import ErrorOut, OAuthLinkOut, ProvidersOut
 
-router_oauth = Router(tags=["OAuth"], auth=[session_token_auth])
+router_oauth = Router(tags=["OAuth"], auth=[x_session_token_auth])
 
 
 @router_oauth.get(

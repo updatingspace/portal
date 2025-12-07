@@ -1,10 +1,10 @@
+from allauth.headless.contrib.ninja.security import x_session_token_auth
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from ninja import Body, File, Router
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
-from accounts.api.security import session_token_auth
 from accounts.services.emailing import EmailService
 from accounts.services.mfa import MfaService
 from accounts.services.passkeys import PasskeyService
@@ -35,7 +35,7 @@ from accounts.transport.schemas import (
 )
 
 User = get_user_model()
-account_router = Router(tags=["Account"], auth=[session_token_auth])
+account_router = Router(tags=["Account"], auth=[x_session_token_auth])
 REQUIRED_BODY = Body(...)
 REQUIRED_FILE = File(...)
 
@@ -43,7 +43,10 @@ REQUIRED_FILE = File(...)
 def _require_authenticated_user(request) -> User:
     user = getattr(request, "auth", None)
     if not user or not getattr(user, "is_authenticated", False):
-        raise HttpError(401, "Not authenticated")
+        raise HttpError(
+            401,
+            {"code": "UNAUTHORIZED", "message": "Требуется авторизация"},
+        )
     # Make sure downstream allauth flows see the authenticated user
     request.user = user
     return user

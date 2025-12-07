@@ -75,18 +75,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const profile = await fetchProfile();
-      const mapped = mapProfileToUser(profile);
-      setUser(mapped);
-      logger.info('Profile refreshed', {
+      if (profile) {
+        const mapped = mapProfileToUser(profile);
+        setUser(mapped);
+        logger.info('Profile refreshed', {
+          area: 'auth',
+          event: 'refresh_profile',
+          data: {
+            username: mapped.username,
+            emailVerified: mapped.emailVerified,
+            isStaff: mapped.isStaff,
+          },
+        });
+        return mapped;
+      }
+      setUser(null);
+      logger.info('Profile refresh: guest state', {
         area: 'auth',
         event: 'refresh_profile',
-        data: {
-          username: mapped.username,
-          emailVerified: mapped.emailVerified,
-          isStaff: mapped.isStaff,
-        },
       });
-      return mapped;
+      return null;
     } catch (error) {
       if (isApiError(error)) {
         if (error.kind === 'unauthorized') {

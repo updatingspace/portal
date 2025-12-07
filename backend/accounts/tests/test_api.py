@@ -13,10 +13,12 @@ from allauth.mfa import app_settings as mfa_app_settings
 from allauth.mfa.totp.internal import auth as totp_auth
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from ninja.errors import HttpError
+from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from ninja_jwt.tokens import RefreshToken
 from PIL import Image
 
@@ -44,6 +46,7 @@ class AccountsApiTests(TestCase):
         self.client = Client()
         self.password = "StrongPass123!"
         self.user = self._create_user()
+        cache.clear()
         self.media_root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.media_root, ignore_errors=True)
         override = override_settings(
@@ -71,15 +74,26 @@ class AccountsApiTests(TestCase):
         password: str | None = None,
     ) -> str:
         client = client or self.client
+        form_token = self._form_token(client, "login")
         resp = post_json(
             client,
             "/api/auth/login",
-            {"email": email or self.user.email, "password": password or self.password},
+            {
+                "email": email or self.user.email,
+                "password": password or self.password,
+                "form_token": form_token,
+            },
         )
         self.assertEqual(resp.status_code, 200)
         token = resp.headers.get("X-Session-Token")
         self.assertTrue(token)
         return str(token)
+
+    def _form_token(self, client: Client, purpose: str) -> str:
+        resp = client.get(f"/api/auth/form_token?purpose={purpose}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        return data["form_token"]
 
     def _image_file(self, name: str = "avatar.png", size=(512, 640)):
         img = Image.new("RGB", size, color=(12, 34, 56))
@@ -90,30 +104,97 @@ class AccountsApiTests(TestCase):
 
     def test_headless_login_and_profile_requires_auth(self):
         resp = self.client.get("/api/auth/me")
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"user": None})
 
         token = self.login_and_get_token()
         resp_ok = self.client.get("/api/auth/me", HTTP_X_SESSION_TOKEN=token)
         self.assertEqual(resp_ok.status_code, 200)
         data = resp_ok.json()
-        self.assertEqual(data["username"], self.user.username)
-        self.assertEqual(data["email"], self.user.email)
-        self.assertFalse(data["has_2fa"])
-        self.assertEqual(data["oauth_providers"], [])
-        self.assertFalse(data["is_staff"])
-        self.assertFalse(data["is_superuser"])
-        self.assertIsNone(data["avatar_url"])
-        self.assertEqual(data["avatar_source"], "none")
-        self.assertTrue(data["avatar_gravatar_enabled"])
+        user = data["user"]
+        self.assertIsNotNone(user)
+        self.assertEqual(user["username"], self.user.username)
+        self.assertEqual(user["email"], self.user.email)
+        self.assertFalse(user["has_2fa"])
+        self.assertEqual(user["oauth_providers"], [])
+        self.assertFalse(user["is_staff"])
+        self.assertFalse(user["is_superuser"])
+        self.assertIsNone(user["avatar_url"])
+        self.assertEqual(user["avatar_source"], "none")
+        self.assertTrue(user["avatar_gravatar_enabled"])
 
     def test_headless_login_rejects_invalid_credentials(self):
+        form_token = self._form_token(self.client, "login")
         resp = post_json(
             self.client,
             "/api/auth/login",
-            {"email": self.user.email, "password": "wrong"},
+            {
+                "email": self.user.email,
+                "password": "wrong",
+                "form_token": form_token,
+            },
+        )
+        self.assertEqual(resp.status_code, 401)
+        body = resp.json()
+        self.assertEqual(body.get("code"), "INVALID_CREDENTIALS")
+
+    def test_headless_login_requires_form_token(self):
+        resp = post_json(
+            self.client,
+            "/api/auth/login",
+            {"email": self.user.email, "password": self.password},
         )
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("invalid credentials", resp.json()["detail"])
+        data = resp.json()
+        self.assertEqual(data.get("code"), "INVALID_FORM_TOKEN")
+
+    def test_headless_login_rate_limited(self):
+        retry_code = None
+        for i in range(6):
+            form_token = self._form_token(self.client, "login")
+            resp = post_json(
+                self.client,
+                "/api/auth/login",
+                {
+                    "email": self.user.email,
+                    "password": "wrong",
+                    "form_token": form_token,
+                },
+            )
+            if i < 5:
+                self.assertEqual(resp.status_code, 401)
+            else:
+                self.assertEqual(resp.status_code, 429)
+                data = resp.json()
+                retry_code = data.get("code")
+                self.assertEqual(retry_code, "LOGIN_RATE_LIMITED")
+                self.assertIn("Retry-After", resp.headers)
+        self.assertEqual(retry_code, "LOGIN_RATE_LIMITED")
+
+    def test_form_token_single_use(self):
+        form_token = self._form_token(self.client, "login")
+        resp_ok = post_json(
+            self.client,
+            "/api/auth/login",
+            {
+                "email": self.user.email,
+                "password": self.password,
+                "form_token": form_token,
+            },
+        )
+        self.assertEqual(resp_ok.status_code, 200)
+        # Reuse same token should fail
+        resp_reuse = post_json(
+            self.client,
+            "/api/auth/login",
+            {
+                "email": self.user.email,
+                "password": self.password,
+                "form_token": form_token,
+            },
+        )
+        self.assertEqual(resp_reuse.status_code, 400)
+        self.assertEqual(resp_reuse.json().get("code"), "INVALID_FORM_TOKEN")
 
     def test_issue_jwt_and_refresh(self):
         token = self.login_and_get_token()
@@ -141,6 +222,19 @@ class AccountsApiTests(TestCase):
         self.assertIn("access", refreshed)
         self.assertIn("refresh", refreshed)
 
+        # Second refresh should use rotated token, original one is blacklisted
+        outstanding = OutstandingToken.objects.filter(
+            token=payload["refresh"], user=self.user
+        ).first()
+        resp_refresh_again = post_json(
+            self.client,
+            "/api/auth/refresh",
+            {"refresh": payload["refresh"]},
+        )
+        self.assertEqual(resp_refresh_again.status_code, 401)
+        self.assertTrue(outstanding)
+        self.assertTrue(BlacklistedToken.objects.filter(token=outstanding).exists())
+
         resp_bad = post_json(
             self.client, "/api/auth/refresh", {"refresh": "not-a-token"}
         )
@@ -154,6 +248,74 @@ class AccountsApiTests(TestCase):
             {"refresh": str(stray)},
         )
         self.assertEqual(resp_missing_user.status_code, 401)
+
+    def test_refresh_rotation_tracks_session_and_blacklists_old(self):
+        token = self.login_and_get_token()
+        resp_pair = self.client.post(
+            "/api/auth/jwt/from_session", HTTP_X_SESSION_TOKEN=token
+        )
+        self.assertEqual(resp_pair.status_code, 200)
+        payload = resp_pair.json()
+
+        refresh_token = payload["refresh"]
+        old_outstanding = OutstandingToken.objects.filter(
+            token=refresh_token, user=self.user
+        ).first()
+        self.assertIsNotNone(old_outstanding)
+        old_jti = str(old_outstanding.jti)
+        session_key = self.client.session.session_key
+
+        resp_refresh = post_json(
+            self.client,
+            "/api/auth/refresh",
+            {"refresh": refresh_token},
+        )
+        self.assertEqual(resp_refresh.status_code, 200)
+        refreshed = resp_refresh.json()
+
+        new_outstanding = OutstandingToken.objects.filter(
+            token=refreshed["refresh"], user=self.user
+        ).first()
+        self.assertIsNotNone(new_outstanding)
+        new_jti = str(new_outstanding.jti)
+
+        old_map = UserSessionToken.objects.get(refresh_jti=old_jti)
+        new_map = UserSessionToken.objects.get(refresh_jti=new_jti)
+        self.assertEqual(new_map.session_key, session_key)
+        self.assertIsNone(new_map.revoked_at)
+        self.assertIsNotNone(old_map.revoked_at)
+
+        outstanding_old = OutstandingToken.objects.filter(
+            user=self.user, jti=old_jti
+        ).first()
+        self.assertTrue(outstanding_old)
+        self.assertTrue(BlacklistedToken.objects.filter(token=outstanding_old).exists())
+
+    def test_refresh_rejected_after_session_revocation(self):
+        token = self.login_and_get_token()
+        resp_pair = self.client.post(
+            "/api/auth/jwt/from_session", HTTP_X_SESSION_TOKEN=token
+        )
+        self.assertEqual(resp_pair.status_code, 200)
+        refresh_token = resp_pair.json()["refresh"]
+
+        session_key = self.client.session.session_key
+        UserSessionMeta.objects.update_or_create(
+            user=self.user,
+            session_key=session_key,
+            defaults={
+                "session_token": token,
+                "revoked_at": timezone.now(),
+                "revoked_reason": "manual",
+            },
+        )
+
+        resp_refresh = post_json(
+            self.client,
+            "/api/auth/refresh",
+            {"refresh": refresh_token},
+        )
+        self.assertEqual(resp_refresh.status_code, 401)
 
     def test_change_password_validations_and_success(self):
         token = self.login_and_get_token()
@@ -193,7 +355,10 @@ class AccountsApiTests(TestCase):
         ok = post_json(
             self.client,
             "/api/auth/change_password",
-            {"current_password": self.password, "new_password": "BetterPass123!"},
+            {
+                "current_password": self.password,
+                "new_password": "BetterPass123!",
+            },
             token=token,
         )
         self.assertEqual(ok.status_code, 200)
@@ -508,7 +673,10 @@ class AccountsApiTests(TestCase):
         ) as complete_mock, patch(
             "allauth.mfa.recovery_codes.internal.auth.RecoveryCodes"
         ) as rc_mock:
-            rc_mock.return_value.get_unused_codes.return_value = ["111111", "222222"]
+            rc_mock.return_value.get_unused_codes.return_value = [
+                "111111",
+                "222222",
+            ]
             resp = post_json(
                 self.client,
                 "/api/auth/passkeys/complete",
