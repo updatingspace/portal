@@ -21,6 +21,7 @@ describe('App integration', () => {
     renderWithProviders(<App />, { route: '/admin' });
 
     expect(await screen.findByText('Панель модерации')).toBeInTheDocument();
-    expect(screen.getAllByText('AEF Game Jam · основной поток')[0]).toBeInTheDocument();
+    const votings = await screen.findAllByText('AEF Game Jam · основной поток');
+    expect(votings[0]).toBeInTheDocument();
   });
 });

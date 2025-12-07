@@ -205,6 +205,15 @@ class ProfileService:
                 url = profile.avatar.url
                 if request:
                     url = request.build_absolute_uri(url)
+                    proto = (
+                        request.headers.get("X-Forwarded-Proto")
+                        or request.META.get("HTTP_X_FORWARDED_PROTO")
+                        or ""
+                    ).split(",")[0]
+                    if proto.strip().lower() == "https" and url.startswith("http://"):
+                        url = "https://" + url[len("http://") :]
+                    elif getattr(request, "is_secure", lambda: False)():
+                        url = url.replace("http://", "https://", 1)
             except Exception:
                 url = None
         return AvatarState(

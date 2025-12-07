@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+from ninja.errors import HttpError
 
 from accounts.api.security import (
     AUTHENTICATION_METHODS_SESSION_KEY,
@@ -20,10 +21,12 @@ class SessionTokenAuthTests(SimpleTestCase):
         self.assertIsNone(auth(request))
 
         with patch(
-            "accounts.api.security.authenticate_by_x_session_token", return_value=None
+            "accounts.api.security.authenticate_by_x_session_token",
+            return_value=None,
         ) as auth_mock:
             request.headers["X-Session-Token"] = "bad"
-            self.assertIsNone(auth(request))
+            with self.assertRaises(HttpError):
+                auth(request)
             auth_mock.assert_called_once_with("bad")
 
     def test_attaches_user_and_records_authentication(self):

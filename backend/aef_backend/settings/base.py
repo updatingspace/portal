@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,17 +31,17 @@ def read_secret(name: str, default: str | None = None) -> str:
     file_path = os.getenv(f"{name}_FILE")
     if file_path:
         try:
-            value = Path(file_path).read_text().strip()
-            if value:
-                return value
-        except OSError:
-            # Fall back to env/default when the secret file is missing in dev
+            with open(file_path, encoding="utf-8") as fh:
+                value = fh.read().strip()
+                if value:
+                    return value
+        except FileNotFoundError:
+            # Fall back to env/default
             pass
 
-    env_value = os.getenv(name)
-    if env_value:
-        return env_value
-
+    value = os.getenv(name)
+    if value:
+        return value
     if default is not None:
         return default
 
@@ -112,17 +113,19 @@ WSGI_APPLICATION = "aef_backend.wsgi.application"
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation."
-        "UserAttributeSimilarityValidator",
+        "NAME": (
+            "django.contrib.auth.password_validation."
+            "UserAttributeSimilarityValidator"
+        ),
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
+        "NAME": ("django.contrib.auth.password_validation." "MinimumLengthValidator"),
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
+        "NAME": ("django.contrib.auth.password_validation." "CommonPasswordValidator"),
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
+        "NAME": ("django.contrib.auth.password_validation." "NumericPasswordValidator"),
     },
 ]
 
@@ -216,6 +219,10 @@ HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.sessions.SessionTokenStrategy
 
 NINJA_JWT = {
     "TOKEN_BLACKLIST_ENABLED": True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 RUNNING_TESTS = "test" in sys.argv

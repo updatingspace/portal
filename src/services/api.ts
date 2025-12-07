@@ -1,4 +1,4 @@
-import { ApiError, apiBaseUrl, extractApiErrorMessage, request, isApiError } from '../api/client';
+import { ApiError, apiBaseUrl, extractApiErrorMessage, request, requestResult } from '../api/client';
 export { ApiError } from '../api/client';
 import {
   clearSessionToken,
@@ -71,37 +71,28 @@ type AuthResponseMeta = {
   session_token?: string | null;
 };
 
-async function fetchJsonWithHeaders<T = unknown>(
-  path: string,
-  init: RequestInit,
-  { includeSessionToken = false }: { includeSessionToken?: boolean } = {},
-): Promise<{ data: T; response: Response }> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  const sessionToken = includeSessionToken ? getSessionToken() : null;
-  if (sessionToken) {
-    headers['X-Session-Token'] = sessionToken;
-  }
-  const response = await fetch(toApiUrl(path), {
-    ...init,
-    credentials: 'include',
-    headers,
-  });
+export type HeadlessLoginResult =
+  | { ok: true; token: string; meta?: unknown; user?: AccountProfile | null }
+  | { ok: false; code?: string; message?: string; retryAfterSeconds?: number };
 
-  if (!response.ok) {
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message =
-      messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    throw new ApiError(message, {
-      status: response.status,
-      kind: statusToKind(response.status),
-      details,
-    });
+const extractRetryAfterSeconds = (details: unknown): number | undefined => {
+  if (!details || typeof details !== 'object') return undefined;
+  const retry = (details as { retry_after_seconds?: unknown }).retry_after_seconds;
+  if (typeof retry === 'number') return retry;
+  if (typeof retry === 'string' && retry.trim()) {
+    const parsed = Number(retry);
+    if (!Number.isNaN(parsed)) return parsed;
   }
-  const data = (response.status === 204 ? null : await response.json()) as T;
-  return { data, response };
+  return undefined;
+};
+
+export async function fetchFormToken(
+  purpose: 'login' | 'register',
+): Promise<{ token: string; expiresIn: number }> {
+  const data = await request<{ form_token: string; expires_in: number }>(
+    `/auth/form_token?purpose=${purpose}`,
+  );
+  return { token: data.form_token, expiresIn: data.expires_in };
 }
 
 export async function headlessLogin(
@@ -109,59 +100,103 @@ export async function headlessLogin(
   password: string,
   mfa_code?: string,
   recovery_code?: string,
-): Promise<{ token: string; meta?: unknown }> {
-  const { data, response } = await fetchJsonWithHeaders<AuthResponseMeta>(
+  form_token?: string,
+): Promise<HeadlessLoginResult> {
+  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
     '/auth/login',
     {
       method: 'POST',
-      body: JSON.stringify({ email, password, mfa_code, recovery_code }),
+      body: { email, password, mfa_code, recovery_code, form_token },
+      skipAuthClear: true,
+      treatAsBusiness: ['LOGIN_RATE_LIMITED', 'INVALID_FORM_TOKEN', 'VALIDATION_ERROR'],
     },
-    { includeSessionToken: false },
   );
+  if (!res.ok) {
+    return {
+      ok: false,
+      code: res.error.code,
+      message: res.error.message,
+      retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
+    };
+  }
   const token =
-    response.headers.get('X-Session-Token') ||
-    data?.meta?.session_token ||
-    data?.session_token ||
+    res.headers.get('X-Session-Token') ||
+    (res.data as { access_token?: string } | null)?.access_token ||
+    res.data?.meta?.session_token ||
+    res.data?.session_token ||
     '';
   if (token) {
     setSessionToken(token);
   }
-  return { token, meta: data?.meta ?? data };
+  return {
+    ok: true,
+    token,
+    meta: res.data?.meta ?? res.data,
+    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+  };
 }
 
 export async function headlessSignup(
   username: string,
   email: string | null,
   password: string,
-): Promise<{ token: string; meta?: unknown }> {
-  const { data, response } = await fetchJsonWithHeaders<AuthResponseMeta>(
+  form_token?: string,
+): Promise<HeadlessLoginResult> {
+  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
     '/auth/signup',
     {
       method: 'POST',
-      body: JSON.stringify({ username, email, password }),
+      body: { username, email, password, form_token },
+      skipAuthClear: true,
+      treatAsBusiness: [
+        'REGISTER_RATE_LIMITED',
+        'INVALID_FORM_TOKEN',
+        'EMAIL_ALREADY_EXISTS',
+        'VALIDATION_ERROR',
+      ],
     },
-    { includeSessionToken: false },
   );
+  if (!res.ok) {
+    return {
+      ok: false,
+      code: res.error.code,
+      message: res.error.message,
+      retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
+    };
+  }
   const token =
-    response.headers.get('X-Session-Token') ||
-    data?.meta?.session_token ||
-    data?.session_token ||
+    res.headers.get('X-Session-Token') ||
+    (res.data as { access_token?: string } | null)?.access_token ||
+    res.data?.meta?.session_token ||
+    res.data?.session_token ||
     '';
   if (token) {
     setSessionToken(token);
   }
-  return { token, meta: data?.meta ?? data };
+  return {
+    ok: true,
+    token,
+    meta: res.data?.meta ?? res.data,
+    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+  };
 }
 
-export async function me(): Promise<AccountProfile> {
-  try {
-    return await request<AccountProfile>('/auth/me');
-  } catch (error) {
-    if (isApiError(error) && error.kind === 'unauthorized') {
+export async function me(): Promise<AccountProfile | null> {
+  const res = await requestResult<{ user: AccountProfile | null }>('/auth/me', {
+    skipAuthClear: true,
+  });
+  if (!res.ok) {
+    if (res.status === 401 && res.error.code === 'INVALID_OR_EXPIRED_TOKEN') {
       clearSessionToken();
+      return null;
     }
-    throw error;
+    throw new ApiError(res.error.message ?? 'Не удалось получить профиль', {
+      status: res.status,
+      kind: 'unauthorized',
+      details: res.error.details,
+    });
   }
+  return res.data?.user ?? null;
 }
 
 export async function updateProfile(body: {
@@ -270,16 +305,29 @@ export async function doLogin(payload: {
   password: string;
   mfa_code?: string;
   recovery_code?: string;
+  form_token?: string;
 }) {
-  return headlessLogin(payload.email, payload.password, payload.mfa_code, payload.recovery_code);
+  return headlessLogin(
+    payload.email,
+    payload.password,
+    payload.mfa_code,
+    payload.recovery_code,
+    payload.form_token,
+  );
 }
 
 export async function doSignupAndLogin(payload: {
   username: string;
   email: string;
   password: string;
+  form_token?: string;
 }) {
-  return headlessSignup(payload.username, payload.email, payload.password);
+  return headlessSignup(
+    payload.username,
+    payload.email,
+    payload.password,
+    payload.form_token,
+  );
 }
 
 export async function beginPasskeyLogin(): Promise<{ request_options: PublicKeyRequestOptions }> {

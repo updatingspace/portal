@@ -132,7 +132,10 @@ export async function revokeSession(sessionKey: string): Promise<void> {
 }
 
 export async function revokeOtherSessions(): Promise<void> {
-  await request('/auth/sessions/revoke_all', { method: 'POST' });
+  await request('/auth/sessions/bulk', {
+    method: 'POST',
+    body: { all_except_current: true, reason: 'bulk_except_current' },
+  });
 }
 
 export type TelegramAuthPayload = {

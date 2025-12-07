@@ -1,15 +1,10 @@
 from __future__ import annotations
 
+# isort: skip_file
+
 import logging
 from dataclasses import dataclass
-
-from allauth.account.models import EmailAddress
-from allauth.mfa.adapter import get_adapter as get_mfa_adapter
-from allauth.socialaccount.models import SocialAccount
-from django.contrib.auth import get_user_model
-from django.contrib.auth import logout as dj_logout
-from ninja.errors import HttpError
-from ninja_jwt.tokens import RefreshToken
+from datetime import datetime, timezone as dt_timezone
 
 from accounts.services.profile import ProfileService
 from accounts.transport.schemas import (
@@ -18,18 +13,39 @@ from accounts.transport.schemas import (
     TokenRefreshIn,
     TokenRefreshOut,
 )
+from allauth.account.models import EmailAddress
+from allauth.mfa.adapter import get_adapter as get_mfa_adapter
+from allauth.socialaccount.models import SocialAccount
 from core.models import UserSessionMeta, UserSessionToken
+from django.contrib.auth import get_user_model, logout as dj_logout
+from django.utils import timezone
+from ninja.errors import HttpError
+from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+from ninja_jwt.tokens import RefreshToken
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+UNAUTHORIZED_PAYLOAD: dict[str, str] = {
+    "code": "UNAUTHORIZED",
+    "message": "Требуется авторизация",
+}
+INVALID_TOKEN_PAYLOAD: dict[str, str] = {
+    "code": "INVALID_OR_EXPIRED_TOKEN",
+    "message": "Сессия недействительна, пожалуйста, войдите заново",
+}
+
+
+def _http_error(status: int, payload: dict[str, str]) -> HttpError:
+    return HttpError(status, payload)  # type: ignore[arg-type]
 
 
 @dataclass(slots=True)
 class AuthService:
     @staticmethod
-    def issue_pair_for_session(request, user: User) -> TokenPairOut:
+    def issue_pair_for_session(request, user) -> TokenPairOut:
         if not getattr(user, "is_authenticated", False):
-            raise HttpError(401, "Not authenticated")
+            raise _http_error(401, UNAUTHORIZED_PAYLOAD)
         token = request.headers.get("X-Session-Token") or ""
         dj_key = request.session.session_key or ""
 
@@ -48,7 +64,15 @@ class AuthService:
             meta.save(update_fields=["session_key"])
 
         rt = RefreshToken.for_user(user)
-        at = rt.access_token
+        at = rt.access_token  # type: ignore[attr-defined]
+        rt["session_key"] = meta.session_key
+
+        expires_at = datetime.fromtimestamp(float(rt["exp"]), tz=dt_timezone.utc)
+        OutstandingToken.objects.update_or_create(
+            user=user,
+            jti=str(rt["jti"]),
+            defaults={"token": str(rt), "expires_at": expires_at},
+        )
 
         UserSessionToken.objects.get_or_create(
             user=user, session_key=meta.session_key, refresh_jti=str(rt["jti"])
@@ -72,15 +96,16 @@ class AuthService:
         )
 
     @staticmethod
-    def profile(user: User, request=None) -> ProfileOut:
+    def profile(user, request=None) -> ProfileOut:
         if not user or not getattr(user, "is_authenticated", False):
             raise HttpError(401, "Not authenticated")
         ProfileService.maybe_refresh_gravatar(user)
         avatar = ProfileService.avatar_state(user, request=request)
         has_2fa = get_mfa_adapter().is_mfa_enabled(user)
-        providers = list(
-            SocialAccount.objects.filter(user=user).values_list("provider", flat=True)
+        providers_qs = SocialAccount.objects.filter(user=user).values_list(
+            "provider", flat=True
         )
+        providers = list(providers_qs)
         primary = EmailAddress.objects.filter(user=user, primary=True).first()
         return ProfileOut(
             username=user.username,
@@ -98,7 +123,7 @@ class AuthService:
         )
 
     @staticmethod
-    def change_password(user: User, current: str, new: str) -> None:
+    def change_password(user, current: str, new: str) -> None:
         from django.contrib.auth.password_validation import validate_password
         from django.core.exceptions import ValidationError
 
@@ -144,16 +169,82 @@ class AuthService:
             rt = RefreshToken(payload.refresh)
         except Exception as err:
             logger.warning("Refresh token rejected: invalid token structure")
-            raise HttpError(401, "invalid refresh") from err
+            raise _http_error(401, INVALID_TOKEN_PAYLOAD) from err
+
         user = User.objects.filter(pk=rt.get("user_id")).first()
         if not user:
             logger.warning("Refresh token rejected: unknown user")
-            raise HttpError(401, "invalid user")
+            raise _http_error(401, INVALID_TOKEN_PAYLOAD)
+
+        jti = str(rt["jti"])
+        expires_at = datetime.fromtimestamp(float(rt["exp"]), tz=dt_timezone.utc)
+        outstanding, _ = OutstandingToken.objects.update_or_create(
+            user=user,
+            jti=jti,
+            defaults={"token": str(rt), "expires_at": expires_at},
+        )
+
+        if BlacklistedToken.objects.filter(token=outstanding).exists():
+            logger.warning(
+                "Refresh token rejected: blacklisted",
+                extra={"user_id": getattr(user, "id", None)},
+            )
+            raise _http_error(401, INVALID_TOKEN_PAYLOAD)
+
+        mapping = UserSessionToken.objects.filter(
+            user=user, refresh_jti=jti, revoked_at__isnull=True
+        ).first()
+        if not mapping:
+            logger.warning(
+                "Refresh token rejected: session mapping missing",
+                extra={"user_id": getattr(user, "id", None)},
+            )
+            raise _http_error(401, INVALID_TOKEN_PAYLOAD)
+
+        meta = UserSessionMeta.objects.filter(
+            user=user, session_key=mapping.session_key
+        ).first()
+        if meta and meta.revoked_at:
+            logger.warning(
+                "Refresh token rejected: session revoked",
+                extra={
+                    "user_id": getattr(user, "id", None),
+                    "session_key": mapping.session_key,
+                },
+            )
+            raise _http_error(401, INVALID_TOKEN_PAYLOAD)
+
+        # Blacklist the incoming refresh token and retire its mapping
+        BlacklistedToken.objects.get_or_create(token=outstanding)
+        now = timezone.now()
+        if not mapping.revoked_at:
+            mapping.revoked_at = now
+            mapping.save(update_fields=["revoked_at"])
+
         new_refresh = RefreshToken.for_user(user)
+        new_refresh["session_key"] = mapping.session_key
+        new_rt_jti = str(new_refresh["jti"])
+        new_expires_at = datetime.fromtimestamp(
+            float(new_refresh["exp"]), tz=dt_timezone.utc
+        )
+        OutstandingToken.objects.update_or_create(
+            user=user,
+            jti=new_rt_jti,
+            defaults={"token": str(new_refresh), "expires_at": new_expires_at},
+        )
+        UserSessionToken.objects.get_or_create(
+            user=user,
+            session_key=mapping.session_key,
+            refresh_jti=new_rt_jti,
+        )
+
         logger.info(
             "Issued new token pair from refresh",
             extra={
                 "user_id": getattr(user, "id", None),
+                "session_key": mapping.session_key,
             },
         )
-        return TokenRefreshOut(refresh=str(new_refresh), access=str(rt.access_token))
+        access_token = new_refresh.access_token  # type: ignore[attr-defined]
+        access_str = str(access_token)
+        return TokenRefreshOut(refresh=str(new_refresh), access=access_str)
