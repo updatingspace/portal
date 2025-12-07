@@ -17,6 +17,16 @@ import App from './App';
 import { toaster } from './toaster';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthUIProvider } from './contexts/AuthUIContext';
+import { logger } from './utils/logger';
+import { getVersionInfo } from './utils/version';
+
+// Log version information on startup
+const versionInfo = getVersionInfo();
+logger.info('Application starting', {
+  area: 'app',
+  event: 'startup',
+  data: versionInfo,
+});
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

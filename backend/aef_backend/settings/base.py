@@ -230,12 +230,14 @@ APP_LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
 if RUNNING_TESTS:
     APP_LOG_LEVEL = os.getenv("DJANGO_TEST_LOG_LEVEL", "WARNING").upper()
 
+BUILD_ID = os.getenv("BUILD_ID", "dev")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            "format": f"%(asctime)s | {BUILD_ID} | %(levelname)s | %(name)s | %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         }
     },
