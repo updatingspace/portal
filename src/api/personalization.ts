@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { request } from './client';
 
 export interface HomePageModal {
   id: number;
@@ -30,16 +30,14 @@ export interface HomePageModalInput {
  * Fetch active homepage modals for display
  */
 export const fetchHomePageModals = async (): Promise<HomePageModal[]> => {
-  const response = await apiClient.get<HomePageModal[]>('/personalization/homepage-modals');
-  return response.data;
+  return await request<HomePageModal[]>('/personalization/homepage-modals');
 };
 
 /**
  * Fetch all homepage modals for admin (requires superuser)
  */
 export const fetchAdminHomePageModals = async (): Promise<HomePageModal[]> => {
-  const response = await apiClient.get<HomePageModal[]>('/personalization/admin/homepage-modals');
-  return response.data;
+  return await request<HomePageModal[]>('/personalization/admin/homepage-modals');
 };
 
 /**
@@ -48,11 +46,10 @@ export const fetchAdminHomePageModals = async (): Promise<HomePageModal[]> => {
 export const createHomePageModal = async (
   payload: HomePageModalInput,
 ): Promise<HomePageModal> => {
-  const response = await apiClient.post<HomePageModal>(
-    '/personalization/admin/homepage-modals',
-    payload,
-  );
-  return response.data;
+  return await request<HomePageModal>('/personalization/admin/homepage-modals', {
+    method: 'POST',
+    body: payload,
+  });
 };
 
 /**
@@ -62,16 +59,17 @@ export const updateHomePageModal = async (
   modalId: number,
   payload: HomePageModalInput,
 ): Promise<HomePageModal> => {
-  const response = await apiClient.put<HomePageModal>(
-    `/personalization/admin/homepage-modals/${modalId}`,
-    payload,
-  );
-  return response.data;
+  return await request<HomePageModal>(`/personalization/admin/homepage-modals/${modalId}`, {
+    method: 'PUT',
+    body: payload,
+  });
 };
 
 /**
  * Delete a homepage modal (requires superuser)
  */
 export const deleteHomePageModal = async (modalId: number): Promise<void> => {
-  await apiClient.delete(`/personalization/admin/homepage-modals/${modalId}`);
+  await request<void>(`/personalization/admin/homepage-modals/${modalId}`, {
+    method: 'DELETE',
+  });
 };

@@ -168,6 +168,7 @@ const placeholderRows: Record<AdminSection, AdminRow[]> = {
     { id: 'material-1', title: 'Лучший обзор — черновик', type: 'Материалы', status: 'Черновик', updatedAt: 'Сегодня, 09:40' },
     { id: 'material-2', title: 'Пример карточки обзора', type: 'Материалы', status: 'Архив', updatedAt: 'Вчера, 17:10' },
   ],
+  personalization: [],
 };
 
 const sectionMeta: Record<AdminSection, { title: string; subtitle: string }> = {

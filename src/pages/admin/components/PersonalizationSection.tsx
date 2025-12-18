@@ -32,17 +32,18 @@ const formatDate = (date: string | null): string => {
   }
 };
 
+type TableRow = Omit<HomePageModal, 'id'> & { id: string };
+
 export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
   modals,
   isLoading,
   error,
-  selectedModalId,
   onSelectModal,
   onCreateModal,
   onEditModal,
   onDeleteModal,
 }) => {
-  const columns: TableColumnConfig<HomePageModal>[] = [
+  const columns: TableColumnConfig<TableRow>[] = [
     {
       id: 'title',
       name: 'Заголовок',
@@ -76,20 +77,23 @@ export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
       id: 'actions',
       name: 'Действия',
       width: 220,
-      template: (item) => (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button size="s" view="outlined" onClick={() => onEditModal(item)}>
-            Редактировать
-          </Button>
-          <Button size="s" view="flat-danger" onClick={() => onDeleteModal(item.id)}>
-            Удалить
-          </Button>
-        </div>
-      ),
+      template: (item) => {
+        const originalModal = modals.find(m => String(m.id) === item.id);
+        return originalModal ? (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button size="s" view="outlined" onClick={() => onEditModal(originalModal)}>
+              Редактировать
+            </Button>
+            <Button size="s" view="flat-danger" onClick={() => onDeleteModal(originalModal.id)}>
+              Удалить
+            </Button>
+          </div>
+        ) : null;
+      },
     },
   ];
-
-  const data = modals.map((modal) => ({
+  
+  const data: TableRow[] = modals.map((modal) => ({
     ...modal,
     id: String(modal.id),
   }));
@@ -126,7 +130,7 @@ export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
             <Table
               data={data}
               columns={columns}
-              getRowId={(item) => item.id}
+              getRowId={(item) => String(item.id)}
               onRowClick={(item) => onSelectModal(Number(item.id))}
             />
           </div>
