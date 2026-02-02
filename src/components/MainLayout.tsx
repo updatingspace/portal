@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Button, DropdownMenu, type DropdownMenuItem } from '@gravity-ui/uikit';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -7,7 +7,6 @@ import { useAuthUI } from '../contexts/AuthUIContext';
 import AuthModal from './AuthModal';
 import { clearSessionToken } from '../api/sessionToken';
 import { logout } from '../services/api';
-import { getBuildId } from '../utils/version';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -17,7 +16,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { user, setUser } = useAuth();
   const { openAuthModal, closeAuthModal, isAuthModalOpen, setAuthMode } = useAuthUI();
   const navigate = useNavigate();
+  const location = useLocation();
   const isSuperuser = Boolean(user?.isSuperuser);
+  const isAdminPage = location.pathname.startsWith('/admin');
 
   const userMenuItems = useMemo<DropdownMenuItem[]>(
     () =>
@@ -97,11 +98,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {children}
       </main>
 
-      <footer className="app-footer">
-        <div className="container">
-          Build: {getBuildId()}
-        </div>
-      </footer>
+      {!isAdminPage && (
+        <footer className="app-footer">
+          <div className="container">
+            AEF Vote © 2025
+          </div>
+        </footer>
+      )}
 
       <AuthModal
         open={isAuthModalOpen}

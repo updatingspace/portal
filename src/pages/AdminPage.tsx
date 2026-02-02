@@ -11,6 +11,7 @@ import Magnifier from '@gravity-ui/icons/Magnifier';
 import Cubes3 from '@gravity-ui/icons/Cubes3';
 import ListCheck from '@gravity-ui/icons/ListCheck';
 import Gear from '@gravity-ui/icons/Gear';
+import CircleInfo from '@gravity-ui/icons/CircleInfo';
 
 import {
   fetchAdminVotings,
@@ -67,6 +68,7 @@ import { VotingsSection } from './admin/components/VotingsSection';
 import { VotingCreatorDialog } from './admin/components/VotingCreatorDialog';
 import { PersonalizationSection } from './admin/components/PersonalizationSection';
 import { HomePageModalEditor } from './admin/components/HomePageModalEditor';
+import { AboutProjectModal } from '../components/AboutProjectModal';
 import {
   createEmptyGameDraft,
   type GameDraft,
@@ -496,6 +498,7 @@ export const AdminPage: React.FC = () => {
   const [nominationDraft, setNominationDraft] = useState<NominationDraft | null>(null);
   const [nominationSourceVoting, setNominationSourceVoting] = useState<string | null>(null);
   const [isSavingNomination, setIsSavingNomination] = useState(false);
+  const [isAboutProjectOpen, setIsAboutProjectOpen] = useState(false);
 
   // Personalization state
   const [homePageModals, setHomePageModals] = useState<HomePageModal[]>([]);
@@ -1987,6 +1990,19 @@ export const AdminPage: React.FC = () => {
         className="admin-aside"
         logo={{ text: 'AEF Admin', onClick: handleLogoClick }}
         menuItems={menuItems}
+        renderFooter={() => (
+          <div style={{ padding: '12px' }}>
+            <Button
+              view="flat"
+              width="max"
+              size="l"
+              onClick={() => setIsAboutProjectOpen(true)}
+            >
+              <CircleInfo style={{ marginRight: '8px' }} />
+              {!isAsideCompact && 'О проекте'}
+            </Button>
+          </div>
+        )}
         renderContent={() => (
           <div className="admin-content-shell">
             <div className="admin-content-header">
@@ -2201,6 +2217,10 @@ export const AdminPage: React.FC = () => {
               onClose={() => setIsModalEditorOpen(false)}
               onSave={handleSaveModal}
               onChangeDraft={(patch) => setModalDraft((prev) => ({ ...prev, ...patch }))}
+             />
+              <AboutProjectModal
+              open={isAboutProjectOpen}
+              onClose={() => setIsAboutProjectOpen(false)}
             />
           </div>
         )}
