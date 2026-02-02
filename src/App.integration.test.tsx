@@ -24,4 +24,17 @@ describe('App integration', () => {
     const votings = await screen.findAllByText('AEF Game Jam · основной поток');
     expect(votings[0]).toBeInTheDocument();
   });
+
+  test('shows footer on homepage but not on admin page', async () => {
+    // Check footer is visible on homepage
+    const { unmount } = renderWithProviders(<App />, { route: '/' });
+    await screen.findByText('Сервис честных голосований');
+    expect(screen.getByText('AEF Vote © 2025')).toBeInTheDocument();
+
+    // Unmount and check footer is not visible on admin page
+    unmount();
+    renderWithProviders(<App />, { route: '/admin' });
+    await screen.findByText('Панель модерации');
+    expect(screen.queryByText('AEF Vote © 2025')).not.toBeInTheDocument();
+  });
 });
