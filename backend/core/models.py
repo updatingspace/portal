@@ -73,9 +73,7 @@ class HomePageModal(models.Model):
         verbose_name="Тип модалки",
     )
     is_active = models.BooleanField(default=True, verbose_name="Активна")
-    display_once = models.BooleanField(
-        default=False, verbose_name="Показать один раз"
-    )
+    display_once = models.BooleanField(default=False, verbose_name="Показать один раз")
     start_date = models.DateTimeField(
         null=True, blank=True, verbose_name="Дата начала показа"
     )

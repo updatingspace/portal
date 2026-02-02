@@ -11,7 +11,9 @@ from .schemas import HomePageModalIn, HomePageModalOut
 router = Router()
 
 
-@router.get("/homepage-modals", response=list[HomePageModalOut], tags=["personalization"])
+@router.get(
+    "/homepage-modals", response=list[HomePageModalOut], tags=["personalization"]
+)
 def list_homepage_modals(request: HttpRequest):
     """Get active homepage modals for display"""
     now = datetime.now()
@@ -49,7 +51,9 @@ def admin_create_homepage_modal(request: HttpRequest, payload: HomePageModalIn):
     return modal
 
 
-@router.put("/admin/homepage-modals/{modal_id}", response=HomePageModalOut, tags=["admin"])
+@router.put(
+    "/admin/homepage-modals/{modal_id}", response=HomePageModalOut, tags=["admin"]
+)
 def admin_update_homepage_modal(
     request: HttpRequest, modal_id: int, payload: HomePageModalIn
 ):
