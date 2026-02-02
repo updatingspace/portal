@@ -1,0 +1,43 @@
+'use client';
+import { jsx as _jsx } from "react/jsx-runtime";
+import * as React from 'react';
+import { MobileContext } from "./MobileContext.js";
+import { Platform, rootMobileClassName } from "./constants.js";
+function useHistoryMock() {
+    return { action: '', replace() { }, push() { }, goBack() { } };
+}
+function useLocationMock() {
+    return { pathname: '', search: '', hash: '' };
+}
+export function MobileProvider({ mobile = false, platform = Platform.BROWSER, useHistory = useHistoryMock, useLocation = useLocationMock, children, }) {
+    const useHistoryFunction = React.useCallback(function useHistoryFunction() {
+        const { goBack, back, ...props } = useHistory();
+        let goBackFunction;
+        if (typeof goBack === 'function') {
+            goBackFunction = goBack;
+        }
+        else if (typeof back === 'function') {
+            goBackFunction = back;
+        }
+        else {
+            goBackFunction = () => { };
+        }
+        return {
+            ...props,
+            goBack: goBackFunction,
+        };
+    }, [useHistory]);
+    React.useEffect(() => {
+        document.body.classList.toggle(rootMobileClassName, mobile);
+    }, [rootMobileClassName, mobile]);
+    const contextValue = React.useMemo(() => {
+        return {
+            mobile,
+            platform,
+            useLocation,
+            useHistory: useHistoryFunction,
+        };
+    }, [mobile, platform, useLocation, useHistoryFunction]);
+    return _jsx(MobileContext.Provider, { value: contextValue, children: children });
+}
+//# sourceMappingURL=MobileProvider.js.map

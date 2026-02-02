@@ -1,0 +1,133 @@
+'use client';
+import { jsx as _jsx } from "react/jsx-runtime";
+import * as React from 'react';
+import { block } from "../utils/cn.js";
+import { isIcon, isSvg } from "../utils/common.js";
+import { eventBroker } from "../utils/event-broker/index.js";
+import { isOfType } from "../utils/isOfType.js";
+import { ButtonIcon, getIconSide } from "./ButtonIcon.js";
+import "./Button.css";
+function isButtonComponentProps(p) {
+    return p.component !== undefined;
+}
+const b = block('button');
+const _Button = React.forwardRef(function Button(props, ref) {
+    const { view = 'normal', size = 'm', pin = 'round-round', selected, disabled = false, loading = false, width, children, extraProps, qa, onClickCapture, ...rest } = props;
+    const handleClickCapture = React.useCallback((event) => {
+        eventBroker.publish({
+            componentId: 'Button',
+            eventId: 'click',
+            domEvent: event,
+            meta: {
+                content: event.currentTarget.textContent,
+                view: view,
+            },
+        });
+        if (onClickCapture) {
+            onClickCapture(event);
+        }
+    }, [view, onClickCapture]);
+    const commonProps = {
+        onClickCapture: handleClickCapture,
+        className: b({
+            view: view,
+            size: size,
+            pin: pin,
+            selected: selected,
+            disabled: disabled || loading,
+            loading: loading,
+            width: width,
+        }, rest.className),
+        'data-qa': qa,
+        // Always set a tabIndex so that Safari allows focusing native buttons
+        tabIndex: rest.tabIndex ?? extraProps?.tabIndex ?? (disabled ? undefined : 0),
+    };
+    if (isButtonComponentProps(props)) {
+        return React.createElement(props.component, {
+            role: 'button',
+            ...rest,
+            ...extraProps,
+            ...commonProps,
+            ref: ref,
+            'aria-disabled': disabled ?? undefined,
+        }, prepareChildren(children));
+    }
+    if (typeof props.href !== 'undefined') {
+        return (_jsx("a", { ...rest, ...extraProps, ...commonProps, ref: ref, rel: props.target === '_blank' && !rest.rel ? 'noopener noreferrer' : rest.rel, "aria-disabled": disabled ?? undefined, children: prepareChildren(children) }));
+    }
+    return (_jsx("button", { ...rest, ...extraProps, ...commonProps, ref: ref, type: props.type || 'button', disabled: disabled || loading, "aria-pressed": selected, children: prepareChildren(children) }));
+});
+export const Button = Object.assign(_Button, { Icon: ButtonIcon });
+const isButtonIconComponent = isOfType(ButtonIcon);
+const isSpan = isOfType('span');
+const buttonIconClassRe = RegExp(`^${b('icon')}($|\\s+\\w)`);
+function prepareChildren(children) {
+    const items = React.Children.toArray(children);
+    if (items.length === 1) {
+        const onlyItem = items[0];
+        const isButtonIconElement = isButtonIconComponent(onlyItem) ||
+            (isSpan(onlyItem) && buttonIconClassRe.test(onlyItem.props.className || ''));
+        if (isButtonIconElement) {
+            return onlyItem;
+        }
+        else if (isIcon(onlyItem) || isSvg(onlyItem)) {
+            return _jsx(Button.Icon, { children: onlyItem }, "icon");
+        }
+        else {
+            return (_jsx("span", { className: b('text'), children: onlyItem }, "text"));
+        }
+    }
+    else {
+        let startIcon, endIcon, text;
+        const content = [];
+        for (const item of items) {
+            const isIconElement = isIcon(item) || isSvg(item);
+            const isButtonIconElement = isButtonIconComponent(item);
+            const isRenderedButtonIconElement = isSpan(item) && buttonIconClassRe.test(item.props.className || '');
+            if (isIconElement || isButtonIconElement || isRenderedButtonIconElement) {
+                if (!startIcon && content.length === 0) {
+                    const key = 'icon-start';
+                    const side = 'start';
+                    if (isIconElement) {
+                        startIcon = (_jsx(Button.Icon, { side: side, children: item }, key));
+                    }
+                    else if (isButtonIconElement) {
+                        startIcon = React.cloneElement(item, {
+                            side,
+                        });
+                    }
+                    else {
+                        startIcon = React.cloneElement(item, {
+                            className: b('icon', { side: getIconSide(side) }, item.props.className),
+                        });
+                    }
+                }
+                else if (!endIcon && content.length !== 0) {
+                    const key = 'icon-end';
+                    const side = 'end';
+                    if (isIconElement) {
+                        endIcon = (_jsx(Button.Icon, { side: side, children: item }, key));
+                    }
+                    else if (isButtonIconElement) {
+                        endIcon = React.cloneElement(item, {
+                            side,
+                        });
+                    }
+                    else {
+                        endIcon = React.cloneElement(item, {
+                            className: b('icon', { side: getIconSide(side) }, item.props.className),
+                        });
+                    }
+                }
+            }
+            else {
+                content.push(item);
+            }
+        }
+        if (content.length > 0) {
+            text = (_jsx("span", { className: b('text'), children: content }, "text"));
+        }
+        return [startIcon, endIcon, text];
+    }
+}
+//# sourceMappingURL=Button.js.map

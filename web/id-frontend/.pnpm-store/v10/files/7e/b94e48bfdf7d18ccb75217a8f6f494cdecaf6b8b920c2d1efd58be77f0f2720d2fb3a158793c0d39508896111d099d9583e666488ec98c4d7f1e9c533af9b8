@@ -1,0 +1,1 @@
+{"version":3,"file":"utils.js","sourceRoot":"../../../../src","sources":["components/Breadcrumbs/utils.ts"],"names":[],"mappings":";;;AAAA,uCAAkC;AAErB,QAAA,CAAC,GAAG,IAAA,UAAK,EAAC,aAAa,CAAC,CAAC","sourcesContent":["import {block} from '../utils/cn';\n\nexport const b = block('breadcrumbs');\n"]}

@@ -1,0 +1,75 @@
+import { autoPlacement, flip } from '@floating-ui/react';
+import { ARROW_SIZE, AUTO_PLACEMENTS, OVERFLOW_PADDING } from "./constants.js";
+export function getOffsetOptions(offsetProp, hasArrow) {
+    let offset = offsetProp;
+    if (hasArrow) {
+        if (typeof offset === 'number') {
+            offset += ARROW_SIZE;
+        }
+        else {
+            offset = { ...offset, mainAxis: (offset.mainAxis ?? 0) + ARROW_SIZE };
+        }
+    }
+    return { offset };
+}
+function isAutoPlacement(placement) {
+    return Boolean(placement && AUTO_PLACEMENTS.includes(placement));
+}
+export function getPlacementOptions(placementProp, disablePortal) {
+    let placement;
+    let middleware;
+    if (Array.isArray(placementProp)) {
+        placement = placementProp[0];
+        middleware = flip({
+            padding: OVERFLOW_PADDING,
+            altBoundary: disablePortal,
+            fallbackPlacements: placementProp.slice(1),
+        });
+    }
+    else if (isAutoPlacement(placementProp)) {
+        let alignment;
+        if (placementProp === 'auto-start') {
+            alignment = 'start';
+        }
+        else if (placementProp === 'auto-end') {
+            alignment = 'end';
+        }
+        placement = undefined;
+        middleware = autoPlacement({
+            padding: OVERFLOW_PADDING,
+            altBoundary: disablePortal,
+            alignment,
+        });
+    }
+    else {
+        let fallbackAxisSideDirection;
+        if (placementProp?.startsWith('top') || placementProp?.startsWith('left')) {
+            fallbackAxisSideDirection = 'start';
+        }
+        else {
+            fallbackAxisSideDirection = 'end';
+        }
+        placement = placementProp;
+        middleware = flip({
+            padding: OVERFLOW_PADDING,
+            altBoundary: disablePortal,
+            fallbackAxisSideDirection,
+        });
+    }
+    return { placement, middleware };
+}
+export const arrowStylesMiddleware = () => ({
+    name: 'arrowStyles',
+    fn({ middlewareData }) {
+        if (!middlewareData.arrow) {
+            return {};
+        }
+        return {
+            data: {
+                left: middlewareData.arrow.x,
+                top: middlewareData.arrow.y,
+            },
+        };
+    },
+});
+//# sourceMappingURL=utils.js.map

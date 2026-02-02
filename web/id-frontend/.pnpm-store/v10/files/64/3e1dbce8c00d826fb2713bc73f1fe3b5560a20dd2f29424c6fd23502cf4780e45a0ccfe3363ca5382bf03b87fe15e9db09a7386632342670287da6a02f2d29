@@ -1,0 +1,44 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getTextValueByMode = exports.convertSelectedModeColorToHsva = void 0;
+exports.formatRgbaString = formatRgbaString;
+const react_color_1 = require("@uiw/react-color");
+const types_1 = require("./types.js");
+const convertSelectedModeColorToHsva = (value, mode, alpha) => {
+    switch (mode) {
+        case types_1.Modes.Hex: {
+            // If alpha is disabled, strip alpha channel from hex value
+            if (!alpha && value.length === 9) {
+                value = value.substring(0, 7); // Keep only #RRGGBB
+            }
+            const hsva = (0, react_color_1.hexToHsva)(value);
+            // If alpha is disabled, ensure alpha is set to 1
+            if (!alpha) {
+                hsva.a = 1;
+            }
+            return hsva;
+        }
+        case types_1.Modes.Rgb: {
+            return alpha ? (0, react_color_1.rgbaStringToHsva)(value) : (0, react_color_1.rgbStringToHsva)(value);
+        }
+    }
+};
+exports.convertSelectedModeColorToHsva = convertSelectedModeColorToHsva;
+function formatRgbaString(hsvaResult) {
+    const { r, g, b, a } = hsvaResult;
+    const roundedA = Math.round(a * 100) / 100;
+    return `rgba(${r},${g},${b},${roundedA})`;
+}
+const getTextValueByMode = (hsva, mode, alpha) => {
+    switch (mode) {
+        case types_1.Modes.Rgb: {
+            return alpha ? formatRgbaString((0, react_color_1.hsvaToRgba)(hsva)) : (0, react_color_1.hsvaToRgbString)(hsva);
+        }
+        case types_1.Modes.Hex: {
+            const hexValue = alpha ? (0, react_color_1.hsvaToHexa)(hsva) : (0, react_color_1.hsvaToHex)(hsva);
+            return hexValue;
+        }
+    }
+};
+exports.getTextValueByMode = getTextValueByMode;
+//# sourceMappingURL=utils.js.map

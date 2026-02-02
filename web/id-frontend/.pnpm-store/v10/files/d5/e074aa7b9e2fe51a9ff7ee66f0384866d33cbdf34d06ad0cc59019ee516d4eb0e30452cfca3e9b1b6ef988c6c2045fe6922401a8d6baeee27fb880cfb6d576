@@ -1,0 +1,40 @@
+import type { ModalProps } from "../../Modal/index.js";
+import type { DrawerPlacement, OnResizeHandler } from "../hooks/useResizeHandlers.js";
+import "./Drawer.css";
+export interface DrawerProps extends Omit<ModalProps, 'disableHeightTransition' | 'onClose' | 'onEscapeKeyDown' | 'onEnterKeyDown' | 'onOutsideClick' | 'contentOverflow'> {
+    /**
+     * Specifies the side from which the drawer should slide in, `left` by default.
+     * @default left
+     */
+    placement?: DrawerPlacement;
+    /**
+     * Enables resizing of the drawer via pointer.
+     * @default false
+     */
+    resizable?: boolean;
+    /**
+     * Width of the drawer in pixels.
+     */
+    size?: number;
+    /**
+     * Min width of the drawer in pixels.
+     */
+    minSize?: number;
+    /**
+     * Max width of the drawer in pixels.
+     */
+    maxSize?: number;
+    /**
+     * Callback called at the start of resizing.
+     */
+    onResizeStart?: OnResizeHandler;
+    /**
+     * Callback called when the drawer is being resized.
+     */
+    onResize?: OnResizeHandler;
+    /**
+     * Callback called at the end of resizing.
+     */
+    onResizeEnd?: OnResizeHandler;
+}
+export declare const Drawer: ({ open, onOpenChange, placement, children, contentClassName, resizable, size, minSize, maxSize, onResizeStart, onResizeEnd, onResize, className, style, qa, disableEscapeKeyDown, disableOutsideClick, initialFocus, returnFocus, disableBodyScrollLock, disableVisuallyHiddenDismiss, onTransitionIn, onTransitionInComplete, onTransitionOut, onTransitionOutComplete, floatingRef, disablePortal, keepMounted, container, ...restProps }: DrawerProps) => import("react/jsx-runtime").JSX.Element;

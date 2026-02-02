@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "sourcecraft": {
+      "type": "streamable-http",
+      "url": "https://api.sourcecraft.tech/mcp",
+      "useSourceCraftToken": true
+    }
+  }
+}

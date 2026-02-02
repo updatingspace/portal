@@ -1,0 +1,38 @@
+{
+  "name": "@bem-react/classname",
+  "version": "1.7.0",
+  "description": "BEM React ClassName",
+  "homepage": "https://github.com/bem/bem-react/tree/master/packages/classname",
+  "repository": "https://github.com/bem/bem-react",
+  "keywords": [
+    "bem",
+    "naming",
+    "classes",
+    "notation",
+    "core"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MPL-2.0",
+  "scripts": {
+    "prepublishOnly": "npm run build",
+    "build": "node ../../scripts/rollup/build.js",
+    "unit": "../../node_modules/.bin/jest --config ../../.config/jest/jest.config.js"
+  },
+  "files": [
+    "build",
+    "classname.d.ts"
+  ],
+  "main": "./build/classname.cjs",
+  "module": "./build/classname.mjs",
+  "types": "./classname.d.ts",
+  "exports": {
+    ".": {
+      "types": "./classname.d.ts",
+      "import": "./build/classname.mjs",
+      "require": "./build/classname.cjs"
+    }
+  },
+  "gitHead": "2794188cf2a9b30467af1b606286ec65d1fde097"
+}

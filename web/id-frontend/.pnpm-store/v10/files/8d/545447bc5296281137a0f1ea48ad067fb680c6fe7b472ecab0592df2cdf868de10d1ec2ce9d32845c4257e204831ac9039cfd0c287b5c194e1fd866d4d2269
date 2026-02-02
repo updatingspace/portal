@@ -1,0 +1,79 @@
+'use client';
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import * as React from 'react';
+import { useUniqId } from "../../../hooks/index.js";
+import { Disclosure } from "../../Disclosure/index.js";
+import { DefaultDisclosureSummary } from "../../Disclosure/DisclosureSummary/DisclosureSummary.js";
+import { useAccordion } from "../AccordionContext.js";
+import { AccordionSummaryContent, isAccordionSummaryComponent, } from "../AccordionSummary/AccordionSummary.js";
+import { accordionDetailsBlock, accordionItemBlock, accordionSummaryTriggerBlock, } from "../constants.js";
+import "./AccordionItem.css";
+export const AccordionItem = React.forwardRef(function AccordionItem(props, _ref) {
+    const { children, expanded, defaultExpanded, disabled, keepMounted, value, summary, onUpdate, qa, } = props;
+    const attributes = useAccordion();
+    const { id, isExpanded, handleUpdate } = useAccordionItemState({
+        expanded,
+        defaultExpanded,
+        value,
+        onUpdate,
+    });
+    const [preparedSummary, details] = React.useMemo(() => {
+        return prepareChildren(children, qa);
+    }, [children, qa]);
+    return (_jsxs(Disclosure, { arrowPosition: attributes?.arrowPosition, keepMounted: keepMounted, onUpdate: handleUpdate, expanded: defaultExpanded ? undefined : isExpanded, defaultExpanded: defaultExpanded, summary: summary, disabled: disabled, qa: qa, className: accordionItemBlock({
+            size: attributes?.size,
+            view: attributes?.view,
+            disabled,
+        }), children: [preparedSummary, _jsx(Disclosure.Details, { className: accordionDetailsBlock, children: details })] }, value ?? id));
+});
+function useAccordionItemState({ expanded, defaultExpanded, value, onUpdate, }) {
+    const id = useUniqId();
+    const { items, updateItems } = useAccordion();
+    const isControlledItem = expanded !== undefined;
+    const hasDefaultState = defaultExpanded !== undefined;
+    const isExpanded = React.useMemo(() => {
+        if (isControlledItem) {
+            return expanded;
+        }
+        if (hasDefaultState) {
+            return false;
+        }
+        if (Array.isArray(items)) {
+            return items.includes(value ?? id);
+        }
+        return items === (value ?? id);
+    }, [isControlledItem, expanded, hasDefaultState, items, value, id]);
+    const handleUpdate = React.useCallback((next) => {
+        onUpdate?.(next);
+        if (!isControlledItem && !hasDefaultState) {
+            updateItems(value ?? id);
+        }
+    }, [onUpdate, isControlledItem, hasDefaultState, updateItems, value, id]);
+    return { id, isExpanded, handleUpdate };
+}
+function prepareChildren(children, qa) {
+    const items = React.Children.toArray(children);
+    let accordionSummaryElement;
+    let details;
+    const content = [];
+    for (const item of items) {
+        const isAccordionSummary = isAccordionSummaryComponent(item);
+        if (isAccordionSummary) {
+            if (accordionSummaryElement) {
+                throw new Error('Only one <Accordion.Summary> component is allowed');
+            }
+            accordionSummaryElement = item;
+            continue;
+        }
+        content.push(item);
+    }
+    if (content.length > 0) {
+        details = _jsx(React.Fragment, { children: content });
+    }
+    const summaryQa = qa ? `${qa}-summary` : undefined;
+    const summaryChildren = accordionSummaryElement?.props?.children ??
+        ((props) => (_jsx(DefaultDisclosureSummary, { ...props, qa: summaryQa, className: accordionSummaryTriggerBlock })));
+    const summary = (_jsx(Disclosure.Summary, { qa: accordionSummaryElement?.props?.qa ?? summaryQa, children: (disclosureProps, defaultSummary) => (_jsx(AccordionSummaryContent, { disclosureProps: disclosureProps, defaultSummary: defaultSummary, children: summaryChildren })) }));
+    return [summary, details];
+}
+//# sourceMappingURL=AccordionItem.js.map

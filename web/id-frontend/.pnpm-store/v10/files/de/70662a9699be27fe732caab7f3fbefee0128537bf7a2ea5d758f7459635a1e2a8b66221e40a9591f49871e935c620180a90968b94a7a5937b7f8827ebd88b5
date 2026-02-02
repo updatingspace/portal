@@ -1,0 +1,12 @@
+import * as React from 'react';
+import type { HsvaColor } from '@uiw/react-color';
+type ColorDisplayProps = {
+    hsva: HsvaColor;
+    withAlpha: boolean;
+    size?: 's' | 'm' | 'l' | 'xl';
+    compact?: boolean;
+    onClick: () => void;
+    onColorChange?: (color: HsvaColor) => void;
+};
+export declare const ColorDisplay: React.ForwardRefExoticComponent<ColorDisplayProps & React.RefAttributes<HTMLDivElement>>;
+export {};

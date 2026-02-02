@@ -1,0 +1,29 @@
+[project]
+name = "voting"
+version = "0.1.0"
+description = "Voting Service"
+requires-python = ">=3.10"
+dependencies = [
+    "django>=5.2",
+    "django-ninja>=1.0",
+    "django-cors-headers>=4.0",
+    "httpx",
+    "psycopg[binary]",
+    "dj-database-url",
+    "gunicorn",
+    "prometheus_client",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app", "src/voting", "src/nominations", "src/votings", "src/tenant_voting", "src/core"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "app.settings"
+pythonpath = ["src"]
+testpaths = ["src"]
+python_files = ["test_*.py", "*_test.py"]
+

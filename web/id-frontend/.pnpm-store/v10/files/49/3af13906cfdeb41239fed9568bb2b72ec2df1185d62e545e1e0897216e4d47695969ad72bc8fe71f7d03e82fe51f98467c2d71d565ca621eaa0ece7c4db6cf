@@ -1,0 +1,6 @@
+.g-dialog-btn-close {
+  position: absolute;
+  inset-block-start: 14px;
+  inset-inline-end: 14px;
+  z-index: 1;
+}

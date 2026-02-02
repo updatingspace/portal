@@ -1,0 +1,11 @@
+import { jsx as _jsx } from "react/jsx-runtime";
+import * as React from 'react';
+import { block } from "../utils/cn.js";
+import { filterDOMProps } from "../utils/filterDOMProps.js";
+import "./Divider.css";
+const b = block('divider');
+export const Divider = React.forwardRef(function Divider(props, ref) {
+    const { orientation = 'horizontal', className, style, qa, children, align = 'start', ...restProps } = props;
+    return (_jsx("div", { ...filterDOMProps(restProps, { labelable: true }), className: b({ orientation, align }, className), ref: ref, style: style, "data-qa": qa, role: "separator", "aria-orientation": orientation === 'vertical' ? 'vertical' : undefined, children: children }));
+});
+//# sourceMappingURL=Divider.js.map

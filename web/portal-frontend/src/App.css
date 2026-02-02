@@ -1,0 +1,72 @@
+:root {
+  --gn-aside-header-item-collapsed-radius: 10px;
+  --gn-aside-header-item-expanded-radius: 10px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: initial;
+}
+
+.app-aside-footer {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.app-aside-footer--compact {
+  padding: 8px 0;
+  justify-content: center;
+}
+
+.app-user-switcher {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+
+  cursor: pointer;
+  min-width: 0;
+}
+
+/* Compact: “квадратик” и центр, без текста */
+.app-user-switcher--compact {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+
+  grid-template-columns: 1fr;
+  justify-items: center;
+  column-gap: 0;
+}
+
+.app-user-meta {
+  min-width: 0;
+  display: grid;
+  row-gap: 2px;
+}
+
+.app-user-name,
+.app-user-sub {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-user-sub {
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.app-user-switcher--compact .app-user-meta {
+  display: none;
+}

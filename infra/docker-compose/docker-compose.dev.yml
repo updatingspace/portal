@@ -1,0 +1,330 @@
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  db_id:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: id_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_id:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  db_access:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: access_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_access:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  db_portal:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: portal_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_portal:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+
+  db_voting:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: voting_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_voting:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+
+  db_events:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: events_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_events:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+
+  db_activity:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: activity_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_activity:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+
+  db_bff:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: bff_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_bff:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  updspaceid:
+    build:
+      context: ../../services/id
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8001 --reload
+    volumes:
+      - ../../services/id/src:/app/src
+    ports:
+      - "8001:8001"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-id-secret
+      - DATABASE_URL=postgres://user:pass@db_id:5432/id_db
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_ALLOWED_HOSTS=*
+      - SESSION_COOKIE_SECURE=false
+      - CSRF_COOKIE_SECURE=false
+      # CORS for portal integration
+      - CORS_ALLOWED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://aef.localhost,http://localhost:5173
+      - CSRF_TRUSTED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://aef.localhost,http://localhost:5173
+      # Local SSO dev mode
+      - DEV_AUTH_MODE=true
+      - DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001
+      - DEFAULT_TENANT_SLUG=aef
+      # Internal trust (BFF -> services)
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - OIDC_ISSUER=http://id.localhost
+      - OIDC_PUBLIC_BASE_URL=http://id.localhost
+      - NINJA_SKIP_REGISTRY=1
+      - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+    depends_on:
+      - db_id
+      - redis
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.usid.rule=Host(`id.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/oauth`) || PathPrefix(`/accounts`) || PathPrefix(`/admin`) || PathPrefix(`/health`) || PathPrefix(`/.well-known`) || PathPrefix(`/static`) || PathPrefix(`/media`) || PathPrefix(`/avatars`))
+      - traefik.http.routers.usid.entrypoints=web
+      - traefik.http.routers.usid.priority=2
+      - traefik.http.services.usid.loadbalancer.server.port=8001
+
+  bff:
+    build:
+      context: ../../services/bff
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8080 --reload --workers 4 --timeout 120
+    volumes:
+      - ../../services/bff/src:/app/src
+    ports:
+      - "8080:8080"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=bff-secret
+      - DATABASE_URL=postgres://user:pass@db_bff:5432/bff_db
+      - REDIS_URL=redis://redis:6379/1
+      - DJANGO_ALLOWED_HOSTS=*
+      # Upstreams
+      - BFF_UPSTREAM_ID_URL=http://updspaceid:8001/api/v1
+      - ID_BASE_URL=http://updspaceid:8001/api/v1
+      - ACCESS_BASE_URL=http://access:8002/api/v1
+      - BFF_UPSTREAM_PORTAL_URL=http://portal:8003/api/v1
+      - BFF_UPSTREAM_VOTING_URL=http://voting:8004/api/v1
+      - BFF_UPSTREAM_EVENTS_URL=http://events:8005/api/v1
+      - BFF_UPSTREAM_FEED_URL=http://activity:8006/api/v1
+      # Increase proxy timeout to avoid 502 on slower upstreams (activity feed)
+      - BFF_PROXY_TIMEOUT_SECONDS=30
+      # Local domains
+      - BFF_TENANT_HOST_SUFFIX=localhost
+      - BFF_DEV_AUTO_TENANT=true
+      - BFF_COOKIE_DOMAIN=.aef.localhost
+      # Internal trust
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      # Public IdP base URL used for OIDC login redirects
+      - ID_PUBLIC_BASE_URL=http://id.localhost
+      # OIDC client credentials (run: python manage.py setup_portal_client --show-secret in updspaceid)
+      - BFF_OIDC_CLIENT_ID=${BFF_OIDC_CLIENT_ID:-portal-dev-client}
+      - BFF_OIDC_CLIENT_SECRET=${BFF_OIDC_CLIENT_SECRET:-portal-dev-secret}
+    depends_on:
+      - db_bff
+      - redis
+      - updspaceid
+      - access
+      - portal
+      - voting
+      - events
+      - activity
+    labels:
+      - traefik.enable=true
+      # Serve API from both api.<tenant>.localhost and <tenant>.localhost for same-origin dev
+      - traefik.http.routers.bff.rule=(Host(`api.aef.localhost`) || Host(`aef.localhost`)) && PathPrefix(`/api/v1`)
+      - traefik.http.routers.bff.entrypoints=web
+      - traefik.http.services.bff.loadbalancer.server.port=8080
+
+  access:
+    build:
+      context: ../../services/access
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8002 --reload
+    volumes:
+      - ../../services/access/src:/app/src
+    ports:
+      - "8002:8002"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-access-secret
+      - DATABASE_URL=postgres://user:pass@db_access:5432/access_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+    depends_on:
+      - db_access
+
+  portal:
+    build:
+      context: ../../services/portal
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8003 --reload
+    volumes:
+      - ../../services/portal/src:/app/src
+    ports:
+      - "8003:8003"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-portal-secret
+      - DATABASE_URL=postgres://user:pass@db_portal:5432/portal_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+    depends_on:
+      - db_portal
+
+  voting:
+    build:
+      context: ../../services/voting
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8004 --reload
+    volumes:
+      - ../../services/voting/src:/app/src
+    ports:
+      - "8004:8004"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-voting-secret
+      - DATABASE_URL=postgres://user:pass@db_voting:5432/voting_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - ACCESS_BASE_URL=http://access:8002/api/v1
+    depends_on:
+      - db_voting
+
+  events:
+    build:
+      context: ../../services/events
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8005 --reload
+    volumes:
+      - ../../services/events/src:/app/src
+    ports:
+      - "8005:8005"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-events-secret
+      - DATABASE_URL=postgres://user:pass@db_events:5432/events_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - ACCESS_BASE_URL=http://access:8002/api/v1
+    depends_on:
+      - db_events
+
+  activity:
+    build:
+      context: ../../services/activity
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8006 --reload
+    volumes:
+      - ../../services/activity/src:/app/src
+    ports:
+      - "8006:8006"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-activity-secret
+      - DATABASE_URL=postgres://user:pass@db_activity:5432/activity_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+    depends_on:
+      - db_activity
+
+  id-frontend:
+    build:
+      context: ../../web/id-frontend
+      dockerfile: Dockerfile
+      target: dev
+    volumes:
+      - ../../web/id-frontend:/app
+      - id_frontend_node_modules:/app/node_modules
+    ports:
+      - "5175:5175"
+    environment:
+      - VITE_ID_API_BASE_URL=/api/v1
+      - VITE_ID_OIDC_BASE_URL=/oauth
+    command: >
+      sh -c "[ -d ./node_modules/.pnpm ] || pnpm install && pnpm dev --host 0.0.0.0 --port 5175"
+    depends_on:
+      - updspaceid
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.id-frontend.rule=Host(`id.localhost`)
+      - traefik.http.routers.id-frontend.entrypoints=web
+      - traefik.http.routers.id-frontend.priority=1
+      - traefik.http.services.id-frontend.loadbalancer.server.port=5175
+
+  frontend:
+    build:
+      context: ../../web/portal-frontend
+      dockerfile: Dockerfile
+      target: dev
+    volumes:
+      - ../../web/portal-frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      # Browser calls /api/v1/* (same-origin with Vite); Vite proxies to BFF.
+      - VITE_DEV_PROXY_TARGET=http://bff:8080
+      # Back-compat: some code paths may still read these.
+      - VITE_BFF_BASE_URL=/api/v1
+      - VITE_API_BASE_URL=/api/v1
+    depends_on:
+      - bff
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`aef.localhost`)
+      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.services.frontend.loadbalancer.server.port=5173
+
+volumes:
+  pg_data_id:
+  pg_data_bff:
+  pg_data_access:
+  pg_data_portal:
+  pg_data_voting:
+  pg_data_events:
+  pg_data_activity:
+  id_frontend_node_modules:

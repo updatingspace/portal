@@ -1,0 +1,5 @@
+import type { HsvaColor, RgbaColor } from '@uiw/react-color';
+import { Modes } from "./types.js";
+export declare const convertSelectedModeColorToHsva: (value: string, mode: Modes, alpha: boolean) => HsvaColor;
+export declare function formatRgbaString(hsvaResult: RgbaColor): string;
+export declare const getTextValueByMode: (hsva: HsvaColor, mode: Modes, alpha: boolean) => string;

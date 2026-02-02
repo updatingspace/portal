@@ -1,0 +1,23 @@
+.g-dialog-footer {
+  padding: 28px var(--_--side-padding);
+  display: flex;
+  align-items: center;
+}
+.g-dialog-footer__bts-wrapper {
+  display: flex;
+  gap: 10px;
+}
+.g-dialog-footer__children {
+  flex-grow: 1;
+  height: 100%;
+  align-items: center;
+  display: flex;
+}
+.g-dialog-footer__button {
+  min-width: 128px;
+  position: relative;
+}
+.g-dialog-footer__error {
+  padding: 10px;
+  color: var(--g-color-text-danger);
+}

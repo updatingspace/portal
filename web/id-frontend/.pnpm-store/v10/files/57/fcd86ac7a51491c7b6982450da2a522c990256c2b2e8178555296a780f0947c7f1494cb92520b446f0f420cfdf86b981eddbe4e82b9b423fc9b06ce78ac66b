@@ -1,0 +1,9 @@
+import * as React from 'react';
+/**
+ * Badge for displaying count of remaining avatars
+ */
+export declare const AvatarStackMore: React.ForwardRefExoticComponent<Pick<React.HTMLProps<HTMLDivElement>, "className" | "aria-label"> & {
+    count: number;
+    size?: import("../index.js").AvatarSize;
+    borderColor?: string;
+} & React.RefAttributes<HTMLDivElement>>;
