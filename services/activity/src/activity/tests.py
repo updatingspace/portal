@@ -393,6 +393,158 @@ class FeedLastSeenTests(TestCase):
         self.assertEqual(count, 2)
 
 
+@override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
+class FeedLongPollTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_long_poll_returns_immediately_when_changed(self, mock_has_permission):
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        FeedLastSeen.objects.create(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            last_seen_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+
+        ActivityEvent.objects.create(
+            tenant_id=tenant_id,
+            type="vote.cast",
+            occurred_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            title="New Event",
+            scope_type="tenant",
+            scope_id=str(tenant_id),
+            source_ref="test:1",
+        )
+
+        resp = self.client.get(
+            "/api/v1/feed/unread-count/long-poll?last=0&timeout=5",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-lp-1",
+                user_id=user_id,
+                method="GET",
+                path="/api/v1/feed/unread-count/long-poll",
+            ),
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertTrue(payload["changed"])
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
+class NewsCreateTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_news_create_basic(self, mock_has_permission):
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        body = json.dumps(
+            {
+                "title": "Patch notes",
+                "body": "Мы обновили сервер.",
+                "tags": ["patch"],
+                "visibility": "public",
+                "scope_type": "TENANT",
+                "scope_id": str(tenant_id),
+                "media": [],
+            }
+        ).encode("utf-8")
+
+        resp = self.client.post(
+            "/api/v1/news",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-1",
+                user_id=user_id,
+                method="POST",
+                path="/api/v1/news",
+                body=body,
+            ),
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["type"], "news.posted")
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_news_reactions_and_comments(self, mock_has_permission):
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        body = json.dumps(
+            {
+                "title": "Patch notes",
+                "body": "Мы обновили сервер.",
+                "tags": ["patch"],
+                "visibility": "public",
+                "scope_type": "TENANT",
+                "scope_id": str(tenant_id),
+                "media": [],
+            }
+        ).encode("utf-8")
+
+        create_resp = self.client.post(
+            "/api/v1/news",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-2",
+                user_id=user_id,
+                method="POST",
+                path="/api/v1/news",
+                body=body,
+            ),
+        )
+        self.assertEqual(create_resp.status_code, 200)
+        news_id = create_resp.json()["payload_json"]["news_id"]
+
+        react_body = json.dumps({"emoji": "🔥", "action": "add"}).encode("utf-8")
+        react_resp = self.client.post(
+            f"/api/v1/news/{news_id}/reactions",
+            data=react_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-react",
+                user_id=user_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/reactions",
+                body=react_body,
+            ),
+        )
+        self.assertEqual(react_resp.status_code, 200)
+
+        comment_body = json.dumps({"body": "Круто!"}).encode("utf-8")
+        comment_resp = self.client.post(
+            f"/api/v1/news/{news_id}/comments",
+            data=comment_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment",
+                user_id=user_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/comments",
+                body=comment_body,
+            ),
+        )
+        self.assertEqual(comment_resp.status_code, 200)
+
+
 class FeedFilteringTests(TestCase):
     """Tests for feed filtering and subscription matching."""
 

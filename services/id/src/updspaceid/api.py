@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from urllib.parse import urlparse, urlunparse
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import QuerySet
 from django.utils import timezone
 from ninja import NinjaAPI, Router
@@ -294,9 +296,49 @@ def auth_logout(request):
 @_with_error_envelope
 def me(request):
     ctx = require_context(request)
-    user = _require_session_user(request)
+    if _has_internal_signature(request):
+        user = _require_internal_user(request)
+    else:
+        user = _require_session_user(request)
     tenant = ensure_tenant(ctx.tenant_id, ctx.tenant_slug)
     memberships = TenantMembership.objects.filter(user=user, tenant=tenant)
+    account_profile = None
+    try:
+        from django.contrib.auth import get_user_model
+        from accounts.services.auth import AuthService
+
+        account_user = get_user_model().objects.filter(email=user.email).first()
+        if account_user:
+            account_profile = AuthService.profile(account_user, request=request)
+    except Exception:
+        account_profile = None
+    avatar_url = None
+    if account_profile:
+        avatar_url = getattr(account_profile, "avatar_url", None)
+        if avatar_url:
+            public_base = str(
+                getattr(settings, "OIDC_PUBLIC_BASE_URL", "")
+                or getattr(settings, "ID_ACTIVATION_BASE_URL", "")
+                or ""
+            ).rstrip("/")
+            if public_base:
+                try:
+                    parsed_url = urlparse(avatar_url)
+                    parsed_base = urlparse(public_base)
+                    if parsed_base.scheme and parsed_base.netloc:
+                        if parsed_url.netloc != parsed_base.netloc:
+                            avatar_url = urlunparse(
+                                (
+                                    parsed_base.scheme,
+                                    parsed_base.netloc,
+                                    parsed_url.path,
+                                    parsed_url.params,
+                                    parsed_url.query,
+                                    parsed_url.fragment,
+                                )
+                            )
+                except Exception:
+                    pass
     return {
         "user": {
             "user_id": str(user.user_id),
@@ -307,6 +349,16 @@ def me(request):
             "status": user.status,
             "system_admin": user.system_admin,
             "created_at": user.created_at,
+            "first_name": getattr(account_profile, "first_name", None),
+            "last_name": getattr(account_profile, "last_name", None),
+            "phone_number": getattr(account_profile, "phone_number", None),
+            "phone_verified": getattr(account_profile, "phone_verified", None),
+            "birth_date": getattr(account_profile, "birth_date", None),
+            "language": getattr(account_profile, "language", None),
+            "timezone": getattr(account_profile, "timezone", None),
+            "avatar_url": avatar_url,
+            "avatar_source": getattr(account_profile, "avatar_source", None),
+            "avatar_gravatar_enabled": getattr(account_profile, "avatar_gravatar_enabled", None),
         },
         "memberships": [
             {

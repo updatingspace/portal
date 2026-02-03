@@ -145,51 +145,184 @@ if (data1.has_more) {
 
 ---
 
-### GET /feed/sse
+### GET /feed/unread-count/long-poll
 
-Server-Sent Events для real-time обновлений непрочитанных.
+Long-poll для real-time обновлений непрочитанных.
 
-**Permissions**: `activity.admin.sync` (только Platform Admin)
+> В текущем UI long-poll не используется. Предпочитаем polling через `GET /feed/unread-count`.
 
-**Response**: `text/event-stream`
+**Permissions**: `activity.feed.read`
 
+**Query**:
+
+- `last` — последний известный счётчик (опционально)
+- `timeout` — ожидание в секундах (1..30, по умолчанию 25)
+
+**Response** `200 OK`:
+
+```json
+{
+  "count": 5,
+  "changed": true,
+  "waited_ms": 1200,
+  "server_time": "2026-01-15T12:00:00Z"
+}
 ```
-event: unread
-data: {"count": 5, "timestamp": "2026-01-15T12:00:00Z"}
-
-: heartbeat
-
-event: close
-data: {"reason": "max_duration", "message": "Please reconnect"}
-```
-
-**События**:
-
-| Event | Description |
-|-------|-------------|
-| `unread` | Обновление счетчика непрочитанных |
-| `heartbeat` | Keep-alive (каждые 30 сек) |
-| `close` | Закрытие соединения (переподключитесь) |
-| `error` | Ошибка |
 
 **Пример клиента**:
 
 ```javascript
-const eventSource = new EventSource('/api/activity/feed/sse');
+let last = undefined;
 
-eventSource.addEventListener('unread', (e) => {
-  const data = JSON.parse(e.data);
-  updateBadge(data.count);
-});
+async function pollUnread() {
+  const query = new URLSearchParams();
+  if (typeof last === 'number') query.set('last', String(last));
+  query.set('timeout', '25');
 
-eventSource.addEventListener('close', (e) => {
-  eventSource.close();
-  // Переподключение через 1 сек
-  setTimeout(() => connectSSE(), 1000);
-});
+  const resp = await fetch(`/api/activity/feed/unread-count/long-poll?${query.toString()}`);
+  const data = await resp.json();
+
+  last = data.count;
+  if (data.changed) {
+    updateBadge(data.count);
+  }
+
+  pollUnread();
+}
+
+pollUnread();
 ```
 
 ---
+
+## News Endpoints
+
+### POST /news/media/upload-url
+
+Получить pre-signed URL для загрузки изображения (S3, private bucket).
+
+**Permissions**: `activity.news.create`
+
+**Request**:
+
+```json
+{
+  "filename": "screenshot.png",
+  "content_type": "image/png",
+  "size_bytes": 123456
+}
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "key": "news/<tenant>/<uuid>-screenshot.png",
+  "upload_url": "https://s3...signed",
+  "upload_headers": {
+    "Content-Type": "image/png"
+  },
+  "expires_in": 900
+}
+```
+
+---
+
+### POST /news
+
+Создание новости, которая попадает в Activity Feed как `news.posted`.
+
+**Permissions**: `activity.news.create`
+
+**Request**:
+
+```json
+{
+  "title": "Обновление сервера",
+  "body": "Мы выкатили патч...",
+  "tags": ["patch", "servers"],
+  "visibility": "public",
+  "scope_type": "TENANT",
+  "scope_id": "tenant_uuid",
+  "media": [
+    {
+      "type": "image",
+      "key": "news/<tenant>/<uuid>-screenshot.png",
+      "content_type": "image/png",
+      "size_bytes": 123456,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "type": "youtube",
+      "url": "https://youtu.be/abc123",
+      "video_id": "abc123",
+      "title": "Trailer"
+    }
+  ]
+}
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": 100,
+  "type": "news.posted",
+  "title": "Обновление сервера",
+  "payload_json": {
+    "title": "Обновление сервера",
+    "body": "Мы выкатили патч...",
+    "tags": ["patch", "servers"],
+    "media": [
+      {
+        "type": "image",
+        "key": "news/<tenant>/<uuid>-screenshot.png",
+        "url": "https://s3...signed"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### PATCH /news/{news_id}
+
+Обновить новость.
+
+**Permissions**: `activity.news.manage` (или автор новости)
+
+**Request**:
+
+```json
+{
+  "title": "Обновление сервера",
+  "body": "Мы обновили сервер.",
+  "tags": ["patch"],
+  "visibility": "public",
+  "media": [
+    {
+      "type": "image",
+      "key": "news/<tenant>/<uuid>-screenshot.png",
+      "content_type": "image/png",
+      "size_bytes": 123456
+    }
+  ]
+}
+```
+
+**Response** `200 OK`: `ActivityEventOut`
+
+---
+
+### DELETE /news/{news_id}
+
+Удалить новость.
+
+**Permissions**: `activity.news.manage` (или автор новости)
+
+**Response** `204 No Content`
 
 ## Games Endpoints
 
@@ -216,6 +349,80 @@ eventSource.addEventListener('close', (e) => {
 ```
 
 ---
+
+### POST /news/{news_id}/reactions
+
+Добавить/убрать реакцию (как в Telegram).
+
+**Permissions**: `activity.feed.read`
+
+**Request**:
+
+```json
+{
+  "emoji": "🔥",
+  "action": "add"
+}
+```
+
+**Response** `200 OK`:
+
+```json
+[
+  { "emoji": "🔥", "count": 3 },
+  { "emoji": "👍", "count": 1 }
+]
+```
+
+---
+
+### GET /news/{news_id}/comments
+
+Список комментариев.
+
+**Permissions**: `activity.feed.read`
+
+**Query**:
+
+- `limit` (default 50, max 100)
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": 1,
+    "user_id": "uuid",
+    "body": "Круто!",
+    "created_at": "2026-02-03T12:00:00Z"
+  }
+]
+```
+
+---
+
+### POST /news/{news_id}/comments
+
+Добавить комментарий.
+
+**Permissions**: `activity.feed.read`
+
+**Request**:
+
+```json
+{ "body": "Круто!" }
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": 1,
+  "user_id": "uuid",
+  "body": "Круто!",
+  "created_at": "2026-02-03T12:00:00Z"
+}
+```
 
 ### POST /games
 
@@ -306,6 +513,32 @@ eventSource.addEventListener('close', (e) => {
 ---
 
 ## Subscriptions Endpoints
+
+### GET /subscriptions
+
+Получить подписки пользователя на события.
+
+**Permissions**: `activity.feed.read`
+
+**Response** `200 OK`:
+
+```json
+{
+  "items": [
+    {
+      "id": 456,
+      "tenant_id": "uuid",
+      "user_id": "uuid",
+      "rules_json": {
+        "scopes": [
+          {"scope_type": "tenant", "scope_id": "tenant-uuid"},
+          {"scope_type": "COMMUNITY", "scope_id": "community-uuid"}
+        ]
+      }
+    }
+  ]
+}
+```
 
 ### POST /subscriptions
 
@@ -553,5 +786,7 @@ Prometheus-style метрики (JSON).
 | `activity.feed.read` | Чтение ленты активности |
 | `activity.sources.link` | Привязка внешних аккаунтов |
 | `activity.sources.manage` | Управление источниками |
+| `activity.news.create` | Создание новостей |
+| `activity.news.manage` | Управление новостями |
 | `activity.admin.sync` | Запуск синхронизации |
 | `activity.admin.games` | Управление каталогом игр |

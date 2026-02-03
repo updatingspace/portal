@@ -41,6 +41,23 @@ ACCESS_SERVICE_URL = os.getenv("ACCESS_SERVICE_URL", "http://access:8002")
 STEAM_API_KEY = os.getenv("STEAM_API_KEY", "")
 
 # ============================================================================
+# News Media (S3) Configuration
+# ============================================================================
+
+NEWS_MEDIA_BUCKET = os.getenv("NEWS_MEDIA_BUCKET", "")
+NEWS_MEDIA_PREFIX = os.getenv("NEWS_MEDIA_PREFIX", "news")
+NEWS_MEDIA_UPLOAD_TTL_SECONDS = int(os.getenv("NEWS_MEDIA_UPLOAD_TTL_SECONDS", "900"))
+NEWS_MEDIA_URL_TTL_SECONDS = int(os.getenv("NEWS_MEDIA_URL_TTL_SECONDS", "604800"))
+NEWS_MEDIA_MAX_IMAGE_BYTES = int(os.getenv("NEWS_MEDIA_MAX_IMAGE_BYTES", "10485760"))
+NEWS_MEDIA_MAX_ATTACHMENTS = int(os.getenv("NEWS_MEDIA_MAX_ATTACHMENTS", "8"))
+
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
+S3_REGION = os.getenv("S3_REGION", "")
+S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "")
+S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "")
+S3_FORCE_PATH_STYLE = os.getenv("S3_FORCE_PATH_STYLE", "0") in {"1", "true", "yes", "on"}
+
+# ============================================================================
 # Structured Logging Configuration
 # ============================================================================
 

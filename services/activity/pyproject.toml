@@ -10,6 +10,7 @@ dependencies = [
     "dj-database-url",
     "gunicorn",
     "httpx>=0.27",
+    "boto3>=1.34",
 ]
 
 [build-system]

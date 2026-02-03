@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from ninja import Schema
@@ -195,6 +195,12 @@ class SubscriptionOut(Schema):
     rules_json: dict[str, Any]
 
 
+class SubscriptionsOut(Schema):
+    """List of user subscriptions."""
+
+    items: list[SubscriptionOut]
+
+
 # ============================================================================
 # Activity Events & Feed
 # ============================================================================
@@ -207,6 +213,7 @@ class ActivityEventType(str, Enum):
     EVENT_CREATED = "event.created"
     EVENT_RSVP_CHANGED = "event.rsvp.changed"
     POST_CREATED = "post.created"
+    NEWS_POSTED = "news.posted"
     # Connector events (Phase 2)
     GAME_ACHIEVEMENT = "game.achievement"
     GAME_PLAYTIME = "game.playtime"
@@ -302,6 +309,15 @@ class UnreadCountOut(Schema):
     count: int
 
 
+class UnreadCountLongPollOut(Schema):
+    """Long-poll response for unread feed count."""
+
+    count: int
+    changed: bool
+    waited_ms: int
+    server_time: datetime
+
+
 class SSEEventOut(Schema):
     """SSE event data (for documentation)."""
 
@@ -310,6 +326,76 @@ class SSEEventOut(Schema):
     timestamp: datetime | None = None
     message: str | None = None
     reason: str | None = None
+
+
+# ============================================================================
+# News
+# ============================================================================
+
+
+class NewsMediaIn(Schema):
+    type: str  # "image" | "youtube"
+    key: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
+    caption: str | None = None
+    url: str | None = None
+    video_id: str | None = None
+    title: str | None = None
+
+
+class NewsCreateIn(Schema):
+    title: str | None = None
+    body: str
+    tags: list[str] = []
+    visibility: str
+    scope_type: str | None = None
+    scope_id: str | None = None
+    media: list[NewsMediaIn] = []
+
+
+class NewsUpdateIn(Schema):
+    title: str | None = None
+    body: str | None = None
+    tags: list[str] | None = None
+    visibility: str | None = None
+    media: list[NewsMediaIn] | None = None
+
+
+class NewsMediaUploadIn(Schema):
+    filename: str
+    content_type: str
+    size_bytes: int
+
+
+class NewsMediaUploadOut(Schema):
+    key: str
+    upload_url: str
+    upload_headers: dict[str, str]
+    expires_in: int
+
+
+class NewsReactionIn(Schema):
+    emoji: str
+    action: Literal["add", "remove"] = "add"
+
+
+class NewsReactionOut(Schema):
+    emoji: str
+    count: int
+
+
+class NewsCommentIn(Schema):
+    body: str
+
+
+class NewsCommentOut(Schema):
+    id: int
+    user_id: UUID
+    body: str
+    created_at: datetime
 
 
 # ============================================================================

@@ -56,6 +56,7 @@ const sidebars: SidebarsConfig = {
             'services/portal/overview',
             'services/portal/models',
             'services/portal/tenant-admin',
+            'services/portal/guilds',
           ],
         },
         {

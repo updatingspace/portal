@@ -45,7 +45,7 @@ description: Планы развития Activity сервиса
 
 - [x] Health checks (liveness/readiness/metrics)
 - [x] JSON structured logging
-- [x] SSE real-time endpoint (admin)
+- [x] Long-poll real-time endpoint
 - [x] i18n support (EN/RU)
 - [x] Redis-ready caching layer
 
@@ -143,7 +143,7 @@ class DiscordConnector:
 | Item | Description | Effort |
 |------|-------------|--------|
 | GraphQL API | Alternative to REST | L |
-| WebSocket | Alternative to SSE | M |
+| WebSocket | Alternative to long-poll | M |
 | gRPC | Internal service communication | L |
 
 ---
@@ -197,7 +197,7 @@ python manage.py migrate activity 0005_feed_aggregation
 - RBAC integration
 - Outbox pattern for reliable events
 - Steam connector (full implementation)
-- SSE real-time endpoint
+- Long-poll real-time endpoint
 - Health checks
 - JSON structured logging
 - i18n support (EN/RU)

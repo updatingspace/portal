@@ -44,6 +44,7 @@ def proxy_request(
     context_headers: dict[str, str],
     request_id: str,
     stream: bool = False,
+    timeout: float | None = None,
 ) -> httpx.Response | tuple[httpx.Response, Callable[[], Iterable[bytes]], Callable[[], None]]:
     url = upstream_base_url.rstrip("/") + "/" + upstream_path.lstrip("/")
     if query_string:
@@ -91,7 +92,7 @@ def proxy_request(
 
         return resp, iterator, close
 
-    with get_httpx_client() as client:
+    with get_httpx_client(timeout=timeout) as client:
         resp = client.request(
             method=method,
             url=url,
@@ -102,4 +103,3 @@ def proxy_request(
         # to avoid issues with accessing response data after client closes
         resp.read()
         return resp
-

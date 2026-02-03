@@ -46,4 +46,6 @@ MVP_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec(key="activity.feed.read", description="Read activity feed", service="activity"),
     PermissionSpec(key="activity.sources.link", description="Link sources", service="activity"),
     PermissionSpec(key="activity.sources.manage", description="Manage sources", service="activity"),
+    PermissionSpec(key="activity.news.create", description="Create news posts", service="activity"),
+    PermissionSpec(key="activity.news.manage", description="Manage news posts", service="activity"),
 ]

@@ -62,7 +62,10 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
       ? (data.id_profile.user as Record<string, unknown>)
       : null;
 
-  const username = safeString(portalProfile?.username) ?? userId;
+  const username =
+    safeString(idProfileUser?.username) ??
+    safeString(portalProfile?.username) ??
+    userId;
   const language = safeString(portalProfile?.language) ?? safeString(portalProfile?.lang) ?? safeString(portalProfile?.locale);
   const email = safeString(portalProfile?.email) ?? safeString(idProfileUser?.email);
   const avatarUrl =
@@ -70,7 +73,19 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     safeString(portalProfile?.avatarUrl) ??
     safeString(idProfileUser?.avatar_url) ??
     safeString(idProfileUser?.avatarUrl);
+  const firstName =
+    safeString(portalProfile?.first_name) ??
+    safeString(portalProfile?.firstName) ??
+    safeString(idProfileUser?.first_name) ??
+    safeString(idProfileUser?.firstName);
+  const lastName =
+    safeString(portalProfile?.last_name) ??
+    safeString(portalProfile?.lastName) ??
+    safeString(idProfileUser?.last_name) ??
+    safeString(idProfileUser?.lastName);
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const displayName =
+    (fullName.length ? fullName : null) ??
     safeString(portalProfile?.display_name) ??
     safeString(portalProfile?.displayName) ??
     safeString(idProfileUser?.display_name) ??

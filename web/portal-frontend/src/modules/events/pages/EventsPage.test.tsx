@@ -85,7 +85,7 @@ vi.mock('../../../features/rbac/can', () => ({
 }));
 
 describe('EventsPage', () => {
-  it('renders events overview with upcoming event', () => {
+  it('renders events list', () => {
     render(
       <MemoryRouter>
         <EventsPage />
@@ -93,7 +93,7 @@ describe('EventsPage', () => {
     );
 
     expect(screen.getByText('Мероприятия')).toBeInTheDocument();
-    expect(screen.getByText('Создать мероприятие')).toBeInTheDocument();
+    expect(screen.getByText('Создать')).toBeInTheDocument();
     expect(screen.getAllByText('Raid Night').length).toBeGreaterThan(0);
   });
 });

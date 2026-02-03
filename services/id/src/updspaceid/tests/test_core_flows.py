@@ -182,3 +182,65 @@ class UpdSpaceIdFlowsTests(TestCase):
         )
 
         self.assertEqual(resp.status_code, 200)
+
+    @override_settings(BFF_INTERNAL_HMAC_SECRET="test-hmac", GRAVATAR_AUTOLOAD_ENABLED=False)
+    def test_me_internal_includes_account_profile(self):
+        tenant = self.tenant
+        user = User.objects.create(
+            email="admin@example.com",
+            status=UserStatus.ACTIVE,
+            email_verified=True,
+            system_admin=True,
+        )
+        TenantMembership.objects.create(
+            user=user,
+            tenant=tenant,
+            status=MembershipStatus.ACTIVE,
+            base_role="admin",
+        )
+
+        from django.contrib.auth import get_user_model
+        from accounts.models import UserProfile
+
+        auth_user = get_user_model().objects.create_user(
+            username="admin",
+            email="admin@example.com",
+            password="test-pass",
+        )
+        UserProfile.objects.get_or_create(user=auth_user)
+
+        request_id = "req-me-1"
+        ts = str(int(time.time()))
+        path = "/api/v1/me"
+        body = b""
+        msg = "\n".join(
+            [
+                "GET",
+                path,
+                hashlib.sha256(body).hexdigest(),
+                request_id,
+                ts,
+            ]
+        ).encode("utf-8")
+        sig = hmac.new(
+            b"test-hmac",
+            msg,
+            digestmod=hashlib.sha256,
+        ).hexdigest()
+
+        resp = self.client.get(
+            "/api/v1/me",
+            HTTP_X_REQUEST_ID=request_id,
+            HTTP_X_TENANT_ID=str(tenant.id),
+            HTTP_X_TENANT_SLUG=tenant.slug,
+            HTTP_X_USER_ID=str(user.user_id),
+            HTTP_X_UPDSPACE_TIMESTAMP=ts,
+            HTTP_X_UPDSPACE_SIGNATURE=sig,
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        user_payload = payload["user"]
+        self.assertIn("avatar_url", user_payload)
+        self.assertIn("avatar_source", user_payload)
+        self.assertIn("avatar_gravatar_enabled", user_payload)

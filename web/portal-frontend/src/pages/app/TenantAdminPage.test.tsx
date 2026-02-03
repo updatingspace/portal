@@ -5,17 +5,23 @@ import { vi } from 'vitest';
 import { TenantAdminPage } from './TenantAdminPage';
 
 vi.mock('@gravity-ui/uikit', () => ({
-  Button: ({ loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
+  Avatar: (props: React.ComponentProps<'div'>) => <div {...props} />,
+  Button: ({ loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
+    <button {...props} />
+  ),
   Card: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
-  Icon: (props: React.ComponentProps<'span'>) => <span {...props} />,
+  Icon: () => <span />,
   Label: (props: React.ComponentProps<'span'>) => <span {...props} />,
   Loader: () => <div data-testid="loader" />,
   Select: ({ onUpdate, value, ...props }: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
     <div data-testid="select" {...props} />
   ),
-  TextInput: ({ onUpdate, ...props }: React.ComponentProps<'input'> & { onUpdate?: (value: string) => void }) => (
-    <input onChange={(event) => onUpdate?.(event.target.value)} {...props} />
-  ),
+  Switch: (props: React.ComponentProps<'div'>) => <div {...props} />,
+  Table: (props: React.ComponentProps<'div'>) => <div {...props} />,
+  TextInput: ({ onUpdate, ...props }: React.ComponentProps<'input'> & { onUpdate?: (value: string) => void }) => {
+    const { startContent, ...rest } = props as React.ComponentProps<'input'> & { startContent?: React.ReactNode };
+    return <input onChange={(event) => onUpdate?.(event.target.value)} {...rest} />;
+  },
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -87,8 +93,12 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
 
 vi.mock('../../modules/tenantAdmin/api', () => ({
   SCOPE_TYPES: ['GLOBAL', 'TENANT', 'COMMUNITY', 'TEAM', 'SERVICE'],
-  createTenantRole: vi.fn(() => Promise.resolve({ id: 2, tenant_id: 'tenant-123', service: 'portal', name: 'foo', permission_keys: [] })),
-  updateTenantRole: vi.fn(() => Promise.resolve({ id: 1, tenant_id: 'tenant-123', service: 'portal', name: 'tenant-admin', permission_keys: [] })),
+  createTenantRole: vi.fn(() =>
+    Promise.resolve({ id: 2, tenant_id: 'tenant-123', service: 'portal', name: 'foo', permission_keys: [] }),
+  ),
+  updateTenantRole: vi.fn(() =>
+    Promise.resolve({ id: 1, tenant_id: 'tenant-123', service: 'portal', name: 'tenant-admin', permission_keys: [] }),
+  ),
   deleteTenantRole: vi.fn(() => Promise.resolve({ ok: true })),
   createRoleBinding: vi.fn(() => Promise.resolve({})),
   deleteRoleBinding: vi.fn(() => Promise.resolve({ ok: true })),
@@ -101,9 +111,9 @@ describe('TenantAdminPage', () => {
 
   it('renders tenant admin UI', () => {
     render(<TenantAdminPage />);
-    expect(screen.getByText('Tenant Admin Center')).toBeInTheDocument();
-    expect(screen.getByText('Права, роли и аудит')).toBeInTheDocument();
-    expect(screen.getAllByText('Участники').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Test User').length).toBeGreaterThan(0);
+    expect(screen.getByText('Tenant Admin')).toBeInTheDocument();
+    expect(screen.getByText('Роли, доступы и аудит')).toBeInTheDocument();
+    expect(screen.getAllByText('Роли').length).toBeGreaterThan(0);
+    expect(screen.getByText('Каталог ролей')).toBeInTheDocument();
   });
 });

@@ -9,14 +9,13 @@ import {
     Card,
     Text,
     Icon,
-    Label,
     Select,
     TextInput,
 } from '@gravity-ui/uikit';
-import { Plus as PlusIcon, Calendar as CalendarIcon, Clock, Xmark } from '@gravity-ui/icons';
+import { Plus as PlusIcon, Calendar as CalendarIcon, Clock } from '@gravity-ui/icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useEventsList } from '../../../features/events';
-import { EventsTimeline, EventCard } from '../../../features/events/components';
+import { EventsTimeline } from '../../../features/events/components';
 import { can } from '../../../features/rbac/can';
 import type { EventVisibility, EventWithCounts, RsvpStatus } from '../../../features/events';
 
@@ -57,40 +56,6 @@ const toJsDate = (value: CalendarValue): Date | null => {
     return null;
 };
 
-const formatDateFull = (date: Date, locale: string) =>
-    new Intl.DateTimeFormat(locale, {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    }).format(date);
-
-const formatDateWithWeekday = (date: Date, locale: string) =>
-    new Intl.DateTimeFormat(locale, {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-    }).format(date);
-
-const formatDateTimeRange = (event: EventWithCounts, locale: string) => {
-    const start = new Date(event.startsAt);
-    const end = new Date(event.endsAt);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return 'Дата уточняется';
-    }
-    const dayLabel = new Intl.DateTimeFormat(locale, {
-        day: 'numeric',
-        month: 'long',
-    }).format(start);
-    const startTime = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(start);
-    const endTime = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(end);
-    return `${dayLabel} · ${startTime}–${endTime}`;
-};
-
-const isSameDay = (date: Date, target: Date) =>
-    date.getFullYear() === target.getFullYear() &&
-    date.getMonth() === target.getMonth() &&
-    date.getDate() === target.getDate();
-
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
 const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
@@ -101,6 +66,31 @@ const getSafeDate = (value: string | null | undefined) => {
     if (!value) return null;
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateFull = (date: Date, locale: string) =>
+    new Intl.DateTimeFormat(locale, {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+    }).format(date);
+
+const formatRelativeDateLabel = (date: Date, locale: string) => {
+    const today = startOfDay(new Date());
+    const target = startOfDay(date);
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+
+    const prefix =
+        diffDays === 0
+            ? 'Сегодня'
+            : diffDays === 1
+                ? 'Завтра'
+                : diffDays === -1
+                    ? 'Вчера'
+                    : null;
+
+    const formatted = formatDateFull(date, locale);
+    return prefix ? `${prefix}, ${formatted}` : formatted;
 };
 
 const TAB_ITEMS = [
@@ -185,35 +175,6 @@ export const EventsPage: React.FC = () => {
     const canCreate = can(user, 'events.event.create');
     const canManage = can(user, 'events.event.manage');
 
-    const { upcomingCount, pastCount, goingCount, interestedCount, myEventsCount } = useMemo(() => {
-        const now = new Date();
-        let upcoming = 0;
-        let past = 0;
-        let going = 0;
-        let interested = 0;
-        let mine = 0;
-        for (const event of events) {
-            const start = getSafeDate(event.startsAt);
-            const end = getSafeDate(event.endsAt) ?? start;
-            const isPast = Boolean(end && end < now);
-            if (isPast) {
-                past += 1;
-            } else {
-                upcoming += 1;
-            }
-            if (event.myRsvp === 'going') going += 1;
-            if (event.myRsvp === 'interested') interested += 1;
-            if (user?.id && event.createdBy === user.id) mine += 1;
-        }
-        return {
-            upcomingCount: upcoming,
-            pastCount: past,
-            goingCount: going,
-            interestedCount: interested,
-            myEventsCount: mine,
-        };
-    }, [events, user?.id]);
-
     const baseFilteredEvents = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase();
         return events
@@ -244,6 +205,9 @@ export const EventsPage: React.FC = () => {
     }, [events, ownershipFilter, query, rsvpFilter, user?.id, visibilityFilter]);
 
     const filteredEvents = useMemo(() => {
+        if (selectedDate) {
+            return baseFilteredEvents;
+        }
         const now = new Date();
         return baseFilteredEvents.filter((event) => {
             const start = getSafeDate(event.startsAt);
@@ -255,38 +219,7 @@ export const EventsPage: React.FC = () => {
             if (activeTab === 'past' && !isPast) return false;
             return true;
         });
-    }, [activeTab, baseFilteredEvents]);
-
-    const focusDate = selectedDate ?? new Date();
-
-    const agendaEvents = useMemo(() => {
-        if (!filteredEvents.length) return [] as EventWithCounts[];
-        if (!selectedDate) {
-            const anchor = startOfDay(new Date());
-            const start = activeTab === 'past' ? addDays(anchor, -7) : anchor;
-            const end = activeTab === 'past' ? anchor : addDays(anchor, 7);
-            return filteredEvents.filter((event) => {
-                const eventDate = getSafeDate(event.startsAt);
-                return Boolean(eventDate && eventDate >= start && eventDate < end);
-            });
-        }
-        return filteredEvents.filter((event) => {
-            const startsAt = getSafeDate(event.startsAt);
-            if (!startsAt) return false;
-            return isSameDay(startsAt, focusDate);
-        });
-    }, [activeTab, filteredEvents, focusDate, selectedDate]);
-
-    const nextEvent = useMemo(() => {
-        const now = new Date();
-        return (
-            baseFilteredEvents
-                .map((event) => ({ event, start: getSafeDate(event.startsAt) }))
-                .filter((item) => item.start && item.start >= now)
-                .sort((a, b) => (a.start && b.start ? a.start.getTime() - b.start.getTime() : 0))
-                .map((item) => item.event)[0] ?? null
-        );
-    }, [baseFilteredEvents]);
+    }, [activeTab, baseFilteredEvents, selectedDate]);
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);
@@ -297,8 +230,14 @@ export const EventsPage: React.FC = () => {
         navigate(`/app/events/${event.id}/edit`);
     };
 
+    const handleDateChange = (value: CalendarValue) => {
+        setSelectedDate(toJsDate(value));
+        setPage(1);
+    };
+
     const handleTabChange = (tabId: string) => {
         setActiveTab(tabId as EventStatusFilter);
+        setSelectedDate(null);
         setPage(1);
     };
 
@@ -307,7 +246,6 @@ export const EventsPage: React.FC = () => {
         setRsvpFilter('all');
         setVisibilityFilter('all');
         setOwnershipFilter('all');
-        setSelectedDate(new Date());
         setPage(1);
     };
 
@@ -316,6 +254,12 @@ export const EventsPage: React.FC = () => {
         rsvpFilter !== 'all' ||
         visibilityFilter !== 'all' ||
         ownershipFilter !== 'all';
+
+    const listTitle = selectedDate
+        ? formatRelativeDateLabel(selectedDate, locale)
+        : activeTab === 'past'
+            ? 'Прошедшие мероприятия'
+            : 'Предстоящие мероприятия';
 
     if (isLoading && !events.length) {
         return (
@@ -334,9 +278,6 @@ export const EventsPage: React.FC = () => {
         return (
             <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
                 <Card className="max-w-md w-full p-8 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                        <Icon data={Xmark} size={32} className="text-red-500" />
-                    </div>
                     <Text variant="subheader-2" className="mb-2">Ошибка загрузки</Text>
                     <Text variant="body-2" color="secondary" className="mb-6">
                         Не удалось загрузить мероприятия. Проверьте соединение и попробуйте снова.
@@ -351,130 +292,110 @@ export const EventsPage: React.FC = () => {
 
     return (
         <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
-            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                <div className="container max-w-7xl mx-auto px-4 py-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                            <Text variant="header-1" className="text-slate-900 dark:text-white">
-                                Мероприятия
-                            </Text>
-                        </div>
-                        {canCreate && (
-                            <Link to="/app/events/create">
-                                <Button view="action" size="l">
-                                    <Icon data={PlusIcon} />
-                                    Создать мероприятие
-                                </Button>
-                            </Link>
-                        )}
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                        {TAB_ITEMS.map((tab) => (
-                            <Button
-                                key={tab.id}
-                                view={activeTab === tab.id ? 'action' : 'outlined'}
-                                size="l"
-                                onClick={() => handleTabChange(tab.id)}
-                            >
-                                <Icon data={tab.icon} size={16} />
-                                {tab.title}
-                            </Button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
             <div className="container max-w-7xl mx-auto px-4 py-6">
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-                    <div className="space-y-6">
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                                <Text variant="subheader-1">Ближайшее событие</Text>
-                                {nextEvent && (
-                                    <Text variant="caption-2" color="secondary">
-                                        {formatDateTimeRange(nextEvent, locale)}
-                                    </Text>
-                                )}
+                <div className="flex flex-col gap-6 lg:flex-row">
+                    <div className="flex-1 space-y-5">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <Text variant="header-1" className="text-slate-900 dark:text-white">
+                                    Мероприятия
+                                </Text>
+                                <Text variant="body-2" color="secondary" className="mt-1">
+                                    Планируйте встречи, следите за RSVP и держите расписание под рукой.
+                                </Text>
                             </div>
-                            {nextEvent ? (
-                                <EventCard event={nextEvent} onEdit={canManage ? handleEdit : undefined} showActions={false} variant="tile" />
-                            ) : (
-                                <Card className="p-6 text-center">
-                                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                                        <Icon data={CalendarIcon} size={30} className="text-slate-400" />
-                                    </div>
-                                    <Text variant="subheader-2" className="mb-2">Пока пусто</Text>
-                                    <Text variant="body-2" color="secondary">
-                                        Создайте событие или настройте фильтры, чтобы увидеть расписание.
-                                    </Text>
-                                </Card>
+                            {canCreate && (
+                                <Link to="/app/events/create">
+                                    <Button view="action" size="l" className="shadow-sm">
+                                        <Icon data={PlusIcon} />
+                                        Создать
+                                    </Button>
+                                </Link>
                             )}
                         </div>
 
-                        <Card className="p-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <Text variant="subheader-1">
-                                        {selectedDate
-                                            ? formatDateWithWeekday(focusDate, locale)
-                                            : activeTab === 'past'
-                                                ? 'Последние 7 дней'
-                                                : 'Ближайшие 7 дней'}
-                                    </Text>
-                                    <Text variant="body-2" color="secondary">
-                                        Повестка дня
-                                    </Text>
+                        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+                            {TAB_ITEMS.map((tab) => (
+                                <Button
+                                    key={tab.id}
+                                    view="flat"
+                                    size="l"
+                                    onClick={() => handleTabChange(tab.id)}
+                                    className={[
+                                        'rounded-none px-2 pb-3 pt-2 transition-colors',
+                                        activeTab === tab.id
+                                            ? 'border-b-2 border-slate-900 dark:border-white text-slate-900 dark:text-white'
+                                            : 'text-slate-500 dark:text-slate-400',
+                                    ].join(' ')}
+                                >
+                                    <Icon data={tab.icon} size={16} />
+                                    {tab.title}
+                                </Button>
+                            ))}
+                        </div>
+
+                        <Card className="p-4 bg-white/90 dark:bg-slate-900/70 border border-slate-200/70 dark:border-white/10">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                                <TextInput
+                                    size="l"
+                                    value={query}
+                                    onUpdate={setQuery}
+                                    placeholder="Поиск по названию, месту или описанию"
+                                    className="lg:flex-1"
+                                />
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    <Select
+                                        size="l"
+                                        value={[rsvpFilter]}
+                                        onUpdate={(value) => setRsvpFilter((value[0] ?? 'all') as RsvpFilter)}
+                                        options={RSVP_OPTIONS}
+                                        width="max"
+                                    />
+                                    <Select
+                                        size="l"
+                                        value={[visibilityFilter]}
+                                        onUpdate={(value) => setVisibilityFilter((value[0] ?? 'all') as VisibilityFilter)}
+                                        options={VISIBILITY_OPTIONS}
+                                        width="max"
+                                    />
+                                    <Select
+                                        size="l"
+                                        value={[ownershipFilter]}
+                                        onUpdate={(value) => setOwnershipFilter((value[0] ?? 'all') as OwnershipFilter)}
+                                        options={OWNERSHIP_OPTIONS}
+                                        width="max"
+                                    />
                                 </div>
-                                {selectedDate && (
-                                    <Button view="flat" size="s" onClick={() => setSelectedDate(null)}>
+                                {hasFilters && (
+                                    <Button view="flat" size="m" onClick={handleResetFilters}>
                                         Сбросить
                                     </Button>
                                 )}
                             </div>
-                            <div className="mt-4 space-y-2">
-                                {agendaEvents.length === 0 ? (
-                                    <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center">
-                                        <Text variant="body-2" color="secondary">
-                                            {selectedDate
-                                                ? 'На эту дату событий нет'
-                                                : activeTab === 'past'
-                                                    ? 'За последнюю неделю событий нет'
-                                                    : 'В ближайшую неделю событий нет'}
-                                        </Text>
-                                        <Text variant="caption-2" color="secondary" className="mt-1">
-                                            Попробуйте выбрать другую дату или изменить фильтры.
-                                        </Text>
-                                    </div>
-                                ) : (
-                                    agendaEvents.map((event) => (
-                                        <EventCard
-                                            key={`agenda-${event.id}`}
-                                            event={event}
-                                            onEdit={canManage ? handleEdit : undefined}
-                                            showActions={false}
-                                            variant="tile"
-                                        />
-                                    ))
-                                )}
-                            </div>
                         </Card>
 
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
-                                    <Text variant="subheader-1">
-                                        {activeTab === 'past' ? 'Прошедшие события' : 'Расписание'}
+                                    <Text variant="subheader-1" className="text-slate-900 dark:text-white">
+                                        {listTitle}
                                     </Text>
                                     <Text variant="body-2" color="secondary">
                                         {filteredEvents.length
                                             ? `Показано ${filteredEvents.length} событий`
-                                            : 'Подборка по выбранным фильтрам'}
+                                            : 'Список пока пуст'}
                                     </Text>
                                 </div>
-                                {hasFilters && (
-                                    <Button view="outlined" size="m" onClick={handleResetFilters}>
-                                        Сбросить фильтры
+                                {selectedDate && (
+                                    <Button
+                                        view="outlined"
+                                        size="m"
+                                        onClick={() => {
+                                            setSelectedDate(null);
+                                            setPage(1);
+                                        }}
+                                    >
+                                        Показать всё
                                     </Button>
                                 )}
                             </div>
@@ -484,15 +405,15 @@ export const EventsPage: React.FC = () => {
                                     <Loader size="l" />
                                 </div>
                             ) : filteredEvents.length === 0 ? (
-                                <Card className="p-12 text-center">
-                                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                                        <Icon data={CalendarIcon} size={40} className="text-slate-400" />
+                                <Card className="p-10 text-center">
+                                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                        <Icon data={CalendarIcon} size={30} className="text-slate-400" />
                                     </div>
                                     <Text variant="subheader-2" className="mb-2">
-                                        Нет событий по выбранным условиям
+                                        Мероприятий не найдено
                                     </Text>
-                                    <Text variant="body-2" color="secondary" className="mb-6">
-                                        Измените фильтры или переключитесь на другую вкладку.
+                                    <Text variant="body-2" color="secondary">
+                                        Попробуйте изменить фильтры или выбрать другую дату в календаре.
                                     </Text>
                                 </Card>
                             ) : (
@@ -512,67 +433,22 @@ export const EventsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="lg:sticky lg:top-4 space-y-4">
+                    <div className="lg:sticky lg:top-6 w-full lg:w-[320px] space-y-4">
                         <Card className="p-4">
-                            <Text variant="subheader-1" className="mb-3">Фильтры</Text>
-                            <div className="space-y-3">
-                                <div>
-                                    <Text variant="caption-2" color="secondary">Поиск</Text>
-                                    <TextInput
-                                        size="l"
-                                        value={query}
-                                        onUpdate={setQuery}
-                                        placeholder="Название, место или описание"
-                                    />
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div>
-                                        <Text variant="caption-2" color="secondary">RSVP</Text>
-                                        <Select
-                                            size="l"
-                                            value={[rsvpFilter]}
-                                            onUpdate={(value) => setRsvpFilter((value[0] ?? 'all') as RsvpFilter)}
-                                            options={RSVP_OPTIONS}
-                                            width="max"
-                                        />
-                                    </div>
-                                    <div>
-                                        <Text variant="caption-2" color="secondary">Видимость</Text>
-                                        <Select
-                                            size="l"
-                                            value={[visibilityFilter]}
-                                            onUpdate={(value) => setVisibilityFilter((value[0] ?? 'all') as VisibilityFilter)}
-                                            options={VISIBILITY_OPTIONS}
-                                            width="max"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <Text variant="caption-2" color="secondary">Автор</Text>
-                                    <Select
-                                        size="l"
-                                        value={[ownershipFilter]}
-                                        onUpdate={(value) => setOwnershipFilter((value[0] ?? 'all') as OwnershipFilter)}
-                                        options={OWNERSHIP_OPTIONS}
-                                            width="max"
-                                    />
-                                </div>
-                                {hasFilters && (
-                                    <Button view="flat" size="m" onClick={handleResetFilters}>
-                                        Сбросить
-                                    </Button>
-                                )}
-                            </div>
-                        </Card>
-
-                        <Card className="p-4">
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center justify-between mb-3">
                                 <Text variant="subheader-1" className="flex items-center gap-2">
                                     <Icon data={CalendarIcon} size={18} />
                                     Календарь
                                 </Text>
                                 {selectedDate && (
-                                    <Button view="flat" size="xs" onClick={() => setSelectedDate(null)}>
+                                    <Button
+                                        view="flat"
+                                        size="xs"
+                                        onClick={() => {
+                                            setSelectedDate(null);
+                                            setPage(1);
+                                        }}
+                                    >
                                         Сбросить
                                     </Button>
                                 )}
@@ -580,48 +456,16 @@ export const EventsPage: React.FC = () => {
                             <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3">
                                 <Calendar
                                     value={toCalendarValue(selectedDate)}
-                                    onUpdate={(value) => setSelectedDate(toJsDate(value))}
+                                    onUpdate={handleDateChange}
                                 />
                             </div>
                             {selectedDate && (
                                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                                     <Text variant="body-2" color="secondary">
-                                        Выбрано: {formatDateFull(selectedDate, locale)}
+                                        Выбрано: {formatRelativeDateLabel(selectedDate, locale)}
                                     </Text>
                                 </div>
                             )}
-                        </Card>
-
-                        <Card className="p-4">
-                            <Text variant="subheader-1" className="mb-4">
-                                Сводка
-                            </Text>
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Всего событий</Text>
-                                    <Label theme="normal" size="s">{events.length}</Label>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Предстоящие</Text>
-                                    <Label theme="success" size="s">{upcomingCount}</Label>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Прошедшие</Text>
-                                    <Label theme="info" size="s">{pastCount}</Label>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Мой RSVP: иду</Text>
-                                    <Label theme="success" size="s">{goingCount}</Label>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Мой RSVP: интересно</Text>
-                                    <Label theme="warning" size="s">{interestedCount}</Label>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Text variant="body-2" color="secondary">Создано мной</Text>
-                                    <Label theme="utility" size="s">{myEventsCount}</Label>
-                                </div>
-                            </div>
                         </Card>
                     </div>
                 </div>

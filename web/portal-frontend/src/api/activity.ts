@@ -14,6 +14,7 @@ import type {
   FeedResponseV2,
   FeedParams,
   UnreadCountResponse,
+  NewsMediaItem,
   Game,
   GameCreatePayload,
   Source,
@@ -34,6 +35,60 @@ export type { ActivityEvent, FeedResponse, FeedResponseV2, FeedParams };
 
 // Legacy export alias
 export type ActivityItem = ActivityEvent;
+
+type ActivityEventApi = {
+  id: number;
+  tenant_id: string;
+  actor_user_id: string | null;
+  target_user_id: string | null;
+  type: string;
+  occurred_at: string;
+  title: string;
+  payload_json: Record<string, unknown>;
+  visibility: string;
+  scope_type: string;
+  scope_id: string;
+  source_ref: string;
+};
+
+type FeedResponseApi = {
+  items: ActivityEventApi[];
+};
+
+type FeedResponseV2Api = {
+  items: ActivityEventApi[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+type SubscriptionApi = {
+  id: number;
+  tenant_id: string;
+  user_id: string;
+  rules_json: Record<string, unknown>;
+};
+
+const mapActivityEvent = (item: ActivityEventApi): ActivityEvent => ({
+  id: item.id,
+  tenantId: item.tenant_id,
+  actorUserId: item.actor_user_id,
+  targetUserId: item.target_user_id,
+  type: item.type,
+  occurredAt: item.occurred_at,
+  title: item.title,
+  payloadJson: item.payload_json ?? {},
+  visibility: item.visibility as ActivityEvent['visibility'],
+  scopeType: item.scope_type,
+  scopeId: item.scope_id,
+  sourceRef: item.source_ref,
+});
+
+const mapSubscription = (item: SubscriptionApi): Subscription => ({
+  id: item.id,
+  tenantId: item.tenant_id,
+  userId: item.user_id,
+  rulesJson: item.rules_json ?? {},
+});
 
 // ============================================================================
 // Feed API
@@ -62,8 +117,8 @@ function buildFeedQuery(params?: FeedParams): string {
 export async function fetchFeed(params?: Omit<FeedParams, 'cursor'>): Promise<ActivityEvent[]> {
   const query = buildFeedQuery(params);
   const url = query ? `/activity/feed?${query}` : '/activity/feed';
-  const data = await request<FeedResponse>(url);
-  return data.items;
+  const data = await request<FeedResponseApi>(url);
+  return data.items.map(mapActivityEvent);
 }
 
 /**
@@ -81,7 +136,12 @@ export async function fetchFeed(params?: Omit<FeedParams, 'cursor'>): Promise<Ac
 export async function fetchFeedV2(params?: FeedParams): Promise<FeedResponseV2> {
   const query = buildFeedQuery(params);
   const url = query ? `/activity/v2/feed?${query}` : '/activity/v2/feed';
-  return request<FeedResponseV2>(url);
+  const data = await request<FeedResponseV2Api>(url);
+  return {
+    items: data.items.map(mapActivityEvent),
+    nextCursor: data.next_cursor,
+    hasMore: data.has_more,
+  };
 }
 
 /**
@@ -90,6 +150,131 @@ export async function fetchFeedV2(params?: FeedParams): Promise<FeedResponseV2> 
 export async function fetchUnreadCount(): Promise<number> {
   const data = await request<UnreadCountResponse>('/activity/feed/unread-count');
   return data.count;
+}
+
+// ============================================================================
+// News API
+// ============================================================================
+
+export type NewsCreatePayload = {
+  title?: string | null;
+  body: string;
+  tags?: string[];
+  visibility: 'public' | 'community' | 'team' | 'private';
+  scope_type?: 'TENANT' | 'COMMUNITY' | 'TEAM';
+  scope_id?: string | null;
+  media?: NewsMediaItem[];
+};
+
+export type NewsUpdatePayload = {
+  title?: string | null;
+  body?: string | null;
+  tags?: string[] | null;
+  visibility?: 'public' | 'community' | 'team' | 'private' | null;
+  media?: NewsMediaItem[] | null;
+};
+
+export type NewsUploadPayload = {
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+};
+
+export type NewsUploadResponse = {
+  key: string;
+  upload_url: string;
+  upload_headers: Record<string, string>;
+  expires_in: number;
+};
+
+export async function requestNewsMediaUpload(payload: NewsUploadPayload): Promise<NewsUploadResponse> {
+  return request<NewsUploadResponse>('/activity/news/media/upload-url', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function createNews(payload: NewsCreatePayload): Promise<ActivityEvent> {
+  const data = await request<ActivityEventApi>('/activity/news', {
+    method: 'POST',
+    body: {
+      title: payload.title ?? undefined,
+      body: payload.body,
+      tags: payload.tags ?? [],
+      visibility: payload.visibility,
+      scope_type: payload.scope_type,
+      scope_id: payload.scope_id ?? undefined,
+      media: payload.media ?? [],
+    },
+  });
+  return mapActivityEvent(data);
+}
+
+export async function updateNews(newsId: string, payload: NewsUpdatePayload): Promise<ActivityEvent> {
+  const data = await request<ActivityEventApi>(`/activity/news/${newsId}`, {
+    method: 'PATCH',
+    body: {
+      title: payload.title ?? undefined,
+      body: payload.body ?? undefined,
+      tags: payload.tags ?? undefined,
+      visibility: payload.visibility ?? undefined,
+      media: payload.media ?? undefined,
+    },
+  });
+  return mapActivityEvent(data);
+}
+
+export async function deleteNews(newsId: string): Promise<void> {
+  await request(`/activity/news/${newsId}`, { method: 'DELETE' });
+}
+
+export async function reactToNews(
+  newsId: string,
+  payload: { emoji: string; action?: 'add' | 'remove' },
+): Promise<{ emoji: string; count: number }[]> {
+  return request<{ emoji: string; count: number }[]>(`/activity/news/${newsId}/reactions`, {
+    method: 'POST',
+    body: {
+      emoji: payload.emoji,
+      action: payload.action ?? 'add',
+    },
+  });
+}
+
+export async function listNewsComments(newsId: string, limit = 50): Promise<
+  { id: number; user_id: string; body: string; created_at: string }[]
+> {
+  return request<{ id: number; user_id: string; body: string; created_at: string }[]>(
+    `/activity/news/${newsId}/comments?limit=${limit}`,
+  );
+}
+
+export async function createNewsComment(
+  newsId: string,
+  body: string,
+): Promise<{ id: number; user_id: string; body: string; created_at: string }> {
+  return request<{ id: number; user_id: string; body: string; created_at: string }>(
+    `/activity/news/${newsId}/comments`,
+    {
+      method: 'POST',
+      body: { body },
+    },
+  );
+}
+
+export async function uploadNewsMediaFile(
+  uploadUrl: string,
+  headers: Record<string, string>,
+  file: File,
+): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers,
+    body: file,
+  });
+  if (!response.ok) {
+    throw new Error(`Upload failed (${response.status})`);
+  }
 }
 
 /**
@@ -204,8 +389,8 @@ export async function deleteAccountLink(linkId: number): Promise<void> {
  * Fetch user's subscriptions
  */
 export async function fetchSubscriptions(): Promise<Subscription[]> {
-  const data = await request<{ items: Subscription[] }>('/activity/subscriptions');
-  return data.items;
+  const data = await request<{ items: SubscriptionApi[] }>('/activity/subscriptions');
+  return data.items.map(mapSubscription);
 }
 
 /**
@@ -220,10 +405,15 @@ export async function fetchSubscriptions(): Promise<Subscription[]> {
  * });
  */
 export async function updateSubscriptions(payload: SubscriptionPayload): Promise<Subscription> {
-  return request<Subscription>('/activity/subscriptions', {
+  const scopes = (payload.scopes ?? []).map((scope) => ({
+    scope_type: scope.scopeType,
+    scope_id: scope.scopeId,
+  }));
+  const data = await request<SubscriptionApi>('/activity/subscriptions', {
     method: 'POST',
-    body: payload,
+    body: { scopes },
   });
+  return mapSubscription(data);
 }
 
 // ============================================================================
@@ -261,50 +451,3 @@ export async function fetchActivityHealth(): Promise<HealthResponse> {
 export async function fetchActivityMetrics(): Promise<MetricsResponse> {
   return request<MetricsResponse>('/activity/metrics');
 }
-
-// ============================================================================
-// SSE (Server-Sent Events)
-// ============================================================================
-
-/**
- * Subscribe to real-time unread count updates via SSE
- *
- * @example
- * const eventSource = subscribeToUnreadCount((count) => {
- *   console.log('Unread count:', count);
- * });
- *
- * // Later: cleanup
- * eventSource.close();
- */
-export function subscribeToUnreadCount(
-  onUpdate: (count: number) => void,
-  onError?: (error: Event) => void,
-): EventSource {
-  const baseUrl = '/api/v1/activity/feed/sse';
-  const eventSource = new EventSource(baseUrl, { withCredentials: true });
-
-  eventSource.addEventListener('unread', (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (typeof data.count === 'number') {
-        onUpdate(data.count);
-      }
-    } catch {
-      console.error('Failed to parse SSE event:', event.data);
-    }
-  });
-
-  eventSource.addEventListener('heartbeat', () => {
-    // Keep-alive, no action needed
-  });
-
-  eventSource.addEventListener('error', (event) => {
-    if (onError) {
-      onError(event);
-    }
-  });
-
-  return eventSource;
-}
-

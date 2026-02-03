@@ -43,6 +43,7 @@ MVP_EVENT_TYPES = {
     "event.created",
     "event.rsvp.changed",
     "post.created",
+    "news.posted",
 }
 
 
@@ -103,6 +104,17 @@ def get_unread_count(*, tenant_id: UUID, user_id: UUID) -> int:
         tenant_id=tenant_id,
         occurred_at__gt=last_seen.last_seen_at,
     ).count()
+
+
+def get_unread_count_fresh(*, tenant_id: UUID, user_id: UUID) -> int:
+    """
+    Get unread count and refresh the cache immediately.
+
+    Useful for long-polling where stale cache would hide changes.
+    """
+    count = get_unread_count(tenant_id=tenant_id, user_id=user_id)
+    cache.set(_unread_cache_key(tenant_id, user_id), count, UNREAD_CACHE_TTL)
+    return count
 
 
 def get_unread_count_cached(*, tenant_id: UUID, user_id: UUID) -> int:

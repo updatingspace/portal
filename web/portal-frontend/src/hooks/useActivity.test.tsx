@@ -43,7 +43,7 @@ vi.mock('../api/activity', () => ({
   fetchSources: vi.fn(),
   fetchSubscriptions: vi.fn(),
   updateSubscriptions: vi.fn(),
-  subscribeToUnreadCount: vi.fn(),
+  createNews: vi.fn(),
 }));
 
 // Create a wrapper with QueryClient for testing hooks
@@ -157,28 +157,6 @@ describe('Activity Hooks', () => {
       expect(result.current.count).toBe(0);
     });
 
-    it('subscribes to SSE when realtime is true', async () => {
-      vi.mocked(activityApi.fetchUnreadCount).mockResolvedValueOnce(5);
-      const mockClose = vi.fn();
-      vi.mocked(activityApi.subscribeToUnreadCount).mockReturnValue({
-        close: mockClose,
-      } as unknown as EventSource);
-
-      const { result, unmount } = renderHook(
-        () => useUnreadCount({ realtime: true }),
-        { wrapper: createWrapper() },
-      );
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(activityApi.subscribeToUnreadCount).toHaveBeenCalled();
-
-      // Cleanup should close EventSource
-      unmount();
-      expect(mockClose).toHaveBeenCalled();
-    });
   });
 
   describe('useMarkFeedAsRead', () => {

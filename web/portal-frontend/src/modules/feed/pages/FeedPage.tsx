@@ -1,40 +1,121 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader, Card, Button, Select, Label } from '@gravity-ui/uikit';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Card, Icon, Label, Loader, Select, Text } from '@gravity-ui/uikit';
+import { Plus, ArrowRotateRight } from '@gravity-ui/icons';
+import { MarkdownEditorView, useMarkdownEditor } from '@gravity-ui/markdown-editor';
 
-import { useFeedInfinite, useUnreadCount, useMarkFeedAsRead, getUniqueEventTypes, groupFeedByDate } from '../../../hooks/useActivity';
-import type { ActivityEvent } from '../../../types/activity';
+import {
+  useFeedInfinite,
+  useMarkFeedAsRead,
+  useUnreadCount,
+  useCreateNews,
+  useSubscriptions,
+  useUpdateSubscriptions,
+} from '../../../hooks/useActivity';
+import type { NewsMediaItem } from '../../../types/activity';
 import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
-import { SkeletonList } from '../../../shared/ui/skeleton/SkeletonList';
+import { FeedFilters } from '../components/FeedFilters';
+import { FeedItem } from '../components/FeedItem';
+import { requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
+import { notifyApiError } from '../../../utils/apiErrorHandling';
+import { useAuth } from '../../../contexts/AuthContext';
+import './feed-page.css';
 
-// Event type labels for UI
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  'vote.cast': '🗳️ Голосование',
-  'event.created': '📅 Событие создано',
-  'event.rsvp.changed': '✅ RSVP изменён',
-  'post.created': '📝 Пост создан',
-  'game.achievement': '🏆 Достижение',
-  'game.playtime': '🎮 Игровое время',
-  'steam.private': '🔒 Steam приватный',
-  'minecraft.session': '⛏️ Minecraft сессия',
+const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
+const TAG_REGEX = /#([\p{L}\p{N}_-]{2,})/gu;
+const TITLE_REGEX = /^#\s+(.+)$/m;
+
+type SourceFilter = 'all' | 'news' | 'voting' | 'events';
+
+type TimeFilter = 'day' | 'week' | 'month' | 'all';
+
+type SortFilter = 'best' | 'recent';
+
+const getSourceTypes = (source: SourceFilter) => {
+  if (source === 'news') return ['news.posted', 'post.created'];
+  if (source === 'voting') return ['vote.cast'];
+  if (source === 'events') return ['event.created', 'event.rsvp.changed'];
+  return [];
 };
 
-// Icon mapping for event types
-const getEventIcon = (type: string): string => {
-  if (type.includes('vote')) return '🗳️';
-  if (type.includes('event')) return '📅';
-  if (type.includes('game') || type.includes('steam') || type.includes('minecraft')) return '🎮';
-  if (type.includes('post')) return '📝';
-  return '📌';
+const getTimeRange = (value: TimeFilter) => {
+  if (value === 'all') return { from: null, to: null };
+  const now = new Date();
+  const base = new Date(now.getTime());
+  if (value === 'day') base.setDate(now.getDate() - 1);
+  if (value === 'week') base.setDate(now.getDate() - 7);
+  if (value === 'month') base.setDate(now.getDate() - 30);
+  return { from: base, to: now };
+};
+
+const extractTitle = (markup: string) => {
+  const match = markup.match(TITLE_REGEX);
+  return match?.[1]?.trim() ?? '';
+};
+
+const extractTags = (markup: string) => {
+  const withoutTitle = markup.replace(TITLE_REGEX, '');
+  const tags = new Set<string>();
+  const matches = withoutTitle.matchAll(TAG_REGEX);
+  for (const match of matches) {
+    const tag = match[1]?.toLowerCase();
+    if (tag) tags.add(tag);
+  }
+  return Array.from(tags);
+};
+
+const extractYoutubeIds = (markup: string) => {
+  const ids = new Set<string>();
+  const matches = markup.matchAll(YOUTUBE_REGEX);
+  for (const match of matches) {
+    if (match[1]) ids.add(match[1]);
+  }
+  return Array.from(ids);
 };
 
 export const FeedPage: React.FC = () => {
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const { user } = useAuth();
+  const tenantId = user?.tenant?.id ?? null;
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
+  const [sortFilter, setSortFilter] = useState<SortFilter>('best');
+  const [newsMedia, setNewsMedia] = useState<NewsMediaItem[]>([]);
+  const [newsVisibility, setNewsVisibility] = useState<'public' | 'private'>('public');
+  const [uploading, setUploading] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerValue, setComposerValue] = useState('');
+  const [composerError, setComposerError] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Build types param
-  const typesParam = selectedTypes.length > 0 ? selectedTypes.join(',') : undefined;
+  const editor = useMarkdownEditor({
+    initial: {
+      mode: 'markup',
+      markup: '',
+      toolbarVisible: false,
+      splitModeEnabled: false,
+    },
+  });
 
-  // Infinite query for feed
+  const emptyToolbarsPreset = useMemo(() => ({ items: {}, orders: {} }), []);
+
+  useEffect(() => {
+    const handleChange = () => {
+      setComposerValue(String(editor.getValue() ?? ''));
+    };
+    handleChange();
+    editor.on('change', handleChange);
+    return () => editor.off('change', handleChange);
+  }, [editor]);
+
+  const typesParam = useMemo(() => {
+    const sourceTypes = getSourceTypes(sourceFilter);
+    return sourceTypes.length > 0 ? sourceTypes.join(',') : undefined;
+  }, [sourceFilter]);
+
+  const { from, to } = useMemo(() => getTimeRange(timeFilter), [timeFilter]);
+  const fromParam = from ? new Date(from).toISOString() : undefined;
+  const toParam = to ? new Date(to).toISOString() : undefined;
+
   const {
     data,
     fetchNextPage,
@@ -43,24 +124,31 @@ export const FeedPage: React.FC = () => {
     isLoading,
     error,
     refetch,
-  } = useFeedInfinite({ types: typesParam, limit: 20 });
+  } = useFeedInfinite({ types: typesParam, from: fromParam, to: toParam, limit: 20 });
 
-  // Unread count with real-time updates
-  const { count: unreadCount } = useUnreadCount({ realtime: true });
-
-  // Mark as read mutation
+  const { count: unreadCount } = useUnreadCount();
   const { mutate: markAsRead, isPending: isMarkingRead } = useMarkFeedAsRead();
+  const { mutateAsync: createNews, isPending: isCreatingNews } = useCreateNews();
+  const { data: subscriptions, isLoading: isSubscriptionsLoading } = useSubscriptions();
+  const { mutateAsync: updateSubscriptions, isPending: isUpdatingSubscriptions } = useUpdateSubscriptions();
+  const autoSubscribedRef = useRef(false);
 
-  // Flatten pages into items
   const items = data?.pages.flatMap((page) => page.items) ?? [];
+  const sortedItems = useMemo(() => {
+    const base = [...items];
+    if (sortFilter === 'best') {
+      return base.sort((a, b) => {
+        const aPayload = (a.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
+        const bPayload = (b.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
+        const aScore = (aPayload.reactions_count ?? 0) + (aPayload.comments_count ?? 0);
+        const bScore = (bPayload.reactions_count ?? 0) + (bPayload.comments_count ?? 0);
+        if (aScore !== bScore) return bScore - aScore;
+        return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
+      });
+    }
+    return base;
+  }, [items, sortFilter]);
 
-  // Get unique types for filter
-  const availableTypes = getUniqueEventTypes(items);
-
-  // Group by date for display
-  const groupedItems = groupFeedByDate(items);
-
-  // Intersection Observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -76,145 +164,373 @@ export const FeedPage: React.FC = () => {
     }
 
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
-  // Handle filter change
-  const handleTypeFilterChange = useCallback((values: string[]) => {
-    setSelectedTypes(values);
+  useEffect(() => {
+    if (!tenantId) return;
+    if (autoSubscribedRef.current) return;
+    if (isSubscriptionsLoading || isUpdatingSubscriptions) return;
+
+    const current = subscriptions?.[0];
+    const scopes = current && typeof current.rulesJson === 'object'
+      ? (current.rulesJson as { scopes?: { scope_type?: string; scope_id?: string }[] | { scopeType?: string; scopeId?: string }[] }).scopes
+      : undefined;
+    const hasScopes = Array.isArray(scopes) && scopes.length > 0;
+
+    if (hasScopes) {
+      autoSubscribedRef.current = true;
+      return;
+    }
+
+    autoSubscribedRef.current = true;
+    updateSubscriptions({ scopes: [{ scopeType: 'TENANT', scopeId: tenantId }] }).catch((err) => {
+      autoSubscribedRef.current = false;
+      notifyApiError(err, 'Не удалось настроить подписку на ленту');
+    });
+  }, [isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
+
+  useEffect(() => {
+    if (composerValue.trim() || newsMedia.length > 0) {
+      setComposerOpen(true);
+    }
+  }, [composerValue, newsMedia.length]);
+
+  const handleResetFilters = useCallback(() => {
+    setSourceFilter('all');
+    setTimeFilter('week');
+    setSortFilter('best');
   }, []);
 
-  // Render single feed item
-  const renderItem = (item: ActivityEvent) => {
-    const dateStr = new Date(item.occurredAt).toLocaleString();
-    const icon = getEventIcon(item.type);
-    const typeLabel = EVENT_TYPE_LABELS[item.type] || item.type;
+  const handleRemoveMedia = useCallback((index: number) => {
+    setNewsMedia((prev) => prev.filter((_, idx) => idx !== index));
+  }, []);
 
-    return (
-      <Card key={item.id} className="p-4 mb-3 hover:shadow-md transition-shadow">
-        <div className="flex items-start gap-4">
-          <div className="text-2xl mt-1">{icon}</div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <span>{dateStr}</span>
-              <span>•</span>
-              <Label theme="info" size="xs">{typeLabel}</Label>
-              {item.scopeType && (
-                <>
-                  <span>•</span>
-                  <span className="text-xs">{item.scopeType}</span>
-                </>
-              )}
-            </div>
-            <h3 className="font-semibold text-lg truncate">{item.title}</h3>
-            {item.payloadJson && Object.keys(item.payloadJson).length > 0 && (
-              <div className="mt-2 text-sm text-gray-600 bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-auto max-h-32">
-                <pre className="whitespace-pre-wrap text-xs">
-                  {JSON.stringify(item.payloadJson, null, 2)}
-                </pre>
-              </div>
-            )}
-            {item.sourceRef && (
-              <div className="mt-1 text-xs text-gray-400">
-                Source: {item.sourceRef}
-              </div>
-            )}
-          </div>
-        </div>
-      </Card>
-    );
-  };
+  const handleImageUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setUploading(true);
+      try {
+        const uploads = Array.from(files).slice(0, 6 - newsMedia.length);
+        for (const file of uploads) {
+          const upload = await requestNewsMediaUpload({
+            filename: file.name,
+            content_type: file.type,
+            size_bytes: file.size,
+          });
+          await uploadNewsMediaFile(upload.upload_url, upload.upload_headers, file);
 
-  // Loading state
-  if (isLoading && !items.length) {
-    return (
-      <div className="container py-4 max-w-2xl mx-auto">
-        <div className="mb-6">
-          <SkeletonBlock height={32} width="40%" />
-        </div>
-        <SkeletonList rows={4} />
-      </div>
-    );
-  }
+          const image = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          await new Promise<void>((resolve) => {
+            image.onload = () => resolve();
+            image.onerror = () => resolve();
+            image.src = objectUrl;
+          });
 
-  // Error state
+          setNewsMedia((prev) => [
+            ...prev,
+            {
+              type: 'image',
+              key: upload.key,
+              content_type: file.type,
+              size_bytes: file.size,
+              width: image.naturalWidth || undefined,
+              height: image.naturalHeight || undefined,
+              url: objectUrl,
+            },
+          ]);
+        }
+      } catch (err) {
+        notifyApiError(err, 'Не удалось загрузить изображение');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [newsMedia.length],
+  );
+
+  const handlePublishNews = useCallback(async () => {
+    const markup = String(editor.getValue() ?? '').trim();
+    if (!markup) return;
+
+    const title = extractTitle(markup);
+    const tags = extractTags(markup);
+    const youtubeIds = extractYoutubeIds(markup);
+    const strippedBody = title ? markup.replace(TITLE_REGEX, '').trim() : markup;
+    const body = strippedBody || markup;
+
+    const youtubeMedia: NewsMediaItem[] = youtubeIds.map((id) => ({
+      type: 'youtube',
+      url: `https://youtu.be/${id}`,
+      video_id: id,
+    }));
+
+    const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
+    if (mergedMedia.length === 0) {
+      setComposerError('Добавьте хотя бы одно изображение или ссылку на YouTube.');
+      return;
+    }
+
+    try {
+      await createNews({
+        title: title || undefined,
+        body,
+        tags,
+        visibility: newsVisibility,
+        scopeType: 'TENANT',
+        scopeId: null,
+        media: mergedMedia.map((item) => {
+          if (item.type === 'image') {
+            return {
+              type: 'image',
+              key: item.key,
+              content_type: item.content_type,
+              size_bytes: item.size_bytes,
+              width: item.width,
+              height: item.height,
+              caption: item.caption,
+            };
+          }
+          return {
+            type: 'youtube',
+            url: item.url,
+            video_id: item.video_id,
+            title: item.title,
+          };
+        }),
+      });
+      if ((editor as { setValue?: (value: string) => void }).setValue) {
+        (editor as { setValue: (value: string) => void }).setValue('');
+      }
+      setNewsMedia([]);
+      setComposerOpen(false);
+      setComposerError(null);
+      refetch();
+    } catch (err) {
+      notifyApiError(err, 'Не удалось опубликовать новость');
+    }
+  }, [createNews, editor, newsMedia, newsVisibility, refetch]);
+
   if (error) {
     return (
-      <div className="container py-4 max-w-2xl mx-auto">
-        <div className="p-8 text-center text-red-500 bg-red-50 rounded">
-          Failed to load feed. <Button view="flat" onClick={() => refetch()}>Retry</Button>
-        </div>
+      <div className="feed-page">
+        <Card view="filled" className="feed-empty">
+          <Text variant="subheader-2">Не удалось загрузить ленту.</Text>
+          <Button view="flat" size="m" onClick={() => refetch()}>
+            Повторить
+          </Button>
+        </Card>
       </div>
     );
   }
 
+  const hasContent = sortedItems.length > 0;
+  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
+  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
+  const composerHasText = Boolean(composerValue.trim());
+  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
+
+  useEffect(() => {
+    if (composerError && composerHasMedia) {
+      setComposerError(null);
+    }
+  }, [composerError, composerHasMedia]);
+
   return (
-    <div className="container py-4 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">Activity Feed</h1>
-          {unreadCount > 0 && (
-            <Label theme="danger" size="s">
-              {unreadCount} new
-            </Label>
-          )}
-        </div>
-        {unreadCount > 0 && (
-          <Button
-            view="outlined"
-            size="m"
-            loading={isMarkingRead}
-            onClick={() => markAsRead()}
-          >
-            Mark all as read
-          </Button>
-        )}
-      </div>
-
-      {/* Filters */}
-      {availableTypes.length > 0 && (
-        <div className="mb-4">
-          <Select
-            multiple
-            filterable
-            placeholder="Filter by event type..."
-            value={selectedTypes}
-            onUpdate={handleTypeFilterChange}
-            options={availableTypes.map((type) => ({
-              value: type,
-              content: EVENT_TYPE_LABELS[type] || type,
-            }))}
-            width="max"
-          />
-        </div>
-      )}
-
-      {/* Feed list */}
-      {!items.length ? (
-        <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-gray-800 rounded">
-          {selectedTypes.length > 0
-            ? 'No events matching your filters.'
-            : 'Nothing happening yet.'}
-        </div>
-      ) : (
-        <div className="feed-list">
-          {Array.from(groupedItems.entries()).map(([date, dateItems]) => (
-            <div key={date} className="mb-6">
-              <div className="text-sm font-medium text-gray-500 mb-2 sticky top-0 bg-white dark:bg-gray-900 py-1">
-                {date}
-              </div>
-              {dateItems.map(renderItem)}
+    <div className="feed-page">
+      <div className="feed-page__layout">
+        <section className="feed-stream">
+          <div className="feed-stream__header">
+            <div className="feed-stream__title">
+              <Text variant="header-1">Лента активности</Text>
+              <Text variant="body-2" color="secondary" className="feed-stream__subtitle">
+                Новости сообщества, голосования и игровые события в одном месте.
+              </Text>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="feed-stream__header-actions">
+              <Button view="flat" size="m" onClick={() => refetch()}>
+                <Icon data={ArrowRotateRight} />
+                Обновить
+              </Button>
+              {unreadCount > 0 && (
+                <Button view="action" size="m" loading={isMarkingRead} onClick={() => markAsRead()}>
+                  Отметить прочитанным
+                </Button>
+              )}
+            </div>
+          </div>
 
-      {/* Load more trigger */}
-      <div ref={loadMoreRef} className="py-4 flex justify-center">
-        {isFetchingNextPage && <Loader size="m" />}
-        {!hasNextPage && items.length > 0 && (
-          <div className="text-sm text-gray-400">No more events</div>
-        )}
+          {unreadCount > 0 && (
+            <Card view="filled" className="feed-unread-banner">
+              <Text variant="subheader-2">ОГО, новых новостей: {unreadCount}</Text>
+              <Text variant="body-2" color="secondary">
+                Вы ещё не прочитали их. Пролистайте ленту ниже.
+              </Text>
+            </Card>
+          )}
+
+          <Card
+            view="filled"
+            className={[
+              'feed-composer',
+              composerOpen ? 'feed-composer--expanded' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <div className="feed-composer__header">
+              <Text variant="subheader-2">Что происходит?</Text>
+            </div>
+
+            <div
+              className="feed-composer__editor"
+              onClick={() => setComposerOpen(true)}
+            >
+              <MarkdownEditorView
+                editor={editor}
+                stickyToolbar={false}
+                settingsVisible={false}
+                toolbarsPreset={emptyToolbarsPreset}
+              />
+            </div>
+
+            <div className="feed-composer__footer">
+              <div className="feed-composer__media-bar">
+                <button
+                  type="button"
+                  className="feed-composer__media-button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icon data={Plus} />
+                </button>
+                <Text variant="caption-2" color="secondary">
+                  Добавьте изображения (только картинки)
+                </Text>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => handleImageUpload(event.target.files)}
+                />
+              </div>
+              {detectedTags.length > 0 && (
+                <div className="feed-composer__tags">
+                  {detectedTags.map((tag) => (
+                    <span key={tag} className="feed-tag">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {composerError && (
+                <Text variant="caption-2" color="danger">
+                  {composerError}
+                </Text>
+              )}
+              <div className="feed-composer__actions">
+                <Select
+                  value={[newsVisibility]}
+                  onUpdate={(values) => {
+                    const next = values[0] as 'public' | 'private' | undefined;
+                    if (next) setNewsVisibility(next);
+                  }}
+                  options={[
+                    { value: 'public', content: 'Публично' },
+                    { value: 'private', content: 'Только мне' },
+                  ]}
+                />
+                <Button
+                  view="action"
+                  size="m"
+                  loading={isCreatingNews || uploading}
+                  disabled={!composerHasText || !composerHasMedia}
+                  onClick={handlePublishNews}
+                >
+                  Опубликовать
+                </Button>
+              </div>
+            </div>
+
+            {newsMedia.length > 0 && (
+              <div className="feed-composer__media">
+                {newsMedia.map((media, index) => (
+                  <div key={`${media.type}-${index}`} className="feed-composer__media-item">
+                    {media.type === 'image' && media.url ? (
+                      <img src={media.url} alt="preview" />
+                    ) : null}
+                    <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
+                      Удалить
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {!hasContent && isLoading ? (
+            <div className="feed-stream__list">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Card key={`skeleton-${index}`} view="filled" className="feed-skeleton">
+                  <div className="feed-skeleton__row">
+                    <SkeletonBlock height={32} width={32} />
+                    <div className="feed-skeleton__content">
+                      <SkeletonBlock height={12} width="40%" />
+                      <SkeletonBlock height={18} width="70%" />
+                      <SkeletonBlock height={12} width="60%" />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : !hasContent ? (
+            <Card view="filled" className="feed-empty">
+              <Text variant="subheader-2">
+                {sourceFilter !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
+              </Text>
+              <Text variant="body-2" color="secondary">
+                Добавьте интеграции или вернитесь позже.
+              </Text>
+            </Card>
+          ) : (
+            <div className="feed-stream__list">
+              {sortedItems.map((item) => (
+                <FeedItem key={item.id} item={item} showPayload={false} />
+              ))}
+            </div>
+          )}
+
+          <div ref={loadMoreRef} className="feed-stream__footer">
+            {isFetchingNextPage && <Loader size="m" />}
+            {!hasNextPage && hasContent && (
+              <Text variant="caption-2" color="secondary">
+                Больше событий нет
+              </Text>
+            )}
+          </div>
+        </section>
+
+        <aside className="feed-sidebar">
+          <Card view="filled" className="feed-panel">
+            <div className="feed-panel__header">
+              <Text variant="subheader-2">Фильтры</Text>
+              {sourceFilter !== 'all' && (
+                <Label size="xs" theme="info">
+                  1
+                </Label>
+              )}
+            </div>
+            <FeedFilters
+              sortValue={sortFilter}
+              onSortChange={(value) => setSortFilter(value as SortFilter)}
+              sourceValue={sourceFilter}
+              onSourceChange={(value) => setSourceFilter(value as SourceFilter)}
+              timeValue={timeFilter}
+              onTimeChange={(value) => setTimeFilter(value as TimeFilter)}
+              onReset={handleResetFilters}
+            />
+          </Card>
+        </aside>
       </div>
     </div>
   );

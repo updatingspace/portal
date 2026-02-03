@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Icon } from '@gravity-ui/uikit';
+import React, { useMemo, useState } from 'react';
+import { AsideHeader } from '@gravity-ui/navigation';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { buildAsideMenuItems } from '../../features/navigation/menu';
@@ -11,6 +11,7 @@ export const AppLayout: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isAsideCompact, setIsAsideCompact] = useState(false);
 
   const menuItems = useMemo(
     () =>
@@ -24,29 +25,24 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <aside className="app-shell__sidebar">
-        <nav className="app-shell__nav" aria-label="Primary navigation">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="app-shell__nav-button"
-              data-active={item.current ? 'true' : 'false'}
-              aria-current={item.current ? 'page' : undefined}
-              onClick={() => item.link && navigate(item.link)}
-            >
-              {item.icon && <Icon data={item.icon} size={16} />}
-              <span>{item.title}</span>
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <div className="app-shell__main">
-        <AppHeader />
-        <main className="app-shell__content">
-          <Outlet />
-        </main>
-      </div>
+      <AsideHeader
+        className="app-shell__aside"
+        compact={isAsideCompact}
+        onChangeCompact={setIsAsideCompact}
+        logo={{
+          text: user?.tenant?.slug ? `AEF · ${user.tenant.slug}` : 'AEF Portal',
+          onClick: () => navigate('/app'),
+        }}
+        menuItems={menuItems}
+        renderContent={() => (
+          <div className="app-shell__content-shell">
+            <AppHeader showBrand={false} />
+            <main className="app-shell__content">
+              <Outlet />
+            </main>
+          </div>
+        )}
+      />
     </div>
   );
 };

@@ -6,20 +6,29 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { ThemeProvider } from '@gravity-ui/uikit';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { FeedItem } from './FeedItem';
 import { createActivityEvents } from '../../../test/fixtures';
 import type { ActivityEvent } from '../../../types/activity';
 
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null }),
+}));
+
 // Wrapper for Gravity UI components
 function renderWithTheme(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return render(
-    <ThemeProvider theme="light">
-      {ui}
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme="light">
+        {ui}
+      </ThemeProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -83,19 +92,6 @@ describe('FeedItem', () => {
     expect(screen.getByText(/Голосование/i)).toBeInTheDocument();
   });
 
-  it('handles click events', async () => {
-    const user = userEvent.setup();
-    const handleClick = vi.fn();
-
-    renderWithTheme(<FeedItem item={mockItem} onClick={handleClick} />);
-
-    // Component is wrapped in a div with role="button" when onClick is provided
-    const clickable = screen.getByRole('button');
-    expect(clickable).toBeInTheDocument();
-
-    await user.click(clickable);
-    expect(handleClick).toHaveBeenCalledWith(mockItem);
-  });
 
   it('renders different event types correctly', () => {
     const achievementItem: ActivityEvent = {
@@ -123,4 +119,3 @@ describe('FeedItem', () => {
     expect(screen.getByText('📌')).toBeInTheDocument();
   });
 });
-

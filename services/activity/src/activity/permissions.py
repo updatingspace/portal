@@ -217,3 +217,7 @@ class Permissions:
     # Admin operations
     ADMIN_SYNC = "activity.admin.sync"
     ADMIN_GAMES = "activity.admin.games"
+
+    # News
+    NEWS_CREATE = "activity.news.create"
+    NEWS_MANAGE = "activity.news.manage"

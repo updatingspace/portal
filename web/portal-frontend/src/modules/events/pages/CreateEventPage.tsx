@@ -15,8 +15,10 @@ export const CreateEventPage: React.FC = () => {
     };
 
     return (
-        <div className="container py-4 max-w-2xl mx-auto">
-            <EventForm onSuccess={handleSuccess} onCancel={handleCancel} />
+        <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
+            <div className="container max-w-7xl mx-auto px-4 py-6">
+                <EventForm onSuccess={handleSuccess} onCancel={handleCancel} />
+            </div>
         </div>
     );
 };

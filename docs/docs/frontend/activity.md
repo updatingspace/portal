@@ -15,7 +15,6 @@ Activity Frontend Module предоставляет:
 - API клиент для всех endpoints Activity сервиса
 - React hooks с TanStack Query
 - UI компоненты для ленты и фильтров
-- SSE поддержку для real-time обновлений
 
 ## Структура файлов
 
@@ -54,6 +53,8 @@ type ActivityEventType =
   | 'event.created'
   | 'event.rsvp.changed'
   | 'post.created'
+  | 'news.posted'
+  // Коннекторы (могут быть недоступны без включения на бэке)
   | 'game.achievement'
   | 'game.playtime'
   | 'steam.private'
@@ -124,6 +125,9 @@ interface AccountLinkDetail extends AccountLink {
 
 ### Feed API
 
+> Примечание: Activity сервис возвращает `snake_case` поля. Клиент `api/activity.ts`
+> маппит их в `camelCase` для `ActivityEvent` и `FeedResponseV2`.
+
 ```typescript
 import { fetchFeed, fetchFeedV2, fetchUnreadCount } from '@/api/activity';
 
@@ -136,6 +140,8 @@ const { items, nextCursor, hasMore } = await fetchFeedV2({
   cursor: prevCursor,
   types: 'vote.cast,event.created',
 });
+
+// Важно: если передать неизвестные типы, API вернёт 400 INVALID_EVENT_TYPES.
 
 // Get unread count
 const count = await fetchUnreadCount();
@@ -166,20 +172,6 @@ const link = await createAccountLink({
 await deleteAccountLink(link.id);
 ```
 
-### SSE Subscription
-
-```typescript
-import { subscribeToUnreadCount } from '@/api/activity';
-
-// Subscribe to real-time unread count updates
-const eventSource = subscribeToUnreadCount(
-  (count) => console.log('Unread:', count),
-  (error) => console.error('SSE error:', error),
-);
-
-// Cleanup
-eventSource.close();
-```
 
 ## React Hooks
 
@@ -234,14 +226,13 @@ function FeedList() {
 
 ### useUnreadCount
 
-Счётчик непрочитанных с опциональной SSE подпиской.
+Счётчик непрочитанных с периодическим polling обновлением.
 
 ```typescript
 import { useUnreadCount } from '@/hooks/useActivity';
 
 function Header() {
-  // With real-time updates
-  const { count, isLoading } = useUnreadCount({ realtime: true });
+  const { count, isLoading } = useUnreadCount();
 
   return (
     <nav>
@@ -269,6 +260,48 @@ function FeedHeader({ unreadCount }) {
     </button>
   );
 }
+```
+
+### News (создание)
+
+```typescript
+import { requestNewsMediaUpload, uploadNewsMediaFile, createNews } from '@/api/activity';
+
+// 1) получить upload URL
+const upload = await requestNewsMediaUpload({
+  filename: file.name,
+  content_type: file.type,
+  size_bytes: file.size,
+});
+
+// 2) загрузить в S3
+await uploadNewsMediaFile(upload.upload_url, upload.upload_headers, file);
+
+// 3) создать новость
+await createNews({
+  title: 'Patch notes',
+  body: 'Мы выкатили обновление...',
+  tags: ['patch', 'servers'],
+  visibility: 'public',
+  scope_type: 'TENANT',
+  media: [
+    {
+      type: 'image',
+      key: upload.key,
+      content_type: file.type,
+      size_bytes: file.size,
+    },
+  ],
+});
+```
+
+### News (реакции и комментарии)
+
+```typescript
+import { reactToNews, createNewsComment } from '@/api/activity';
+
+await reactToNews(newsId, { emoji: '🔥', action: 'add' });
+await createNewsComment(newsId, 'Круто!');
 ```
 
 ### useAccountLinks
@@ -327,8 +360,7 @@ import { FeedPage } from '@/modules/feed/pages/FeedPage';
 Features:
 - Infinite scroll с Intersection Observer
 - Фильтрация по типам событий
-- Real-time unread count
-- Группировка по датам
+- Polling unread count
 - Mark all as read
 
 ### FeedItem
@@ -372,10 +404,10 @@ import { FeedFilters } from '@/modules/feed/components';
 import { UnreadBadge, UnreadDot } from '@/modules/feed/components';
 
 // Полный бейдж
-<UnreadBadge realtime={true} size="s" />
+<UnreadBadge size="s" />
 
 // Простой индикатор
-<UnreadDot realtime={true} />
+<UnreadDot />
 ```
 
 ### AccountLinkCard
@@ -416,7 +448,7 @@ export const menuItems = [
     title: 'Activity Feed',
     route: '/app/feed',
     icon: ActivityIcon,
-    badge: <UnreadBadge realtime={true} size="xs" />,
+    badge: <UnreadBadge size="xs" />,
   },
 ];
 ```

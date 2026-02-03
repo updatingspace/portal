@@ -1,7 +1,7 @@
 /**
  * UnreadBadge Component
  *
- * Displays unread count with real-time updates.
+ * Displays unread count with polling updates.
  */
 
 import React from 'react';
@@ -9,17 +9,15 @@ import { Label } from '@gravity-ui/uikit';
 import { useUnreadCount } from '../../../hooks/useActivity';
 
 export interface UnreadBadgeProps {
-  realtime?: boolean;
   size?: 'xs' | 's' | 'm';
   className?: string;
 }
 
 export const UnreadBadge: React.FC<UnreadBadgeProps> = ({
-  realtime = false,
   size = 's',
   className,
 }) => {
-  const { count, isLoading } = useUnreadCount({ realtime });
+  const { count, isLoading } = useUnreadCount();
 
   if (isLoading || count === 0) {
     return null;
@@ -39,11 +37,10 @@ export const UnreadBadge: React.FC<UnreadBadgeProps> = ({
  *
  * Simple dot indicator for unread items.
  */
-export const UnreadDot: React.FC<{ realtime?: boolean; className?: string }> = ({
-  realtime = false,
+export const UnreadDot: React.FC<{ className?: string }> = ({
   className,
 }) => {
-  const { count } = useUnreadCount({ realtime });
+  const { count } = useUnreadCount();
 
   if (count === 0) {
     return null;

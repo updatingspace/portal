@@ -339,6 +339,7 @@ interface AccountLinkDetail {
 // Fetch feed with cursor pagination
 export async function fetchFeedV2(params?: FeedParams): Promise<FeedResponseV2> {
   const query = buildFeedQuery(params);
+  // Activity сервис возвращает snake_case, клиент маппит в camelCase
   return request<FeedResponseV2>(`/activity/v2/feed?${query}`);
 }
 
@@ -348,17 +349,6 @@ export async function fetchUnreadCount(): Promise<number> {
   return data.count;
 }
 
-// Subscribe to SSE updates
-export function subscribeToUnreadCount(
-  onUpdate: (count: number) => void,
-): EventSource {
-  const eventSource = new EventSource('/api/v1/activity/feed/sse');
-  eventSource.addEventListener('unread', (event) => {
-    const data = JSON.parse(event.data);
-    onUpdate(data.count);
-  });
-  return eventSource;
-}
 ```
 
 ### Hooks
@@ -376,22 +366,15 @@ export function useFeedInfinite(params?: Omit<FeedParams, 'cursor'>) {
   });
 }
 
-// Unread count with real-time SSE
-export function useUnreadCount(options?: { realtime?: boolean }) {
-  const [sseCount, setSseCount] = useState<number | null>(null);
-
+// Unread count with polling
+export function useUnreadCount() {
   const query = useQuery({
     queryKey: ['activity', 'unread-count'],
     queryFn: fetchUnreadCount,
+    refetchInterval: 60_000,
   });
 
-  useEffect(() => {
-    if (!options?.realtime) return;
-    const es = subscribeToUnreadCount(setSseCount);
-    return () => es.close();
-  }, [options?.realtime]);
-
-  return { count: sseCount ?? query.data ?? 0 };
+  return { count: query.data ?? 0 };
 }
 ```
 
@@ -411,7 +394,7 @@ export const FeedPage: React.FC = () => {
     isFetchingNextPage,
   } = useFeedInfinite({ types: selectedTypes.join(','), limit: 20 });
 
-  const { count: unreadCount } = useUnreadCount({ realtime: true });
+  const { count: unreadCount } = useUnreadCount();
   const { mutate: markAsRead } = useMarkFeedAsRead();
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];

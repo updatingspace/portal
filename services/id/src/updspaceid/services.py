@@ -76,23 +76,27 @@ def issue_activation_token(
 
 
 def ensure_tenant(tenant_id: str, tenant_slug: str) -> Tenant:
-    tenant, _ = Tenant.objects.get_or_create(
-        id=tenant_id,
-        defaults={"slug": tenant_slug},
-    )
-    # If slug mismatches existing tenant id, treat as error.
-    if tenant.slug != tenant_slug:
-        raise HttpError(
-            409,
-            error_payload(
-                "TENANT_MISMATCH",
-                "Tenant slug does not match tenant id",
-                details={
-                    "tenant_id": str(tenant.id),
-                    "tenant_slug": tenant.slug,
-                },
-            ),
-        )
+    tenant = Tenant.objects.filter(slug=tenant_slug).first()
+    if tenant:
+        if str(tenant.id) != str(tenant_id):
+            # In dev mode we allow slug to be authoritative to avoid cross-service
+            # tenant id mismatches breaking internal calls.
+            if getattr(settings, "DEBUG", False) or getattr(settings, "DEV_AUTH_MODE", False):
+                return tenant
+            raise HttpError(
+                409,
+                error_payload(
+                    "TENANT_MISMATCH",
+                    "Tenant slug does not match tenant id",
+                    details={
+                        "tenant_id": str(tenant.id),
+                        "tenant_slug": tenant.slug,
+                    },
+                ),
+            )
+        return tenant
+
+    tenant = Tenant.objects.create(id=tenant_id, slug=tenant_slug)
     return tenant
 
 

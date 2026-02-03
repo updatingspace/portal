@@ -21,7 +21,7 @@ export const EditEventPage: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex justify-center p-8">
+            <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-8">
                 <Loader size="l" />
             </div>
         );
@@ -29,17 +29,21 @@ export const EditEventPage: React.FC = () => {
 
     if (isError || !event) {
         return (
-            <div className="container py-4 max-w-2xl mx-auto">
-                <Card className="p-6">
-                    <h2 className="text-xl font-bold text-red-600">Event not found</h2>
-                </Card>
+            <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
+                <div className="container max-w-2xl mx-auto px-4 py-6">
+                    <Card className="p-6">
+                        <h2 className="text-xl font-bold text-red-600">Event not found</h2>
+                    </Card>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="container py-4 max-w-2xl mx-auto">
-            <EventForm event={event} onSuccess={handleSuccess} onCancel={handleCancel} />
+        <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
+            <div className="container max-w-7xl mx-auto px-4 py-6">
+                <EventForm event={event} onSuccess={handleSuccess} onCancel={handleCancel} />
+            </div>
         </div>
     );
 };

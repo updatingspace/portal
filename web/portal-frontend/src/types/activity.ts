@@ -165,6 +165,36 @@ export interface UnreadCountResponse {
   count: number;
 }
 
+export type NewsMediaImage = {
+  type: 'image';
+  key: string;
+  url?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  caption?: string | null;
+};
+
+export type NewsMediaYoutube = {
+  type: 'youtube';
+  url: string;
+  video_id: string;
+  title?: string | null;
+};
+
+export type NewsMediaItem = NewsMediaImage | NewsMediaYoutube;
+
+export type NewsPayload = {
+  news_id?: string;
+  title?: string | null;
+  body: string;
+  tags: string[];
+  media?: NewsMediaItem[];
+  comments_count?: number;
+  reactions_count?: number;
+};
+
 // ============================================================================
 // Games Types
 // ============================================================================

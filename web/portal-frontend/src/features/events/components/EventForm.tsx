@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar } from '@gravity-ui/date-components';
-import { dateTime, settings } from '@gravity-ui/date-utils';
-import { Button, Card, Select, TextArea, TextInput } from '@gravity-ui/uikit';
+import { Button, Card, Select, Text, TextArea, TextInput } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCreateEvent, useUpdateEvent } from '../hooks';
@@ -26,6 +24,8 @@ type EventFormState = {
 };
 
 type LanguageKey = 'en' | 'ru';
+
+type SectionKey = 'basics' | 'schedule' | 'location' | 'audience';
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -53,6 +53,19 @@ const parseControlDatetime = (value: string) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const toDateInputValue = (value: Date | null) => {
+  if (!value) return '';
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+};
+
+const parseDateInputValue = (value: string) => {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map((part) => Number(part));
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const createFallbackRange = () => {
   const now = new Date();
   const start = new Date(now.getTime());
@@ -62,21 +75,6 @@ const createFallbackRange = () => {
   start.setMilliseconds(0);
   const end = new Date(start.getTime() + 60 * 60 * 1000);
   return { start, end };
-};
-
-type CalendarValue = React.ComponentProps<typeof Calendar>['value'];
-
-const toCalendarValue = (date: Date | null): CalendarValue => (date ? (dateTime({ input: date }) as CalendarValue) : null);
-
-const toJsDate = (value: CalendarValue): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === 'object') {
-    const maybeValue = value as { toDate?: () => Date; toJSDate?: () => Date };
-    if (typeof maybeValue.toDate === 'function') return maybeValue.toDate();
-    if (typeof maybeValue.toJSDate === 'function') return maybeValue.toJSDate();
-  }
-  return null;
 };
 
 const formatTimeValue = (date: Date | null) => {
@@ -92,11 +90,10 @@ const applyTimeToDate = (baseDate: Date, timeValue: string) => {
   return baseDate;
 };
 
-const mergeDatePart = (current: Date | null, next: Date | null) => {
-  if (!next) return null;
-  const base = new Date(next.getTime());
-  const timeSource = current ?? new Date();
-  base.setHours(timeSource.getHours(), timeSource.getMinutes(), 0, 0);
+const mergeDateWithTime = (dateOnly: Date, timeSource?: Date | null) => {
+  const base = new Date(dateOnly.getFullYear(), dateOnly.getMonth(), dateOnly.getDate());
+  const time = timeSource ?? new Date();
+  base.setHours(time.getHours(), time.getMinutes(), 0, 0);
   return base;
 };
 
@@ -112,8 +109,18 @@ const formatDurationLabel = (start: Date | null, end: Date | null) => {
   return parts.join(' ');
 };
 
-const timeInputClassName =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none';
+const formatDateFull = (date: Date, locale: string) =>
+  new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+
+const formatDateShort = (date: Date, locale: string) =>
+  new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+  }).format(date);
 
 const translations: Record<LanguageKey, {
   heading: { create: string; edit: string };
@@ -302,6 +309,26 @@ const FieldBlock: React.FC<React.PropsWithChildren<{
   </div>
 );
 
+const SectionCard: React.FC<React.PropsWithChildren<{
+  title: string;
+  description?: string;
+  id?: string;
+}>> = ({ title, description, children, id }) => (
+  <Card className="p-5" id={id}>
+    <div className="flex flex-col gap-1">
+      <Text variant="subheader-2" className="text-slate-900">
+        {title}
+      </Text>
+      {description ? (
+        <Text variant="body-2" color="secondary">
+          {description}
+        </Text>
+      ) : null}
+    </div>
+    <div className="mt-4">{children}</div>
+  </Card>
+);
+
 const getPortalLanguage = (userLanguage: string | null | undefined) => {
   const normalized = userLanguage?.toLowerCase() ?? '';
   return normalized.startsWith('ru') ? 'ru' : 'en';
@@ -337,6 +364,13 @@ type EventFormProps = {
   onCancel: () => void;
 };
 
+const sections: { key: SectionKey; labelKey: keyof typeof translations['ru']['sections'] }[] = [
+  { key: 'basics', labelKey: 'basics' },
+  { key: 'schedule', labelKey: 'schedule' },
+  { key: 'location', labelKey: 'location' },
+  { key: 'audience', labelKey: 'audience' },
+];
+
 export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess }) => {
   const { user } = useAuth();
   const locale = useMemo(() => getPortalLanguage(user?.language ?? null), [user?.language]);
@@ -352,14 +386,14 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
     setFormError(null);
   }, [event?.id]);
 
-  useEffect(() => {
-    settings.loadLocale(locale).catch(() => undefined);
-  }, [locale]);
-
   const startDate = parseControlDatetime(formState.startsAt);
   const endDate = parseControlDatetime(formState.endsAt);
   const startTime = formatTimeValue(startDate);
   const endTime = formatTimeValue(endDate);
+  const durationMinutes = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    return Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+  }, [endDate, startDate]);
   const durationLabel = useMemo(() => formatDurationLabel(startDate, endDate), [endDate, startDate]);
   const hasValidRange = startDate && endDate && startDate < endDate;
   const isEditing = Boolean(event?.id);
@@ -443,20 +477,46 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
     setFormState((prev) => ({ ...prev, ...patch }));
   };
 
-  const handleStartCalendarUpdate = (value: CalendarValue) => {
-    const nextDate = mergeDatePart(startDate, toJsDate(value));
-    updateField({ startsAt: nextDate ? toControlDatetime(nextDate) : '' });
+  const resolveEndAfterStart = (nextStart: Date) => {
+    if (endDate && endDate.getTime() > nextStart.getTime()) {
+      return new Date(endDate.getTime());
+    }
+    const fallbackMinutes = durationMinutes && durationMinutes > 0 ? durationMinutes : 60;
+    return new Date(nextStart.getTime() + fallbackMinutes * 60000);
   };
 
-  const handleEndCalendarUpdate = (value: CalendarValue) => {
-    const nextDate = mergeDatePart(endDate, toJsDate(value));
-    updateField({ endsAt: nextDate ? toControlDatetime(nextDate) : '' });
+  const handleStartDateUpdate = (value: string) => {
+    const parsed = parseDateInputValue(value);
+    if (!parsed) {
+      updateField({ startsAt: '' });
+      return;
+    }
+    const nextStart = mergeDateWithTime(parsed, startDate);
+    const nextEnd = resolveEndAfterStart(nextStart);
+    updateField({
+      startsAt: toControlDatetime(nextStart),
+      endsAt: toControlDatetime(nextEnd),
+    });
+  };
+
+  const handleEndDateUpdate = (value: string) => {
+    const parsed = parseDateInputValue(value);
+    if (!parsed) {
+      updateField({ endsAt: '' });
+      return;
+    }
+    const nextEnd = mergeDateWithTime(parsed, endDate ?? startDate);
+    updateField({ endsAt: toControlDatetime(nextEnd) });
   };
 
   const handleStartTimeUpdate = (value: string) => {
     const base = startDate ? new Date(startDate.getTime()) : new Date();
     const nextDate = applyTimeToDate(base, value);
-    updateField({ startsAt: toControlDatetime(nextDate) });
+    const nextEnd = resolveEndAfterStart(nextDate);
+    updateField({
+      startsAt: toControlDatetime(nextDate),
+      endsAt: toControlDatetime(nextEnd),
+    });
   };
 
   const handleEndTimeUpdate = (value: string) => {
@@ -465,171 +525,261 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
     updateField({ endsAt: toControlDatetime(nextDate) });
   };
 
+  const handleDurationPreset = (minutes: number) => {
+    const base = startDate ?? new Date();
+    const nextEnd = new Date(base.getTime() + minutes * 60000);
+    updateField({ startsAt: toControlDatetime(base), endsAt: toControlDatetime(nextEnd) });
+  };
+
+  const scrollToSection = (key: SectionKey) => {
+    const target = document.getElementById(`event-${key}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
-    <Card view="filled" className="p-6 md:p-8 space-y-8">
-      <div className="space-y-2">
-        <div className="text-2xl font-semibold text-slate-900">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2">
+        <Text variant="header-1" className="text-slate-900">
           {isEditing ? copy.heading.edit : copy.heading.create}
-        </div>
-        <p className="text-sm text-slate-500 max-w-xl">{copy.intro}</p>
+        </Text>
+        <Text variant="body-2" color="secondary" className="max-w-3xl">
+          {copy.intro}
+        </Text>
+        {user?.tenant?.slug && (
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+            {copy.hints.tenantScope} <span className="font-semibold text-slate-800">{user.tenant.slug}</span>
+          </div>
+        )}
       </div>
 
-      {user?.tenant?.slug && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          {copy.hints.tenantScope} <span className="font-medium text-slate-800">{user.tenant.slug}</span>
-        </div>
-      )}
-
-      <section className="space-y-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.sections.basics}</div>
-        <div className="grid gap-6">
-          <FieldBlock label={copy.labels.title} description={copy.placeholders.title}>
-            <TextInput
-              size="l"
-              value={formState.title}
-              onUpdate={(value) => updateField({ title: value })}
-              placeholder={copy.placeholders.title}
-            />
-          </FieldBlock>
-
-          <FieldBlock label={copy.labels.description} description={copy.placeholders.description}>
-            <TextArea
-              size="l"
-              rows={4}
-              value={formState.description}
-              onUpdate={(value) => updateField({ description: value })}
-              placeholder={copy.placeholders.description}
-            />
-          </FieldBlock>
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.sections.schedule}</div>
-          {durationLabel && (
-            <div className="text-xs text-slate-500">
-              {copy.hints.duration}: <span className="font-medium text-slate-700">{durationLabel}</span>
+      <div className="grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)]">
+        <aside className="hidden lg:block">
+          <Card className="p-4 sticky top-6">
+            <Text variant="caption-2" color="secondary">
+              Навигация
+            </Text>
+            <div className="mt-3 flex flex-col gap-1">
+              {sections.map((section) => (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => scrollToSection(section.key)}
+                  className="text-left rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                >
+                  {copy.sections[section.labelKey]}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <FieldBlock label={copy.labels.startsAt} description={copy.hints.timezone}>
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="text-[11px] font-semibold uppercase text-slate-400 mb-2">
-                  {copy.labels.startDate}
-                </div>
-                <Calendar value={toCalendarValue(startDate)} onUpdate={handleStartCalendarUpdate} />
+          </Card>
+        </aside>
+
+        <div className="space-y-6">
+          <Card className="p-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <Text variant="caption-2" color="secondary">
+                  Дата
+                </Text>
+                <Text variant="subheader-2" className="text-slate-900">
+                  {startDate ? formatDateFull(startDate, locale) : '—'}
+                </Text>
               </div>
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase text-slate-400">{copy.labels.startTime}</div>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(event) => handleStartTimeUpdate(event.target.value)}
-                  placeholder={copy.placeholders.time}
-                  className={timeInputClassName}
+              <div>
+                <Text variant="caption-2" color="secondary">
+                  Время
+                </Text>
+                <Text variant="subheader-2" className="text-slate-900">
+                  {startTime && endTime ? `${startTime}–${endTime}` : '—'}
+                </Text>
+              </div>
+              <div>
+                <Text variant="caption-2" color="secondary">
+                  Видимость
+                </Text>
+                <Text variant="subheader-2" className="text-slate-900">
+                  {copy.visibilityOptions.find((opt) => opt.value === formState.visibility)?.label ?? '—'}
+                </Text>
+              </div>
+            </div>
+          </Card>
+
+          <SectionCard id="event-basics" title={copy.sections.basics} description={copy.placeholders.title}>
+            <div className="grid gap-4">
+              <FieldBlock label={copy.labels.title}>
+                <TextInput
+                  size="l"
+                  value={formState.title}
+                  onUpdate={(value) => updateField({ title: value })}
+                  placeholder={copy.placeholders.title}
                 />
-              </div>
-            </div>
-          </FieldBlock>
-
-          <FieldBlock label={copy.labels.endsAt}>
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="text-[11px] font-semibold uppercase text-slate-400 mb-2">
-                  {copy.labels.endDate}
-                </div>
-                <Calendar value={toCalendarValue(endDate)} onUpdate={handleEndCalendarUpdate} />
-              </div>
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase text-slate-400">{copy.labels.endTime}</div>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(event) => handleEndTimeUpdate(event.target.value)}
-                  placeholder={copy.placeholders.time}
-                  className={timeInputClassName}
+              </FieldBlock>
+              <FieldBlock label={copy.labels.description} description={copy.placeholders.description}>
+                <TextArea
+                  size="l"
+                  rows={4}
+                  value={formState.description}
+                  onUpdate={(value) => updateField({ description: value })}
+                  placeholder={copy.placeholders.description}
                 />
-              </div>
+              </FieldBlock>
             </div>
-          </FieldBlock>
-        </div>
-      </section>
+          </SectionCard>
 
-      <section className="space-y-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.sections.location}</div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <FieldBlock label={copy.labels.locationText} description={copy.placeholders.locationText}>
-            <TextInput
-              size="l"
-              value={formState.locationText}
-              onUpdate={(value) => updateField({ locationText: value })}
-              placeholder={copy.placeholders.locationText}
-            />
-          </FieldBlock>
-          <FieldBlock label={copy.labels.locationUrl} description={copy.placeholders.locationUrl}>
-            <TextInput
-              size="l"
-              type="url"
-              value={formState.locationUrl}
-              onUpdate={(value) => updateField({ locationUrl: value })}
-              placeholder={copy.placeholders.locationUrl}
-            />
-          </FieldBlock>
-        </div>
-      </section>
+          <SectionCard id="event-schedule" title={copy.sections.schedule} description={copy.hints.timezone}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button view="outlined" size="s" onClick={() => handleDurationPreset(30)}>
+                30 мин
+              </Button>
+              <Button view="outlined" size="s" onClick={() => handleDurationPreset(60)}>
+                1 час
+              </Button>
+              <Button view="outlined" size="s" onClick={() => handleDurationPreset(120)}>
+                2 часа
+              </Button>
+              {durationLabel && (
+                <Text variant="caption-2" color="secondary">
+                  {copy.hints.duration}: <span className="font-semibold text-slate-700">{durationLabel}</span>
+                </Text>
+              )}
+            </div>
 
-      <section className="space-y-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.sections.audience}</div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <FieldBlock label={copy.labels.gameId} description={copy.placeholders.gameId}>
-            <TextInput
-              size="l"
-              value={formState.gameId}
-              onUpdate={(value) => updateField({ gameId: value })}
-              placeholder={copy.placeholders.gameId}
-            />
-          </FieldBlock>
-          <FieldBlock label={copy.labels.visibility} description={copy.placeholders.visibility}>
-            <Select
-              size="l"
-              value={[formState.visibility]}
-              onUpdate={(value) =>
-                updateField({ visibility: (value[0] ?? defaultVisibility) as EventVisibility })
-              }
-              options={copy.visibilityOptions.map((opt) => ({
-                value: opt.value,
-                content: opt.label,
-              }))}
-              placeholder={copy.placeholders.visibility}
-            />
-          </FieldBlock>
-        </div>
-        {userHasTenant ? <div className="text-xs text-slate-500">{copy.hints.tenantScope}</div> : null}
-      </section>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Card className="p-4 border border-slate-200 shadow-none">
+                <Text variant="caption-2" color="secondary">
+                  {copy.labels.startsAt}
+                </Text>
+                <div className="mt-2 grid gap-3">
+                  <TextInput
+                    size="l"
+                    type="date"
+                    value={toDateInputValue(startDate)}
+                    onUpdate={handleStartDateUpdate}
+                  />
+                  <TextInput
+                    size="l"
+                    type="time"
+                    value={startTime}
+                    onUpdate={handleStartTimeUpdate}
+                    placeholder={copy.placeholders.time}
+                  />
+                </div>
+              </Card>
 
-      {formError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {formError}
-        </div>
-      ) : null}
+              <Card className="p-4 border border-slate-200 shadow-none">
+                <Text variant="caption-2" color="secondary">
+                  {copy.labels.endsAt}
+                </Text>
+                <div className="mt-2 grid gap-3">
+                  <TextInput
+                    size="l"
+                    type="date"
+                    value={toDateInputValue(endDate)}
+                    onUpdate={handleEndDateUpdate}
+                  />
+                  <TextInput
+                    size="l"
+                    type="time"
+                    value={endTime}
+                    onUpdate={handleEndTimeUpdate}
+                    placeholder={copy.placeholders.time}
+                  />
+                </div>
+              </Card>
+            </div>
+          </SectionCard>
 
-      <div className="flex flex-wrap gap-3 justify-end">
-        <Button view="flat" size="l" onClick={onCancel} disabled={isSubmitting}>
-          {copy.buttons.cancel}
-        </Button>
-        <Button
-          view="action"
-          size="l"
-          loading={isSubmitting}
-          disabled={!canSubmit || isSubmitting}
-          onClick={handleSubmit}
-        >
-          {isEditing ? copy.buttons.save : copy.buttons.create}
-        </Button>
+          <SectionCard id="event-location" title={copy.sections.location} description={copy.placeholders.locationText}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FieldBlock label={copy.labels.locationText}>
+                <TextInput
+                  size="l"
+                  value={formState.locationText}
+                  onUpdate={(value) => updateField({ locationText: value })}
+                  placeholder={copy.placeholders.locationText}
+                />
+              </FieldBlock>
+              <FieldBlock label={copy.labels.locationUrl} description={copy.placeholders.locationUrl}>
+                <TextInput
+                  size="l"
+                  type="url"
+                  value={formState.locationUrl}
+                  onUpdate={(value) => updateField({ locationUrl: value })}
+                  placeholder={copy.placeholders.locationUrl}
+                />
+              </FieldBlock>
+            </div>
+          </SectionCard>
+
+          <SectionCard id="event-audience" title={copy.sections.audience} description={copy.placeholders.visibility}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FieldBlock label={copy.labels.gameId} description={copy.placeholders.gameId}>
+                <TextInput
+                  size="l"
+                  value={formState.gameId}
+                  onUpdate={(value) => updateField({ gameId: value })}
+                  placeholder={copy.placeholders.gameId}
+                />
+              </FieldBlock>
+              <FieldBlock label={copy.labels.visibility} description={copy.placeholders.visibility}>
+                <Select
+                  size="l"
+                  value={[formState.visibility]}
+                  onUpdate={(value) =>
+                    updateField({ visibility: (value[0] ?? defaultVisibility) as EventVisibility })
+                  }
+                  options={copy.visibilityOptions.map((opt) => ({
+                    value: opt.value,
+                    content: opt.label,
+                  }))}
+                  placeholder={copy.placeholders.visibility}
+                  width="max"
+                />
+              </FieldBlock>
+            </div>
+          </SectionCard>
+
+          <Card className="p-5">
+            <Text variant="subheader-2" className="text-slate-900">
+              Предпросмотр
+            </Text>
+            <Text variant="body-2" color="secondary" className="mt-1">
+              {formState.title.trim() || copy.placeholders.title}
+            </Text>
+            <Text variant="body-2" color="secondary" className="mt-2 line-clamp-3">
+              {formState.description.trim() || copy.placeholders.description}
+            </Text>
+            {startDate && (
+              <Text variant="caption-2" color="secondary" className="mt-3">
+                {formatDateShort(startDate, locale)}
+              </Text>
+            )}
+          </Card>
+
+          {formError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {formError}
+            </div>
+          ) : null}
+
+          <Card className="p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+              <Button view="flat" size="l" onClick={onCancel} disabled={isSubmitting}>
+                {copy.buttons.cancel}
+              </Button>
+              <Button
+                view="action"
+                size="l"
+                loading={isSubmitting}
+                disabled={!canSubmit || isSubmitting}
+                onClick={handleSubmit}
+              >
+                {isEditing ? copy.buttons.save : copy.buttons.create}
+              </Button>
+            </div>
+          </Card>
+        </div>
       </div>
-    </Card>
+    </div>
   );
 };

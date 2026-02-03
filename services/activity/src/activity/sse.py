@@ -35,11 +35,6 @@ def _sse_event(event_type: str, data: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _sse_comment(message: str) -> str:
-    """Format an SSE comment (for keep-alive)."""
-    return f": {message}\n\n"
-
-
 def sse_unread_count(request):
     """
     SSE endpoint for real-time unread count updates.
@@ -118,7 +113,7 @@ def sse_unread_count(request):
 
             # Send heartbeat frequently to keep gunicorn worker alive
             if current_time - last_heartbeat >= SSE_HEARTBEAT_INTERVAL:
-                yield _sse_comment("heartbeat")
+                yield _sse_event("heartbeat", {"timestamp": datetime.now(timezone.utc).isoformat()})
                 last_heartbeat = current_time
 
             # Check for count changes on the configured cadence

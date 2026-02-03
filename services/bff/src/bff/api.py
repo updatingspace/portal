@@ -52,7 +52,7 @@ def session_me(request: HttpRequest):
     if upstream:
         resp = proxy_request(
             upstream_base_url=upstream,
-            upstream_path="internal/profile/me",
+            upstream_path="portal/me",
             method="GET",
             query_string="",
             body=b"",
@@ -733,6 +733,7 @@ def _proxy_group(
     
     accept_header = request.headers.get("accept", "")
     is_stream = "event-stream" in accept_header or upstream_path.startswith("feed/sse")
+    is_long_poll = upstream_path.endswith("unread-count/long-poll")
 
     try:
         resp_result = proxy_request(
@@ -754,6 +755,7 @@ def _proxy_group(
             },
             request_id=request.request_id,
             stream=is_stream,
+            timeout=35 if is_long_poll else None,
         )
     except RuntimeError as exc:
         # e.g. missing BFF_INTERNAL_HMAC_SECRET

@@ -183,6 +183,83 @@ class ActivityEvent(models.Model):
         ]
 
 
+class NewsPost(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField()
+    author_user_id = models.UUIDField()
+    title = models.CharField(max_length=256, blank=True)
+    body = models.TextField()
+    tags_json = models.JSONField(default=list)
+    media_json = models.JSONField(default=list)
+    visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.PUBLIC,
+    )
+    scope_type = models.CharField(
+        max_length=16,
+        choices=ScopeType.choices,
+        default=ScopeType.TENANT,
+    )
+    scope_id = models.CharField(max_length=128)
+    comments_count = models.PositiveIntegerField(default=0)
+    reactions_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_news_post"
+        indexes = [
+            models.Index(fields=["tenant_id", "created_at"], name="act_news_tnt_created_idx"),
+            models.Index(fields=["tenant_id", "scope_type", "scope_id"], name="act_news_scope_idx"),
+        ]
+
+
+class NewsReaction(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    tenant_id = models.UUIDField()
+    post = models.ForeignKey(
+        NewsPost,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user_id = models.UUIDField()
+    emoji = models.CharField(max_length=32)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_news_reaction"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "user_id", "emoji"],
+                name="act_news_reaction_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant_id", "post"], name="act_news_react_post_idx"),
+        ]
+
+
+class NewsComment(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    tenant_id = models.UUIDField()
+    post = models.ForeignKey(
+        NewsPost,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    user_id = models.UUIDField()
+    body = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "act_news_comment"
+        indexes = [
+            models.Index(fields=["tenant_id", "post", "created_at"], name="act_news_comment_idx"),
+        ]
+
+
 class Subscription(models.Model):
     id = models.BigAutoField(primary_key=True)
     tenant_id = models.UUIDField()

@@ -7,7 +7,7 @@
  * @module hooks/useActivity
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQuery, useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -21,7 +21,7 @@ import {
   fetchSources,
   fetchSubscriptions,
   updateSubscriptions,
-  subscribeToUnreadCount,
+  createNews,
 } from '../api/activity';
 import type {
   ActivityEvent,
@@ -29,6 +29,7 @@ import type {
   FeedResponseV2,
   AccountLinkCreatePayload,
   SubscriptionPayload,
+  NewsPayload,
 } from '../types/activity';
 
 // ============================================================================
@@ -44,6 +45,7 @@ export const activityKeys = {
   accountLinks: () => [...activityKeys.all, 'account-links'] as const,
   sources: () => [...activityKeys.all, 'sources'] as const,
   subscriptions: () => [...activityKeys.all, 'subscriptions'] as const,
+  news: () => [...activityKeys.all, 'news'] as const,
 };
 
 // ============================================================================
@@ -88,51 +90,24 @@ export function useFeedInfinite(params?: Omit<FeedParams, 'cursor'>) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage: FeedResponseV2) =>
       lastPage.hasMore ? lastPage.nextCursor : undefined,
+    placeholderData: (prev) => prev,
     staleTime: 30_000,
   });
 }
 
 /**
- * Hook for unread count with optional SSE subscription
- *
- * @example
- * const { count, isLoading } = useUnreadCount({ realtime: true });
+ * Hook for unread count.
  */
-export function useUnreadCount(options?: { realtime?: boolean }) {
-  const queryClient = useQueryClient();
-  const [sseCount, setSseCount] = useState<number | null>(null);
-
+export function useUnreadCount() {
   const query = useQuery({
     queryKey: activityKeys.unreadCount(),
     queryFn: fetchUnreadCount,
     staleTime: 60_000, // 1 minute
-    refetchInterval: options?.realtime ? false : 60_000,
+    refetchInterval: 60_000,
   });
 
-  // SSE subscription for real-time updates
-  useEffect(() => {
-    if (!options?.realtime) return;
-
-    const eventSource = subscribeToUnreadCount(
-      (count) => {
-        setSseCount(count);
-        // Also update query cache
-        queryClient.setQueryData(activityKeys.unreadCount(), count);
-      },
-      (error) => {
-        console.warn('SSE connection error:', error);
-        // Fallback to polling
-        queryClient.invalidateQueries({ queryKey: activityKeys.unreadCount() });
-      },
-    );
-
-    return () => {
-      eventSource.close();
-    };
-  }, [options?.realtime, queryClient]);
-
   return {
-    count: sseCount ?? query.data ?? 0,
+    count: query.data ?? 0,
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,
@@ -152,6 +127,38 @@ export function useMarkFeedAsRead() {
       queryClient.setQueryData(activityKeys.unreadCount(), 0);
       // Invalidate feed to refresh
       queryClient.invalidateQueries({ queryKey: activityKeys.feed() });
+    },
+  });
+}
+
+/**
+ * Hook for creating news posts
+ */
+export function useCreateNews() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      title?: string | null;
+      body: string;
+      tags?: string[];
+      visibility: 'public' | 'community' | 'team' | 'private';
+      scopeType?: 'TENANT' | 'COMMUNITY' | 'TEAM';
+      scopeId?: string | null;
+      media?: NewsPayload['media'];
+    }) =>
+      createNews({
+        title: payload.title ?? undefined,
+        body: payload.body,
+        tags: payload.tags ?? [],
+        visibility: payload.visibility,
+        scope_type: payload.scopeType,
+        scope_id: payload.scopeId ?? undefined,
+        media: payload.media ?? [],
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.feed() });
+      queryClient.invalidateQueries({ queryKey: activityKeys.unreadCount() });
     },
   });
 }
@@ -306,7 +313,8 @@ export function groupFeedByDate(items: ActivityEvent[]): Map<string, ActivityEve
   const groups = new Map<string, ActivityEvent[]>();
 
   items.forEach((item) => {
-    const date = new Date(item.occurredAt).toLocaleDateString();
+    const parsed = new Date(item.occurredAt);
+    const date = Number.isNaN(parsed.getTime()) ? 'Без даты' : parsed.toLocaleDateString();
     const existing = groups.get(date) ?? [];
     groups.set(date, [...existing, item]);
   });
