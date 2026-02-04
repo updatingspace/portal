@@ -18,6 +18,8 @@ import { FeedItem } from '../components/FeedItem';
 import { requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { useAuth } from '../../../contexts/AuthContext';
+import { can } from '../../../features/rbac/can';
+import { isApiError } from '../../../api/client';
 import './feed-page.css';
 
 const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
@@ -75,6 +77,8 @@ const extractYoutubeIds = (markup: string) => {
 export const FeedPage: React.FC = () => {
   const { user } = useAuth();
   const tenantId = user?.tenant?.id ?? null;
+  const canReadFeed = can(user, 'activity.feed.read');
+  const canCreateNews = can(user, 'activity.news.create');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
   const [sortFilter, setSortFilter] = useState<SortFilter>('best');
@@ -150,6 +154,7 @@ export const FeedPage: React.FC = () => {
   }, [items, sortFilter]);
 
   useEffect(() => {
+    if (!canReadFeed) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -167,6 +172,7 @@ export const FeedPage: React.FC = () => {
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   useEffect(() => {
+    if (!canReadFeed) return;
     if (!tenantId) return;
     if (autoSubscribedRef.current) return;
     if (isSubscriptionsLoading || isUpdatingSubscriptions) return;
@@ -190,10 +196,11 @@ export const FeedPage: React.FC = () => {
   }, [isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
 
   useEffect(() => {
+    if (!canCreateNews) return;
     if (composerValue.trim() || newsMedia.length > 0) {
       setComposerOpen(true);
     }
-  }, [composerValue, newsMedia.length]);
+  }, [canCreateNews, composerValue, newsMedia.length]);
 
   const handleResetFilters = useCallback(() => {
     setSourceFilter('all');
@@ -311,14 +318,36 @@ export const FeedPage: React.FC = () => {
     }
   }, [createNews, editor, newsMedia, newsVisibility, refetch]);
 
-  if (error) {
+  if (!canReadFeed) {
     return (
-      <div className="feed-page">
-        <Card view="filled" className="feed-empty">
-          <Text variant="subheader-2">Не удалось загрузить ленту.</Text>
-          <Button view="flat" size="m" onClick={() => refetch()}>
-            Повторить
-          </Button>
+      <div className="feed-page" data-qa="feed-page">
+        <Card view="filled" className="feed-empty" data-qa="feed-forbidden">
+          <Text variant="subheader-2">Недостаточно прав для просмотра ленты.</Text>
+          <Text variant="body-2" color="secondary">
+            Обратитесь к администратору тенанта.
+          </Text>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    const apiError = isApiError(error) ? error : null;
+    const isForbidden = apiError?.kind === 'forbidden';
+    return (
+      <div className="feed-page" data-qa="feed-page">
+        <Card view="filled" className="feed-empty" data-qa="feed-error">
+          <Text variant="subheader-2">
+            {isForbidden ? 'Недостаточно прав для просмотра ленты.' : 'Не удалось загрузить ленту.'}
+          </Text>
+          <Text variant="body-2" color="secondary">
+            {isForbidden ? 'Обратитесь к администратору тенанта.' : 'Попробуйте обновить страницу.'}
+          </Text>
+          {!isForbidden && (
+            <Button view="flat" size="m" onClick={() => refetch()}>
+              Повторить
+            </Button>
+          )}
         </Card>
       </div>
     );
@@ -337,7 +366,7 @@ export const FeedPage: React.FC = () => {
   }, [composerError, composerHasMedia]);
 
   return (
-    <div className="feed-page">
+    <div className="feed-page" data-qa="feed-page">
       <div className="feed-page__layout">
         <section className="feed-stream">
           <div className="feed-stream__header">
@@ -347,7 +376,7 @@ export const FeedPage: React.FC = () => {
                 Новости сообщества, голосования и игровые события в одном месте.
               </Text>
             </div>
-            <div className="feed-stream__header-actions">
+            <div className="feed-stream__header-actions" data-qa="feed-actions">
               <Button view="flat" size="m" onClick={() => refetch()}>
                 <Icon data={ArrowRotateRight} />
                 Обновить
@@ -361,7 +390,7 @@ export const FeedPage: React.FC = () => {
           </div>
 
           {unreadCount > 0 && (
-            <Card view="filled" className="feed-unread-banner">
+            <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner">
               <Text variant="subheader-2">ОГО, новых новостей: {unreadCount}</Text>
               <Text variant="body-2" color="secondary">
                 Вы ещё не прочитали их. Пролистайте ленту ниже.
@@ -369,107 +398,117 @@ export const FeedPage: React.FC = () => {
             </Card>
           )}
 
-          <Card
-            view="filled"
-            className={[
-              'feed-composer',
-              composerOpen ? 'feed-composer--expanded' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <div className="feed-composer__header">
-              <Text variant="subheader-2">Что происходит?</Text>
-            </div>
-
-            <div
-              className="feed-composer__editor"
-              onClick={() => setComposerOpen(true)}
+          {canCreateNews ? (
+            <Card
+              view="filled"
+              className={[
+                'feed-composer',
+                composerOpen ? 'feed-composer--expanded' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              data-qa="feed-composer"
             >
-              <MarkdownEditorView
-                editor={editor}
-                stickyToolbar={false}
-                settingsVisible={false}
-                toolbarsPreset={emptyToolbarsPreset}
-              />
-            </div>
+              <div className="feed-composer__header">
+                <Text variant="subheader-2">Что происходит?</Text>
+              </div>
 
-            <div className="feed-composer__footer">
-              <div className="feed-composer__media-bar">
-                <button
-                  type="button"
-                  className="feed-composer__media-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Icon data={Plus} />
-                </button>
-                <Text variant="caption-2" color="secondary">
-                  Добавьте изображения (только картинки)
-                </Text>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(event) => handleImageUpload(event.target.files)}
+              <div
+                className="feed-composer__editor"
+                onClick={() => setComposerOpen(true)}
+              >
+                <MarkdownEditorView
+                  editor={editor}
+                  stickyToolbar={false}
+                  settingsVisible={false}
+                  toolbarsPreset={emptyToolbarsPreset}
                 />
               </div>
-              {detectedTags.length > 0 && (
-                <div className="feed-composer__tags">
-                  {detectedTags.map((tag) => (
-                    <span key={tag} className="feed-tag">
-                      #{tag}
-                    </span>
+
+              <div className="feed-composer__footer">
+                <div className="feed-composer__media-bar">
+                  <button
+                    type="button"
+                    className="feed-composer__media-button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Icon data={Plus} />
+                  </button>
+                  <Text variant="caption-2" color="secondary">
+                    Добавьте изображения (только картинки)
+                  </Text>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(event) => handleImageUpload(event.target.files)}
+                  />
+                </div>
+                {detectedTags.length > 0 && (
+                  <div className="feed-composer__tags">
+                    {detectedTags.map((tag) => (
+                      <span key={tag} className="feed-tag">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {composerError && (
+                  <Text variant="caption-2" color="danger">
+                    {composerError}
+                  </Text>
+                )}
+                <div className="feed-composer__actions">
+                  <Select
+                    value={[newsVisibility]}
+                    onUpdate={(values) => {
+                      const next = values[0] as 'public' | 'private' | undefined;
+                      if (next) setNewsVisibility(next);
+                    }}
+                    options={[
+                      { value: 'public', content: 'Публично' },
+                      { value: 'private', content: 'Только мне' },
+                    ]}
+                  />
+                  <Button
+                    view="action"
+                    size="m"
+                    loading={isCreatingNews || uploading}
+                    disabled={!composerHasText || !composerHasMedia}
+                    onClick={handlePublishNews}
+                  >
+                    Опубликовать
+                  </Button>
+                </div>
+              </div>
+
+              {newsMedia.length > 0 && (
+                <div className="feed-composer__media">
+                  {newsMedia.map((media, index) => (
+                    <div key={`${media.type}-${index}`} className="feed-composer__media-item">
+                      {media.type === 'image' && media.url ? (
+                        <img src={media.url} alt="preview" />
+                      ) : null}
+                      <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
+                        Удалить
+                      </Button>
+                    </div>
                   ))}
                 </div>
               )}
-              {composerError && (
-                <Text variant="caption-2" color="danger">
-                  {composerError}
-                </Text>
-              )}
-              <div className="feed-composer__actions">
-                <Select
-                  value={[newsVisibility]}
-                  onUpdate={(values) => {
-                    const next = values[0] as 'public' | 'private' | undefined;
-                    if (next) setNewsVisibility(next);
-                  }}
-                  options={[
-                    { value: 'public', content: 'Публично' },
-                    { value: 'private', content: 'Только мне' },
-                  ]}
-                />
-                <Button
-                  view="action"
-                  size="m"
-                  loading={isCreatingNews || uploading}
-                  disabled={!composerHasText || !composerHasMedia}
-                  onClick={handlePublishNews}
-                >
-                  Опубликовать
-                </Button>
-              </div>
-            </div>
-
-            {newsMedia.length > 0 && (
-              <div className="feed-composer__media">
-                {newsMedia.map((media, index) => (
-                  <div key={`${media.type}-${index}`} className="feed-composer__media-item">
-                    {media.type === 'image' && media.url ? (
-                      <img src={media.url} alt="preview" />
-                    ) : null}
-                    <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
-                      Удалить
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+            </Card>
+          ) : (
+            <Card view="filled" className="feed-empty" data-qa="feed-composer-locked">
+              <Text variant="subheader-2">Публикация новостей недоступна.</Text>
+              <Text variant="body-2" color="secondary">
+                Для создания новостей требуется дополнительный доступ.
+              </Text>
+            </Card>
+          )}
 
           {!hasContent && isLoading ? (
-            <div className="feed-stream__list">
+            <div className="feed-stream__list" data-qa="feed-list-loading">
               {Array.from({ length: 4 }).map((_, index) => (
                 <Card key={`skeleton-${index}`} view="filled" className="feed-skeleton">
                   <div className="feed-skeleton__row">
@@ -484,7 +523,7 @@ export const FeedPage: React.FC = () => {
               ))}
             </div>
           ) : !hasContent ? (
-            <Card view="filled" className="feed-empty">
+            <Card view="filled" className="feed-empty" data-qa="feed-empty">
               <Text variant="subheader-2">
                 {sourceFilter !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
               </Text>
@@ -493,14 +532,14 @@ export const FeedPage: React.FC = () => {
               </Text>
             </Card>
           ) : (
-            <div className="feed-stream__list">
+            <div className="feed-stream__list" data-qa="feed-list">
               {sortedItems.map((item) => (
                 <FeedItem key={item.id} item={item} showPayload={false} />
               ))}
             </div>
           )}
 
-          <div ref={loadMoreRef} className="feed-stream__footer">
+          <div ref={loadMoreRef} className="feed-stream__footer" data-qa="feed-footer">
             {isFetchingNextPage && <Loader size="m" />}
             {!hasNextPage && hasContent && (
               <Text variant="caption-2" color="secondary">
@@ -510,7 +549,7 @@ export const FeedPage: React.FC = () => {
           </div>
         </section>
 
-        <aside className="feed-sidebar">
+        <aside className="feed-sidebar" data-qa="feed-sidebar">
           <Card view="filled" className="feed-panel">
             <div className="feed-panel__header">
               <Text variant="subheader-2">Фильтры</Text>
@@ -528,6 +567,7 @@ export const FeedPage: React.FC = () => {
               timeValue={timeFilter}
               onTimeChange={(value) => setTimeFilter(value as TimeFilter)}
               onReset={handleResetFilters}
+              qa="feed-filters"
             />
           </Card>
         </aside>

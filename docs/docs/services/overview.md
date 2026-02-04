@@ -6,7 +6,7 @@ description: Карта всех микросервисов платформы
 
 # Обзор сервисов
 
-Платформа состоит из 7 микросервисов + 2 frontend приложений.
+Платформа состоит из 8 микросервисов + 2 frontend приложений.
 
 ## Карта сервисов
 
@@ -29,6 +29,7 @@ graph LR
         VT[Voting<br/>:8004]
         EV[Events<br/>:8005]
         AT[Activity<br/>:8006]
+        GM[Gamification<br/>:8007]
     end
 
     BFF --> ID
@@ -36,11 +37,13 @@ graph LR
     BFF --> VT
     BFF --> EV
     BFF --> AT
+    BFF --> GM
     
     PT --> AC
     VT --> AC
     EV --> AC
     AT --> AC
+    GM --> AC
 ```
 
 ## Таблица сервисов
@@ -54,6 +57,7 @@ graph LR
 | **Voting** | 8004 | `services/voting` | ✅ MVP | Polls, Votes |
 | **Events** | 8005 | `services/events` | ✅ MVP | Calendar, RSVP |
 | **Activity** | 8006 | `services/activity` | 🔶 Early MVP | Feed, Connectors |
+| **Gamification** | 8007 | `services/gamification` | ✅ MVP | Achievements, Grants |
 
 ## Статусы
 
@@ -154,17 +158,20 @@ graph TD
     VT["Voting"]
     EV["Events"]
     AT["Activity"]
+    GM["Gamification"]
 
     BFF -->|auth| ID
     BFF -->|proxy| PT
     BFF -->|proxy| VT
     BFF -->|proxy| EV
     BFF -->|proxy| AT
+    BFF -->|proxy| GM
 
     PT -->|check| AC
     VT -->|check| AC
     EV -->|check| AC
     AT -->|check| AC
+    GM -->|check| AC
     EV -->|membership| PT
 
     classDef identity fill:#e1f5fe
@@ -175,7 +182,7 @@ graph TD
     class ID identity
     class BFF gateway
     class AC authz
-    class PT,VT,EV,AT domain
+    class PT,VT,EV,AT,GM domain
 ```
 
 ## Порты и базы данных
@@ -189,5 +196,6 @@ graph TD
 | Voting | 8004 | `db_voting` |
 | Events | 8005 | `db_events` |
 | Activity | 8006 | `db_activity` |
+| Gamification | 8007 | `db_gamification` |
 
 Каждый сервис имеет изолированную базу данных (logical separation в dev, может быть физическое разделение в prod).

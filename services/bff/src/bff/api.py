@@ -108,6 +108,68 @@ def session_me(request: HttpRequest):
         except Exception:
             id_profile = None
 
+    def _safe_str(value: Any) -> str | None:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    def _should_sync_profile(portal: dict[str, Any] | None, id_user: dict[str, Any] | None) -> dict[str, str] | None:
+        if not id_user:
+            return None
+        first = _safe_str(id_user.get("first_name"))
+        last = _safe_str(id_user.get("last_name"))
+        username = _safe_str(id_user.get("username"))
+        display_name = _safe_str(id_user.get("display_name"))
+
+        portal_first = _safe_str(portal.get("first_name") if portal else None)
+        portal_last = _safe_str(portal.get("last_name") if portal else None)
+        portal_username = _safe_str(portal.get("username") if portal else None)
+        portal_display_name = _safe_str(portal.get("display_name") if portal else None)
+
+        payload: dict[str, str] = {}
+        if first and not portal_first:
+            payload["first_name"] = first
+        if last and not portal_last:
+            payload["last_name"] = last
+        if username and not portal_username:
+            payload["username"] = username
+        if display_name and not portal_display_name:
+            payload["display_name"] = display_name
+        return payload or None
+
+    # Best-effort sync: if portal profile has no name, use ID profile names
+    if upstream and id_profile:
+        try:
+            id_user = id_profile.get("user") if isinstance(id_profile, dict) else None
+            if isinstance(id_user, dict):
+                sync_payload = _should_sync_profile(portal_profile, id_user)
+                if sync_payload:
+                    sync_resp = proxy_request(
+                        upstream_base_url=upstream,
+                        upstream_path="portal/me",
+                        method="PATCH",
+                        query_string="",
+                        body=json.dumps(sync_payload).encode("utf-8"),
+                        incoming_headers=request.headers,
+                        context_headers={
+                            "X-Request-Id": request.request_id,
+                            "X-Tenant-Id": ctx.tenant_id,
+                            "X-Tenant-Slug": ctx.tenant_slug,
+                            "X-User-Id": ctx.user_id,
+                            "X-Master-Flags": json.dumps(
+                                ctx.master_flags,
+                                separators=(",", ":"),
+                            ),
+                            "Content-Type": "application/json",
+                        },
+                        request_id=request.request_id,
+                    )
+                    if sync_resp.status_code == 200:
+                        portal_profile = sync_resp.json()
+        except Exception:
+            # Keep /me resilient; ignore sync errors.
+            pass
+
     id_frontend_base_url = getattr(settings, "ID_PUBLIC_BASE_URL", "") or id_upstream
     if id_frontend_base_url:
         id_frontend_base_url = str(id_frontend_base_url).rstrip("/")
@@ -960,6 +1022,34 @@ def proxy_events_root(request: HttpRequest):
 )
 def proxy_events(request: HttpRequest, path: str):
     return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", path)
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/gamification",
+)
+def proxy_gamification_root(request: HttpRequest):
+    return _proxy_group(
+        request,
+        "gamification",
+        "BFF_UPSTREAM_GAMIFICATION_URL",
+        "",
+        ensure_prefix="gamification",
+    )
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/gamification/{path:path}",
+)
+def proxy_gamification(request: HttpRequest, path: str):
+    return _proxy_group(
+        request,
+        "gamification",
+        "BFF_UPSTREAM_GAMIFICATION_URL",
+        path,
+        ensure_prefix="gamification",
+    )
 
 
 @router.api_operation(

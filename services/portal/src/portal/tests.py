@@ -246,3 +246,12 @@ class PortalProfilesApiTests(TestCase):
         data = resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["userId"], str(self.alice_id))
+
+    def test_profiles_list_filters_by_username(self):
+        PortalProfile.objects.filter(user_id=self.alice_id).update(username="m4tveevm")
+        with mock.patch("portal.api.AccessService.check"):
+            resp = self.client.get("/api/v1/portal/profiles?q=m4tveevm", **_host_headers("aef"))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["userId"], str(self.alice_id))

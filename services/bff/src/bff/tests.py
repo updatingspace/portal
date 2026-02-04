@@ -139,6 +139,75 @@ class BffProxyRoutingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(captured["upstream_path"], "portal/profiles")
 
+
+class BffSessionProfileSyncTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(slug="aef")
+        self.user_id = str(uuid.uuid4())
+        self.session = SessionStore().create(
+            tenant_id=str(self.tenant.id),
+            user_id=self.user_id,
+            master_flags={"email_verified": True},
+            ttl=timedelta(minutes=10),
+        )
+        self.cookie_name = "updspace_session"
+        self.host = "aef.updspace.com"
+
+    def test_session_me_syncs_portal_names_from_id(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        calls: list[tuple[str, str]] = []
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+        ):
+            calls.append((method, upstream_path))
+            if upstream_path == "portal/me" and method == "GET":
+                return httpx.Response(
+                    200,
+                    json={"first_name": "", "last_name": "", "bio": None},
+                )
+            if upstream_path == "me" and method == "GET":
+                return httpx.Response(
+                    200,
+                    json={
+                        "user": {"first_name": "Max", "last_name": "Doe"},
+                        "memberships": [],
+                    },
+                )
+            if upstream_path == "portal/me" and method == "PATCH":
+                return httpx.Response(
+                    200,
+                    json={"first_name": "Max", "last_name": "Doe", "bio": None},
+                )
+            return httpx.Response(200, json={"ok": True})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self.client.get(
+                    "/api/v1/session/me",
+                    HTTP_HOST=self.host,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["portal_profile"]["first_name"], "Max")
+        self.assertEqual(payload["portal_profile"]["last_name"], "Doe")
+        self.assertIn(("PATCH", "portal/me"), calls)
+
 class OidcAuthLoginTests(TestCase):
     """Tests for GET /auth/login OIDC redirect endpoint."""
 

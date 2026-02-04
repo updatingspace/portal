@@ -26,6 +26,8 @@ class PortalProfile(models.Model):
     id = models.BigAutoField(primary_key=True)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="profiles")
     user_id = models.UUIDField()
+    username = models.CharField(max_length=64, blank=True, default="")
+    display_name = models.CharField(max_length=128, blank=True, default="")
     first_name = models.CharField(max_length=128)
     last_name = models.CharField(max_length=128)
     bio = models.TextField(null=True, blank=True)

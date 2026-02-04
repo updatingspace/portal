@@ -25,6 +25,7 @@ const BASE_ITEMS: NavItemConfig[] = [
   {id: 'feed', title: 'Activity Feed', description: 'Updates and logs', route: '/app/feed', icon: Pulse, required: 'feed:read'},
   {id: 'events', title: 'Events', description: 'Community events', route: '/app/events', icon: Calendar, required: 'events:read'},
   {id: 'voting', title: 'Voting', description: 'Campaigns and nominations', route: '/app/voting', icon: ListCheck, required: 'voting:read'},
+  {id: 'gamification', title: 'Gamification', description: 'Achievements and grants', route: '/app/gamification', icon: ListCheck, required: 'gamification.achievements.create'},
   {id: 'tenant-admin', title: 'Tenant Admin', description: 'Roles, rights, access', route: '/app/tenant-admin', icon: Shield, required: 'portal.roles.read'},
 ];
 

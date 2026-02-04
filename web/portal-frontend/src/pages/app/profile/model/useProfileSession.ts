@@ -17,9 +17,7 @@ export const useProfileSession = (): UseProfileSessionResult => {
   const isMountedRef = useRef(true);
 
   const refresh = useCallback(async () => {
-    if (!isMountedRef.current) {
-      return;
-    }
+    if (!isMountedRef.current) return;
 
     setIsLoading(true);
     setError(null);
@@ -50,9 +48,10 @@ export const useProfileSession = (): UseProfileSessionResult => {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      await refresh();
-    })();
+    // React StrictMode mounts/unmounts twice in dev.
+    // Reset the mounted flag on each effect run so refresh can set state.
+    isMountedRef.current = true;
+    void refresh();
 
     return () => {
       isMountedRef.current = false;

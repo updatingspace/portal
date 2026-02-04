@@ -59,6 +59,25 @@ def _require_team_member(tenant, team_id, user_id) -> None:
         raise HttpError(403, error_payload("FORBIDDEN", "Not a team member"))
 
 
+def _check_any_permissions(
+    ctx: PortalContext,
+    permissions: list[str],
+    *,
+    scope_type: str,
+    scope_id: str,
+) -> None:
+    last_error: HttpError | None = None
+    for permission in permissions:
+        try:
+            AccessService.check(ctx, permission, scope_type=scope_type, scope_id=scope_id)
+            return
+        except HttpError as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+
+
 @router.get(
     "/portal/me",
     response={200: PortalProfileOut, 401: ErrorOut, 400: ErrorOut},
@@ -81,6 +100,8 @@ def portal_me_get(request):
     return PortalProfileOut(
         tenant_id=profile.tenant_id,
         user_id=profile.user_id,
+        username=profile.username or None,
+        display_name=profile.display_name or None,
         first_name=profile.first_name,
         last_name=profile.last_name,
         bio=profile.bio,
@@ -110,6 +131,10 @@ def portal_me_patch(request, payload: PortalProfileUpdateIn = REQUIRED_BODY):
         },
     )
     updates: dict = {"updated_at": timezone.now()}
+    if payload.username is not None:
+        updates["username"] = payload.username
+    if payload.display_name is not None:
+        updates["display_name"] = payload.display_name
     if payload.first_name is not None:
         updates["first_name"] = payload.first_name
     if payload.last_name is not None:
@@ -121,6 +146,8 @@ def portal_me_patch(request, payload: PortalProfileUpdateIn = REQUIRED_BODY):
     return PortalProfileOut(
         tenant_id=profile.tenant_id,
         user_id=profile.user_id,
+        username=profile.username or None,
+        display_name=profile.display_name or None,
         first_name=profile.first_name,
         last_name=profile.last_name,
         bio=profile.bio,
@@ -141,9 +168,9 @@ def portal_profiles_list(
 ):
     ctx = _ctx(request)
     tenant = ensure_tenant(ctx)
-    AccessService.check(
+    _check_any_permissions(
         ctx,
-        "portal.roles.read",
+        ["portal.roles.read", "gamification.achievements.assign"],
         scope_type="TENANT",
         scope_id=str(ctx.tenant_id),
     )
@@ -152,7 +179,12 @@ def portal_profiles_list(
     if q:
         q = q.strip()
         if q:
-            filters = Q(first_name__icontains=q) | Q(last_name__icontains=q)
+            filters = (
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(username__icontains=q)
+                | Q(display_name__icontains=q)
+            )
             try:
                 parsed_user_id = uuid.UUID(q)
             except ValueError:
@@ -166,6 +198,8 @@ def portal_profiles_list(
         PortalProfileOut(
             tenant_id=profile.tenant_id,
             user_id=profile.user_id,
+            username=profile.username or None,
+            display_name=profile.display_name or None,
             first_name=profile.first_name,
             last_name=profile.last_name,
             bio=profile.bio,

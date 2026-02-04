@@ -15,6 +15,7 @@ export interface FeedFiltersProps {
   timeValue: string;
   onTimeChange: (value: string) => void;
   onReset?: () => void;
+  qa?: string;
 }
 
 const SORT_OPTIONS = [
@@ -44,11 +45,12 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
   timeValue,
   onTimeChange,
   onReset,
+  qa,
 }) => {
   const hasFilters = sortValue !== 'best' || sourceValue !== 'all' || timeValue !== 'week';
 
   return (
-    <div className="feed-filters">
+    <div className="feed-filters" data-qa={qa}>
       <div className="feed-filters__group">
         <Text variant="body-2" color="secondary">
           Сортировка

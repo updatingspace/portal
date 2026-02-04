@@ -26,6 +26,15 @@ const PollCreatePage = lazy(() => import('../modules/voting/pages/PollCreatePage
 const PollManagePage = lazy(() => import('../modules/voting/pages/PollManagePage').then((mod) => ({ default: mod.PollManagePage })));
 const PollResultsPage = lazy(() => import('../modules/voting/pages/PollResultsPage').then((mod) => ({ default: mod.PollResultsPage })));
 const PollTemplatesPage = lazy(() => import('../modules/voting/pages/PollTemplatesPage').then((mod) => ({ default: mod.PollTemplatesPage })));
+const GamificationDashboardPage = lazy(() =>
+  import('../modules/gamification/pages/GamificationDashboardPage').then((mod) => ({ default: mod.GamificationDashboardPage })),
+);
+const AchievementFormPage = lazy(() =>
+  import('../modules/gamification/pages/AchievementFormPage').then((mod) => ({ default: mod.AchievementFormPage })),
+);
+const AchievementDetailPage = lazy(() =>
+  import('../modules/gamification/pages/AchievementDetailPage').then((mod) => ({ default: mod.AchievementDetailPage })),
+);
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage').then((mod) => ({ default: mod.NotFoundPage })));
 
 const routeConfig = [
@@ -62,6 +71,10 @@ const routeConfig = [
           { path: '/app/settings', element: <SettingsPage /> },
           { path: '/app/admin', element: <AdminPage /> },
           { path: '/app/tenant-admin', element: <TenantAdminPage /> },
+          { path: '/app/gamification', element: <GamificationDashboardPage /> },
+          { path: '/app/gamification/achievements/new', element: <AchievementFormPage /> },
+          { path: '/app/gamification/achievements/:id/edit', element: <AchievementFormPage /> },
+          { path: '/app/gamification/achievements/:id', element: <AchievementDetailPage /> },
         ],
       },
     ],

@@ -8,6 +8,8 @@ from core.schemas import CamelSchema
 class PortalProfileOut(CamelSchema):
     tenant_id: uuid.UUID
     user_id: uuid.UUID
+    username: str | None = None
+    display_name: str | None = None
     first_name: str
     last_name: str
     bio: str | None = None
@@ -16,6 +18,8 @@ class PortalProfileOut(CamelSchema):
 
 
 class PortalProfileUpdateIn(CamelSchema):
+    username: str | None = None
+    display_name: str | None = None
     first_name: str | None = None
     last_name: str | None = None
     bio: str | None = None

@@ -47,8 +47,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-setup       Skip database setup (faster for restarts)"
             echo "  --services         Comma-separated list of services to start"
             echo "                     Available: traefik,redis,db_id,db_bff,db_access,"
-            echo "                     db_portal,db_voting,db_events,db_activity,"
-            echo "                     updspaceid,bff,access,portal,voting,events,"
+            echo "                     db_portal,db_voting,db_events,db_gamification,db_activity,"
+            echo "                     updspaceid,bff,access,portal,voting,events,gamification,"
             echo "                     activity,portal-frontend,id-frontend"
             echo ""
             echo "Service dependencies:"
@@ -56,6 +56,7 @@ while [[ $# -gt 0 ]]; do
             echo "  portal    → db_portal"
             echo "  voting    → db_voting, access"
             echo "  events    → db_events, access"
+            echo "  gamification → db_gamification, access"
             echo "  activity  → db_activity"
             echo "  access    → db_access"
             echo "  updspaceid→ db_id, redis"
@@ -175,7 +176,7 @@ setup_databases() {
     fi
     
     # Run migrations for other services
-    local services=("bff" "access" "portal" "voting" "events" "activity")
+    local services=("bff" "access" "portal" "voting" "events" "gamification" "activity")
     
     for service in "${services[@]}"; do
         if docker compose -f "$COMPOSE_FILE" ps --format '{{.Service}}' | grep -q "^${service}$"; then

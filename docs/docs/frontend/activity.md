@@ -16,6 +16,26 @@ Activity Frontend Module предоставляет:
 - React hooks с TanStack Query
 - UI компоненты для ленты и фильтров
 
+## Архитектурные ограничения
+
+- **BFF only**: все запросы только через `/api/v1/*` с HttpOnly cookies.
+- **Multi-tenant**: `tenant_id` приходит из BFF, FE не отправляет tenant в query.
+- **Security**: любые пользовательские тексты рендерятся безопасно (XSS-safe).
+
+## RBAC и доступы
+
+Используем permission-каталог Access:
+
+| Permission | Описание | Где используется |
+|---|---|---|
+| `activity.feed.read` | Чтение ленты | Доступ к `/app/feed` |
+| `activity.sources.link` | Привязка источников | AccountLinkCard, диалог подключений |
+| `activity.sources.manage` | Управление источниками | admin/advanced действия |
+| `activity.news.create` | Создание новостей | UI создания news |
+| `activity.news.manage` | Модерация news | действия hide/delete |
+
+FE скрывает недоступные кнопки, но **backend enforce**.
+
 ## Структура файлов
 
 ```
@@ -171,6 +191,46 @@ const link = await createAccountLink({
 // Disconnect
 await deleteAccountLink(link.id);
 ```
+
+## Ошибки и пагинация
+
+### Формат ошибок
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable",
+    "details": {},
+    "request_id": "uuid"
+  }
+}
+```
+
+### Пагинация
+
+Используется cursor pagination:
+- Request: `?limit=20&cursor=...`
+- Response: `{ items, nextCursor, hasMore }`
+- Важно: `nextCursor` может быть `null` даже при `hasMore=false`
+
+## Кэш и инвалидация
+
+Рекомендуемые ключи:
+
+```typescript
+activityKeys.feedList({ types, from, to, scope })
+activityKeys.feedInfinite({ types, from, to, scope })
+activityKeys.unreadCount()
+activityKeys.accountLinks()
+activityKeys.sources()
+activityKeys.subscriptions()
+```
+
+Инвалидация:
+- после `markFeedAsRead()` → `unreadCount` + `feedInfinite`
+- после `createAccountLink()`/`deleteAccountLink()` → `accountLinks`
+- после `createNews()` → `feedInfinite` (и фильтры по типам)
 
 
 ## React Hooks
@@ -434,6 +494,43 @@ import { AccountLinkCard, AccountLinkList } from '@/modules/feed/components';
 />
 ```
 
+## UI состояния (обязательно)
+
+Для FeedPage и связанных компонентов должны быть все состояния:
+- `loading` — skeletons для списка и фильтров
+- `empty` — "Нет событий" + CTA/фильтры
+- `error` — Alert + retry
+- `forbidden` — 403 + CTA вернуться
+- `partial_access` — например, скрытые типы событий из-за RBAC
+
+## i18n ключи (минимум)
+
+Примеры ключей:
+- `activity.title`
+- `activity.filters.title`
+- `activity.filters.types`
+- `activity.empty.title`
+- `activity.empty.subtitle`
+- `activity.error.title`
+- `activity.error.retry`
+- `activity.unread.markAll`
+- `activity.accountLinks.title`
+- `activity.accountLinks.connect`
+
+## QA hooks
+
+Ключевые элементы должны иметь `data-qa`:
+- `feed-page`
+- `feed-item`
+- `feed-filters`
+- `unread-badge`
+- `account-link-card`
+
+## A11y
+
+- Все интерактивные элементы доступны с клавиатуры.
+- Табы/фильтры имеют `aria`-лейблы.
+- Модальные сценарии — только через базовые `Modal/Drawer` с focus trap.
 ## Интеграция в Navigation
 
 Добавление бейджа в навигацию:
@@ -499,6 +596,13 @@ describe('useFeedInfinite', () => {
   });
 });
 ```
+
+### E2E (smoke)
+
+Минимальные сценарии:
+- Viewer открывает `/app/feed` и видит список/empty.
+- Mark as read уменьшает `UnreadBadge`.
+- Привязка аккаунта создаёт карточку и доступна для отключения.
 
 ## Миграция
 

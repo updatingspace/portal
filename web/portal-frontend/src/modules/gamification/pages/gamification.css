@@ -1,0 +1,118 @@
+.gamification-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+}
+
+.gamification-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.gamification-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gamification-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.gamification-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.gamification-table {
+  width: 100%;
+}
+
+.gamification-empty {
+  padding: 24px;
+  text-align: center;
+}
+
+.gamification-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 20px;
+}
+
+.gamification-form__main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gamification-form__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gamification-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gamification-locale-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.gamification-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.gamification-media-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--g-color-base-simple-hover);
+}
+
+.gamification-grants-table {
+  width: 100%;
+}
+
+.gamification-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gamification-search-item {
+  border: 1px solid var(--g-color-line-generic);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--g-color-base-background);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gamification-search-item:hover {
+  background: var(--g-color-base-simple-hover);
+}
+
+@media (max-width: 900px) {
+  .gamification-form {
+    grid-template-columns: 1fr;
+  }
+}

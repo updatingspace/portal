@@ -72,6 +72,17 @@ services:
     ports:
       - "5438:5432"
 
+  db_gamification:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: gamification_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_gamification:/var/lib/postgresql/data
+    ports:
+      - "5440:5432"
+
   db_activity:
     image: postgres:15-alpine
     environment:
@@ -148,6 +159,7 @@ services:
       - BFF_UPSTREAM_VOTING_URL=http://voting:8004/api/v1
       - BFF_UPSTREAM_EVENTS_URL=http://events:8005/api/v1/events
       - BFF_UPSTREAM_FEED_URL=http://activity:8006/api/v1
+      - BFF_UPSTREAM_GAMIFICATION_URL=http://gamification:8007/api/v1
       # Local domains
       - BFF_TENANT_HOST_SUFFIX=localhost
       - BFF_DEV_AUTO_TENANT=true
@@ -164,6 +176,7 @@ services:
       - portal
       - voting
       - events
+      - gamification
       - activity
     labels:
       - traefik.enable=true
@@ -242,6 +255,25 @@ services:
     depends_on:
       - db_events
 
+  gamification:
+    build:
+      context: ../../services/gamification
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8007 --reload
+    volumes:
+      - ../../services/gamification/src:/app/src
+    ports:
+      - "8007:8007"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-gamification-secret
+      - DATABASE_URL=postgres://user:pass@db_gamification:5432/gamification_db
+      - DJANGO_ALLOWED_HOSTS=*
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - ACCESS_BASE_URL=http://access:8002/api/v1
+      - ACTIVITY_SERVICE_URL=http://activity:8006/api/v1
+    depends_on:
+      - db_gamification
+
   activity:
     build:
       context: ../../services/activity
@@ -290,4 +322,5 @@ volumes:
   pg_data_portal:
   pg_data_voting:
   pg_data_events:
+  pg_data_gamification:
   pg_data_activity:

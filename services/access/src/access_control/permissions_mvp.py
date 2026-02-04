@@ -48,4 +48,13 @@ MVP_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec(key="activity.sources.manage", description="Manage sources", service="activity"),
     PermissionSpec(key="activity.news.create", description="Create news posts", service="activity"),
     PermissionSpec(key="activity.news.manage", description="Manage news posts", service="activity"),
+
+    # gamification
+    PermissionSpec(key="gamification.achievements.create", description="Create achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.edit", description="Edit achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.publish", description="Publish achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.hide", description="Hide achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.assign", description="Assign achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.revoke", description="Revoke achievements", service="gamification"),
+    PermissionSpec(key="gamification.achievements.view_private", description="View private achievements", service="gamification"),
 ]
