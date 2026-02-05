@@ -26,6 +26,7 @@ from ninja import NinjaAPI
 
 from accounts.api import install as install_accounts_api
 from accounts.api import router as auth_router
+from core.api import router as core_router
 from nominations.admin_api import router as admin_router
 from nominations.api import router as nominations_router
 from nominations.games_api import router as games_router
@@ -55,6 +56,7 @@ api.add_router("/votings", votings_router)
 api.add_router("/auth", auth_router)
 api.add_router("/games", games_router)
 api.add_router("/admin", admin_router)
+api.add_router("/personalization", core_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
