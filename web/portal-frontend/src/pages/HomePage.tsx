@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Loader } from '@gravity-ui/uikit';
 
 import type { ApiError } from '../api/client';
+import { HomePageModalDisplay } from '../components/HomePageModalDisplay';
 import { fetchVotingCatalog } from '../api/votings';
 import type { VotingCatalogItem } from '../api/votings';
 import {
@@ -107,6 +108,7 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="page-section home-page">
+      <HomePageModalDisplay />
       <div className="container">
         <HomeHero
           activeCount={activeItems.length}

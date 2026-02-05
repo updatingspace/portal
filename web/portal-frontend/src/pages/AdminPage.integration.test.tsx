@@ -144,4 +144,22 @@ describe('AdminPage integration', () => {
       expect(votingsApiMock.importVoting).toHaveBeenCalled();
     });
   });
+
+  test('opens About Project modal from sidebar', async () => {
+    renderWithProviders(<AdminPage />, { route: '/admin' });
+
+    // Wait for admin page to load
+    await screen.findByText('Стартовая панель');
+
+    // Find and click the "О проекте" button
+    const aboutButton = await screen.findByRole('button', { name: /О проекте/i });
+    await userEvent.click(aboutButton);
+
+    // Verify modal opens with version information
+    expect(await screen.findByText('AEF Vote')).toBeInTheDocument();
+    expect(screen.getByText(/Платформа для голосования/i)).toBeInTheDocument();
+    expect(screen.getByText(/Информация о версии/i)).toBeInTheDocument();
+    expect(screen.getByText(/Фронтенд:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Бэкенд:/i)).toBeInTheDocument();
+  });
 });
