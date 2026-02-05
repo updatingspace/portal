@@ -200,7 +200,7 @@ class PolicyOverrideApiTests(TestCase):
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
-class TenantAdminApiTests(TestCase):
+class TenantAdminAuditApiTests(TestCase):
     def setUp(self):
         super().setUp()
         self.client = Client()
@@ -276,7 +276,7 @@ class TenantAdminApiTests(TestCase):
     def test_delete_removes_override(self):
         override = PolicyOverride.objects.create(
             tenant_id=self.tenant_id,
-            user_id=self.user_id,
+            user_id=self.admin_id,
             action="deny",
             permission_id=self.permission.key,
             reason="temp",
@@ -289,7 +289,7 @@ class TenantAdminApiTests(TestCase):
             request_id=request_id,
             tenant_id=self.tenant_id,
             tenant_slug=self.tenant_slug,
-            user_id=self.user_id,
+            user_id=self.admin_id,
             master_flags={"system_admin": True},
         )
         resp = self.client.delete(

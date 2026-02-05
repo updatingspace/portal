@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from django.core.cache import cache
 
 from activity.connectors.base import (
     Connector,

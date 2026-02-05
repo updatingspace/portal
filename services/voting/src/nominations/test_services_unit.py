@@ -158,16 +158,14 @@ class NominationServiceTests(TestCase):
         self.assertFalse(can_vote)
         self.assertFalse(requires)
 
-        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True), patch(
-            "nominations.services.user_has_telegram_link", return_value=False
-        ):
+        self.user.has_telegram_link = False
+        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True):
             can_vote, requires = services._resolve_vote_permissions(self.user)
             self.assertFalse(can_vote)
             self.assertTrue(requires)
 
-        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True), patch(
-            "nominations.services.user_has_telegram_link", return_value=True
-        ):
+        self.user.has_telegram_link = True
+        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True):
             can_vote, requires = services._resolve_vote_permissions(self.user)
             self.assertTrue(can_vote)
             self.assertFalse(requires)
@@ -219,9 +217,8 @@ class NominationServiceTests(TestCase):
         self.assertEqual(ctx.exception.deadline_at, deadline)
 
     def test_record_vote_requires_telegram_link_when_flag_enabled(self):
-        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True), patch(
-            "nominations.services.user_has_telegram_link", return_value=False
-        ):
+        self.user.has_telegram_link = False
+        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True):
             with self.assertRaises(TelegramLinkRequiredError):
                 record_vote(self.nomination.id, self.option.id, self.user)
 

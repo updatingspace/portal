@@ -7,9 +7,8 @@ import os
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from django.conf import settings
 from django.test import Client, TestCase, override_settings
 
 from activity.connectors.steam import SteamConnector
@@ -351,7 +350,7 @@ class FeedLastSeenTests(TestCase):
     def test_get_unread_count_counts_new_events(self):
         """Test that unread count correctly counts events after last_seen."""
         # Set last_seen to 1 hour ago
-        last_seen = FeedLastSeen.objects.create(
+        FeedLastSeen.objects.create(
             tenant_id=self.tenant_id,
             user_id=self.user_id,
             last_seen_at=datetime.now(timezone.utc) - timedelta(hours=1),

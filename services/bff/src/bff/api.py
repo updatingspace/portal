@@ -320,12 +320,6 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             request_id=getattr(request, "request_id", None),
             status=400,
         )
-    cache.delete(f"oauth_state:{state}")
-
-    next_path = state_data.get("next", "/")
-    # tenant_id from state can be used to validate tenant consistency if needed
-    _ = state_data.get("tenant_id")
-
     tenant = getattr(request, "tenant", None)
     if not tenant:
         return error_response(
@@ -334,6 +328,18 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             request_id=getattr(request, "request_id", None),
             status=404,
         )
+
+    state_tenant_id = str(state_data.get("tenant_id") or "").strip()
+    if state_tenant_id and state_tenant_id != str(tenant.id):
+        return error_response(
+            code="TENANT_MISMATCH",
+            message="OAuth state tenant does not match current tenant",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    cache.delete(f"oauth_state:{state}")
+    next_path = state_data.get("next", "/")
 
     # Exchange code for tokens
     # BFF_UPSTREAM_ID_URL points to /api/v1, but OAuth endpoints are at /oauth/

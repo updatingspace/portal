@@ -122,7 +122,6 @@ def _get_outbox_stats() -> dict[str, Any]:
     """Get outbox message statistics."""
     try:
         from tenant_voting.models import OutboxMessage
-        from django.db.models import Count
         from django.utils import timezone
         from datetime import timedelta
         

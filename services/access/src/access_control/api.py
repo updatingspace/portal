@@ -20,6 +20,7 @@ from access_control.models import (
     ScopeType,
     TenantAdminAuditEvent,
 )
+from access_control.context import require_internal_context
 from access_control.schemas import (
     CheckIn,
     CheckOut,
@@ -38,16 +39,15 @@ from access_control.schemas import (
     TenantAdminBindingOut,
     TenantAdminAuditEventOut,
 )
-TenantAdminRoleOut.model_rebuild(force=True)
-TenantAdminBindingOut.model_rebuild(force=True)
-TenantAdminAuditEventOut.model_rebuild(force=True)
-from access_control.context import require_internal_context
 from access_control.services import (
     MasterFlags,
     compute_effective_access,
-    master_flags_from_dict,
     log_tenant_admin_event,
+    master_flags_from_dict,
 )
+TenantAdminRoleOut.model_rebuild(force=True)
+TenantAdminBindingOut.model_rebuild(force=True)
+TenantAdminAuditEventOut.model_rebuild(force=True)
 
 logger = logging.getLogger(__name__)
 

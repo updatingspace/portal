@@ -550,4 +550,4 @@ def event_ics(request, event_id: str):
     return resp
 
 
-api.add_router("/", router)
+api.add_router("/events", router)

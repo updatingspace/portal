@@ -56,6 +56,7 @@ class BffTenantIsolationTests(TestCase):
             incoming_headers,
             context_headers,
             request_id,
+            timeout=None,
         ):
             return httpx.Response(
                 200,
@@ -105,6 +106,7 @@ class BffProxyRoutingTests(TestCase):
             context_headers,
             request_id,
             stream=False,
+            timeout=None,
         ):
             captured["upstream_base_url"] = upstream_base_url
             captured["upstream_path"] = upstream_path
@@ -169,6 +171,7 @@ class BffSessionProfileSyncTests(TestCase):
             context_headers,
             request_id,
             stream=False,
+            timeout=None,
         ):
             calls.append((method, upstream_path))
             if upstream_path == "portal/me" and method == "GET":
@@ -375,6 +378,29 @@ class OidcAuthCallbackTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "INVALID_STATE")
+
+    def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(self):
+        """GET /auth/callback rejects state created for another tenant."""
+        from django.core.cache import cache
+
+        other_tenant = Tenant.objects.create(slug="other")
+        state = "tenant-mismatch-state"
+        cache.set(
+            f"oauth_state:{state}",
+            {"next": "/dashboard", "tenant_id": str(other_tenant.id)},
+            timeout=600,
+        )
+
+        with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=abc123&state={state}",
+                HTTP_HOST=self.host,
+            )
+
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.json()
+        self.assertEqual(payload["error"]["code"], "TENANT_MISMATCH")
+        self.assertIsNotNone(cache.get(f"oauth_state:{state}"))
 
     def test_callback_with_oauth_error_returns_error(self):
         """GET /auth/callback with error param returns 400."""

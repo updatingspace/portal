@@ -14,7 +14,6 @@ def populate_nomination_tenant_id(apps, schema_editor):
 
 
 def populate_option_tenant_id(apps, schema_editor):
-    Nomination = apps.get_model("tenant_voting", "Nomination")
     Option = apps.get_model("tenant_voting", "Option")
     for option in Option.objects.all():
         if not option.tenant_id:

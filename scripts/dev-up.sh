@@ -109,7 +109,7 @@ check_prerequisites() {
         exit 1
     fi
     
-    if ! command -v docker compose &> /dev/null; then
+    if ! docker compose version &> /dev/null; then
         log_error "Docker Compose is not available"
         exit 1
     fi

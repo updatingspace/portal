@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any
 
 from .models import PollVisibility
 

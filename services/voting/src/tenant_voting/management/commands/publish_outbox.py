@@ -26,7 +26,7 @@ from datetime import timedelta
 import httpx
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from tenant_voting.models import OutboxMessage

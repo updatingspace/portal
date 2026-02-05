@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from unittest import mock
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import Client, TestCase, override_settings

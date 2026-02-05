@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import importlib
 import sys
 import uuid
 from pathlib import Path
@@ -23,7 +24,7 @@ BFF_SRC = Path(__file__).resolve().parents[4] / "services" / "bff" / "src"
 if str(BFF_SRC) not in sys.path:
     sys.path.insert(0, str(BFF_SRC))
 
-from bff.security import sign_internal_request
+from bff.security import sign_internal_request  # noqa: E402
 
 
 def _headers(
@@ -61,7 +62,9 @@ class NewsIntegrationTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls._perm_patch = patch("activity.permissions.has_permission", return_value=True)
+        cls.permissions = importlib.import_module("activity.permissions")
+        cls.activity_api = importlib.import_module("activity.api")
+        cls._perm_patch = patch.object(cls.permissions, "has_permission", return_value=True)
         cls._perm_patch.start()
 
     @classmethod
@@ -172,7 +175,7 @@ class NewsIntegrationTests(TestCase):
             ],
         }
 
-        with patch("activity.api.generate_download_url", return_value="https://cdn.test/news.jpg"):
+        with patch.object(self.activity_api, "generate_download_url", return_value="https://cdn.test/news.jpg"):
             create_resp = self._post("/api/v1/news", news_payload, "rid-news-1")
         self.assertEqual(create_resp.status_code, 200)
         data = create_resp.json()
@@ -239,7 +242,7 @@ class NewsIntegrationTests(TestCase):
             upload_headers={"Content-Type": "image/jpeg"},
             expires_in=900,
         )
-        with patch("activity.api.generate_upload_url", return_value=mocked):
+        with patch.object(self.activity_api, "generate_upload_url", return_value=mocked):
             resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-1")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()

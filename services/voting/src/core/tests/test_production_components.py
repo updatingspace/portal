@@ -12,9 +12,8 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-from django.http import HttpRequest, JsonResponse
-from django.test import RequestFactory, TestCase, override_settings
+from django.http import JsonResponse
+from django.test import RequestFactory, TestCase
 
 from core.middleware import LoggingMiddleware, RateLimitMiddleware
 

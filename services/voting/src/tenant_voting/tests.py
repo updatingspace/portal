@@ -12,11 +12,10 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import Client, TestCase, override_settings
-from django.utils import timezone
 
 from tenant_voting.models import (
     Nomination,
@@ -26,8 +25,6 @@ from tenant_voting.models import (
     PollStatus,
     PollVisibility,
     Vote,
-    PollParticipant,
-    PollRole,
 )
 
 

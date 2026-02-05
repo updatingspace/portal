@@ -620,7 +620,7 @@ def news_delete(request, news_id: str):
         payload_json__news_id=str(post.id),
     ).delete()
     post.delete()
-    return 204
+    return 204, None
 
 
 @router.get(

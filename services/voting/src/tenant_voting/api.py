@@ -3,11 +3,9 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any, cast
 
 import httpx
 from django.conf import settings
-from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import Router
