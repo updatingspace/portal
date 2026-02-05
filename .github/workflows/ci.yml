@@ -122,7 +122,7 @@ jobs:
             dockerfile: services/voting/Dockerfile
             build_args: ''
           - image: updatingspace-portal-frontend
-            context: web/portal-frontend
+            context: .
             dockerfile: web/portal-frontend/Dockerfile
             build_args: |
               VITE_BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}
@@ -179,7 +179,7 @@ jobs:
             dockerfile: services/voting/Dockerfile
             build_args: ''
           - image: updatingspace-portal-frontend
-            context: web/portal-frontend
+            context: .
             dockerfile: web/portal-frontend/Dockerfile
             build_args: |
               VITE_BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}
