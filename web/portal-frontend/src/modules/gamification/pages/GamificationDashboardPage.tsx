@@ -54,12 +54,7 @@ export const GamificationDashboardPage: React.FC = () => {
   const canEdit = can(user, 'gamification.achievements.edit');
   const canPublish = can(user, 'gamification.achievements.publish');
   const canHide = can(user, 'gamification.achievements.hide');
-  const hasAccess =
-    Boolean(user?.isSuperuser) ||
-    Boolean(
-      user?.capabilities?.some((cap) => cap.startsWith('gamification.achievements.')) ||
-        user?.roles?.some((role) => role.startsWith('gamification.achievements.')),
-    );
+  const hasAccess = Boolean(user);
 
   if (!hasAccess) {
     return (

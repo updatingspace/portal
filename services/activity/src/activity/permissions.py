@@ -37,7 +37,7 @@ def has_permission(
     user_id: UUID,
     master_flags: frozenset[str],
     permission_key: str,
-    scope_type: str = "tenant",
+    scope_type: str = "TENANT",
     scope_id: str | None = None,
     request_id: str,
 ) -> bool:
@@ -67,6 +67,7 @@ def has_permission(
 
     # Use tenant_id as default scope_id
     effective_scope_id = scope_id or str(tenant_id)
+    normalized_scope_type = str(scope_type).upper()
 
     base_url = str(
         getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")
@@ -78,7 +79,7 @@ def has_permission(
         "tenant_id": str(tenant_id),
         "user_id": str(user_id),
         "action": permission_key,
-        "scope": {"type": scope_type, "id": effective_scope_id},
+        "scope": {"type": normalized_scope_type, "id": effective_scope_id},
         "master_flags": {
             "suspended": "suspended" in master_flags,
             "banned": "banned" in master_flags,
@@ -163,7 +164,7 @@ def require_permission(
     *,
     ctx,
     permission_key: str,
-    scope_type: str = "tenant",
+    scope_type: str = "TENANT",
     scope_id: str | None = None,
 ) -> None:
     """

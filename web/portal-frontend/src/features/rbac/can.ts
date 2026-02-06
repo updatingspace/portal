@@ -5,7 +5,8 @@ export type Capability = string;
 const CAPABILITY_ALIASES: Record<string, string> = {
   'feed:read': 'activity.feed.read',
   'events:read': 'events.event.read',
-  'voting:read': 'voting.votings.read',
+  'voting:read': 'voting.poll.read',
+  'voting.votings.read': 'voting.poll.read',
 };
 
 const normalizeCapability = (value: string): string => {

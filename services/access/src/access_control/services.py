@@ -18,6 +18,7 @@ from access_control.models import (
     ScopeType,
     TenantAdminAuditEvent,
 )
+from access_control.permissions_mvp import DEFAULT_MEMBER_ROLE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,25 @@ def compute_effective_access(
             seen_role_ids.add(b.role_id)
             effective_roles.append(b.role)
             role_ids.append(b.role_id)
+
+    # Implicit tenant-wide baseline role for every user.
+    # Tenant-specific "member" overrides global system template "member".
+    default_role = Role.objects.filter(
+        tenant_id=tenant_id,
+        service=perm.service,
+        name=DEFAULT_MEMBER_ROLE_NAME,
+    ).first()
+    if default_role is None:
+        default_role = Role.objects.filter(
+            tenant_id__isnull=True,
+            is_system_template=True,
+            service=perm.service,
+            name=DEFAULT_MEMBER_ROLE_NAME,
+        ).first()
+    if default_role and default_role.id not in seen_role_ids:
+        seen_role_ids.add(default_role.id)
+        effective_roles.append(default_role)
+        role_ids.append(default_role.id)
 
     if not role_ids:
         return CheckDecision(

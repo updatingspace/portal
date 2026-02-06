@@ -145,3 +145,62 @@ class AccessControlComputeTests(TestCase):
         )
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason_code, "UNKNOWN_PERMISSION")
+
+    def test_global_default_member_role_applies_without_bindings(self):
+        RolePermission.objects.filter(role=self.role).delete()
+        self.role.delete()
+
+        member, _ = Role.objects.get_or_create(
+            tenant_id=None,
+            service="voting",
+            name="member",
+            defaults={"is_system_template": True},
+        )
+        RolePermission.objects.filter(role=member).delete()
+        RolePermission.objects.create(role=member, permission_id="voting.vote.cast")
+
+        decision = compute_effective_access(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            permission_key="voting.vote.cast",
+            scope_type="TENANT",
+            scope_id=str(self.tenant_id),
+            master_flags=MasterFlags(),
+        )
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.reason_code, "RBAC_ALLOW")
+        self.assertEqual([role.name for role in decision.roles], ["member"])
+
+    def test_tenant_member_role_overrides_global_template(self):
+        RolePermission.objects.filter(role=self.role).delete()
+        self.role.delete()
+
+        global_member, _ = Role.objects.get_or_create(
+            tenant_id=None,
+            service="voting",
+            name="member",
+            defaults={"is_system_template": True},
+        )
+        RolePermission.objects.filter(role=global_member).delete()
+        RolePermission.objects.create(role=global_member, permission_id="voting.vote.cast")
+
+        tenant_member, _ = Role.objects.get_or_create(
+            tenant_id=self.tenant_id,
+            service="voting",
+            name="member",
+            defaults={"is_system_template": False},
+        )
+        RolePermission.objects.filter(role=tenant_member).delete()
+
+        decision = compute_effective_access(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            permission_key="voting.vote.cast",
+            scope_type="TENANT",
+            scope_id=str(self.tenant_id),
+            master_flags=MasterFlags(),
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason_code, "RBAC_DENY")

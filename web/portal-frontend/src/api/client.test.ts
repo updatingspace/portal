@@ -58,4 +58,39 @@ describe('requestResult business handling', () => {
       requestId: 'req-403',
     });
   });
+
+  it('preserves original route in AccessDeniedError when user navigates before response resolves', async () => {
+    let resolveFetch: ((value: unknown) => void) | null = null;
+    (fetch as unknown as vi.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    window.history.pushState({}, '', '/app/feed');
+    const pending = request('/test/protected');
+    window.history.pushState({}, '', '/app/events');
+
+    resolveFetch?.({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Forbidden by Access service',
+          request_id: 'req-403-race',
+        },
+      }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    await expect(pending).rejects.toMatchObject({
+      requestId: 'req-403-race',
+      path: '/app/feed',
+    });
+  });
 });

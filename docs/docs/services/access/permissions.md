@@ -23,14 +23,25 @@ description: Список всех permissions платформы
 |------------|-------------|-------|
 | `portal.profile.read_self` | Читать свой профиль | member |
 | `portal.profile.edit_self` | Редактировать свой профиль | member |
+| `portal.communities.list` | Список сообществ | member |
+| `portal.communities.create` | Создавать сообщества | admin |
 | `portal.applications.review` | Просматривать/одобрять заявки | admin |
 | `portal.communities.read` | Читать сообщества | member |
 | `portal.communities.members.read` | Проверять членство в сообществе | member |
+| `portal.communities.members.manage` | Управлять участниками сообщества | admin |
+| `portal.teams.list` | Список команд | member |
+| `portal.teams.create` | Создавать команды | admin |
 | `portal.communities.manage` | Управлять сообществами | admin |
 | `portal.teams.manage` | Управлять командами | moderator |
 | `portal.teams.members.read` | Проверять членство в команде | member |
+| `portal.teams.members.manage` | Управлять участниками команды | admin |
 | `portal.posts.read` | Читать посты | member |
 | `portal.posts.create` | Создавать посты | moderator |
+| `portal.posts.create_public` | Создавать публичные посты | member |
+| `portal.posts.create_community` | Создавать посты сообщества | member |
+| `portal.posts.create_team` | Создавать посты команды | member |
+| `portal.posts.create_private` | Создавать приватные посты | member |
+| `portal.posts.read_private` | Читать приватные посты | admin |
 | `portal.roles.read` | Просматривать роли | admin |
 | `portal.roles.write` | Управлять ролями | admin |
 | `portal.role_bindings.write` | Назначать роли | admin |
@@ -42,6 +53,7 @@ description: Список всех permissions платформы
 |------------|-------------|-------|
 | `voting.poll.read` | Просматривать голосования | voter |
 | `voting.vote.cast` | Голосовать | voter |
+| `voting.vote.read_own` | Читать свои голоса | voter |
 | `voting.results.read` | Просматривать результаты | voter |
 | `voting.votings.admin` | Администрировать голосования | voting_admin |
 | `voting.nominations.admin` | Администрировать номинации | voting_admin |
@@ -86,27 +98,36 @@ Audit logging все ещё обязателен: Access сохраняет, к�
 | `activity.sources.manage` | Управлять источниками | admin |
 | `activity.admin.sync` | Запускать синхронизацию | admin |
 | `activity.admin.games` | Управлять каталогом игр | admin |
+| `activity.news.create` | Создавать новости | member |
+| `activity.news.manage` | Управлять новостями | admin |
 
 ## Role Templates
 
 ### Для всех tenant'ов
 
-#### member
+#### member (default)
 ```python
 MEMBER_PERMISSIONS = [
     "portal.profile.read_self",
     "portal.profile.edit_self",
+    "portal.communities.list",
     "portal.communities.read",
+    "portal.teams.list",
     "portal.communities.members.read",
     "portal.teams.members.read",
-    "portal.posts.read",
+    "portal.posts.create_public",
+    "portal.posts.create_community",
+    "portal.posts.create_team",
+    "portal.posts.create_private",
     "voting.poll.read",
     "voting.vote.cast",
+    "voting.vote.read_own",
     "voting.results.read",
     "events.event.read",
     "events.rsvp.set",
     "activity.feed.read",
     "activity.sources.link",
+    "activity.news.create",
 ]
 ```
 
@@ -231,3 +252,15 @@ Role.objects.get(name="voting_admin").permissions.add(
 def delete_poll(request, poll_id):
     ...
 ```
+
+## Базовая роль по умолчанию
+
+Access автоматически применяет базовую роль `member` для каждого пользователя в tenant по каждому сервису.
+Явный `RoleBinding` для этой роли больше не обязателен.
+
+Переопределение tenant-админом:
+
+1. Создать tenant-роль с именем `member` для нужного `service`.
+2. Назначить ей нужный набор permissions.
+
+Tenant-роль `member` имеет приоритет над глобальным шаблоном `member`.

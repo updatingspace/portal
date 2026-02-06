@@ -12,6 +12,7 @@ class PermissionService(models.TextChoices):
     VOTING = "voting", "voting"
     EVENTS = "events", "events"
     ACTIVITY = "activity", "activity"
+    GAMIFICATION = "gamification", "gamification"
 
 
 class Permission(models.Model):

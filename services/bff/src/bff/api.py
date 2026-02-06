@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
+    ("portal", "portal.profile.read_self"),
+    ("voting", "voting.poll.read"),
+    ("events", "events.event.read"),
+    ("activity", "activity.feed.read"),
+    ("gamification", "gamification.achievements.read"),
+)
+
+
 @dataclass(frozen=True)
 class _LoginPayload:
     email: str
@@ -36,6 +45,100 @@ def _require_auth(request: HttpRequest):
             status=401,
         )
     return ctx, None
+
+
+def _resolve_access_check_path(upstream: str) -> str:
+    base = upstream.rstrip("/")
+    if base.endswith("/access"):
+        return "check"
+    return "access/check"
+
+
+def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str]]:
+    access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
+    if not access_upstream:
+        return [], []
+
+    access_path = _resolve_access_check_path(access_upstream)
+    effective_permissions: set[str] = set()
+    effective_roles: set[str] = set()
+
+    for service, probe_permission in SESSION_ME_CAPABILITY_PROBES:
+        payload = {
+            "tenant_id": str(ctx.tenant_id),
+            "user_id": str(ctx.user_id),
+            "action": probe_permission,
+            "scope": {"type": "TENANT", "id": str(ctx.tenant_id)},
+            "master_flags": ctx.master_flags,
+            "return_effective_permissions": True,
+        }
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
+        try:
+            resp = proxy_request(
+                upstream_base_url=access_upstream,
+                upstream_path=access_path,
+                method="POST",
+                query_string="",
+                body=body,
+                incoming_headers=request.headers,
+                context_headers={
+                    "Content-Type": "application/json",
+                    "X-Request-Id": request.request_id,
+                    "X-Tenant-Id": ctx.tenant_id,
+                    "X-Tenant-Slug": ctx.tenant_slug,
+                    "X-User-Id": ctx.user_id,
+                    "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+                },
+                request_id=request.request_id,
+            )
+        except Exception:
+            logger.warning(
+                "session/me access snapshot probe failed",
+                extra={
+                    "request_id": request.request_id,
+                    "service": service,
+                    "probe_permission": probe_permission,
+                },
+                exc_info=True,
+            )
+            continue
+
+        if resp.status_code != 200:
+            logger.warning(
+                "session/me access snapshot probe returned non-200",
+                extra={
+                    "request_id": request.request_id,
+                    "service": service,
+                    "probe_permission": probe_permission,
+                    "status_code": resp.status_code,
+                },
+            )
+            continue
+
+        try:
+            data = resp.json()
+        except Exception:
+            continue
+
+        permissions = data.get("effective_permissions") if isinstance(data, dict) else None
+        if isinstance(permissions, list):
+            for permission in permissions:
+                if isinstance(permission, str) and permission.strip():
+                    effective_permissions.add(permission.strip())
+
+        roles = data.get("effective_roles") if isinstance(data, dict) else None
+        if isinstance(roles, list):
+            for role in roles:
+                if not isinstance(role, dict):
+                    continue
+                role_service = role.get("service")
+                role_name = role.get("name")
+                if isinstance(role_service, str) and isinstance(role_name, str):
+                    if role_service.strip() and role_name.strip():
+                        effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
+
+    return sorted(effective_permissions), sorted(effective_roles)
 
 
 @router.get("/session/me")
@@ -178,12 +281,16 @@ def session_me(request: HttpRequest):
     else:
         id_frontend_base_url = None
 
+    capabilities, roles = _load_effective_access_snapshot(request, ctx)
+
     return {
         "user": {"id": ctx.user_id, "master_flags": ctx.master_flags},
         "tenant": {"id": ctx.tenant_id, "slug": ctx.tenant_slug},
         "portal_profile": portal_profile,
         "id_profile": id_profile,
         "tenant_membership": tenant_membership,
+        "capabilities": capabilities,
+        "roles": roles,
         "id_frontend_base_url": id_frontend_base_url,
         "request_id": request.request_id,
     }

@@ -100,12 +100,14 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
   };
 
   const handleCopyAdminMessage = () => {
-    const requestId = error?.requestId ?? 'не передан';
-    const message = [
+    const lines = [
       `Здравствуйте! У меня нет доступа к разделу: ${pageTitleOrRoute}.`,
       "Пожалуйста, проверьте права в tenant'е и выдайте доступ.",
-      `Request ID: ${requestId}`,
-    ].join('\n');
+    ];
+    if (error?.requestId) {
+      lines.push(`Request ID: ${error.requestId}`);
+    }
+    const message = lines.join('\n');
     void copyText(message);
   };
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import timedelta
 from unittest.mock import patch
@@ -210,6 +211,93 @@ class BffSessionProfileSyncTests(TestCase):
         self.assertEqual(payload["portal_profile"]["first_name"], "Max")
         self.assertEqual(payload["portal_profile"]["last_name"], "Doe")
         self.assertIn(("PATCH", "portal/me"), calls)
+
+    def test_session_me_includes_effective_capabilities_from_access(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+            timeout=None,
+        ):
+            if upstream_path == "portal/me" and method == "GET":
+                return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
+
+            if upstream_path == "me" and method == "GET":
+                return httpx.Response(200, json={"user": {"first_name": "Max", "last_name": "Doe"}, "memberships": []})
+
+            if upstream_path == "access/check" and method == "POST":
+                payload = {}
+                try:
+                    payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else "{}")
+                except Exception:
+                    payload = {}
+
+                action = payload.get("action")
+                if action == "portal.profile.read_self":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "allowed": True,
+                            "reason_code": "RBAC_ALLOW",
+                            "effective_roles": [{"id": 1, "name": "member", "service": "portal"}],
+                            "effective_permissions": ["portal.profile.read_self", "portal.posts.create_public"],
+                        },
+                    )
+                if action == "activity.feed.read":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "allowed": True,
+                            "reason_code": "RBAC_ALLOW",
+                            "effective_roles": [{"id": 2, "name": "member", "service": "activity"}],
+                            "effective_permissions": ["activity.feed.read", "activity.news.create"],
+                        },
+                    )
+                return httpx.Response(
+                    200,
+                    json={
+                        "allowed": False,
+                        "reason_code": "RBAC_DENY",
+                        "effective_roles": [],
+                        "effective_permissions": [],
+                    },
+                )
+
+            return httpx.Response(200, json={"ok": True})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self.client.get(
+                    "/api/v1/session/me",
+                    HTTP_HOST=self.host,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(
+            payload.get("capabilities"),
+            [
+                "activity.feed.read",
+                "activity.news.create",
+                "portal.posts.create_public",
+                "portal.profile.read_self",
+            ],
+        )
+        self.assertEqual(payload.get("roles"), ["activity:member", "portal:member"])
 
 class OidcAuthLoginTests(TestCase):
     """Tests for GET /auth/login OIDC redirect endpoint."""

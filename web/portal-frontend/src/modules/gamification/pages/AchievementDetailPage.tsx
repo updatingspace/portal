@@ -41,12 +41,7 @@ export const AchievementDetailPage: React.FC = () => {
   const { user } = useAuth();
   const canAssign = can(user, 'gamification.achievements.assign');
   const canRevoke = can(user, 'gamification.achievements.revoke');
-  const hasAccess =
-    Boolean(user?.isSuperuser) ||
-    Boolean(
-      user?.capabilities?.some((cap) => cap.startsWith('gamification.achievements.')) ||
-        user?.roles?.some((role) => role.startsWith('gamification.achievements.')),
-    );
+  const hasAccess = Boolean(user);
 
   const { data: achievement, isLoading } = useAchievement(id);
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | GrantVisibility>('all');
