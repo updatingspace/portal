@@ -2,6 +2,7 @@ import { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 import { AppLayout } from '../widgets/app-shell/AppLayout';
+import { RequireCapability } from './guards/RequireCapability';
 import { RequireSession } from './guards/RequireSession';
 import { PublicLayout } from './layout/PublicLayout';
 
@@ -53,8 +54,22 @@ const routeConfig = [
         element: <AppLayout />,
         children: [
           { path: '/app', element: <DashboardPage /> },
-          { path: '/app/feed', element: <FeedPage /> },
-          { path: '/app/events', element: <EventsPage /> },
+          {
+            path: '/app/feed',
+            element: (
+              <RequireCapability required="activity.feed.read">
+                <FeedPage />
+              </RequireCapability>
+            ),
+          },
+          {
+            path: '/app/events',
+            element: (
+              <RequireCapability required={['events.event.read', 'events.event.create']} mode="any">
+                <EventsPage />
+              </RequireCapability>
+            ),
+          },
           { path: '/app/events/create', element: <CreateEventPage /> },
           { path: '/app/events/:id', element: <EventPage /> },
           { path: '/app/events/:id/edit', element: <EditEventPage /> },
@@ -70,7 +85,14 @@ const routeConfig = [
           { path: '/app/profile', element: <ProfilePage /> },
           { path: '/app/settings', element: <SettingsPage /> },
           { path: '/app/admin', element: <AdminPage /> },
-          { path: '/app/tenant-admin', element: <TenantAdminPage /> },
+          {
+            path: '/app/tenant-admin',
+            element: (
+              <RequireCapability required="portal.roles.read">
+                <TenantAdminPage />
+              </RequireCapability>
+            ),
+          },
           { path: '/app/gamification', element: <GamificationDashboardPage /> },
           { path: '/app/gamification/achievements/new', element: <AchievementFormPage /> },
           { path: '/app/gamification/achievements/:id/edit', element: <AchievementFormPage /> },

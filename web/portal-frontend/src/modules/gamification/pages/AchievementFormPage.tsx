@@ -12,6 +12,8 @@ import {
 } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
+import { createClientAccessDeniedError } from '../../../api/accessDenied';
+import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
 import {
   useAchievement,
@@ -52,14 +54,13 @@ export const AchievementFormPage: React.FC = () => {
 
   if (!canEditAchievement) {
     return (
-      <div className="gamification-page" data-qa="achievement-form-page">
-        <Card view="filled" className="gamification-empty">
-          <Text variant="subheader-2">Недостаточно прав для редактирования.</Text>
-          <Text variant="body-2" color="secondary">
-            Запросите доступ у администратора тенанта.
-          </Text>
-        </Card>
-      </div>
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: isEdit ? 'gamification.achievements.edit' : 'gamification.achievements.create',
+          tenant: user?.tenant,
+          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для редактирования ачивок.',
+        })}
+      />
     );
   }
 

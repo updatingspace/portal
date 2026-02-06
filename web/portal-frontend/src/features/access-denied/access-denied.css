@@ -1,0 +1,126 @@
+.access-denied {
+  min-height: min(100%, 640px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.access-denied__card {
+  width: min(100%, 680px);
+  border: 1px solid var(--g-color-line-generic);
+  background: var(--g-color-base-float);
+  padding: clamp(20px, 4vw, 32px);
+}
+
+.access-denied__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  text-align: center;
+}
+
+.access-denied__illustration {
+  width: min(100%, 170px);
+  height: auto;
+  color: var(--g-color-text-primary);
+}
+
+.access-denied__shape-bg {
+  fill: color-mix(in srgb, var(--g-color-base-generic) 65%, transparent);
+}
+
+.access-denied__shape-mid {
+  fill: color-mix(in srgb, var(--g-color-base-info-light) 48%, transparent);
+}
+
+.access-denied__shape-line {
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.access-denied__shape-dot {
+  fill: var(--g-color-text-secondary);
+}
+
+.access-denied__description {
+  max-width: 56ch;
+}
+
+.access-denied__actions {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.access-denied__actions button:focus-visible,
+.access-denied__details summary:focus-visible,
+.access-denied__request-id button:focus-visible {
+  outline: 2px solid var(--g-color-text-info-heavy);
+  outline-offset: 2px;
+}
+
+.access-denied__details {
+  margin-top: 16px;
+  border-top: 1px solid var(--g-color-line-generic);
+  padding-top: 12px;
+}
+
+.access-denied__details summary {
+  cursor: pointer;
+  color: var(--g-color-text-secondary);
+  font-size: 13px;
+}
+
+.access-denied__details-content {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.access-denied__details-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.access-denied__request-id {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .access-denied {
+    padding: 16px;
+  }
+
+  .access-denied__actions {
+    flex-direction: column;
+  }
+
+  .access-denied__actions button {
+    width: 100%;
+  }
+
+  .access-denied__request-id {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-denied *,
+  .access-denied *::before,
+  .access-denied *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

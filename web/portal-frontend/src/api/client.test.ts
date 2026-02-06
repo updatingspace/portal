@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { requestResult } from './client';
+import { AccessDeniedError } from './accessDenied';
+import { request, requestResult } from './client';
 
 global.fetch = vi.fn();
 
@@ -25,5 +26,36 @@ describe('requestResult business handling', () => {
       expect(res.status).toBe(429);
       expect(res.error.code).toBe('LOGIN_RATE_LIMITED');
     }
+  });
+
+  it('throws AccessDeniedError when request receives 403', async () => {
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Forbidden by Access service',
+          request_id: 'req-403',
+        },
+      }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    let error: unknown = null;
+    try {
+      await request('/test/protected');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(AccessDeniedError);
+    expect(error).toMatchObject({
+      source: 'api',
+      requestId: 'req-403',
+    });
   });
 });

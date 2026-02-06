@@ -22,9 +22,9 @@ export type NavItemConfig = {
 
 const BASE_ITEMS: NavItemConfig[] = [
   {id: 'dashboard', title: 'Dashboard', description: 'Overview', route: '/app', icon: House},
-  {id: 'feed', title: 'Activity Feed', description: 'Updates and logs', route: '/app/feed', icon: Pulse, required: 'feed:read'},
-  {id: 'events', title: 'Events', description: 'Community events', route: '/app/events', icon: Calendar, required: 'events:read'},
-  {id: 'voting', title: 'Voting', description: 'Campaigns and nominations', route: '/app/voting', icon: ListCheck, required: 'voting:read'},
+  {id: 'feed', title: 'Activity Feed', description: 'Updates and logs', route: '/app/feed', icon: Pulse, required: 'activity.feed.read'},
+  {id: 'events', title: 'Events', description: 'Community events', route: '/app/events', icon: Calendar, required: 'events.event.read'},
+  {id: 'voting', title: 'Voting', description: 'Campaigns and nominations', route: '/app/voting', icon: ListCheck, required: 'voting.votings.read'},
   {id: 'gamification', title: 'Gamification', description: 'Achievements and grants', route: '/app/gamification', icon: ListCheck, required: 'gamification.achievements.create'},
   {id: 'tenant-admin', title: 'Tenant Admin', description: 'Roles, rights, access', route: '/app/tenant-admin', icon: Shield, required: 'portal.roles.read'},
 ];
@@ -32,6 +32,15 @@ const BASE_ITEMS: NavItemConfig[] = [
 function makeTooltip(title: string, description?: string) {
   return description ? `${title}\n${description}` : title;
 }
+
+const isModifiedClick = (event: Partial<MouseEvent>): boolean =>
+  Boolean(event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1);
+
+const preventDefaultIfPossible = (event: { preventDefault?: () => void }) => {
+  if (typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+};
 
 export const buildAsideMenuItems = (params: {
   user: UserInfo | null;
@@ -57,13 +66,11 @@ export const buildAsideMenuItems = (params: {
     rightAdornment: item.badge ? item.badge : undefined,
     tooltipText: makeTooltip(item.title, item.description),
     onItemClick: (_it, _collapsed, event) => {
-      const e = event as unknown as MouseEvent;
-
-      if ((e as any)?.metaKey || (e as any)?.ctrlKey || (e as any)?.shiftKey || (e as any)?.button === 1) {
+      const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+      if (isModifiedClick(e)) {
         return;
       }
-
-      (e as any)?.preventDefault?.();
+      preventDefaultIfPossible(e);
       onNavigate(item.route);
     },
   });
@@ -80,11 +87,11 @@ export const buildAsideMenuItems = (params: {
       iconSize: 18,
       tooltipText: makeTooltip('Admin', 'Admin tools'),
       onItemClick: (_it, _collapsed, event) => {
-        const e = event as unknown as MouseEvent;
-        if ((e as any)?.metaKey || (e as any)?.ctrlKey || (e as any)?.shiftKey || (e as any)?.button === 1) {
+        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+        if (isModifiedClick(e)) {
           return;
         }
-        (e as any)?.preventDefault?.();
+        preventDefaultIfPossible(e);
         onNavigate('/app/admin');
       },
     });

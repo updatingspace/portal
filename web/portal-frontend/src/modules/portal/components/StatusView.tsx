@@ -1,4 +1,6 @@
 import { Button, Loader } from '@gravity-ui/uikit';
+import { createClientAccessDeniedError } from '../../../api/accessDenied';
+import { AccessDeniedScreen } from '../../../features/access-denied';
 
 import { redirectToLogin } from '../auth';
 
@@ -19,6 +21,14 @@ export function StatusView({
   retry,
   showLogin = false,
 }: Props) {
+  if (kind === 'no-access') {
+    return (
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({ reason: description })}
+      />
+    );
+  }
+
   const resolvedTitle =
     title ??
     (kind === 'loading'
@@ -27,9 +37,7 @@ export function StatusView({
         ? 'Пока пусто'
         : kind === 'unauthorized'
           ? 'Требуется вход'
-          : kind === 'no-access'
-            ? 'Нет доступа'
-            : 'Ошибка');
+          : 'Ошибка');
 
   const resolvedDescription =
     description ??
@@ -37,9 +45,7 @@ export function StatusView({
       ? 'Подождите…'
       : kind === 'unauthorized'
         ? 'Авторизуйтесь через UpdSpaceID, чтобы продолжить.'
-        : kind === 'no-access'
-          ? 'У вас нет прав для просмотра этого раздела.'
-          : kind === 'empty'
+        : kind === 'empty'
             ? 'Данных пока нет.'
             : 'Не удалось загрузить данные.');
 

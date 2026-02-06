@@ -23,7 +23,7 @@ describe('navigation menu', () => {
     expect(items.some((i) => i.id === 'admin')).toBe(true);
   });
 
-  test('filters capability-gated items when capabilities are present', () => {
+  test('filters capability-gated items when canonical capabilities are present', () => {
     const items = buildAsideMenuItems({
       user: {
         id: 'u1',
@@ -33,7 +33,7 @@ describe('navigation menu', () => {
         isStaff: false,
         displayName: 'User',
         tenant: { id: 'tenant-1', slug: 'aef' },
-        capabilities: ['events:read'],
+        capabilities: ['events.event.read'],
       },
       currentPath: '/app',
       onNavigate: () => {},
@@ -41,5 +41,24 @@ describe('navigation menu', () => {
 
     expect(items.some((i) => i.id === 'events')).toBe(true);
     expect(items.some((i) => i.id === 'voting')).toBe(false);
+  });
+
+  test('supports legacy capability aliases for compatibility', () => {
+    const items = buildAsideMenuItems({
+      user: {
+        id: 'u2',
+        username: 'u2',
+        email: 'u2@example.com',
+        isSuperuser: false,
+        isStaff: false,
+        displayName: 'User 2',
+        tenant: { id: 'tenant-1', slug: 'aef' },
+        capabilities: ['events:read'],
+      },
+      currentPath: '/app',
+      onNavigate: () => {},
+    });
+
+    expect(items.some((i) => i.id === 'events')).toBe(true);
   });
 });

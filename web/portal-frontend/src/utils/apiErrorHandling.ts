@@ -1,6 +1,7 @@
 import type { ToastProps } from '@gravity-ui/uikit';
 import type { ApiErrorKind } from '../api/client';
 import { isApiError } from '../api/client';
+import { emitAccessDenied, toAccessDeniedError } from '../api/accessDenied';
 import { toaster } from '../toaster';
 import { logger, type LogLevel } from './logger';
 
@@ -71,6 +72,7 @@ export const getApiErrorMeta = (error: unknown): ErrorMeta => {
 
 export const notifyApiError = (error: unknown, context: string) => {
   const { kind, title, description, theme } = getApiErrorMeta(error);
+  const deniedError = toAccessDeniedError(error, { source: 'api' });
   const serverMessage = isApiError(error) ? error.message?.trim() : null;
   const requestId = isApiError(error) ? error.requestId?.trim() : null;
   const errorCode = isApiError(error) ? error.code?.trim() : null;
@@ -95,6 +97,11 @@ export const notifyApiError = (error: unknown, context: string) => {
     },
     error,
   });
+
+  if (deniedError) {
+    emitAccessDenied(deniedError);
+    return kind;
+  }
 
   const supportHint = requestId ? `\nRequest ID: ${requestId}` : '';
   const contentWithRequestId = `${content}${supportHint}`;

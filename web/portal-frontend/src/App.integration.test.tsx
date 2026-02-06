@@ -33,7 +33,7 @@ describe('App integration', () => {
           isStaff: false,
           displayName: 'User One',
           tenant: { id: 'tenant-1', slug: 'aef' },
-          capabilities: ['feed:read', 'events:read', 'voting:read'],
+          capabilities: ['activity.feed.read', 'events.event.read', 'voting.votings.read'],
         },
       },
     );

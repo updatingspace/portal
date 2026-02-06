@@ -16,10 +16,11 @@ import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
 import { FeedFilters } from '../components/FeedFilters';
 import { FeedItem } from '../components/FeedItem';
 import { requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
+import { createClientAccessDeniedError, toAccessDeniedError } from '../../../api/accessDenied';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
-import { isApiError } from '../../../api/client';
+import { AccessDeniedScreen } from '../../../features/access-denied';
 import './feed-page.css';
 
 const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
@@ -320,34 +321,33 @@ export const FeedPage: React.FC = () => {
 
   if (!canReadFeed) {
     return (
-      <div className="feed-page" data-qa="feed-page">
-        <Card view="filled" className="feed-empty" data-qa="feed-forbidden">
-          <Text variant="subheader-2">Недостаточно прав для просмотра ленты.</Text>
-          <Text variant="body-2" color="secondary">
-            Обратитесь к администратору тенанта.
-          </Text>
-        </Card>
-      </div>
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: 'activity.feed.read',
+          tenant: user?.tenant,
+        })}
+      />
     );
   }
 
   if (error) {
-    const apiError = isApiError(error) ? error : null;
-    const isForbidden = apiError?.kind === 'forbidden';
+    const deniedError = toAccessDeniedError(error, { source: 'api', tenant: user?.tenant });
+    if (deniedError) {
+      return <AccessDeniedScreen error={deniedError} />;
+    }
+
     return (
       <div className="feed-page" data-qa="feed-page">
         <Card view="filled" className="feed-empty" data-qa="feed-error">
           <Text variant="subheader-2">
-            {isForbidden ? 'Недостаточно прав для просмотра ленты.' : 'Не удалось загрузить ленту.'}
+            Не удалось загрузить ленту.
           </Text>
           <Text variant="body-2" color="secondary">
-            {isForbidden ? 'Обратитесь к администратору тенанта.' : 'Попробуйте обновить страницу.'}
+            Попробуйте обновить страницу.
           </Text>
-          {!isForbidden && (
-            <Button view="flat" size="m" onClick={() => refetch()}>
-              Повторить
-            </Button>
-          )}
+          <Button view="flat" size="m" onClick={() => refetch()}>
+            Повторить
+          </Button>
         </Card>
       </div>
     );

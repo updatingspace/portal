@@ -14,6 +14,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '../../../contexts/AuthContext';
+import { createClientAccessDeniedError } from '../../../api/accessDenied';
+import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
 import { useAchievement, useCreateGrant, useGrantsList, useRevokeGrant } from '../../../hooks/useGamification';
 import type { Grant, GrantVisibility } from '../../../types/gamification';
@@ -146,12 +148,13 @@ export const AchievementDetailPage: React.FC = () => {
   return (
     <div className="gamification-page" data-qa="achievement-detail-page">
       {!hasAccess ? (
-        <Card view="filled" className="gamification-empty">
-          <Text variant="subheader-2">Недостаточно прав для доступа к ачивке.</Text>
-          <Text variant="body-2" color="secondary">
-            Запросите доступ у администратора тенанта.
-          </Text>
-        </Card>
+        <AccessDeniedScreen
+          error={createClientAccessDeniedError({
+            requiredPermission: 'gamification.achievements.read',
+            tenant: user?.tenant,
+            reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для просмотра этой ачивки.',
+          })}
+        />
       ) : (
         <>
           <div className="gamification-header">

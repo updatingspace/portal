@@ -1,7 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ToasterComponent, ToasterProvider } from '@gravity-ui/uikit';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 
 import '@gravity-ui/uikit/styles/fonts.css';
 import '@gravity-ui/uikit/styles/styles.css';
@@ -22,6 +27,7 @@ import 'bootstrap/dist/css/bootstrap-utilities.min.css';
 import './index.css';
 
 import { toaster } from './toaster';
+import { emitAccessDenied, toAccessDeniedError } from './api/accessDenied';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthUIProvider } from './contexts/AuthUIContext';
 import { I18nProvider } from './app/providers/I18nProvider';
@@ -31,6 +37,22 @@ import { AuthLoadingGuard } from './app/guards/AuthLoadingGuard';
 import { PortalRouter } from './app/PortalRouter';
 
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      const deniedError = toAccessDeniedError(error, { source: 'api' });
+      if (deniedError) {
+        emitAccessDenied(deniedError);
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      const deniedError = toAccessDeniedError(error, { source: 'api' });
+      if (deniedError) {
+        emitAccessDenied(deniedError);
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes

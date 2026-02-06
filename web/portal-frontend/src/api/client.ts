@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { AccessDeniedError } from './accessDenied';
 
 export type ApiErrorKind =
   | 'network'
@@ -442,6 +443,14 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
       data: { url: normalizedPath, method, status: response.status, duration_ms: durationMs },
       error: message,
     });
+    if (response.status === 403) {
+      throw new AccessDeniedError({
+        source: 'api',
+        reason: message,
+        requestId: responseRequestId,
+        details,
+      });
+    }
     throw new ApiError(message, {
       status: response.status,
       kind: statusToKind(response.status),
@@ -468,6 +477,14 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const result = await requestResult<T>(path, options);
   if (!result.ok) {
+    if (result.status === 403) {
+      throw new AccessDeniedError({
+        source: 'api',
+        reason: result.error.message,
+        requestId: extractApiRequestId(result.error.details) ?? undefined,
+        details: result.error.details,
+      });
+    }
     throw new ApiError(result.error.message ?? `Запрос завершился с ошибкой (${result.status})`, {
       status: result.status,
       kind: statusToKind(result.status),
