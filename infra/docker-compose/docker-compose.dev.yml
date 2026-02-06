@@ -107,6 +107,7 @@ services:
 
   updspaceid:
     image: ${ID_SERVICE_IMAGE:-ghcr.io/updatingspace/id-service}:${ID_IMAGE_TAG:-latest}
+    platform: ${ID_SERVICE_PLATFORM:-linux/amd64}
     pull_policy: always
     command: gunicorn app.wsgi:application --bind 0.0.0.0:8001
     ports:
@@ -303,7 +304,11 @@ services:
 
   id-frontend:
     image: ${ID_FRONTEND_IMAGE:-ghcr.io/updatingspace/id-frontend}:${ID_IMAGE_TAG:-latest}
+    platform: ${ID_FRONTEND_PLATFORM:-linux/amd64}
     pull_policy: always
+    command: ["sh", "-lc", "pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0 --port 5175"]
+    volumes:
+      - id_frontend_node_modules:/app/node_modules
     ports:
       - "5175:5175"
     environment:
@@ -351,3 +356,4 @@ volumes:
   pg_data_events:
   pg_data_gamification:
   pg_data_activity:
+  id_frontend_node_modules:

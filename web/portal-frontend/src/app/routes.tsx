@@ -19,6 +19,21 @@ const VotingPage = lazy(() => import('../pages/app/VotingPages').then((mod) => (
 const VotingCampaignPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingCampaignPage })));
 const VotingAnalyticsPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingAnalyticsPage })));
 const ProfilePage = lazy(() => import('../pages/app/profile/Page').then((mod) => ({ default: mod.ProfilePage })));
+const FollowingListPage = lazy(() =>
+  import('../pages/app/profile/components/list-pages/FollowingListPage').then((mod) => ({ default: mod.FollowingListPage })),
+);
+const FollowersListPage = lazy(() =>
+  import('../pages/app/profile/components/list-pages/FollowersListPage').then((mod) => ({ default: mod.FollowersListPage })),
+);
+const CommunitiesListPage = lazy(() =>
+  import('../pages/app/profile/components/list-pages/CommunitiesListPage').then((mod) => ({ default: mod.CommunitiesListPage })),
+);
+const AchievementsListPage = lazy(() =>
+  import('../pages/app/profile/components/list-pages/AchievementsListPage').then((mod) => ({ default: mod.AchievementsListPage })),
+);
+const FriendsListPage = lazy(() =>
+  import('../pages/app/profile/components/list-pages/FriendsListPage').then((mod) => ({ default: mod.FriendsListPage })),
+);
 const SettingsPage = lazy(() => import('../pages/app/settings/Page').then((mod) => ({ default: mod.SettingsPage })));
 const AdminPage = lazy(() => import('../pages/app/AdminPage').then((mod) => ({ default: mod.AdminPage })));
 const TenantAdminPage = lazy(() => import('../pages/app/TenantAdminPage').then((mod) => ({ default: mod.TenantAdminPage })));
@@ -83,6 +98,11 @@ const routeConfig = [
           { path: '/app/voting/:id/manage', element: <PollManagePage /> },
           { path: '/app/voting/:id/results', element: <PollResultsPage /> },
           { path: '/app/profile', element: <ProfilePage /> },
+          { path: '/app/profile/following', element: <FollowingListPage /> },
+          { path: '/app/profile/followers', element: <FollowersListPage /> },
+          { path: '/app/profile/communities', element: <CommunitiesListPage /> },
+          { path: '/app/profile/achievements', element: <AchievementsListPage /> },
+          { path: '/app/profile/friends', element: <FriendsListPage /> },
           { path: '/app/settings', element: <SettingsPage /> },
           { path: '/app/admin', element: <AdminPage /> },
           {

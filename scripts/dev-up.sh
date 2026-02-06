@@ -195,11 +195,19 @@ setup_databases() {
 
     # Setup ID service database (local mode only)
     if [[ "$ID_MODE" == "local" ]]; then
-        log_info "Setting up ID service database..."
-        if docker compose -f "$compose_file" exec -T updspaceid python src/manage.py setup_db 2>/dev/null; then
-            log_success "ID database setup complete"
+        if docker compose -f "$compose_file" ps --format '{{.Service}}' | grep -q "^updspaceid$"; then
+            log_info "Setting up ID service database..."
+            if docker compose -f "$compose_file" exec -T updspaceid python src/manage.py setup_db 2>/dev/null; then
+                log_success "ID database setup complete"
+            else
+                log_warn "ID setup_db skipped or unavailable, continuing with migrate fallback"
+            fi
+
+            log_info "Applying migrations for updspaceid..."
+            docker compose -f "$compose_file" exec -T updspaceid python src/manage.py migrate --noinput
+            log_success "updspaceid migrations complete"
         else
-            log_warn "ID database setup skipped or already done"
+            log_warn "updspaceid is not running, skipping ID database setup/migrations"
         fi
     fi
     
@@ -218,6 +226,9 @@ setup_databases() {
             log_success "$service migrations complete"
         fi
     done
+
+    # Frontend apps do not use Django/Postgres migrations.
+    log_info "Skipping DB migrations for frontend services: frontend, id-frontend (no database schema)"
 }
 
 # Setup OIDC client for portal

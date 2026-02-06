@@ -31,6 +31,12 @@ export type PortalProfile = {
   updatedAt: string;
 };
 
+export type PortalCommunity = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
 const buildQueryString = (params?: Record<string, string | number | undefined>): string => {
   if (!params) return '';
   const search = new URLSearchParams();
@@ -61,6 +67,12 @@ type RawPortalProfile = {
   updatedAt?: string;
 };
 
+type RawPortalCommunity = {
+  id?: string;
+  name?: string;
+  description?: string | null;
+};
+
 const mapPortalProfile = (raw: RawPortalProfile): PortalProfile => ({
   tenantId: raw.tenantId ?? raw.tenant_id ?? '',
   userId: raw.userId ?? raw.user_id ?? '',
@@ -73,6 +85,12 @@ const mapPortalProfile = (raw: RawPortalProfile): PortalProfile => ({
   updatedAt: raw.updatedAt ?? raw.updated_at ?? '',
 });
 
+const mapPortalCommunity = (raw: RawPortalCommunity): PortalCommunity => ({
+  id: raw.id ?? '',
+  name: raw.name ?? '',
+  description: raw.description ?? null,
+});
+
 export async function fetchPortalProfiles(params?: {
   q?: string;
   limit?: number;
@@ -80,4 +98,9 @@ export async function fetchPortalProfiles(params?: {
   const suffix = buildQueryString({ q: params?.q, limit: params?.limit });
   const data = await request<RawPortalProfile[]>(`/portal/profiles${suffix}`);
   return data.map(mapPortalProfile);
+}
+
+export async function fetchPortalCommunities(): Promise<PortalCommunity[]> {
+  const data = await request<RawPortalCommunity[]>('/portal/communities');
+  return data.map(mapPortalCommunity);
 }

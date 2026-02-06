@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22.12-alpine AS builder
+FROM node:22.12-alpine AS base
 
 ARG VITE_BUILD_ID=dev
 ENV VITE_BUILD_ID=${VITE_BUILD_ID}
@@ -19,7 +19,16 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
   pnpm -C web/portal-frontend config set store-dir /pnpm/store \
   && pnpm -C web/portal-frontend install --frozen-lockfile
 
-COPY . .
+FROM base AS dev
+
+COPY . ./
+
+EXPOSE 5173
+CMD ["pnpm", "-C", "web/portal-frontend", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+FROM base AS builder
+
+COPY . ./
 
 RUN pnpm -C web/portal-frontend run build:docker
 

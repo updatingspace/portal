@@ -194,6 +194,7 @@ cython_debug/
 .idea/
 .abstra/
 .vscode/
+.DS_Store
 
 .ruff_cache/
 

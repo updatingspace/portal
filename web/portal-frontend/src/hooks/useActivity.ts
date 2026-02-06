@@ -79,7 +79,10 @@ export function useFeed(params?: Omit<FeedParams, 'cursor'>) {
  * // Flatten pages into items
  * const items = data?.pages.flatMap(page => page.items) ?? [];
  */
-export function useFeedInfinite(params?: Omit<FeedParams, 'cursor'>) {
+export function useFeedInfinite(
+  params?: Omit<FeedParams, 'cursor'>,
+  options?: { enabled?: boolean },
+) {
   return useInfiniteQuery({
     queryKey: activityKeys.feedInfinite(params),
     queryFn: ({ pageParam }) =>
@@ -92,6 +95,7 @@ export function useFeedInfinite(params?: Omit<FeedParams, 'cursor'>) {
       lastPage.hasMore ? lastPage.nextCursor : undefined,
     placeholderData: (prev) => prev,
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
