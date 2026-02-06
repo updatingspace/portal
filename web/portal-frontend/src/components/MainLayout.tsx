@@ -50,7 +50,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </NavLink>
 
           <div className="d-flex align-items-center gap-3">
-            <NavLink to="/nominations" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            <NavLink to="/app/voting" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
               Голосование
             </NavLink>
             <NavLink to="/events" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>

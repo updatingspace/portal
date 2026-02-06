@@ -84,8 +84,7 @@ const mergeDatePart = (current: Date | null, next: Date | null) => {
   return base;
 };
 
-const timeInputClassName =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none';
+const timeInputClassName = 'voting-schedule__input';
 
 export interface ScheduleFormProps {
   initialStartsAt?: string | null;
@@ -102,6 +101,11 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   disabled = false,
   locale = 'ru',
 }) => {
+  const uid = React.useId();
+  const startDateLabelId = `${uid}-start-date-label`;
+  const endDateLabelId = `${uid}-end-date-label`;
+  const startTimeId = `${uid}-start-time`;
+  const endTimeId = `${uid}-end-time`;
   const [startsAt, setStartsAt] = useState(() => toControlDatetime(initialStartsAt));
   const [endsAt, setEndsAt] = useState(() => toControlDatetime(initialEndsAt));
   
@@ -159,26 +163,28 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   };
   
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <div className="voting-schedule">
+      <div className="voting-schedule__grid">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" id={startDateLabelId}>
             Дата начала
           </label>
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="voting-schedule__calendar">
             <Calendar
               value={toCalendarValue(startDate)}
               onUpdate={handleStartCalendarUpdate}
               disabled={disabled}
+              aria-labelledby={startDateLabelId}
             />
           </div>
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" htmlFor={startTimeId}>
             Время начала
           </label>
           <input
+            id={startTimeId}
             type="time"
             value={startTime}
             onChange={(event) => handleStartTimeUpdate(event.target.value)}
@@ -188,25 +194,27 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         </div>
       </div>
       
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="voting-schedule__grid">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" id={endDateLabelId}>
             Дата окончания
           </label>
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="voting-schedule__calendar">
             <Calendar
               value={toCalendarValue(endDate)}
               onUpdate={handleEndCalendarUpdate}
               disabled={disabled}
+              aria-labelledby={endDateLabelId}
             />
           </div>
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" htmlFor={endTimeId}>
             Время окончания
           </label>
           <input
+            id={endTimeId}
             type="time"
             value={endTime}
             onChange={(event) => handleEndTimeUpdate(event.target.value)}

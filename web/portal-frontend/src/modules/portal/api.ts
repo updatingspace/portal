@@ -26,6 +26,7 @@ export type PortalProfile = {
   displayName?: string | null;
   firstName: string;
   lastName: string;
+  avatarUrl?: string | null;
   bio?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -60,6 +61,8 @@ type RawPortalProfile = {
   firstName?: string;
   last_name?: string;
   lastName?: string;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
   bio?: string | null;
   created_at?: string;
   createdAt?: string;
@@ -80,6 +83,7 @@ const mapPortalProfile = (raw: RawPortalProfile): PortalProfile => ({
   displayName: raw.displayName ?? raw.display_name ?? null,
   firstName: raw.firstName ?? raw.first_name ?? '',
   lastName: raw.lastName ?? raw.last_name ?? '',
+  avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
   bio: raw.bio ?? null,
   createdAt: raw.createdAt ?? raw.created_at ?? '',
   updatedAt: raw.updatedAt ?? raw.updated_at ?? '',

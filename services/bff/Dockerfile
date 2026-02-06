@@ -1,24 +1,36 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src \
-    PYTHONDONTWRITEBYTECODE=1
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml ./
+COPY src ./src
 
-COPY pyproject.toml .
 RUN pip install .
 
-COPY src/ src/
+FROM python:3.12-slim AS runtime
 
-# Create a non-root user
-RUN useradd -m appuser && chown -R appuser /app
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=appuser:appuser src ./src
+
 USER appuser
 
 EXPOSE 8080

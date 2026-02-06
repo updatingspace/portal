@@ -1,15 +1,36 @@
-FROM python:3.12-slim
-WORKDIR /app
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src
+FROM python:3.12-slim AS builder
 
-RUN pip install --upgrade pip
-COPY pyproject.toml .
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY pyproject.toml ./
+COPY src ./src
+
 RUN pip install .
 
-COPY src/ src/
+FROM python:3.12-slim AS runtime
 
-RUN useradd -m appuser
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=appuser:appuser src ./src
+
 USER appuser
 
 EXPOSE 8005

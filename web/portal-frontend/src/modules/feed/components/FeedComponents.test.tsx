@@ -9,6 +9,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { ThemeProvider } from '@gravity-ui/uikit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 import { FeedItem } from './FeedItem';
 import { createActivityEvents } from '../../../test/fixtures';
@@ -25,9 +26,11 @@ function renderWithTheme(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme="light">
-        {ui}
-      </ThemeProvider>
+      <MemoryRouter>
+        <ThemeProvider theme="light">
+          {ui}
+        </ThemeProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -51,8 +54,7 @@ describe('FeedItem', () => {
   it('renders date string', () => {
     renderWithTheme(<FeedItem item={mockItem} />);
 
-    // Date should be formatted
-    expect(screen.getByText(/2025/)).toBeInTheDocument();
+    expect(screen.getByText(/назад|только что/i)).toBeInTheDocument();
   });
 
   it('renders event type label', () => {
@@ -61,14 +63,15 @@ describe('FeedItem', () => {
     expect(screen.getByText(/Голосование/i)).toBeInTheDocument();
   });
 
-  it('renders scope type when present', () => {
+  it('renders visibility badge', () => {
     const itemWithScope: ActivityEvent = {
       ...mockItem,
       scopeType: 'COMMUNITY',
+      visibility: 'community',
     };
     renderWithTheme(<FeedItem item={itemWithScope} />);
 
-    expect(screen.getByText('COMMUNITY')).toBeInTheDocument();
+    expect(screen.getByText(/Сообщество/i)).toBeInTheDocument();
   });
 
   it('renders payload when showPayload is true', () => {

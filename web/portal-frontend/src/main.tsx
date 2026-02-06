@@ -25,6 +25,7 @@ configure({lang: 'ru'});
 import 'bootstrap/dist/css/bootstrap-grid.min.css';
 import 'bootstrap/dist/css/bootstrap-utilities.min.css';
 import './index.css';
+import './modules/voting/styles/voting-v2.css';
 
 import { toaster } from './toaster';
 import { emitAccessDenied, toAccessDeniedError } from './api/accessDenied';

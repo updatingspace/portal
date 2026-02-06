@@ -2080,7 +2080,7 @@ export const AdminPage: React.FC = () => {
                   isListLoading={isVotingsLoading}
                   selectedVotingId={selectedVotingId}
                   onSelectVoting={handleSelectVoting}
-                  onOpenVotingPublic={(id) => navigate(`/votings/${id}`)}
+                  onOpenVotingPublic={(id) => navigate(`/app/voting/${id}`)}
                   selectedVoting={selectedVoting}
                   isDetailLoading={isDetailLoading}
                   isEditingMeta={isEditingMeta}

@@ -104,7 +104,7 @@ export const HomePage: React.FC = () => {
     ? formatDeadline(nextDeadlineItem.deadline)
     : 'Дедлайн уточняется';
 
-  const openVoting = (id: string) => navigate(`/nominations?${new URLSearchParams({ voting: id }).toString()}`);
+  const openVoting = (id: string) => navigate(`/app/voting/${id}`);
 
   return (
     <div className="page-section home-page">

@@ -387,15 +387,44 @@ class NewsReactionOut(Schema):
     count: int
 
 
+class NewsReactionDetailOut(Schema):
+    id: int
+    user_id: UUID
+    emoji: str
+    created_at: datetime
+
+
 class NewsCommentIn(Schema):
     body: str
+    parent_id: int | None = None
 
 
 class NewsCommentOut(Schema):
     id: int
-    user_id: UUID
+    user_id: UUID | None
     body: str
     created_at: datetime
+    parent_id: int | None = None
+    deleted: bool = False
+    likes_count: int = 0
+    my_liked: bool = False
+    replies_count: int = 0
+
+
+class NewsCommentPageOut(Schema):
+    items: list[NewsCommentOut]
+    next_cursor: str | None = None
+    has_more: bool = False
+    parent_id: int | None = None
+
+
+class NewsCommentLikeIn(Schema):
+    action: Literal["add", "remove"] = "add"
+
+
+class NewsCommentLikeOut(Schema):
+    likes_count: int
+    my_liked: bool
 
 
 # ============================================================================

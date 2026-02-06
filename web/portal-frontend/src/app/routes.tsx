@@ -1,5 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
 import { lazy } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 
 import { AppLayout } from '../widgets/app-shell/AppLayout';
 import { RequireCapability } from './guards/RequireCapability';
@@ -19,6 +20,9 @@ const VotingPage = lazy(() => import('../pages/app/VotingPages').then((mod) => (
 const VotingCampaignPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingCampaignPage })));
 const VotingAnalyticsPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingAnalyticsPage })));
 const ProfilePage = lazy(() => import('../pages/app/profile/Page').then((mod) => ({ default: mod.ProfilePage })));
+const UserProfilePage = lazy(() =>
+  import('../pages/app/profile/UserProfilePage').then((mod) => ({ default: mod.UserProfilePage })),
+);
 const FollowingListPage = lazy(() =>
   import('../pages/app/profile/components/list-pages/FollowingListPage').then((mod) => ({ default: mod.FollowingListPage })),
 );
@@ -52,6 +56,11 @@ const AchievementDetailPage = lazy(() =>
   import('../modules/gamification/pages/AchievementDetailPage').then((mod) => ({ default: mod.AchievementDetailPage })),
 );
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage').then((mod) => ({ default: mod.NotFoundPage })));
+
+const LegacyVotingRedirect = () => {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/app/voting/${id}` : '/app/voting'} replace />;
+};
 
 const routeConfig = [
   {
@@ -97,6 +106,7 @@ const routeConfig = [
           { path: '/app/voting/:id', element: <VotingCampaignPage /> },
           { path: '/app/voting/:id/manage', element: <PollManagePage /> },
           { path: '/app/voting/:id/results', element: <PollResultsPage /> },
+          { path: '/app/profile/user/:username', element: <UserProfilePage /> },
           { path: '/app/profile', element: <ProfilePage /> },
           { path: '/app/profile/following', element: <FollowingListPage /> },
           { path: '/app/profile/followers', element: <FollowersListPage /> },
@@ -125,14 +135,11 @@ const routeConfig = [
   { path: '/events', element: <Navigate to="/app/events" replace /> },
   { path: '/events/:id', element: <Navigate to="/app/events/:id" replace /> },
   { path: '/voting', element: <Navigate to="/app/voting" replace /> },
-  { path: '/voting/:id', element: <Navigate to="/app/voting/:id" replace /> },
+  { path: '/voting/:id', element: <LegacyVotingRedirect /> },
   { path: '/me', element: <Navigate to="/app/profile" replace /> },
   { path: '/profile', element: <Navigate to="/app/profile" replace /> },
   { path: '/admin', element: <Navigate to="/app/admin" replace /> },
   { path: '/admin/applications', element: <Navigate to="/app/admin" replace /> },
-  { path: '/nominations', element: <Navigate to="/app/voting" replace /> },
-  { path: '/nominations/:id', element: <Navigate to="/app/voting/:id" replace /> },
-  { path: '/votings/:votingId', element: <Navigate to="/app/voting/:votingId" replace /> },
   { path: '*', element: <NotFoundPage /> },
 ];
 

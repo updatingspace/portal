@@ -57,34 +57,31 @@ export const NominationForm: React.FC<NominationFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="voting-form">
       <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Название вопроса</div>
+        <label className="voting-form__label" htmlFor="nomination-title">Название вопроса</label>
           <TextInput
+            id="nomination-title"
             value={title}
             onUpdate={setTitle}
             placeholder="Например: Игра года"
           />
-        </div>
       </div>
 
       <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Описание</div>
+        <label className="voting-form__label" htmlFor="nomination-description">Описание</label>
           <TextArea
+            id="nomination-description"
             value={description}
             onUpdate={setDescription}
             rows={3}
             placeholder="Короткое пояснение или критерии"
           />
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="voting-form__grid">
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Тип вопроса</div>
+          <label className="voting-form__label">Тип вопроса</label>
             <Select
               value={[kind]}
               onUpdate={(value) => setKind((value[0] ?? 'custom') as NominationKind)}
@@ -95,13 +92,12 @@ export const NominationForm: React.FC<NominationFormProps> = ({
                 { value: 'custom', content: 'Свой вариант' },
               ]}
             />
-          </div>
         </div>
 
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Максимум вариантов</div>
+          <label className="voting-form__label" htmlFor="nomination-max-votes">Максимум вариантов</label>
             <TextInput
+              id="nomination-max-votes"
               type="number"
               value={String(maxVotes)}
               controlProps={{ min: 1 }}
@@ -110,29 +106,28 @@ export const NominationForm: React.FC<NominationFormProps> = ({
                 setMaxVotes(Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
               }}
             />
-          </div>
         </div>
       </div>
 
       <Checkbox checked={isRequired} onUpdate={setIsRequired} content="Вопрос обязателен" />
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-sm font-medium text-gray-700">Варианты ответа</div>
+        <div className="voting-v2__toolbar">
+          <div className="voting-form__label">Варианты ответа</div>
           <Button view="flat" size="s" onClick={handleAddOption}>
             Добавить вариант
           </Button>
         </div>
         
         {options.length > 0 ? (
-          <div className="space-y-4">
+          <div className="voting-v2__grid">
             {options.map((option, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className="voting-v2__card">
                 <OptionForm
                   initialData={option}
                   onChange={(data) => handleOptionChange(index, data)}
                 />
-                <div className="mt-2 flex justify-end">
+                <div className="voting-form__actions">
                   <Button view="flat-danger" size="s" onClick={() => handleRemoveOption(index)}>
                     Удалить
                   </Button>
@@ -141,16 +136,16 @@ export const NominationForm: React.FC<NominationFormProps> = ({
             ))}
           </div>
         ) : (
-          <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-            <p className="text-sm text-gray-500">Добавьте хотя бы один вариант ответа.</p>
-            <Button view="action" size="s" onClick={handleAddOption} className="mt-3">
+          <div className="voting-v2__card voting-v2__state-card">
+            <p className="voting-v2__muted">Добавьте хотя бы один вариант ответа.</p>
+            <Button view="action" size="s" onClick={handleAddOption}>
               Добавить первый вариант
             </Button>
           </div>
         )}
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4">
+      <div className="voting-form__actions">
         <Button view="outlined" onClick={onCancel} disabled={isSubmitting}>
           Отмена
         </Button>
