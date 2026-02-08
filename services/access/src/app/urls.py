@@ -3,6 +3,7 @@ from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 from access_control.api import router as access_router
+from access_control.rollout_api import rollout_router
 from core.api import router as personalization_router
 
 
@@ -39,6 +40,7 @@ def on_http_error(request, exc: HttpError):
 
 
 api.add_router("/access", access_router)
+api.add_router("/rollout", rollout_router)
 api.add_router("/personalization", personalization_router)
 api_urls = api.urls
 

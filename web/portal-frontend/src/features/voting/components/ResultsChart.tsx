@@ -14,43 +14,49 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
   totalVotes,
 }) => {
   const nominationResults = nomination ?? results?.nominations[0];
-  
+
   if (!nominationResults) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="voting-v2__state-card voting-v2__muted" role="status" aria-live="polite">
         Нет данных для отображения
       </div>
     );
   }
-  
-  // Calculate total votes for percentage calculation
+
   const nominationTotal = totalVotes ?? nominationResults.options.reduce((sum, option) => sum + option.votes, 0);
-  
-  // Sort options by vote count (descending)
+
   const sortedOptions = [...nominationResults.options].sort(
     (a, b) => b.votes - a.votes
   );
-  
+
   return (
-    <div className="space-y-4">
+    <div className="voting-v2__grid" aria-live="polite">
       <Text variant="subheader-2">{nominationResults.title}</Text>
-      
-      <div className="space-y-3">
+
+      <div className="voting-v2__grid">
         {sortedOptions.map((option) => {
           const percentage = nominationTotal > 0
             ? Math.round((option.votes / nominationTotal) * 100)
             : 0;
-            
+
           return (
-            <div key={option.option_id} className="space-y-1">
-              <div className="flex justify-between text-sm">
-                <span className="font-medium">{option.text}</span>
+            <div key={option.option_id} className="voting-v2__chart-row">
+              <div className="voting-v2__toolbar voting-v2__small">
+                <span className="voting-v2__option-title">{option.text}</span>
                 <span>{option.votes} голосов ({percentage}%)</span>
               </div>
-              
-              <div className="w-full bg-gray-200 rounded-full h-2">
+
+              <div
+                className="voting-v2__chart-track"
+                role="meter"
+                aria-label={`Доля голосов за вариант ${option.text}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percentage}
+                aria-valuetext={`${percentage}%`}
+              >
                 <div
-                  className="bg-blue-600 h-2 rounded-full"
+                  className="voting-v2__chart-fill"
                   style={{ width: `${percentage}%` }}
                 />
               </div>
@@ -58,8 +64,8 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
           );
         })}
       </div>
-      
-      <div className="text-sm text-gray-500 pt-2 border-t">
+
+      <div className="voting-v2__small voting-v2__muted">
         Всего голосов: {nominationTotal}
       </div>
     </div>

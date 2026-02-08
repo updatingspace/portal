@@ -23,10 +23,9 @@ export const PollCard: React.FC<PollCardProps> = ({ poll, actions, locale }) => 
   const scheduleLabel = scheduleMeta ? formatDateTime(scheduleMeta.at, locale) : null;
 
   return (
-    <Card className="h-full border border-slate-200/70 bg-white p-5 transition-shadow hover:shadow-md">
-      <div className="flex h-full flex-col justify-between gap-4">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+    <Card className="voting-v2__card">
+      <div className="voting-v2__grid">
+        <div className="voting-v2__pills">
             <Label theme={statusMeta.theme} size="xs" title={statusMeta.description}>
               {statusMeta.label}
             </Label>
@@ -46,20 +45,20 @@ export const PollCard: React.FC<PollCardProps> = ({ poll, actions, locale }) => 
                 Переголосование
               </Label>
             )}
-          </div>
+        </div>
 
           <div>
-            <Text variant="subheader-2" className="text-slate-900">
+            <Text variant="subheader-2">
               {poll.title}
             </Text>
             {poll.description && (
-              <Text variant="body-2" color="secondary" className="mt-1 line-clamp-2">
+              <Text variant="body-2" color="secondary">
                 {poll.description}
               </Text>
             )}
           </div>
 
-          <div className="flex flex-wrap gap-4 text-sm text-slate-500">
+          <div className="voting-v2__toolbar-left voting-v2__small voting-v2__muted">
             {scheduleLabel && (
               <span>
                 {scheduleMeta?.label}: {scheduleLabel}
@@ -67,9 +66,8 @@ export const PollCard: React.FC<PollCardProps> = ({ poll, actions, locale }) => 
             )}
             <span>Создан: {formatDateTime(poll.created_at, locale) ?? '—'}</span>
           </div>
-        </div>
 
-        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+        {actions ? <div className="voting-v2__toolbar-left">{actions}</div> : null}
       </div>
     </Card>
   );

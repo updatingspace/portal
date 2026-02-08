@@ -1,4 +1,4 @@
-import { request } from './client';
+import { ApiError, request } from './client';
 import type {
     EventWithCounts,
     EventListResponse,
@@ -34,12 +34,28 @@ export async function fetchEvents(params?: {
     limit?: number;
     offset?: number;
 }): Promise<EventListResponse> {
-    const query = new URLSearchParams(
-        Object.fromEntries(
-            Object.entries(params || {}).map(([k, v]) => [k, String(v)])
-        )
-    ).toString();
-    return request<EventListResponse>(`/events?${query}`);
+    const queryParams = new URLSearchParams();
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+    if (params?.scopeType) queryParams.set('scope_type', params.scopeType);
+    if (params?.scopeId) queryParams.set('scope_id', params.scopeId);
+    if (typeof params?.limit === 'number') queryParams.set('limit', String(params.limit));
+    if (typeof params?.offset === 'number') queryParams.set('offset', String(params.offset));
+
+    const query = queryParams.toString();
+    const basePath = '/events';
+    const primaryUrl = query ? `${basePath}?${query}` : basePath;
+    const fallbackBasePath = '/events/';
+    const fallbackUrl = query ? `${fallbackBasePath}?${query}` : fallbackBasePath;
+
+    try {
+        return await request<EventListResponse>(primaryUrl);
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+            return request<EventListResponse>(fallbackUrl);
+        }
+        throw error;
+    }
 }
 
 export async function fetchEvent(id: string): Promise<EventWithCounts> {

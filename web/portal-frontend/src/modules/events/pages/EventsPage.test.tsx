@@ -13,9 +13,7 @@ vi.mock('@gravity-ui/uikit', () => ({
   Label: (props: React.ComponentProps<'span'>) => <span {...props} />,
   Loader: () => <div data-testid="loader" />,
   Pagination: (props: React.ComponentProps<'div'>) => <div data-testid="pagination" {...props} />,
-  Select: ({ onUpdate, value, ...rest }: { onUpdate?: () => void; value?: unknown } & React.ComponentProps<'div'>) => (
-    <div {...rest} />
-  ),
+  Select: (props: { onUpdate?: () => void; value?: unknown } & React.ComponentProps<'div'>) => <div {...props} />,
   TextInput: ({ value, onUpdate, ...rest }: { value?: string; onUpdate?: (value: string) => void } & React.ComponentProps<'input'>) => (
     <input
       value={value}
@@ -26,7 +24,7 @@ vi.mock('@gravity-ui/uikit', () => ({
 }));
 
 vi.mock('@gravity-ui/date-components', () => ({
-  Calendar: ({ onUpdate, value, ...props }: React.ComponentProps<'div'> & { onUpdate?: () => void; value?: unknown }) => (
+  Calendar: (props: React.ComponentProps<'div'> & { onUpdate?: () => void; value?: unknown }) => (
     <div data-testid="calendar" {...props} />
   ),
 }));

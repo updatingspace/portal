@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
+import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
+
 import { isApiError } from '../../../../api/client';
 import { listAchievements } from '../../../../api/gamification';
 import { useFeedInfinite } from '../../../../hooks/useActivity';
@@ -24,6 +26,7 @@ type UseProfileHubDataResult = {
 
 export const useProfileHubData = (sessionInfo: SessionMe | null): UseProfileHubDataResult => {
   const { user } = useAuth();
+  const routeBase = useRouteBase();
 
   const capabilities = useMemo<ProfileHubVM['capabilities']>(() => {
     return {
@@ -91,6 +94,7 @@ export const useProfileHubData = (sessionInfo: SessionMe | null): UseProfileHubD
       achievements: achievementsQuery.data ?? [],
       communities: communitiesQuery.data ?? [],
       capabilities,
+      routeBase,
     });
   }, [
     achievementsQuery.data,
@@ -98,6 +102,7 @@ export const useProfileHubData = (sessionInfo: SessionMe | null): UseProfileHubD
     communitiesQuery.data,
     feedItems,
     feedQuery.hasNextPage,
+    routeBase,
     sessionInfo,
     user,
   ]);

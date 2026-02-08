@@ -31,6 +31,7 @@ description: Сервис голосований
 | Health checks | ✅ Implemented | Liveness, readiness, detailed endpoints |
 | Security headers | ✅ Implemented | CORS, CSRF, HSTS, X-Frame-Options |
 | Legacy (aef-vote) | ✅ Done | Миграция с legacy |
+| Portal Voting UX/UI v2 | ✅ Implemented | Единый `/app/voting/*` flow, Gravity-first, adaptive, A11Y |
 
 ## Сценарии использования (Portal / Tenant)
 
@@ -112,7 +113,43 @@ description: Сервис голосований
   и `revote`, флаги `results_visibility`, расширенные outbox-события.
 - ✅ Production-ready: rate limiting, structured logging, health checks, security headers,
   outbox publisher command, pagination на list endpoints.
-- 🟡 Planned: UI-интеграция с новым API (Phase 4+).
+- ✅ Реализовано: frontend интеграция `modules/voting` с новым API, feature-flag rollout
+  (`voting_ui_v2`), удаление legacy voting pages/redirects.
+
+## Frontend Voting UX/UI v2
+
+`web/portal-frontend/src/modules/voting` использует единый state model и канонические маршруты:
+
+- `/app/voting` — список опросов, фильтры, поиск, RBAC CTA.
+- `/app/voting/create` — wizard-поток создания (template/blank).
+- `/app/voting/:id` — ballot experience для участника.
+- `/app/voting/:id/manage` — workspace организатора (settings/questions/participants).
+- `/app/voting/:id/results` — результаты с учётом visibility policy.
+- `/app/voting/analytics` — агрегированная аналитика закрытых опросов.
+- `/app/voting/templates` — каталог шаблонов и handoff в create flow.
+
+Ключевые frontend-правила v2:
+
+- Только `Frontend -> BFF (/api/v1)`, без прямых вызовов сервисов.
+- Единые state-компоненты: `loading`, `empty`, `error`, `forbidden`, `rate-limit`.
+- Destructive actions только через managed dialogs (`VotingConfirmDialog`).
+- Без `window.confirm` и `window.location.reload` в voting flow.
+- Theme modes: `light | dark | system` (с `resolvedMode`).
+- A11Y baseline: keyboard-first interactions, `aria-live` state cards, focus-visible, meter semantics.
+- Legacy voting pages удалены, legacy routes заменены безопасными redirect/fallback.
+
+### Frontend test contour
+
+Интеграционные сценарии v2 находятся в `web/portal-frontend/src/modules/voting/pages/*.integration.test.tsx`:
+
+- `PollsPage` — list states, filters/search, RBAC CTA.
+- `PollCreatePage` — template/blank path, create handoff в manage.
+- `PollManagePage` — settings/questions workflow, publish checklist, confirm dialogs.
+- `PollPage` — vote/revoke/max-limit/rate-limit.
+- `PollResultsPage` — hidden/available results, retry without reload.
+- `AnalyticsDashboardPage` — metrics, empty/error states.
+- `PollTemplatesPage` — template catalog и navigation handoff.
+- `VotingA11y` — keyboard-only path + `aria-live` regression checks.
 
 ### API расширения
 

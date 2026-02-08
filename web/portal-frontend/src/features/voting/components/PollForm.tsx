@@ -93,34 +93,31 @@ export const PollForm: React.FC<PollFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="voting-form">
       <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Название</div>
+        <label className="voting-form__label" htmlFor="poll-form-title">Название</label>
           <TextInput
+            id="poll-form-title"
             value={title}
             onUpdate={setTitle}
             placeholder="Например: Лучшие проекты года"
           />
-        </div>
       </div>
 
       <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Описание</div>
+        <label className="voting-form__label" htmlFor="poll-form-description">Описание</label>
           <TextArea
+            id="poll-form-description"
             value={description}
             onUpdate={setDescription}
             rows={3}
             placeholder="Контекст, правила или призы"
           />
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="voting-form__grid">
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Область опроса</div>
+          <label className="voting-form__label">Область опроса</label>
             <Select
               value={[scopeType]}
               onUpdate={(value) => {
@@ -134,16 +131,15 @@ export const PollForm: React.FC<PollFormProps> = ({
               }}
               options={scopeOptions}
             />
-          </div>
-          <p className="mt-1 text-xs text-slate-500">Область определяет, где проверяются права доступа.</p>
+          <p className="voting-v2__small voting-v2__muted">Область определяет, где проверяются права доступа.</p>
         </div>
 
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">
+          <label className="voting-form__label" htmlFor="poll-form-scope-id">
               {`ID области ${scopeType === 'TENANT' ? '(необязательно)' : '*'}`}
-            </div>
+          </label>
             <TextInput
+              id="poll-form-scope-id"
               value={scopeId}
               onUpdate={setScopeId}
               disabled={scopeType === 'TENANT'}
@@ -153,32 +149,28 @@ export const PollForm: React.FC<PollFormProps> = ({
                   : 'UUID сообщества / команды / события'
               }
             />
-          </div>
           {scopeType !== 'TENANT' && !scopeId.trim() ? (
-            <p className="mt-1 text-xs text-amber-600">Для выбранной области нужен ID.</p>
+            <p className="voting-v2__small">Для выбранной области нужен ID.</p>
           ) : null}
         </div>
 
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Видимость</div>
+          <label className="voting-form__label">Видимость</label>
             <Select
               value={[visibility]}
               onUpdate={(value) => setVisibility((value[0] ?? 'public') as PollVisibility)}
               options={visibilityOptions}
             />
-          </div>
           {(scopeType !== 'COMMUNITY' && visibility === 'community') ||
           (scopeType !== 'TEAM' && visibility === 'team') ? (
-            <p className="mt-1 text-xs text-amber-600">
+            <p className="voting-v2__small">
               Для корректной видимости выберите соответствующую область.
             </p>
           ) : null}
         </div>
 
         <div>
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Доступ к результатам</div>
+          <label className="voting-form__label">Доступ к результатам</label>
             <Select
               value={[resultsVisibility]}
               onUpdate={(value) =>
@@ -186,11 +178,10 @@ export const PollForm: React.FC<PollFormProps> = ({
               }
               options={resultsOptions}
             />
-          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="voting-form__grid">
         <Checkbox
           checked={allowRevoting}
           onUpdate={setAllowRevoting}
@@ -201,8 +192,8 @@ export const PollForm: React.FC<PollFormProps> = ({
       </div>
 
       {templates.length > 0 ? (
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Шаблон</div>
+        <div>
+          <label className="voting-form__label">Шаблон</label>
           <Select
             value={[template || '']}
             onUpdate={(value) => setTemplate(value[0] ?? '')}
@@ -215,7 +206,7 @@ export const PollForm: React.FC<PollFormProps> = ({
       ) : null}
 
       <div>
-        <div className="text-sm font-medium text-gray-700 mb-1">Расписание</div>
+        <div className="voting-form__label">Расписание</div>
         <ScheduleForm
           initialStartsAt={startsAt}
           initialEndsAt={endsAt}
@@ -223,7 +214,7 @@ export const PollForm: React.FC<PollFormProps> = ({
         />
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4">
+      <div className="voting-form__actions">
         <Button view="outlined" onClick={onCancel} disabled={isSubmitting}>
           Отмена
         </Button>

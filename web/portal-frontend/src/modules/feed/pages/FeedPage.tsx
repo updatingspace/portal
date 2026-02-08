@@ -11,16 +11,19 @@ import {
   useSubscriptions,
   useUpdateSubscriptions,
 } from '../../../hooks/useActivity';
-import type { NewsMediaItem } from '../../../types/activity';
+import type { ActivityEvent, NewsMediaItem } from '../../../types/activity';
 import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
 import { FeedFilters } from '../components/FeedFilters';
 import { FeedItem } from '../components/FeedItem';
 import { requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
 import { createClientAccessDeniedError, toAccessDeniedError } from '../../../api/accessDenied';
+import { fetchPortalProfiles, type PortalProfile } from '../../../modules/portal/api';
+import { isApiError } from '../../../api/client';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
 import { AccessDeniedScreen } from '../../../features/access-denied';
+import type { FeedAuthorProfile } from '../types';
 import './feed-page.css';
 
 const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
@@ -75,6 +78,41 @@ const extractYoutubeIds = (markup: string) => {
   return Array.from(ids);
 };
 
+const buildAuthorProfile = (
+  userId: string,
+  profile: PortalProfile | null,
+  currentUser: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl?: string | null;
+  } | null,
+): FeedAuthorProfile => {
+  const firstName = profile?.firstName?.trim() ?? '';
+  const lastName = profile?.lastName?.trim() ?? '';
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+
+  const username =
+    profile?.username?.trim() ||
+    (currentUser?.id === userId ? currentUser.username : null);
+
+  const displayName =
+    fullName ||
+    profile?.displayName?.trim() ||
+    (currentUser?.id === userId ? currentUser.displayName : '') ||
+    username ||
+    userId;
+
+  return {
+    userId,
+    username,
+    displayName,
+    firstName,
+    lastName,
+    avatarUrl: profile?.avatarUrl ?? (currentUser?.id === userId ? currentUser.avatarUrl ?? null : null),
+  };
+};
+
 export const FeedPage: React.FC = () => {
   const { user } = useAuth();
   const tenantId = user?.tenant?.id ?? null;
@@ -82,15 +120,21 @@ export const FeedPage: React.FC = () => {
   const canCreateNews = can(user, 'activity.news.create');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
-  const [sortFilter, setSortFilter] = useState<SortFilter>('best');
+  const [sortFilter, setSortFilter] = useState<SortFilter>('recent');
   const [newsMedia, setNewsMedia] = useState<NewsMediaItem[]>([]);
   const [newsVisibility, setNewsVisibility] = useState<'public' | 'private'>('public');
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
-  const [composerError, setComposerError] = useState<string | null>(null);
+  const [pendingItems, setPendingItems] = useState<ActivityEvent[]>([]);
+  const [hiddenItemIds, setHiddenItemIds] = useState<number[]>([]);
+  const [authorProfiles, setAuthorProfiles] = useState<Record<string, FeedAuthorProfile>>({});
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autoSubscribedRef = useRef(false);
+  const loadingAuthorIdsRef = useRef<Set<string>>(new Set());
+  const authorLookupBlockedRef = useRef(false);
+  const authorProfilesRef = useRef<Record<string, FeedAuthorProfile>>({});
 
   const editor = useMarkdownEditor({
     initial: {
@@ -102,6 +146,10 @@ export const FeedPage: React.FC = () => {
   });
 
   const emptyToolbarsPreset = useMemo(() => ({ items: {}, orders: {} }), []);
+
+  useEffect(() => {
+    authorProfilesRef.current = authorProfiles;
+  }, [authorProfiles]);
 
   useEffect(() => {
     const handleChange = () => {
@@ -127,6 +175,7 @@ export const FeedPage: React.FC = () => {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isRefetching,
     error,
     refetch,
   } = useFeedInfinite({ types: typesParam, from: fromParam, to: toParam, limit: 20 });
@@ -136,11 +185,118 @@ export const FeedPage: React.FC = () => {
   const { mutateAsync: createNews, isPending: isCreatingNews } = useCreateNews();
   const { data: subscriptions, isLoading: isSubscriptionsLoading } = useSubscriptions();
   const { mutateAsync: updateSubscriptions, isPending: isUpdatingSubscriptions } = useUpdateSubscriptions();
-  const autoSubscribedRef = useRef(false);
 
-  const items = data?.pages.flatMap((page) => page.items) ?? [];
+  const requestAuthorProfiles = useCallback(
+    (userIds: string[]) => {
+      const unique = Array.from(
+        new Set(
+          userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+        ),
+      );
+      if (unique.length === 0) return;
+
+      const unresolved = unique.filter(
+        (id) =>
+          !authorProfilesRef.current[id] &&
+          !loadingAuthorIdsRef.current.has(id),
+      );
+
+      if (unresolved.length === 0) return;
+
+      if (authorLookupBlockedRef.current) {
+        setAuthorProfiles((prev) => {
+          const next = { ...prev };
+          unresolved.forEach((id) => {
+            next[id] = buildAuthorProfile(
+              id,
+              null,
+              user
+                ? {
+                    id: user.id,
+                    username: user.username,
+                    displayName: user.displayName,
+                    avatarUrl: user.avatarUrl ?? null,
+                  }
+                : null,
+            );
+          });
+          return next;
+        });
+        return;
+      }
+
+      unresolved.forEach((id) => loadingAuthorIdsRef.current.add(id));
+
+      void Promise.all(
+        unresolved.map(async (id) => {
+          try {
+            const profiles = await fetchPortalProfiles({ q: id, limit: 20 });
+            const profile = profiles.find((entry) => entry.userId === id) ?? null;
+            return { id, profile };
+          } catch (err) {
+            if (isApiError(err) && err.kind === 'forbidden') {
+              authorLookupBlockedRef.current = true;
+            }
+            return { id, profile: null };
+          }
+        }),
+      )
+        .then((results) => {
+          setAuthorProfiles((prev) => {
+            const next = { ...prev };
+            for (const result of results) {
+              next[result.id] = buildAuthorProfile(
+                result.id,
+                result.profile,
+                user
+                  ? {
+                      id: user.id,
+                      username: user.username,
+                      displayName: user.displayName,
+                      avatarUrl: user.avatarUrl ?? null,
+                    }
+                  : null,
+              );
+            }
+            return next;
+          });
+        })
+        .finally(() => {
+          unresolved.forEach((id) => loadingAuthorIdsRef.current.delete(id));
+        });
+    },
+    [user],
+  );
+
+  const items = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    setPendingItems((prev) => prev.filter((item) => !items.some((next) => next.id === item.id)));
+  }, [items]);
+
+  const mergedItems = useMemo(() => {
+    const map = new Map<number, ActivityEvent>();
+    pendingItems.forEach((item) => {
+      map.set(item.id, item);
+    });
+    items.forEach((item) => {
+      if (!map.has(item.id)) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values());
+  }, [items, pendingItems]);
+
+  useEffect(() => {
+    const actorIds = mergedItems
+      .map((item) => item.actorUserId)
+      .filter((id): id is string => Boolean(id));
+    requestAuthorProfiles(actorIds);
+  }, [mergedItems, requestAuthorProfiles]);
+
   const sortedItems = useMemo(() => {
-    const base = [...items];
+    const base = [...mergedItems];
     if (sortFilter === 'best') {
       return base.sort((a, b) => {
         const aPayload = (a.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
@@ -151,11 +307,17 @@ export const FeedPage: React.FC = () => {
         return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
       });
     }
-    return base;
-  }, [items, sortFilter]);
+    return base.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+  }, [mergedItems, sortFilter]);
+
+  const visibleItems = useMemo(
+    () => sortedItems.filter((item) => !hiddenItemIds.includes(item.id)),
+    [hiddenItemIds, sortedItems],
+  );
 
   useEffect(() => {
     if (!canReadFeed) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -170,7 +332,7 @@ export const FeedPage: React.FC = () => {
     }
 
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [canReadFeed, fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   useEffect(() => {
     if (!canReadFeed) return;
@@ -179,9 +341,14 @@ export const FeedPage: React.FC = () => {
     if (isSubscriptionsLoading || isUpdatingSubscriptions) return;
 
     const current = subscriptions?.[0];
-    const scopes = current && typeof current.rulesJson === 'object'
-      ? (current.rulesJson as { scopes?: { scope_type?: string; scope_id?: string }[] | { scopeType?: string; scopeId?: string }[] }).scopes
-      : undefined;
+    const scopes =
+      current && typeof current.rulesJson === 'object'
+        ? (
+            current.rulesJson as {
+              scopes?: { scope_type?: string; scope_id?: string }[] | { scopeType?: string; scopeId?: string }[];
+            }
+          ).scopes
+        : undefined;
     const hasScopes = Array.isArray(scopes) && scopes.length > 0;
 
     if (hasScopes) {
@@ -190,11 +357,11 @@ export const FeedPage: React.FC = () => {
     }
 
     autoSubscribedRef.current = true;
-    updateSubscriptions({ scopes: [{ scopeType: 'TENANT', scopeId: tenantId }] }).catch((err) => {
+    updateSubscriptions({ scopes: [{ scopeType: 'tenant', scopeId: tenantId }] }).catch((err) => {
       autoSubscribedRef.current = false;
       notifyApiError(err, 'Не удалось настроить подписку на ленту');
     });
-  }, [isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
+  }, [canReadFeed, isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
 
   useEffect(() => {
     if (!canCreateNews) return;
@@ -203,10 +370,11 @@ export const FeedPage: React.FC = () => {
     }
   }, [canCreateNews, composerValue, newsMedia.length]);
 
+
   const handleResetFilters = useCallback(() => {
     setSourceFilter('all');
     setTimeFilter('week');
-    setSortFilter('best');
+    setSortFilter('recent');
   }, []);
 
   const handleRemoveMedia = useCallback((index: number) => {
@@ -274,13 +442,9 @@ export const FeedPage: React.FC = () => {
     }));
 
     const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
-    if (mergedMedia.length === 0) {
-      setComposerError('Добавьте хотя бы одно изображение или ссылку на YouTube.');
-      return;
-    }
 
     try {
-      await createNews({
+      const created = await createNews({
         title: title || undefined,
         body,
         tags,
@@ -307,17 +471,26 @@ export const FeedPage: React.FC = () => {
           };
         }),
       });
-      if ((editor as { setValue?: (value: string) => void }).setValue) {
-        (editor as { setValue: (value: string) => void }).setValue('');
+
+      setPendingItems((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      if (created.actorUserId) {
+        requestAuthorProfiles([created.actorUserId]);
       }
+
+      const editorWithSetValue = editor as unknown as { setValue?: (value: string) => void };
+      editorWithSetValue.setValue?.('');
       setNewsMedia([]);
       setComposerOpen(false);
-      setComposerError(null);
-      refetch();
+      void refetch();
     } catch (err) {
       notifyApiError(err, 'Не удалось опубликовать новость');
     }
-  }, [createNews, editor, newsMedia, newsVisibility, refetch]);
+  }, [createNews, editor, newsMedia, newsVisibility, refetch, requestAuthorProfiles]);
+
+  const handleItemDeleted = useCallback((itemId: number) => {
+    setHiddenItemIds((prev) => (prev.includes(itemId) ? prev : [...prev, itemId]));
+    setPendingItems((prev) => prev.filter((item) => item.id !== itemId));
+  }, []);
 
   if (!canReadFeed) {
     return (
@@ -339,13 +512,11 @@ export const FeedPage: React.FC = () => {
     return (
       <div className="feed-page" data-qa="feed-page">
         <Card view="filled" className="feed-empty" data-qa="feed-error">
-          <Text variant="subheader-2">
-            Не удалось загрузить ленту.
-          </Text>
+          <Text variant="subheader-2">Не удалось загрузить ленту.</Text>
           <Text variant="body-2" color="secondary">
             Попробуйте обновить страницу.
           </Text>
-          <Button view="flat" size="m" onClick={() => refetch()}>
+          <Button view="flat" size="m" onClick={() => void refetch()}>
             Повторить
           </Button>
         </Card>
@@ -353,17 +524,9 @@ export const FeedPage: React.FC = () => {
     );
   }
 
-  const hasContent = sortedItems.length > 0;
-  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
-  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
+  const hasContent = visibleItems.length > 0;
+  const detectedTags = extractTags(composerValue);
   const composerHasText = Boolean(composerValue.trim());
-  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
-
-  useEffect(() => {
-    if (composerError && composerHasMedia) {
-      setComposerError(null);
-    }
-  }, [composerError, composerHasMedia]);
 
   return (
     <div className="feed-page" data-qa="feed-page">
@@ -377,9 +540,9 @@ export const FeedPage: React.FC = () => {
               </Text>
             </div>
             <div className="feed-stream__header-actions" data-qa="feed-actions">
-              <Button view="flat" size="m" onClick={() => refetch()}>
+              <Button view="flat" size="m" loading={isRefetching} onClick={() => void refetch()}>
                 <Icon data={ArrowRotateRight} />
-                Обновить
+                Обновить ленту
               </Button>
               {unreadCount > 0 && (
                 <Button view="action" size="m" loading={isMarkingRead} onClick={() => markAsRead()}>
@@ -391,9 +554,9 @@ export const FeedPage: React.FC = () => {
 
           {unreadCount > 0 && (
             <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner">
-              <Text variant="subheader-2">ОГО, новых новостей: {unreadCount}</Text>
+              <Text variant="subheader-2">Новых записей: {unreadCount}</Text>
               <Text variant="body-2" color="secondary">
-                Вы ещё не прочитали их. Пролистайте ленту ниже.
+                После отметки как прочитанные счётчик обнулится.
               </Text>
             </Card>
           )}
@@ -401,10 +564,7 @@ export const FeedPage: React.FC = () => {
           {canCreateNews ? (
             <Card
               view="filled"
-              className={[
-                'feed-composer',
-                composerOpen ? 'feed-composer--expanded' : '',
-              ]
+              className={['feed-composer', composerOpen ? 'feed-composer--expanded' : '']
                 .filter(Boolean)
                 .join(' ')}
               data-qa="feed-composer"
@@ -413,10 +573,7 @@ export const FeedPage: React.FC = () => {
                 <Text variant="subheader-2">Что происходит?</Text>
               </div>
 
-              <div
-                className="feed-composer__editor"
-                onClick={() => setComposerOpen(true)}
-              >
+              <div className="feed-composer__editor" onClick={() => setComposerOpen(true)}>
                 <MarkdownEditorView
                   editor={editor}
                   stickyToolbar={false}
@@ -445,6 +602,7 @@ export const FeedPage: React.FC = () => {
                     onChange={(event) => handleImageUpload(event.target.files)}
                   />
                 </div>
+
                 {detectedTags.length > 0 && (
                   <div className="feed-composer__tags">
                     {detectedTags.map((tag) => (
@@ -454,11 +612,7 @@ export const FeedPage: React.FC = () => {
                     ))}
                   </div>
                 )}
-                {composerError && (
-                  <Text variant="caption-2" color="danger">
-                    {composerError}
-                  </Text>
-                )}
+
                 <div className="feed-composer__actions">
                   <Select
                     value={[newsVisibility]}
@@ -475,7 +629,7 @@ export const FeedPage: React.FC = () => {
                     view="action"
                     size="m"
                     loading={isCreatingNews || uploading}
-                    disabled={!composerHasText || !composerHasMedia}
+                    disabled={!composerHasText}
                     onClick={handlePublishNews}
                   >
                     Опубликовать
@@ -487,9 +641,7 @@ export const FeedPage: React.FC = () => {
                 <div className="feed-composer__media">
                   {newsMedia.map((media, index) => (
                     <div key={`${media.type}-${index}`} className="feed-composer__media-item">
-                      {media.type === 'image' && media.url ? (
-                        <img src={media.url} alt="preview" />
-                      ) : null}
+                      {media.type === 'image' && media.url ? <img src={media.url} alt="preview" /> : null}
                       <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
                         Удалить
                       </Button>
@@ -528,13 +680,20 @@ export const FeedPage: React.FC = () => {
                 {sourceFilter !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
               </Text>
               <Text variant="body-2" color="secondary">
-                Добавьте интеграции или вернитесь позже.
+                Добавьте публикацию или измените фильтры.
               </Text>
             </Card>
           ) : (
             <div className="feed-stream__list" data-qa="feed-list">
-              {sortedItems.map((item) => (
-                <FeedItem key={item.id} item={item} showPayload={false} />
+              {visibleItems.map((item) => (
+                <FeedItem
+                  key={item.id}
+                  item={item}
+                  showPayload={false}
+                  authorProfiles={authorProfiles}
+                  requestProfiles={requestAuthorProfiles}
+                  onDeleted={handleItemDeleted}
+                />
               ))}
             </div>
           )}
@@ -555,7 +714,7 @@ export const FeedPage: React.FC = () => {
               <Text variant="subheader-2">Фильтры</Text>
               {sourceFilter !== 'all' && (
                 <Label size="xs" theme="info">
-                  1
+                  {'1'}
                 </Label>
               )}
             </div>

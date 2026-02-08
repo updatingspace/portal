@@ -52,25 +52,24 @@ const toJsDate = (value: CalendarValue): Date | null => {
   if (!value) return null;
   if (typeof value !== 'object') return null;
 
-  const maybe = value as unknown as Record<string, unknown>;
+  const candidate = value as { toDate?: () => Date; toJSDate?: () => Date; year?: number; month?: number; date?: number };
 
-  const toDate = maybe.toDate;
-  if (typeof toDate === 'function') {
-    const result = (toDate as () => Date)();
+  if (typeof candidate.toDate === 'function') {
+    const result = candidate.toDate();
     return Number.isNaN(result.getTime()) ? null : result;
   }
 
-  const toJSDate = maybe.toJSDate;
-  if (typeof toJSDate === 'function') {
-    const result = (toJSDate as () => Date)();
+  if (typeof candidate.toJSDate === 'function') {
+    const result = candidate.toJSDate();
     return Number.isNaN(result.getTime()) ? null : result;
   }
 
-  const year = maybe.year;
-  const month = maybe.month;
-  const date = maybe.date;
-  if (typeof year === 'number' && typeof month === 'number' && typeof date === 'number') {
-    return new Date(year, month - 1, date);
+  if (
+    typeof candidate.year === 'number' &&
+    typeof candidate.month === 'number' &&
+    typeof candidate.date === 'number'
+  ) {
+    return new Date(candidate.year, candidate.month - 1, candidate.date);
   }
 
   return null;
@@ -84,8 +83,7 @@ const mergeDatePart = (current: Date | null, next: Date | null) => {
   return base;
 };
 
-const timeInputClassName =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none';
+const timeInputClassName = 'voting-schedule__input';
 
 export interface ScheduleFormProps {
   initialStartsAt?: string | null;
@@ -102,6 +100,11 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   disabled = false,
   locale = 'ru',
 }) => {
+  const uid = React.useId();
+  const startDateLabelId = `${uid}-start-date-label`;
+  const endDateLabelId = `${uid}-end-date-label`;
+  const startTimeId = `${uid}-start-time`;
+  const endTimeId = `${uid}-end-time`;
   const [startsAt, setStartsAt] = useState(() => toControlDatetime(initialStartsAt));
   const [endsAt, setEndsAt] = useState(() => toControlDatetime(initialEndsAt));
   
@@ -159,26 +162,28 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
   };
   
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
+    <div className="voting-schedule">
+      <div className="voting-schedule__grid">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" id={startDateLabelId}>
             Дата начала
           </label>
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="voting-schedule__calendar">
             <Calendar
               value={toCalendarValue(startDate)}
               onUpdate={handleStartCalendarUpdate}
               disabled={disabled}
+              aria-labelledby={startDateLabelId}
             />
           </div>
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" htmlFor={startTimeId}>
             Время начала
           </label>
           <input
+            id={startTimeId}
             type="time"
             value={startTime}
             onChange={(event) => handleStartTimeUpdate(event.target.value)}
@@ -188,25 +193,27 @@ export const ScheduleForm: React.FC<ScheduleFormProps> = ({
         </div>
       </div>
       
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="voting-schedule__grid">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" id={endDateLabelId}>
             Дата окончания
           </label>
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="voting-schedule__calendar">
             <Calendar
               value={toCalendarValue(endDate)}
               onUpdate={handleEndCalendarUpdate}
               disabled={disabled}
+              aria-labelledby={endDateLabelId}
             />
           </div>
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="voting-form__label" htmlFor={endTimeId}>
             Время окончания
           </label>
           <input
+            id={endTimeId}
             type="time"
             value={endTime}
             onChange={(event) => handleEndTimeUpdate(event.target.value)}

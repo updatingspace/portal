@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Card, Label, Loader, Text } from '@gravity-ui/uikit';
+import { Alert, Button, Card, Label, Text } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
@@ -12,20 +12,30 @@ import {
   useRevokeVote,
 } from '../../../features/voting';
 import {
+  NOMINATION_KIND_LABELS,
   POLL_STATUS_META,
   RESULTS_VISIBILITY_META,
   VISIBILITY_META,
-  NOMINATION_KIND_LABELS,
   formatDateTime,
   getScheduleMeta,
 } from '../../../features/voting/utils/pollMeta';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { getLocale } from '@/shared/lib/locale';
 import { toaster } from '../../../toaster';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
+import { logger } from '../../../utils/logger';
+import {
+  VotingEmptyState,
+  VotingErrorState,
+  VotingLoadingState,
+  VotingPageLayout,
+  VotingRateLimitState,
+} from '../ui';
 
 export const PollPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const { user } = useAuth();
   const pollId = id ?? '';
   const locale = user?.language ?? getLocale();
@@ -42,18 +52,24 @@ export const PollPage: React.FC = () => {
     refetch: refetchInfo,
   } = usePollInfo(pollId);
 
-  const { data: myVotes = [], isLoading: loadingVotes } = useMyVotes(pollId);
+  const { data: myVotes = [], isLoading: loadingVotes, refetch: refetchVotes } = useMyVotes(pollId);
 
   const castVoteMutation = useCastVote({
     onSuccess: () => {
-      toaster.add({
-        name: 'vote-success',
-        title: 'Голос учтён',
-        theme: 'success',
+      logger.info('Voting v2 vote submitted', {
+        area: 'voting',
+        event: 'voting_v2.vote_submitted',
+        data: { pollId },
       });
+      toaster.add({ name: 'vote-success', title: 'Голос учтён', theme: 'success' });
     },
     onError: (error: unknown) => {
       if (isRateLimitError(error)) {
+        logger.warn('Voting v2 rate limited on vote', {
+          area: 'voting',
+          event: 'voting_v2.error_rate_limit',
+          data: { pollId, retryAfter: error.retryAfter },
+        });
         toaster.add({
           name: 'rate-limit',
           title: `Слишком часто. Подождите ${error.retryAfter}s`,
@@ -82,11 +98,7 @@ export const PollPage: React.FC = () => {
 
   const revokeVoteMutation = useRevokeVote({
     onSuccess: () => {
-      toaster.add({
-        name: 'vote-revoked',
-        title: 'Голос удалён',
-        theme: 'info',
-      });
+      toaster.add({ name: 'vote-revoked', title: 'Голос удалён', theme: 'info' });
     },
     onError: (error: unknown) => {
       if (isRateLimitError(error)) {
@@ -113,45 +125,46 @@ export const PollPage: React.FC = () => {
     return map;
   }, [myVotes]);
 
+  const retryAll = () => {
+    refetchInfo();
+    refetchVotes();
+  };
+
+  useEffect(() => {
+    if (!info) return;
+    logger.info('Voting v2 page loaded', {
+      area: 'voting',
+      event: 'voting_v2.page_loaded',
+      data: {
+        page: 'poll',
+        pollId: info.poll.id,
+        status: info.poll.status,
+      },
+    });
+  }, [info]);
+
   if (loading && !info) {
-    return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
-        <Loader size="l" />
-      </div>
-    );
+    return <VotingLoadingState text="Загружаем опрос…" />;
   }
 
   if (infoError && !info) {
-    const isRateLimit = isRateLimitError(infoErrorData);
-    return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6 text-center">
-          <Text variant="subheader-2" className="mb-2">
-            {isRateLimit ? 'Слишком много запросов' : 'Не удалось загрузить опрос'}
-          </Text>
-          <Text variant="body-2" color="secondary" className="mb-4">
-            {isRateLimit
-              ? `Подождите ${(infoErrorData as { retryAfter: number }).retryAfter} сек.`
-              : 'Проверьте соединение и попробуйте снова.'}
-          </Text>
-          <Button onClick={() => refetchInfo()} view="action" width="max">
-            Повторить
-          </Button>
-        </Card>
-      </div>
-    );
+    if (isRateLimitError(infoErrorData)) {
+      return <VotingRateLimitState retryAfter={infoErrorData.retryAfter} onRetry={retryAll} />;
+    }
+
+    return <VotingErrorState title="Не удалось загрузить опрос" onRetry={retryAll} />;
   }
 
   if (!info) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6 text-center">
-          <Text variant="subheader-2">Опрос не найден</Text>
-          <Button onClick={() => navigate('/app/voting')} view="action" className="mt-4">
+      <VotingEmptyState
+        title="Опрос не найден"
+        action={
+          <Button onClick={() => navigate(`${routeBase}/voting`)} view="action">
             Вернуться к списку
           </Button>
-        </Card>
-      </div>
+        }
+      />
     );
   }
 
@@ -199,202 +212,185 @@ export const PollPage: React.FC = () => {
 
   const handleRevokeVote = (voteId: string) => {
     if (!pollId) return;
-    revokeVoteMutation.mutate({
-      voteId,
-      pollId,
-    });
+    revokeVoteMutation.mutate({ voteId, pollId });
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
-      <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <Label theme={statusMeta.theme} size="s" title={statusMeta.description}>
-                  {statusMeta.label}
-                </Label>
-                <Label theme={visibilityMeta.theme} size="s" title={visibilityMeta.description}>
-                  {visibilityMeta.label}
-                </Label>
-                <Label theme={resultsMeta.theme} size="s" title={resultsMeta.description}>
-                  {resultsMeta.label}
-                </Label>
-                {poll.anonymous && <Label theme="utility" size="s">Анонимно</Label>}
-                {poll.allow_revoting && <Label theme="info" size="s">Переголосование</Label>}
-              </div>
-              <div>
-                <Text variant="header-1" className="text-slate-900">
-                  {poll.title}
-                </Text>
-                {poll.description && (
-                  <Text variant="body-2" color="secondary" className="mt-1">
-                    {poll.description}
-                  </Text>
-                )}
-              </div>
-              {scheduleLabel && (
-                <Text variant="body-2" color="secondary">
-                  {scheduleMeta?.label}: {scheduleLabel}
-                </Text>
-              )}
-            </div>
+    <VotingPageLayout
+      title={poll.title}
+      description={poll.description ?? 'Проголосуйте в каждой нужной категории и проверьте свои выборы.'}
+      actions={
+        <>
+          <Button view="outlined" onClick={() => navigate(`${routeBase}/voting`)}>
+            Назад
+          </Button>
+          {(poll.status === 'closed' || poll.results_visibility === 'always') && (
+            <Link to={`${routeBase}/voting/${poll.id}/results`}>
+              <Button view="action">Результаты</Button>
+            </Link>
+          )}
+          {canManage && (
+            <Link to={`${routeBase}/voting/${poll.id}/manage`}>
+              <Button view="outlined">Управление</Button>
+            </Link>
+          )}
+        </>
+      }
+    >
+      <Card className="voting-v2__card voting-v2__card--soft">
+        <div className="voting-v2__pills">
+          <Label theme={statusMeta.theme} size="s" title={statusMeta.description}>
+            {statusMeta.label}
+          </Label>
+          <Label theme={visibilityMeta.theme} size="s" title={visibilityMeta.description}>
+            {visibilityMeta.label}
+          </Label>
+          <Label theme={resultsMeta.theme} size="s" title={resultsMeta.description}>
+            {resultsMeta.label}
+          </Label>
+          {poll.anonymous ? <Label theme="utility" size="s">Анонимно</Label> : null}
+          {poll.allow_revoting ? <Label theme="info" size="s">Переголосование</Label> : null}
+        </div>
+        {scheduleLabel ? (
+          <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+            {scheduleMeta?.label}: {scheduleLabel}
+          </Text>
+        ) : null}
+      </Card>
 
-            <div className="flex flex-wrap gap-2">
-              <Button view="outlined" onClick={() => navigate('/app/voting')}
-              >
-                Назад
-              </Button>
-              {(poll.status === 'closed' || poll.results_visibility === 'always') && (
-                <Link to={`/app/voting/${poll.id}/results`}>
-                  <Button view="action">Результаты</Button>
-                </Link>
-              )}
-              {canManage && (
-                <Link to={`/app/voting/${poll.id}/manage`}>
-                  <Button view="outlined">Управление</Button>
-                </Link>
-              )}
-            </div>
+      {!canVote && poll.status === 'draft' ? (
+        <Alert
+          theme="warning"
+          title="Опрос ещё не опубликован"
+          message="Настройте вопросы и опубликуйте опрос, чтобы начать голосование."
+        />
+      ) : null}
+
+      {!canVote && poll.status === 'closed' ? (
+        <Alert
+          theme="normal"
+          title="Голосование завершено"
+          message="Опрос закрыт. Доступны итоги и результаты."
+        />
+      ) : null}
+
+      {!canVote && poll.status === 'active' ? (
+        <Alert
+          theme="warning"
+          title="Голосование недоступно"
+          message="У вас нет прав или голосование ещё не началось."
+        />
+      ) : null}
+
+      <Card className="voting-v2__card">
+        <div className="voting-v2__stats">
+          <div className="voting-v2__stats-item">
+            <span className="voting-v2__stats-label">Вопросов</span>
+            <span className="voting-v2__stats-value">{sortedNominations.length}</span>
+          </div>
+          <div className="voting-v2__stats-item">
+            <span className="voting-v2__stats-label">Ваш голос</span>
+            <span className="voting-v2__stats-value">{meta.has_voted ? 'учтён' : 'ещё не подан'}</span>
+          </div>
+          <div className="voting-v2__stats-item">
+            <span className="voting-v2__stats-label">Режим</span>
+            <span className="voting-v2__stats-value">{poll.anonymous ? 'анонимно' : 'открыто'}</span>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {!canVote && poll.status === 'draft' && (
-          <Alert
-            theme="warning"
-            title="Опрос ещё не опубликован"
-            message="Настройте вопросы и опубликуйте опрос, чтобы начать голосование."
-          />
-        )}
+      <div className="voting-v2__grid">
+        {sortedNominations.map((nom) => {
+          const options = nom.options ?? [];
+          const votes = votesByNomination.get(nom.id) ?? [];
+          const selectedCount = votes.length;
+          const maxVotes = Math.max(1, nom.max_votes);
 
-        {!canVote && poll.status === 'closed' && (
-          <Alert
-            theme="normal"
-            title="Голосование завершено"
-            message="Опрос закрыт. Доступны итоги и результаты."
-          />
-        )}
-
-        {!canVote && poll.status === 'active' && (
-          <Alert
-            theme="warning"
-            title="Голосование недоступно"
-            message="У вас нет прав или голосование ещё не началось."
-          />
-        )}
-
-        <Card className="p-4">
-          <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-            <div>
-              <span className="font-semibold text-slate-900">Вопросов:</span> {sortedNominations.length}
-            </div>
-            <div>
-              <span className="font-semibold text-slate-900">Ваш голос:</span> {meta.has_voted ? 'учтён' : 'ещё не подан'}
-            </div>
-            <div>
-              <span className="font-semibold text-slate-900">Режим:</span> {poll.anonymous ? 'анонимно' : 'открыто'}
-            </div>
-          </div>
-        </Card>
-
-        <div className="space-y-5">
-          {sortedNominations.map((nom) => {
-            const options = nom.options ?? [];
-            const votes = votesByNomination.get(nom.id) ?? [];
-            const selectedCount = votes.length;
-            const maxVotes = Math.max(1, nom.max_votes);
-
-            return (
-              <Card key={nom.id} className="p-6 space-y-4">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                  <div className="space-y-1">
-                    <Text variant="subheader-2">{nom.title}</Text>
-                    {nom.description && (
-                      <Text variant="body-2" color="secondary">
-                        {nom.description}
-                      </Text>
-                    )}
-                    <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                      <Label theme="normal" size="xs">{NOMINATION_KIND_LABELS[nom.kind]}</Label>
-                      <Label theme="utility" size="xs">До {maxVotes} вариантов</Label>
-                      {nom.is_required && <Label theme="warning" size="xs">Обязательный</Label>}
-                    </div>
-                  </div>
-                  <div className="text-sm text-slate-500">
-                    Выбрано: {selectedCount}/{maxVotes}
+          return (
+            <Card key={nom.id} className="voting-v2__card voting-v2__question" aria-label={nom.title}>
+              <div className="voting-v2__question-head">
+                <div>
+                  <h2 className="voting-v2__question-title">{nom.title}</h2>
+                  {nom.description ? (
+                    <p className="voting-v2__question-description">{nom.description}</p>
+                  ) : null}
+                  <div className="voting-v2__pills">
+                    <Label theme="normal" size="xs">{NOMINATION_KIND_LABELS[nom.kind]}</Label>
+                    <Label theme="utility" size="xs">До {maxVotes} вариантов</Label>
+                    {nom.is_required ? <Label theme="warning" size="xs">Обязательный</Label> : null}
                   </div>
                 </div>
+                <span className="voting-v2__small voting-v2__muted">Выбрано: {selectedCount}/{maxVotes}</span>
+              </div>
 
-                {options.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                    Варианты ещё не добавлены.
-                  </div>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {options.map((option) => {
-                      const voteId = getVoteIdForOption(nom.id, option.id);
-                      const isSelected = Boolean(voteId);
-                      const isVoting = castVoteMutation.isPending && castVoteMutation.variables?.option_id === option.id;
-                      const isRevoking = revokeVoteMutation.isPending && revokeVoteMutation.variables?.voteId === voteId;
-                      const disableByLimit = selectedCount >= maxVotes && !isSelected;
-                      const isDisabled = !canVote || isVoting || isRevoking || disableByLimit;
+              {options.length === 0 ? (
+                <div className="voting-v2__state-card voting-v2__muted">
+                  Варианты ещё не добавлены.
+                </div>
+              ) : (
+                <div className="voting-v2__option-grid">
+                  {options.map((option) => {
+                    const voteId = getVoteIdForOption(nom.id, option.id);
+                    const isSelected = Boolean(voteId);
+                    const isVoting = castVoteMutation.isPending && castVoteMutation.variables?.option_id === option.id;
+                    const isRevoking = revokeVoteMutation.isPending && revokeVoteMutation.variables?.voteId === voteId;
+                    const disableByLimit = selectedCount >= maxVotes && !isSelected;
+                    const isDisabled = !canVote || isVoting || isRevoking || disableByLimit;
+                    const optionMetaId = `poll-option-${nom.id}-${option.id}-meta`;
 
-                      return (
-                        <div
-                          key={option.id}
-                          className={`flex flex-col justify-between rounded-xl border p-4 transition ${
-                            isSelected
-                              ? 'border-indigo-400 bg-indigo-50'
-                              : 'border-slate-200 hover:border-slate-300'
-                          } ${isDisabled && !isSelected ? 'opacity-60' : ''}`}
-                        >
-                          <div>
-                            <div className="font-medium text-slate-900">{option.title}</div>
-                            {option.description && (
-                              <div className="text-sm text-slate-500 mt-1">{option.description}</div>
-                            )}
-                          </div>
-                          <div className="mt-3 flex items-center justify-between">
-                            {isSelected && <Label theme="success" size="xs">Ваш выбор</Label>}
-                            <Button
-                              view={isSelected ? 'outlined' : 'action'}
-                              size="s"
-                              loading={isVoting || isRevoking}
-                              disabled={isDisabled}
-                              onClick={() => {
-                                if (isSelected) {
-                                  if (!canRevote) {
-                                    toaster.add({
-                                      name: 'revote-disabled',
-                                      title: 'Переголосование недоступно',
-                                      theme: 'warning',
-                                    });
-                                    return;
-                                  }
-                                  if (voteId) {
-                                    handleRevokeVote(voteId);
-                                  }
+                    return (
+                      <div
+                        key={option.id}
+                        className={`voting-v2__option ${isSelected ? 'voting-v2__option--active' : ''}`}
+                      >
+                        <div>
+                          <div className="voting-v2__option-title">{option.title}</div>
+                          {option.description ? (
+                            <div className="voting-v2__option-description">{option.description}</div>
+                          ) : null}
+                        </div>
+                        <div className="voting-v2__option-footer">
+                          {isSelected ? <Label theme="success" size="xs">Ваш выбор</Label> : <span />}
+                          <Button
+                            view={isSelected ? 'outlined' : 'action'}
+                            size="s"
+                            loading={isVoting || isRevoking}
+                            disabled={isDisabled}
+                            aria-pressed={isSelected}
+                            aria-describedby={optionMetaId}
+                            onClick={() => {
+                              if (isSelected) {
+                                if (!canRevote) {
+                                  toaster.add({
+                                    name: 'revote-disabled',
+                                    title: 'Переголосование недоступно',
+                                    theme: 'warning',
+                                  });
                                   return;
                                 }
-                                handleVote(nom.id, option.id, maxVotes);
-                              }}
-                            >
-                              {isSelected ? 'Снять выбор' : 'Выбрать'}
-                            </Button>
-                          </div>
+                                if (voteId) {
+                                  handleRevokeVote(voteId);
+                                }
+                                return;
+                              }
+                              handleVote(nom.id, option.id, maxVotes);
+                            }}
+                          >
+                            {isSelected ? 'Снять выбор' : 'Выбрать'}
+                          </Button>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+                        <span id={optionMetaId} className="voting-v2__small voting-v2__muted">
+                          {isSelected ? 'Выбран пользователем' : 'Не выбран'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          );
+        })}
       </div>
-    </div>
+    </VotingPageLayout>
   );
 };

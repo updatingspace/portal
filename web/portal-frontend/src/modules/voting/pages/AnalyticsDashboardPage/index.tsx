@@ -1,8 +1,17 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Icon, Loader, Text } from '@gravity-ui/uikit';
+import { Button, Card, Icon, Text } from '@gravity-ui/uikit';
 import { ChartBar, ChartColumn, ChartLine } from '@gravity-ui/icons';
+
 import { usePolls } from '../../../../features/voting';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { logger } from '../../../../utils/logger';
+import {
+  VotingEmptyState,
+  VotingErrorState,
+  VotingLoadingState,
+  VotingPageLayout,
+} from '../../ui';
 
 const getVoteCount = (settings: Record<string, unknown>) => {
   const candidates = ['vote_count', 'votes_count', 'total_votes'];
@@ -14,9 +23,10 @@ const getVoteCount = (settings: Record<string, unknown>) => {
 };
 
 export const AnalyticsDashboardPage: React.FC = () => {
-  const { data: pollsData, isLoading, isError, error } = usePolls({ status: 'closed' });
+  const routeBase = useRouteBase();
+  const { data: pollsData, isLoading, isError, error, refetch } = usePolls({ status: 'closed' });
 
-  const polls = pollsData?.items || [];
+  const polls = useMemo(() => pollsData?.items ?? [], [pollsData?.items]);
 
   const pollStats = useMemo(() => {
     const totalPolls = polls.length;
@@ -26,100 +36,103 @@ export const AnalyticsDashboardPage: React.FC = () => {
     return { totalPolls, totalVotes, avgParticipation, sortedByVotes };
   }, [polls]);
 
+  useEffect(() => {
+    if (!pollsData) return;
+    logger.info('Voting v2 page loaded', {
+      area: 'voting',
+      event: 'voting_v2.page_loaded',
+      data: {
+        page: 'analytics',
+        totalPolls: pollsData.pagination.total,
+      },
+    });
+  }, [pollsData]);
+
   if (isLoading) {
-    return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
-        <Loader size="l" />
-      </div>
-    );
+    return <VotingLoadingState text="Загружаем аналитику…" />;
   }
 
   if (isError) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6 text-center">
-          <Text variant="subheader-2" className="mb-2">Не удалось загрузить аналитику</Text>
-          <Text variant="body-2" color="secondary" className="mb-4">
-            {error instanceof Error ? error.message : 'Попробуйте обновить страницу.'}
-          </Text>
-          <Button onClick={() => window.location.reload()} view="action" width="max">
-            Обновить
-          </Button>
-        </Card>
-      </div>
+      <VotingErrorState
+        title="Не удалось загрузить аналитику"
+        message={error instanceof Error ? error.message : 'Попробуйте обновить данные.'}
+        onRetry={() => refetch()}
+      />
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
-      <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6">
-          <Text variant="header-1" className="text-slate-900">Аналитика голосований</Text>
-          <Text variant="body-2" color="secondary" className="mt-1">
-            Итоги завершённых опросов и вовлечённость участников.
-          </Text>
-        </div>
+    <VotingPageLayout
+      title="Аналитика голосований"
+      description="Итоги завершённых опросов и вовлечённость участников."
+      actions={
+        <Link to={`${routeBase}/voting`}>
+          <Button view="outlined">К списку</Button>
+        </Link>
+      }
+    >
+      <div className="voting-v2__grid voting-v2__grid--3">
+        <Card className="voting-v2__card">
+          <div className="voting-v2__toolbar-left">
+            <Icon data={ChartColumn} size={20} />
+            <Text variant="subheader-2">Завершённых опросов</Text>
+          </div>
+          <Text variant="display-2">{pollStats.totalPolls}</Text>
+        </Card>
+        <Card className="voting-v2__card">
+          <div className="voting-v2__toolbar-left">
+            <Icon data={ChartBar} size={20} />
+            <Text variant="subheader-2">Всего голосов</Text>
+          </div>
+          <Text variant="display-2">{pollStats.totalVotes}</Text>
+        </Card>
+        <Card className="voting-v2__card">
+          <div className="voting-v2__toolbar-left">
+            <Icon data={ChartLine} size={20} />
+            <Text variant="subheader-2">Средняя активность</Text>
+          </div>
+          <Text variant="display-2">{pollStats.avgParticipation}</Text>
+        </Card>
       </div>
 
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <Icon data={ChartColumn} size={20} className="text-indigo-500" />
-              <Text variant="subheader-2">Завершённых опросов</Text>
-            </div>
-            <Text variant="display-2" className="mt-3 text-slate-900">{pollStats.totalPolls}</Text>
-          </Card>
-          <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <Icon data={ChartBar} size={20} className="text-emerald-500" />
-              <Text variant="subheader-2">Всего голосов</Text>
-            </div>
-            <Text variant="display-2" className="mt-3 text-slate-900">{pollStats.totalVotes}</Text>
-          </Card>
-          <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <Icon data={ChartLine} size={20} className="text-amber-500" />
-              <Text variant="subheader-2">Средняя активность</Text>
-            </div>
-            <Text variant="display-2" className="mt-3 text-slate-900">{pollStats.avgParticipation}</Text>
-          </Card>
-        </div>
+      {polls.length === 0 ? (
+        <VotingEmptyState
+          title="Нет завершённых опросов"
+          message="Когда появятся закрытые кампании, здесь отобразится аналитика."
+          action={
+            <Link to={`${routeBase}/voting/create`}>
+              <Button view="action">Создать опрос</Button>
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          <div className="voting-v2__toolbar">
+            <Text variant="subheader-2" className="voting-v2__section-title">Последние опросы</Text>
+          </div>
 
-        <div className="flex items-center justify-between">
-          <Text variant="subheader-2">Последние опросы</Text>
-          <Button view="outlined" href="/app/voting">К списку</Button>
-        </div>
-
-        {polls.length === 0 ? (
-          <Card className="p-6 text-center">
-            <Text variant="body-2" color="secondary">Нет завершённых опросов для аналитики.</Text>
-            <Button view="action" href="/app/voting/create" className="mt-4">
-              Создать опрос
-            </Button>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="voting-v2__grid voting-v2__grid--3">
             {pollStats.sortedByVotes.slice(0, 6).map((poll) => {
               const votes = getVoteCount(poll.settings ?? {});
               return (
-                <Card key={poll.id} className="p-5">
-                  <Text variant="subheader-2">{poll.title}</Text>
-                  <Text variant="body-2" color="secondary" className="mt-1">
+                <Card key={poll.id} className="voting-v2__card">
+                  <Text variant="subheader-2" className="voting-v2__section-title">{poll.title}</Text>
+                  <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
                     {new Date(poll.created_at).toLocaleDateString('ru-RU')}
                   </Text>
-                  <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
-                    <span>Голосов: {votes}</span>
-                    <Link to={`/app/voting/${poll.id}/results`} className="text-indigo-600 hover:text-indigo-500">
-                      Результаты
+                  <div className="voting-v2__toolbar" style={{ marginTop: 8 }}>
+                    <span className="voting-v2__small voting-v2__muted">Голосов: {votes}</span>
+                    <Link to={`${routeBase}/voting/${poll.id}/results`}>
+                      <Button view="flat">Результаты</Button>
                     </Link>
                   </div>
                 </Card>
               );
             })}
           </div>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </VotingPageLayout>
   );
 };

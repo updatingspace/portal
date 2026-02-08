@@ -25,7 +25,6 @@ export const MarkdownPreview: React.FC<Props> = ({
     return (
         <div
             className={['yfm', className].filter(Boolean).join(' ')}
-            // eslint-disable-next-line react/no-danger
             dangerouslySetInnerHTML={{__html: html}}
         />
     );

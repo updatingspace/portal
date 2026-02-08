@@ -20,22 +20,25 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    // Allow local multi-tenant domains (host-based tenant resolution)
-    allowedHosts: ['localhost', 'aef.localhost', 'api.aef.localhost', 'aef.updspace.local', '.updspace.local'],
+    // Allow local multi-tenant domains and canonical portal domain
+    allowedHosts: ['localhost', 'portal.localhost', 'aef.localhost', 'api.aef.localhost', 'aef.updspace.local', '.updspace.local', 'portal.updating.space', '.updating.space'],
     proxy: {
       // In dev, frontend must talk only to BFF.
       // Using a proxy avoids CORS and keeps the browser on the frontend origin.
       '/api/v1': {
         target: process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true,
-        // Forward original host or use tenant hint for dev
+        // Forward original host for BFF tenant resolution
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
-            // In dev, pass through the original host or use a default tenant host
+            // Pass through the original host so BFF resolves tenant from it.
+            // For portal.localhost (path-based mode), BFF won't find a host-tenant
+            // and will fall back to session-based active_tenant.
+            // For aef.localhost (legacy subdomain mode), BFF resolves tenant from host.
             const originalHost = req.headers.host || '';
-            // If accessing via localhost:5173, rewrite to aef.localhost for BFF tenant resolution
             if (originalHost.includes('localhost:5173') || originalHost.includes('127.0.0.1')) {
-              proxyReq.setHeader('Host', 'aef.localhost');
+              // Direct Vite dev access — use portal.localhost (path-based mode)
+              proxyReq.setHeader('Host', 'portal.localhost');
             } else {
               proxyReq.setHeader('Host', originalHost);
             }

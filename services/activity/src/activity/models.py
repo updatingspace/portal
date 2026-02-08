@@ -248,15 +248,48 @@ class NewsComment(models.Model):
         on_delete=models.CASCADE,
         related_name="comments",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
     user_id = models.UUIDField()
     body = models.TextField()
     created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "act_news_comment"
         indexes = [
             models.Index(fields=["tenant_id", "post", "created_at"], name="act_news_comment_idx"),
+            models.Index(fields=["tenant_id", "post", "parent", "created_at"], name="act_news_comment_parent_idx"),
+        ]
+
+
+class NewsCommentReaction(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    tenant_id = models.UUIDField()
+    comment = models.ForeignKey(
+        NewsComment,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user_id = models.UUIDField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_news_comment_reaction"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comment", "user_id"],
+                name="act_news_comment_reaction_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant_id", "comment"], name="act_news_comment_react_idx"),
         ]
 
 

@@ -4,8 +4,9 @@ import { Button } from '@gravity-ui/uikit';
 import { useThemeMode } from '../../app/providers/ThemeModeProvider';
 
 export const ThemeSelect: React.FC = () => {
-  const { mode, setMode } = useThemeMode();
-  const options: Array<{ id: 'light' | 'dark'; label: string }> = [
+  const { mode, resolvedMode, setMode } = useThemeMode();
+  const options: Array<{ id: 'light' | 'dark' | 'system'; label: string }> = [
+    { id: 'system', label: 'System' },
     { id: 'light', label: 'Light' },
     { id: 'dark', label: 'Dark' },
   ];
@@ -18,6 +19,7 @@ export const ThemeSelect: React.FC = () => {
           size="s"
           view={mode === option.id ? 'action' : 'flat'}
           onClick={() => setMode(option.id)}
+          title={option.id === 'system' ? `System (${resolvedMode})` : undefined}
         >
           {option.label}
         </Button>

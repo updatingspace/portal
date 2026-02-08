@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Button, Card, Text } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
+import { useRouteBase } from '../../../../../shared/hooks/useRouteBase';
 import type { ProfileHubVM } from '../../model/types';
 import { profileHubStrings } from '../../strings/ru';
 
@@ -11,6 +12,7 @@ type ProfileCompletionWidgetProps = {
 
 export const ProfileCompletionWidget: React.FC<ProfileCompletionWidgetProps> = ({ vm }) => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const hasPublishedPost = vm.feed.items.some((item) => item.type === 'news.posted' || item.type === 'post.created');
 
   const checklist = useMemo(
@@ -39,7 +41,7 @@ export const ProfileCompletionWidget: React.FC<ProfileCompletionWidgetProps> = (
           <li key={item.label} className={item.done ? 'is-done' : ''}>{item.label}</li>
         ))}
       </ul>
-      <Button view="flat" size="s" onClick={() => navigate('/app/settings')}>
+      <Button view="flat" size="s" onClick={() => navigate(`${routeBase}/settings`)}>
         {profileHubStrings.completion.cta}
       </Button>
     </Card>

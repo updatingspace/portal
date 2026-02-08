@@ -2,13 +2,7 @@ import { vi } from 'vitest';
 
 import type { Game } from '../../types/games';
 import type { AccountProfile } from '../../services/api';
-import type {
-  FeedResponseV2,
-  AccountLinkDetail,
-  AccountLinkCreatePayload,
-  SyncStatus,
-  Source,
-} from '../../types/activity';
+import type { AccountLinkCreatePayload } from '../../types/activity';
 import { ApiError } from '../../api/client';
 import {
   createAdminVotingDetail,
@@ -25,7 +19,6 @@ import {
   createVotingImportPreview,
   createVotingImportResult,
   createActivityFeedV2,
-  createActivityFeedV2Empty,
   createAccountLinks,
   createSources,
   createSyncStatuses,

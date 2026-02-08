@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toaster } from '../toaster';
 import { AuthProvider, useAuth, type UserInfo } from '../contexts/AuthContext';
 import { AuthUIProvider } from '../contexts/AuthUIContext';
+import { TenantProvider } from '../contexts/TenantContext';
 import { I18nProvider } from '../app/providers/I18nProvider';
 import { ThemeModeProvider } from '../app/providers/ThemeModeProvider';
 
@@ -64,20 +65,24 @@ export function renderWithProviders(
             {wrapRouter ? (
               <MemoryRouter initialEntries={entries}>
                 <AuthProvider bootstrap={false}>
+                  <TenantProvider>
+                    <AuthUIProvider>
+                      <AuthInitializer user={authUser} />
+                      {children}
+                      <ToasterComponent />
+                    </AuthUIProvider>
+                  </TenantProvider>
+                </AuthProvider>
+              </MemoryRouter>
+            ) : (
+              <AuthProvider bootstrap={false}>
+                <TenantProvider>
                   <AuthUIProvider>
                     <AuthInitializer user={authUser} />
                     {children}
                     <ToasterComponent />
                   </AuthUIProvider>
-                </AuthProvider>
-              </MemoryRouter>
-            ) : (
-              <AuthProvider bootstrap={false}>
-                <AuthUIProvider>
-                  <AuthInitializer user={authUser} />
-                  {children}
-                  <ToasterComponent />
-                </AuthUIProvider>
+                </TenantProvider>
               </AuthProvider>
             )}
           </ToasterProvider>

@@ -1,7 +1,7 @@
 import React from 'react';
 
 import App from './App';
-import { renderWithProviders, screen } from './test/test-utils';
+import { renderWithProviders, screen, waitFor } from './test/test-utils';
 
 describe('App integration', () => {
   test('renders public landing for guest', async () => {
@@ -19,7 +19,7 @@ describe('App integration', () => {
     expect(await screen.findByText('Continue with UpdSpaceID')).toBeInTheDocument();
   });
 
-  test('renders app shell for authenticated user', async () => {
+  test('authenticated user at /app is redirected to tenant chooser', async () => {
     renderWithProviders(
       <App />,
       {
@@ -38,7 +38,9 @@ describe('App integration', () => {
       },
     );
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
-    expect(screen.getByText('Open voting')).toBeInTheDocument();
+    // /app now redirects to /choose-tenant (path-based multi-tenancy)
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/choose-tenant');
+    });
   });
 });

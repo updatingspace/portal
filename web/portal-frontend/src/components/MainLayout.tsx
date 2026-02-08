@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { Avatar, Button, DropdownMenu, type DropdownMenuItem } from '@gravity-ui/uikit';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { requestResult } from '../api/client';
 import { redirectToLogin } from '../modules/portal/auth';
 
@@ -13,6 +14,7 @@ interface MainLayoutProps {
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const isSuperuser = Boolean(user?.isSuperuser);
 
   const userMenuItems = useMemo<DropdownMenuItem[]>(
@@ -50,7 +52,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </NavLink>
 
           <div className="d-flex align-items-center gap-3">
-            <NavLink to="/nominations" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            <NavLink to={`${routeBase}/voting`} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
               Голосование
             </NavLink>
             <NavLink to="/events" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
