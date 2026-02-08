@@ -5,6 +5,7 @@ import { Alert, Button, Card, Text } from '@gravity-ui/uikit';
 import { isApiError } from '../../../../api/client';
 import { ResultsChart } from '../../../../features/voting/components/ResultsChart';
 import { usePollInfo, usePollResults } from '../../../../features/voting';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { logger } from '../../../../utils/logger';
 import {
   VotingEmptyState,
@@ -15,6 +16,7 @@ import {
 
 export const PollResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const routeBase = useRouteBase();
   const pollId = id ?? '';
 
   const {
@@ -57,7 +59,7 @@ export const PollResultsPage: React.FC = () => {
         nominations: results.nominations.length,
       },
     });
-  }, [pollId, results?.nominations.length]);
+  }, [pollId, results]);
 
   if (isPollLoading || isResultsLoading) {
     return <VotingLoadingState text="Загружаем результаты…" />;
@@ -82,7 +84,7 @@ export const PollResultsPage: React.FC = () => {
           title="Результаты пока скрыты"
           message="Результаты откроются согласно настройкам опроса."
           action={
-            <Link to={`/app/voting/${pollId}`}>
+            <Link to={`${routeBase}/voting/${pollId}`}>
               <Button view="action">Вернуться к опросу</Button>
             </Link>
           }
@@ -118,10 +120,10 @@ export const PollResultsPage: React.FC = () => {
       description={poll.title}
       actions={
         <>
-          <Link to={`/app/voting/${pollId}`}>
+          <Link to={`${routeBase}/voting/${pollId}`}>
             <Button view="outlined">К опросу</Button>
           </Link>
-          <Link to="/app/voting">
+          <Link to={`${routeBase}/voting`}>
             <Button view="action">Все опросы</Button>
           </Link>
         </>

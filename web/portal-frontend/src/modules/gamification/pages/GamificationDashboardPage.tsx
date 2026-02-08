@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -16,6 +16,7 @@ import {
 import { Plus } from '@gravity-ui/icons';
 
 import { useAuth } from '../../../contexts/AuthContext';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { createClientAccessDeniedError } from '../../../api/accessDenied';
 import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
@@ -50,23 +51,12 @@ const formatDate = (value?: string | null) => {
 export const GamificationDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const canCreate = can(user, 'gamification.achievements.create');
   const canEdit = can(user, 'gamification.achievements.edit');
   const canPublish = can(user, 'gamification.achievements.publish');
   const canHide = can(user, 'gamification.achievements.hide');
   const hasAccess = Boolean(user);
-
-  if (!hasAccess) {
-    return (
-      <AccessDeniedScreen
-        error={createClientAccessDeniedError({
-          requiredPermission: 'gamification.achievements.*',
-          tenant: user?.tenant,
-          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав на раздел геймификации.',
-        })}
-      />
-    );
-  }
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -74,16 +64,18 @@ export const GamificationDashboardPage: React.FC = () => {
   const [ownership, setOwnership] = useState<'all' | 'me'>('all');
 
   const { data: categoriesData } = useCategories();
-  const categories = categoriesData?.items ?? [];
   const categoryOptions = useMemo(
-    () => [
-      { value: 'all', content: 'Все категории' },
-      ...categories.map((cat) => ({
-        value: cat.id,
-        content: cat.nameI18n.ru ?? cat.nameI18n.en ?? cat.id,
-      })),
-    ],
-    [categories],
+    () => {
+      const categories = categoriesData?.items ?? [];
+      return [
+        { value: 'all', content: 'Все категории' },
+        ...categories.map((cat) => ({
+          value: cat.id,
+          content: cat.nameI18n.ru ?? cat.nameI18n.en ?? cat.id,
+        })),
+      ];
+    },
+    [categoriesData?.items],
   );
 
   const statusParam = statusFilter === 'all' ? undefined : [statusFilter];
@@ -101,14 +93,17 @@ export const GamificationDashboardPage: React.FC = () => {
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
-  const handleStatusChange = async (achievement: Achievement, nextStatus: AchievementStatus) => {
-    await updateAchievement({
-      id: achievement.id,
-      payload: {
-        status: nextStatus,
-      },
-    });
-  };
+  const handleStatusChange = useCallback(
+    async (achievement: Achievement, nextStatus: AchievementStatus) => {
+      await updateAchievement({
+        id: achievement.id,
+        payload: {
+          status: nextStatus,
+        },
+      });
+    },
+    [updateAchievement],
+  );
 
   const columns = useMemo<TableColumnConfig<Achievement>[]>(
     () => [
@@ -144,16 +139,16 @@ export const GamificationDashboardPage: React.FC = () => {
       {
         id: 'actions',
         name: '',
-        align: 'right',
+        align: 'end',
         template: (item) => {
           const actions: DropdownMenuItem[] = [
             {
               text: 'Открыть',
-              action: () => navigate(`/app/gamification/achievements/${item.id}`),
+              action: () => navigate(`${routeBase}/gamification/achievements/${item.id}`),
             },
             {
               text: 'Редактировать',
-              action: () => navigate(`/app/gamification/achievements/${item.id}/edit`),
+              action: () => navigate(`${routeBase}/gamification/achievements/${item.id}/edit`),
               disabled: !canEdit || item.canEdit === false,
             },
           ];
@@ -173,8 +168,20 @@ export const GamificationDashboardPage: React.FC = () => {
         },
       },
     ],
-    [canEdit, canHide, canPublish, navigate, updateAchievement],
+    [canEdit, canHide, canPublish, handleStatusChange, navigate, routeBase],
   );
+
+  if (!hasAccess) {
+    return (
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: 'gamification.achievements.*',
+          tenant: user?.tenant,
+          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав на раздел геймификации.',
+        })}
+      />
+    );
+  }
 
   return (
     <div className="gamification-page" data-qa="gamification-page">
@@ -187,7 +194,7 @@ export const GamificationDashboardPage: React.FC = () => {
         </div>
         <div className="gamification-toolbar">
           {canCreate && (
-            <Button view="action" size="m" onClick={() => navigate('/app/gamification/achievements/new')}>
+            <Button view="action" size="m" onClick={() => navigate(`${routeBase}/gamification/achievements/new`)}>
               <Icon data={Plus} />
               Создать ачивку
             </Button>

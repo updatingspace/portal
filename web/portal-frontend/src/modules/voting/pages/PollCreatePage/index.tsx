@@ -6,6 +6,7 @@ import { PollForm } from '../../../../features/voting/components/PollForm';
 import { useCreatePoll, usePollTemplates } from '../../../../features/voting';
 import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { logger } from '../../../../utils/logger';
 import type {
   PollCreatePayload,
@@ -47,6 +48,7 @@ const featureHighlights = [
 
 export const PollCreatePage: React.FC = () => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const location = useLocation();
   const { data: templates = [], isLoading: templatesLoading } = usePollTemplates();
   const createPollMutation = useCreatePoll();
@@ -122,7 +124,7 @@ export const PollCreatePage: React.FC = () => {
           title: 'Опрос создан',
           theme: 'success',
         });
-        navigate(`/app/voting/${poll.id}/manage`, { state: { tab: 'questions' } });
+        navigate(`${routeBase}/voting/${poll.id}/manage`, { state: { tab: 'questions' } });
       },
       onError: (error) => {
         notifyApiError(error, 'Не удалось создать опрос');

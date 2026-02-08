@@ -31,6 +31,7 @@ import { toaster } from './toaster';
 import { emitAccessDenied, toAccessDeniedError } from './api/accessDenied';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthUIProvider } from './contexts/AuthUIContext';
+import { TenantProvider } from './contexts/TenantContext';
 import { I18nProvider } from './app/providers/I18nProvider';
 import { ThemeModeProvider } from './app/providers/ThemeModeProvider';
 import { createAppRouter } from './app/routes';
@@ -71,12 +72,14 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
         <QueryClientProvider client={queryClient}>
           <ToasterProvider toaster={toaster}>
             <AuthProvider>
-              <AuthUIProvider>
-                <AuthLoadingGuard>
-                  <PortalRouter router={router} />
-                </AuthLoadingGuard>
-                <ToasterComponent />
-              </AuthUIProvider>
+              <TenantProvider>
+                <AuthUIProvider>
+                  <AuthLoadingGuard>
+                    <PortalRouter router={router} />
+                  </AuthLoadingGuard>
+                  <ToasterComponent />
+                </AuthUIProvider>
+              </TenantProvider>
             </AuthProvider>
           </ToasterProvider>
         </QueryClientProvider>

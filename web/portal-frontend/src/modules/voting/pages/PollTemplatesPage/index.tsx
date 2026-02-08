@@ -4,6 +4,7 @@ import { Button, Card, Label, Text } from '@gravity-ui/uikit';
 
 import { usePollTemplates } from '../../../../features/voting';
 import { VISIBILITY_META } from '../../../../features/voting/utils/pollMeta';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { logger } from '../../../../utils/logger';
 import {
   VotingEmptyState,
@@ -13,6 +14,7 @@ import {
 } from '../../ui';
 
 export const PollTemplatesPage: React.FC = () => {
+  const routeBase = useRouteBase();
   const { data: templates = [], isLoading, isError, error, refetch } = usePollTemplates();
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export const PollTemplatesPage: React.FC = () => {
       title="Шаблоны опросов"
       description="Быстрый старт для регулярных голосований."
       actions={
-        <Link to="/app/voting/create">
+        <Link to={`${routeBase}/voting/create`}>
           <Button view="action">Создать опрос</Button>
         </Link>
       }
@@ -55,7 +57,7 @@ export const PollTemplatesPage: React.FC = () => {
           title="Шаблонов пока нет"
           message="Создайте первый опрос вручную или дождитесь добавления шаблонов."
           action={
-            <Link to="/app/voting/create">
+            <Link to={`${routeBase}/voting/create`}>
               <Button view="action">Создать опрос</Button>
             </Link>
           }
@@ -81,7 +83,7 @@ export const PollTemplatesPage: React.FC = () => {
                     {template.description}
                   </Text>
 
-                  <Link to="/app/voting/create" state={{ template: template.slug }}>
+                  <Link to={`${routeBase}/voting/create`} state={{ template: template.slug }}>
                     <Button view="action">Использовать шаблон</Button>
                   </Link>
                 </div>

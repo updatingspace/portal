@@ -19,6 +19,7 @@ import {
   formatDateTime,
   getScheduleMeta,
 } from '../../../features/voting/utils/pollMeta';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { getLocale } from '@/shared/lib/locale';
 import { toaster } from '../../../toaster';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
@@ -34,6 +35,7 @@ import {
 export const PollPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const { user } = useAuth();
   const pollId = id ?? '';
   const locale = user?.language ?? getLocale();
@@ -139,7 +141,7 @@ export const PollPage: React.FC = () => {
         status: info.poll.status,
       },
     });
-  }, [info?.poll.id, info?.poll.status]);
+  }, [info]);
 
   if (loading && !info) {
     return <VotingLoadingState text="Загружаем опрос…" />;
@@ -158,7 +160,7 @@ export const PollPage: React.FC = () => {
       <VotingEmptyState
         title="Опрос не найден"
         action={
-          <Button onClick={() => navigate('/app/voting')} view="action">
+          <Button onClick={() => navigate(`${routeBase}/voting`)} view="action">
             Вернуться к списку
           </Button>
         }
@@ -219,16 +221,16 @@ export const PollPage: React.FC = () => {
       description={poll.description ?? 'Проголосуйте в каждой нужной категории и проверьте свои выборы.'}
       actions={
         <>
-          <Button view="outlined" onClick={() => navigate('/app/voting')}>
+          <Button view="outlined" onClick={() => navigate(`${routeBase}/voting`)}>
             Назад
           </Button>
           {(poll.status === 'closed' || poll.results_visibility === 'always') && (
-            <Link to={`/app/voting/${poll.id}/results`}>
+            <Link to={`${routeBase}/voting/${poll.id}/results`}>
               <Button view="action">Результаты</Button>
             </Link>
           )}
           {canManage && (
-            <Link to={`/app/voting/${poll.id}/manage`}>
+            <Link to={`${routeBase}/voting/${poll.id}/manage`}>
               <Button view="outlined">Управление</Button>
             </Link>
           )}

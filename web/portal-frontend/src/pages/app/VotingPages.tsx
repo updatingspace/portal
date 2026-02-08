@@ -6,7 +6,7 @@ import { PollsPage } from '../../modules/voting/pages/PollsPage';
 import { PollPage } from '../../modules/voting/pages/PollPage';
 import { AnalyticsDashboardPage } from '../../modules/voting/pages/AnalyticsDashboardPage';
 
-const VotingDisabledFallback: React.FC = () => <Navigate to="/app" replace />;
+const VotingDisabledFallback: React.FC = () => <Navigate to="/choose-tenant" replace />;
 
 export const VotingPage: React.FC = () => {
   if (!env.votingUiV2) {

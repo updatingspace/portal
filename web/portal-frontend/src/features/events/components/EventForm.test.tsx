@@ -5,13 +5,11 @@ import { vi } from 'vitest';
 import { EventForm } from './EventForm';
 
 vi.mock('@gravity-ui/uikit', () => ({
-  Button: ({ loading, view, size, ...props }: React.ComponentProps<'button'> & { loading?: boolean; view?: string; size?: string }) => (
+  Button: (props: React.ComponentProps<'button'> & { loading?: boolean; view?: string; size?: string }) => (
     <button {...props} />
   ),
   Card: (props: React.ComponentProps<'div'>) => <div {...props} />,
-  Select: ({ onUpdate, value, ...props }: React.ComponentProps<'div'> & { onUpdate?: () => void; value?: unknown }) => (
-    <div {...props} />
-  ),
+  Select: (props: React.ComponentProps<'div'> & { onUpdate?: () => void; value?: unknown }) => <div {...props} />,
   Text: (props: React.ComponentProps<'div'>) => <div {...props} />,
   TextArea: ({ value, onUpdate, ...rest }: { value?: string; onUpdate?: (value: string) => void } & React.ComponentProps<'textarea'>) => (
     <textarea

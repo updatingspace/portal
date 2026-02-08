@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+
+import { useRouteBase } from '../../../shared/hooks/useRouteBase';
 import { Avatar, Button, Card, Loader, Text } from '@gravity-ui/uikit';
 
 import { fetchPortalProfiles } from '../../../modules/portal/api';
@@ -27,6 +29,7 @@ const getInitials = (value: string) => {
 
 export const UserProfilePage: React.FC = () => {
   const { username } = useParams<{ username: string }>();
+  const routeBase = useRouteBase();
   const normalized = (username ?? '').trim().toLowerCase();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -46,7 +49,7 @@ export const UserProfilePage: React.FC = () => {
       <div className="profile-page">
         <Card view="filled" className="profile-card">
           <Text variant="subheader-2">Невалидная ссылка профиля</Text>
-          <Button view="outlined" href="/app/feed">Вернуться в ленту</Button>
+          <Button view="outlined" href={`${routeBase}/feed`}>Вернуться в ленту</Button>
         </Card>
       </div>
     );
@@ -83,7 +86,7 @@ export const UserProfilePage: React.FC = () => {
       <div className="profile-page">
         <Card view="filled" className="profile-card">
           <Text variant="subheader-2">Пользователь @{normalized} не найден</Text>
-          <Button view="outlined" href="/app/feed">Вернуться в ленту</Button>
+          <Button view="outlined" href={`${routeBase}/feed`}>Вернуться в ленту</Button>
         </Card>
       </div>
     );
@@ -119,8 +122,8 @@ export const UserProfilePage: React.FC = () => {
           </div>
         </div>
         <div className="profile-hero__actions">
-          <Button view="outlined" href="/app/feed">Вернуться в ленту</Button>
-          <Button view="flat" href="/app/profile">Мой профиль</Button>
+          <Button view="outlined" href={`${routeBase}/feed`}>Вернуться в ленту</Button>
+          <Button view="flat" href={`${routeBase}/profile`}>Мой профиль</Button>
         </div>
       </Card>
     </div>

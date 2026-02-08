@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AccessDeniedError, emitAccessDenied } from '../../api/accessDenied';
 import { AuthProvider, type UserInfo, useAuth } from '../../contexts/AuthContext';
+import { TenantProvider } from '../../contexts/TenantContext';
 import { AppLayout } from './AppLayout';
 
 vi.mock('@gravity-ui/navigation', () => ({
@@ -32,23 +33,25 @@ describe('AppLayout Access Denied integration', () => {
     render(
       <MemoryRouter initialEntries={['/app/feed']}>
         <AuthProvider bootstrap={false}>
-          <AuthInitializer
-            user={{
-              id: 'u-1',
-              username: 'u-1',
-              email: 'u-1@example.com',
-              isSuperuser: false,
-              isStaff: false,
-              displayName: 'User 1',
-              tenant: { id: 'tenant-1', slug: 'aef' },
-              capabilities: ['activity.feed.read'],
-            }}
-          />
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/app/feed" element={<div>Feed Content</div>} />
-            </Route>
-          </Routes>
+          <TenantProvider>
+            <AuthInitializer
+              user={{
+                id: 'u-1',
+                username: 'u-1',
+                email: 'u-1@example.com',
+                isSuperuser: false,
+                isStaff: false,
+                displayName: 'User 1',
+                tenant: { id: 'tenant-1', slug: 'aef' },
+                capabilities: ['activity.feed.read'],
+              }}
+            />
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/app/feed" element={<div>Feed Content</div>} />
+              </Route>
+            </Routes>
+          </TenantProvider>
         </AuthProvider>
       </MemoryRouter>,
     );
@@ -75,23 +78,25 @@ describe('AppLayout Access Denied integration', () => {
     render(
       <MemoryRouter initialEntries={['/app/feed']}>
         <AuthProvider bootstrap={false}>
-          <AuthInitializer
-            user={{
-              id: 'u-2',
-              username: 'u-2',
-              email: 'u-2@example.com',
-              isSuperuser: false,
-              isStaff: false,
-              displayName: 'User 2',
-              tenant: { id: 'tenant-1', slug: 'aef' },
-              capabilities: ['activity.feed.read'],
-            }}
-          />
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/app/feed" element={<div>Feed Content</div>} />
-            </Route>
-          </Routes>
+          <TenantProvider>
+            <AuthInitializer
+              user={{
+                id: 'u-2',
+                username: 'u-2',
+                email: 'u-2@example.com',
+                isSuperuser: false,
+                isStaff: false,
+                displayName: 'User 2',
+                tenant: { id: 'tenant-1', slug: 'aef' },
+                capabilities: ['activity.feed.read'],
+              }}
+            />
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/app/feed" element={<div>Feed Content</div>} />
+              </Route>
+            </Routes>
+          </TenantProvider>
         </AuthProvider>
       </MemoryRouter>,
     );

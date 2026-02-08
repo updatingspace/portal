@@ -126,7 +126,6 @@ export const FeedPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
-  const [composerError, setComposerError] = useState<string | null>(null);
   const [pendingItems, setPendingItems] = useState<ActivityEvent[]>([]);
   const [hiddenItemIds, setHiddenItemIds] = useState<number[]>([]);
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, FeedAuthorProfile>>({});
@@ -371,12 +370,6 @@ export const FeedPage: React.FC = () => {
     }
   }, [canCreateNews, composerValue, newsMedia.length]);
 
-  useEffect(() => {
-    const hasMedia = newsMedia.length > 0 || extractYoutubeIds(composerValue).length > 0;
-    if (composerError && hasMedia) {
-      setComposerError(null);
-    }
-  }, [composerError, composerValue, newsMedia.length]);
 
   const handleResetFilters = useCallback(() => {
     setSourceFilter('all');
@@ -449,10 +442,6 @@ export const FeedPage: React.FC = () => {
     }));
 
     const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
-    if (mergedMedia.length === 0) {
-      setComposerError('Добавьте хотя бы одно изображение или ссылку на YouTube.');
-      return;
-    }
 
     try {
       const created = await createNews({
@@ -492,7 +481,6 @@ export const FeedPage: React.FC = () => {
       editorWithSetValue.setValue?.('');
       setNewsMedia([]);
       setComposerOpen(false);
-      setComposerError(null);
       void refetch();
     } catch (err) {
       notifyApiError(err, 'Не удалось опубликовать новость');
@@ -538,9 +526,7 @@ export const FeedPage: React.FC = () => {
 
   const hasContent = visibleItems.length > 0;
   const detectedTags = extractTags(composerValue);
-  const detectedYoutube = extractYoutubeIds(composerValue);
   const composerHasText = Boolean(composerValue.trim());
-  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
 
   return (
     <div className="feed-page" data-qa="feed-page">
@@ -627,12 +613,6 @@ export const FeedPage: React.FC = () => {
                   </div>
                 )}
 
-                {composerError && (
-                  <Text variant="caption-2" color="danger">
-                    {composerError}
-                  </Text>
-                )}
-
                 <div className="feed-composer__actions">
                   <Select
                     value={[newsVisibility]}
@@ -649,7 +629,7 @@ export const FeedPage: React.FC = () => {
                     view="action"
                     size="m"
                     loading={isCreatingNews || uploading}
-                    disabled={!composerHasText || !composerHasMedia}
+                    disabled={!composerHasText}
                     onClick={handlePublishNews}
                   >
                     Опубликовать

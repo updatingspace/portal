@@ -52,25 +52,24 @@ const toJsDate = (value: CalendarValue): Date | null => {
   if (!value) return null;
   if (typeof value !== 'object') return null;
 
-  const maybe = value as unknown as Record<string, unknown>;
+  const candidate = value as { toDate?: () => Date; toJSDate?: () => Date; year?: number; month?: number; date?: number };
 
-  const toDate = maybe.toDate;
-  if (typeof toDate === 'function') {
-    const result = (toDate as () => Date)();
+  if (typeof candidate.toDate === 'function') {
+    const result = candidate.toDate();
     return Number.isNaN(result.getTime()) ? null : result;
   }
 
-  const toJSDate = maybe.toJSDate;
-  if (typeof toJSDate === 'function') {
-    const result = (toJSDate as () => Date)();
+  if (typeof candidate.toJSDate === 'function') {
+    const result = candidate.toJSDate();
     return Number.isNaN(result.getTime()) ? null : result;
   }
 
-  const year = maybe.year;
-  const month = maybe.month;
-  const date = maybe.date;
-  if (typeof year === 'number' && typeof month === 'number' && typeof date === 'number') {
-    return new Date(year, month - 1, date);
+  if (
+    typeof candidate.year === 'number' &&
+    typeof candidate.month === 'number' &&
+    typeof candidate.date === 'number'
+  ) {
+    return new Date(candidate.year, candidate.month - 1, candidate.date);
   }
 
   return null;

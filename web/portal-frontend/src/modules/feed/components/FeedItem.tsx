@@ -16,6 +16,7 @@ import {
 import { ArrowUpRightFromSquare, Lock, LockOpen } from '@gravity-ui/icons';
 import { Link } from 'react-router-dom';
 
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import type { ActivityEvent, NewsMediaItem, NewsPayload } from '../../../types/activity';
 import {
   createNewsComment,
@@ -234,6 +235,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   onDeleted,
 }) => {
   const { user } = useAuth();
+  const routeBase = useRouteBase();
   const locale = user?.language?.toLowerCase().startsWith('ru') ? 'ru-RU' : 'en-US';
 
   const [displayItem, setDisplayItem] = useState(item);
@@ -650,7 +652,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
 
   const handleShare = useCallback(async () => {
     const anchorId = newsId ? `news-${newsId}` : `feed-item-${displayItem.id}`;
-    const url = `${window.location.origin}/app/feed#${anchorId}`;
+    const url = `${window.location.origin}${routeBase}/feed#${anchorId}`;
 
     try {
       await navigator.clipboard.writeText(url);
@@ -663,7 +665,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     } catch (err) {
       notifyApiError(err, 'Не удалось скопировать ссылку');
     }
-  }, [displayItem.id, newsId]);
+  }, [displayItem.id, newsId, routeBase]);
 
   const manageItems = useMemo<DropdownMenuItem[]>(
     () => [
@@ -736,7 +738,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 imgUrl={!isDeletedNode ? profile?.avatarUrl ?? undefined : undefined}
               />
               {username ? (
-                <Link to={`/app/profile/user/${encodeURIComponent(username)}`} className="feed-item__author-link">
+                <Link to={`${routeBase}/profile/user/${encodeURIComponent(username)}`} className="feed-item__author-link">
                   <Text variant="caption-2">{displayName}</Text>
                 </Link>
               ) : (
@@ -871,7 +873,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         <div className="feed-item__header">
           <div className="feed-item__header-main">
             {authorUsername ? (
-              <Link to={`/app/profile/user/${encodeURIComponent(authorUsername)}`} className="feed-item__author-link">
+              <Link to={`${routeBase}/profile/user/${encodeURIComponent(authorUsername)}`} className="feed-item__author-link">
                 <Text variant="subheader-2" className="feed-item__author">
                   {authorName}
                 </Text>
@@ -1079,7 +1081,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                         <span className="feed-reaction-details__emoji">{row.emoji}</span>
                         <div className="feed-reaction-details__meta">
                           {username ? (
-                            <Link to={`/app/profile/user/${encodeURIComponent(username)}`} className="feed-item__author-link">
+                            <Link to={`${routeBase}/profile/user/${encodeURIComponent(username)}`} className="feed-item__author-link">
                               <Text variant="caption-2">{displayName}</Text>
                             </Link>
                           ) : (

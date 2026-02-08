@@ -163,3 +163,116 @@ class TenantAdminAuditEventOut(Schema):
 TenantAdminRoleOut.model_rebuild()
 TenantAdminBindingOut.model_rebuild()
 TenantAdminAuditEventOut.model_rebuild()
+
+
+# ---------------------------------------------------------------------------
+# Rollout / Feature Flag / Experiment schemas
+# ---------------------------------------------------------------------------
+
+RolloutTargetType = Literal["all", "percent", "user_list", "tenant_list"]
+
+
+class FeatureFlagIn(Schema):
+    key: str
+    tenant_id: uuid.UUID | None = None
+    description: str = ""
+    enabled: bool = False
+    target_type: RolloutTargetType = "all"
+    target_value: dict = {}
+
+
+class FeatureFlagOut(Schema):
+    id: uuid.UUID
+    key: str
+    tenant_id: uuid.UUID | None = None
+    description: str
+    enabled: bool
+    target_type: RolloutTargetType
+    target_value: dict
+    created_at: datetime
+    updated_at: datetime
+    created_by: uuid.UUID | None = None
+
+
+class FeatureFlagPatchIn(Schema):
+    description: str | None = None
+    enabled: bool | None = None
+    target_type: RolloutTargetType | None = None
+    target_value: dict | None = None
+
+
+class ExperimentVariantIn(Schema):
+    name: str
+    weight: int
+
+
+class ExperimentIn(Schema):
+    key: str
+    tenant_id: uuid.UUID | None = None
+    description: str = ""
+    enabled: bool = False
+    variants: list[ExperimentVariantIn] = []
+    target_type: RolloutTargetType = "all"
+    target_value: dict = {}
+
+
+class ExperimentOut(Schema):
+    id: uuid.UUID
+    key: str
+    tenant_id: uuid.UUID | None = None
+    description: str
+    enabled: bool
+    variants: list[dict]
+    target_type: RolloutTargetType
+    target_value: dict
+    created_at: datetime
+    updated_at: datetime
+    created_by: uuid.UUID | None = None
+
+
+class ExperimentPatchIn(Schema):
+    description: str | None = None
+    enabled: bool | None = None
+    variants: list[ExperimentVariantIn] | None = None
+    target_type: RolloutTargetType | None = None
+    target_value: dict | None = None
+
+
+class KillSwitchIn(Schema):
+    feature_key: str
+    tenant_id: uuid.UUID | None = None
+    reason: str = ""
+
+
+class KillSwitchOut(Schema):
+    id: uuid.UUID
+    feature_key: str
+    tenant_id: uuid.UUID | None = None
+    active: bool
+    reason: str
+    activated_at: datetime
+    activated_by: uuid.UUID | None = None
+
+
+class RolloutEvaluateIn(Schema):
+    """Input for evaluating all feature flags and experiments for a user."""
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    user_key_hash: str = ""
+
+
+class RolloutEvaluateOut(Schema):
+    """Result of evaluating rollout for a user."""
+    feature_flags: dict[str, bool]
+    experiments: dict[str, str]
+
+
+class RolloutAuditLogOut(Schema):
+    id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
+    performed_by: uuid.UUID
+    action: str
+    entity_type: str
+    entity_id: uuid.UUID
+    changes: dict
+    created_at: datetime

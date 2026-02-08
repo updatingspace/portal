@@ -3,6 +3,7 @@ import { Card, Button, Icon, Label, Text } from '@gravity-ui/uikit';
 import { Pencil, MapPin, Person, Eye, Clock, ArrowRight, Calendar } from '@gravity-ui/icons';
 import { Link } from 'react-router-dom';
 import type { EventWithCounts } from '../../../features/events';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 
 type Variant = 'list' | 'tile';
 
@@ -52,6 +53,7 @@ export const EventCard: React.FC<EventCardProps> = ({
     showActions = true,
     variant = 'list',
 }) => {
+    const routeBase = useRouteBase();
     const startsAt = useMemo(() => getSafeDate(event.startsAt), [event.startsAt]);
     const endsAt = useMemo(() => getSafeDate(event.endsAt), [event.endsAt]);
     const locale = typeof navigator !== 'undefined' ? navigator.language : 'ru-RU';
@@ -108,7 +110,7 @@ export const EventCard: React.FC<EventCardProps> = ({
             ].join(' ')}
         >
             <Link
-                to={`/app/events/${event.id}`}
+                to={`${routeBase}/events/${event.id}`}
                 className="absolute inset-0 z-0"
                 aria-label={`Открыть мероприятие: ${event.title}`}
             />
@@ -245,7 +247,7 @@ export const EventCard: React.FC<EventCardProps> = ({
 
                 {showActions && (
                     <div className="flex-shrink-0 flex items-start gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <Link to={`/app/events/${event.id}`} onClick={(e) => e.stopPropagation()}>
+                        <Link to={`${routeBase}/events/${event.id}`} onClick={(e) => e.stopPropagation()}>
                             <Button view="flat" size="m" title="Подробнее">
                                 <Icon data={ArrowRight} />
                             </Button>

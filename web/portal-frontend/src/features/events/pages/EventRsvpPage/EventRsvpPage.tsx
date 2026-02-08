@@ -33,6 +33,7 @@ import {renderYfmHtml} from '../../utils/yfm';
 import {EventRsvpCounts} from '../../components/EventRsvpCounts';
 
 type RsvpValue = 'going' | 'interested' | 'not_going';
+type IconData = React.ComponentProps<typeof Icon>['data'];
 
 type Props = {
   event: EventWithCounts;
@@ -113,7 +114,7 @@ function formatDuration(startsAt?: string | null, endsAt?: string | null) {
   return parts.join(' ');
 }
 
-const IconAction: React.FC<{icon: any; tooltip: string; onClick?: () => void}> = ({icon, tooltip, onClick}) => (
+const IconAction: React.FC<{icon: IconData; tooltip: string; onClick?: () => void}> = ({icon, tooltip, onClick}) => (
   <Tooltip content={tooltip} placement="bottom">
     <Button
       view="flat"

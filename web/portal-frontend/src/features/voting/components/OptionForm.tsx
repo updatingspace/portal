@@ -16,8 +16,13 @@ export const OptionForm: React.FC<OptionFormProps> = ({
   const [description, setDescription] = useState(initialData.description || '');
   const [mediaUrl, setMediaUrl] = useState(initialData.media_url || '');
   const [gameId, setGameId] = useState(initialData.game_id || '');
+  const onChangeRef = React.useRef(onChange);
 
-  const handleChange = () => {
+  React.useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  const handleChange = React.useCallback(() => {
     const data: OptionCreatePayload = {
       title,
       description: description || undefined,
@@ -25,15 +30,15 @@ export const OptionForm: React.FC<OptionFormProps> = ({
       game_id: gameId || undefined,
     };
     
-    if (onChange) {
-      onChange(data);
+    if (onChangeRef.current) {
+      onChangeRef.current(data);
     }
-  };
+  }, [description, gameId, mediaUrl, title]);
 
   // Call onChange when any field changes
   React.useEffect(() => {
     handleChange();
-  }, [title, description, mediaUrl, gameId, onChange]);
+  }, [handleChange]);
 
   return (
     <div className="voting-form">

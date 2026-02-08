@@ -22,7 +22,6 @@ import { RateLimitError, isRateLimitError } from '../api/votingApi';
 import {
     createPaginatedPolls,
     createPollInfo,
-    createVote,
     createVotesList,
     createVoteCastPayload,
     createPoll,

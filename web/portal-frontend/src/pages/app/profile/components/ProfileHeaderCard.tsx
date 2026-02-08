@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Avatar, Button, Card, DropdownMenu, Label, Text, type DropdownMenuItem } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
+import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
 import { toaster } from '../../../../toaster';
 import type { ProfileOwnerVM } from '../model/types';
 import { profileHubStrings } from '../strings/ru';
@@ -18,6 +19,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   canEditProfile,
 }) => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const [expanded, setExpanded] = useState(false);
 
   const initials = useMemo(() => owner.tenantDisplayName.charAt(0).toUpperCase() || 'U', [owner.tenantDisplayName]);
@@ -26,7 +28,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   const bioText = collapsed ? `${bio.slice(0, 120)}...` : bio;
 
   const copyProfileLink = async () => {
-    const href = typeof window === 'undefined' ? '/app/profile' : window.location.href;
+    const href = typeof window === 'undefined' ? `${routeBase}/profile` : window.location.href;
     try {
       await navigator.clipboard.writeText(href);
       toaster.add({
@@ -54,7 +56,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
       ? [
           {
             text: profileHubStrings.common.privacySettings,
-            action: () => navigate('/app/settings'),
+            action: () => navigate(`${routeBase}/settings`),
           } satisfies DropdownMenuItem,
         ]
       : []),
@@ -81,7 +83,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
       </div>
       <div className="profile-hub__header-actions">
         {isSelf && canEditProfile && (
-          <Button view="outlined" size="m" onClick={() => navigate('/app/settings')}>
+          <Button view="outlined" size="m" onClick={() => navigate(`${routeBase}/settings`)}>
             {profileHubStrings.common.editProfile}
           </Button>
         )}

@@ -55,6 +55,7 @@ import {
   VISIBILITY_META,
   formatDateTime,
 } from '../../../../features/voting/utils/pollMeta';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { getLocale } from '@/shared/lib/locale';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { logger } from '../../../../utils/logger';
@@ -84,6 +85,7 @@ const PARTICIPANT_OPTIONS = [
 export const PollManagePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const location = useLocation();
   const { user } = useAuth();
   const pollId = id ?? '';
@@ -165,7 +167,7 @@ export const PollManagePage: React.FC = () => {
       starts_at: poll.starts_at ?? null,
       ends_at: poll.ends_at ?? null,
     });
-  }, [pollInfo?.poll.id, pollInfo?.poll.updated_at, settingsDirty]);
+  }, [pollInfo, settingsDirty]);
 
   useEffect(() => {
     if (!pollInfo) return;
@@ -178,10 +180,10 @@ export const PollManagePage: React.FC = () => {
         status: pollInfo.poll.status,
       },
     });
-  }, [pollInfo?.poll.id, pollInfo?.poll.status]);
+  }, [pollInfo]);
 
   const poll = pollInfo?.poll;
-  const nominations = pollInfo?.nominations ?? [];
+  const nominations = useMemo(() => pollInfo?.nominations ?? [], [pollInfo?.nominations]);
 
   const sortedNominations = useMemo(() => {
     return [...nominations].sort((a, b) => a.sort_order - b.sort_order);
@@ -277,7 +279,7 @@ export const PollManagePage: React.FC = () => {
           onSuccess: () => {
             setConfirmAction(null);
             toaster.add({ name: 'poll-deleted', title: 'Опрос удалён', theme: 'success' });
-            navigate('/app/voting');
+            navigate(`${routeBase}/voting`);
           },
           onError: (err) => {
             setConfirmAction(null);
@@ -602,10 +604,10 @@ export const PollManagePage: React.FC = () => {
         description="Черновик → вопросы → участники → публикация. После публикации вопросы блокируются."
         actions={
           <>
-            <Button view="outlined" onClick={() => navigate('/app/voting')}>К списку</Button>
-            <Button view="outlined" onClick={() => navigate(`/app/voting/${pollId}`)}>Просмотр</Button>
+            <Button view="outlined" onClick={() => navigate(`${routeBase}/voting`)}>К списку</Button>
+            <Button view="outlined" onClick={() => navigate(`${routeBase}/voting/${pollId}`)}>Просмотр</Button>
             {poll.status === 'closed' ? (
-              <Button view="outlined" onClick={() => navigate(`/app/voting/${pollId}/results`)}>Результаты</Button>
+              <Button view="outlined" onClick={() => navigate(`${routeBase}/voting/${pollId}/results`)}>Результаты</Button>
             ) : null}
             <Button
               view="outlined-danger"

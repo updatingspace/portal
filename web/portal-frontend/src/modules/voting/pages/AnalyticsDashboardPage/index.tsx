@@ -4,6 +4,7 @@ import { Button, Card, Icon, Text } from '@gravity-ui/uikit';
 import { ChartBar, ChartColumn, ChartLine } from '@gravity-ui/icons';
 
 import { usePolls } from '../../../../features/voting';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { logger } from '../../../../utils/logger';
 import {
   VotingEmptyState,
@@ -22,9 +23,10 @@ const getVoteCount = (settings: Record<string, unknown>) => {
 };
 
 export const AnalyticsDashboardPage: React.FC = () => {
+  const routeBase = useRouteBase();
   const { data: pollsData, isLoading, isError, error, refetch } = usePolls({ status: 'closed' });
 
-  const polls = pollsData?.items || [];
+  const polls = useMemo(() => pollsData?.items ?? [], [pollsData?.items]);
 
   const pollStats = useMemo(() => {
     const totalPolls = polls.length;
@@ -44,7 +46,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
         totalPolls: pollsData.pagination.total,
       },
     });
-  }, [pollsData?.pagination.total]);
+  }, [pollsData]);
 
   if (isLoading) {
     return <VotingLoadingState text="Загружаем аналитику…" />;
@@ -65,7 +67,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
       title="Аналитика голосований"
       description="Итоги завершённых опросов и вовлечённость участников."
       actions={
-        <Link to="/app/voting">
+        <Link to={`${routeBase}/voting`}>
           <Button view="outlined">К списку</Button>
         </Link>
       }
@@ -99,7 +101,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
           title="Нет завершённых опросов"
           message="Когда появятся закрытые кампании, здесь отобразится аналитика."
           action={
-            <Link to="/app/voting/create">
+            <Link to={`${routeBase}/voting/create`}>
               <Button view="action">Создать опрос</Button>
             </Link>
           }
@@ -121,7 +123,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                   </Text>
                   <div className="voting-v2__toolbar" style={{ marginTop: 8 }}>
                     <span className="voting-v2__small voting-v2__muted">Голосов: {votes}</span>
-                    <Link to={`/app/voting/${poll.id}/results`}>
+                    <Link to={`${routeBase}/voting/${poll.id}/results`}>
                       <Button view="flat">Результаты</Button>
                     </Link>
                   </div>

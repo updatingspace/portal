@@ -5,11 +5,13 @@ import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import { AppLayout } from '../widgets/app-shell/AppLayout';
 import { RequireCapability } from './guards/RequireCapability';
 import { RequireSession } from './guards/RequireSession';
+import { TenantGate } from './guards/TenantGate';
 import { PublicLayout } from './layout/PublicLayout';
 
 const LandingPage = lazy(() => import('../pages/landing/Page').then((mod) => ({ default: mod.LandingPage })));
 const LoginPage = lazy(() => import('../pages/login/Page').then((mod) => ({ default: mod.LoginPage })));
 const InvitePage = lazy(() => import('../pages/invite/Page').then((mod) => ({ default: mod.InvitePage })));
+const TenantChooserPage = lazy(() => import('../pages/tenant/TenantChooserPage').then((mod) => ({ default: mod.TenantChooserPage })));
 const DashboardPage = lazy(() => import('../pages/app/dashboard/Page').then((mod) => ({ default: mod.DashboardPage })));
 const FeedPage = lazy(() => import('../pages/app/FeedPage').then((mod) => ({ default: mod.FeedPage })));
 const EventsPage = lazy(() => import('../modules/events/pages/EventsPage').then((mod) => ({ default: mod.EventsPage })));
@@ -59,10 +61,76 @@ const NotFoundPage = lazy(() => import('../pages/NotFoundPage').then((mod) => ({
 
 const LegacyVotingRedirect = () => {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={id ? `/app/voting/${id}` : '/app/voting'} replace />;
+  return <Navigate to={id ? `/choose-tenant` : '/choose-tenant'} replace />;
 };
 
+/**
+ * Redirect /app/* → /choose-tenant.
+ * Active tenant will be picked there (or auto-routed to /t/:slug/).
+ */
+const LegacyAppRedirect = () => {
+  return <Navigate to="/choose-tenant" replace />;
+};
+
+/**
+ * Shared app routes used both under /app/* (legacy) and /t/:tenantSlug/* (new).
+ * Extracted to avoid duplication.
+ */
+const appChildRoutes = [
+  { index: true, element: <DashboardPage /> },
+  {
+    path: 'feed',
+    element: (
+      <RequireCapability required="activity.feed.read">
+        <FeedPage />
+      </RequireCapability>
+    ),
+  },
+  {
+    path: 'events',
+    element: (
+      <RequireCapability required={['events.event.read', 'events.event.create']} mode="any">
+        <EventsPage />
+      </RequireCapability>
+    ),
+  },
+  { path: 'events/create', element: <CreateEventPage /> },
+  { path: 'events/:id', element: <EventPage /> },
+  { path: 'events/:id/edit', element: <EditEventPage /> },
+  { path: 'communities', element: <PlaceholderPage title="Communities" /> },
+  { path: 'teams', element: <PlaceholderPage title="Teams" /> },
+  { path: 'voting', element: <VotingPage /> },
+  { path: 'voting/create', element: <PollCreatePage /> },
+  { path: 'voting/templates', element: <PollTemplatesPage /> },
+  { path: 'voting/analytics', element: <VotingAnalyticsPage /> },
+  { path: 'voting/:id', element: <VotingCampaignPage /> },
+  { path: 'voting/:id/manage', element: <PollManagePage /> },
+  { path: 'voting/:id/results', element: <PollResultsPage /> },
+  { path: 'profile/user/:username', element: <UserProfilePage /> },
+  { path: 'profile', element: <ProfilePage /> },
+  { path: 'profile/following', element: <FollowingListPage /> },
+  { path: 'profile/followers', element: <FollowersListPage /> },
+  { path: 'profile/communities', element: <CommunitiesListPage /> },
+  { path: 'profile/achievements', element: <AchievementsListPage /> },
+  { path: 'profile/friends', element: <FriendsListPage /> },
+  { path: 'settings', element: <SettingsPage /> },
+  { path: 'admin', element: <AdminPage /> },
+  {
+    path: 'tenant-admin',
+    element: (
+      <RequireCapability required="portal.roles.read">
+        <TenantAdminPage />
+      </RequireCapability>
+    ),
+  },
+  { path: 'gamification', element: <GamificationDashboardPage /> },
+  { path: 'gamification/achievements/new', element: <AchievementFormPage /> },
+  { path: 'gamification/achievements/:id/edit', element: <AchievementFormPage /> },
+  { path: 'gamification/achievements/:id', element: <AchievementDetailPage /> },
+];
+
 const routeConfig = [
+  // Public routes (no tenant, no auth)
   {
     element: <PublicLayout />,
     children: [
@@ -71,75 +139,42 @@ const routeConfig = [
       { path: '/invite/:token', element: <InvitePage /> },
     ],
   },
+  // Tenant chooser (auth required, tenantless)
+  {
+    element: <RequireSession />,
+    children: [
+      { path: '/choose-tenant', element: <TenantChooserPage /> },
+    ],
+  },
+  // Path-based tenant routes: /t/:tenantSlug/*
   {
     element: <RequireSession />,
     children: [
       {
-        element: <AppLayout />,
+        path: '/t/:tenantSlug',
+        element: <TenantGate />,
         children: [
-          { path: '/app', element: <DashboardPage /> },
           {
-            path: '/app/feed',
-            element: (
-              <RequireCapability required="activity.feed.read">
-                <FeedPage />
-              </RequireCapability>
-            ),
+            element: <AppLayout />,
+            children: appChildRoutes,
           },
-          {
-            path: '/app/events',
-            element: (
-              <RequireCapability required={['events.event.read', 'events.event.create']} mode="any">
-                <EventsPage />
-              </RequireCapability>
-            ),
-          },
-          { path: '/app/events/create', element: <CreateEventPage /> },
-          { path: '/app/events/:id', element: <EventPage /> },
-          { path: '/app/events/:id/edit', element: <EditEventPage /> },
-          { path: '/app/communities', element: <PlaceholderPage title="Communities" /> },
-          { path: '/app/teams', element: <PlaceholderPage title="Teams" /> },
-          { path: '/app/voting', element: <VotingPage /> },
-          { path: '/app/voting/create', element: <PollCreatePage /> },
-          { path: '/app/voting/templates', element: <PollTemplatesPage /> },
-          { path: '/app/voting/analytics', element: <VotingAnalyticsPage /> },
-          { path: '/app/voting/:id', element: <VotingCampaignPage /> },
-          { path: '/app/voting/:id/manage', element: <PollManagePage /> },
-          { path: '/app/voting/:id/results', element: <PollResultsPage /> },
-          { path: '/app/profile/user/:username', element: <UserProfilePage /> },
-          { path: '/app/profile', element: <ProfilePage /> },
-          { path: '/app/profile/following', element: <FollowingListPage /> },
-          { path: '/app/profile/followers', element: <FollowersListPage /> },
-          { path: '/app/profile/communities', element: <CommunitiesListPage /> },
-          { path: '/app/profile/achievements', element: <AchievementsListPage /> },
-          { path: '/app/profile/friends', element: <FriendsListPage /> },
-          { path: '/app/settings', element: <SettingsPage /> },
-          { path: '/app/admin', element: <AdminPage /> },
-          {
-            path: '/app/tenant-admin',
-            element: (
-              <RequireCapability required="portal.roles.read">
-                <TenantAdminPage />
-              </RequireCapability>
-            ),
-          },
-          { path: '/app/gamification', element: <GamificationDashboardPage /> },
-          { path: '/app/gamification/achievements/new', element: <AchievementFormPage /> },
-          { path: '/app/gamification/achievements/:id/edit', element: <AchievementFormPage /> },
-          { path: '/app/gamification/achievements/:id', element: <AchievementDetailPage /> },
         ],
       },
     ],
   },
-  { path: '/feed', element: <Navigate to="/app/feed" replace /> },
-  { path: '/events', element: <Navigate to="/app/events" replace /> },
-  { path: '/events/:id', element: <Navigate to="/app/events/:id" replace /> },
-  { path: '/voting', element: <Navigate to="/app/voting" replace /> },
+  // Legacy /app/* routes → redirect to tenant chooser
+  { path: '/app/*', element: <LegacyAppRedirect /> },
+  { path: '/app', element: <LegacyAppRedirect /> },
+  // Legacy redirects → tenant chooser
+  { path: '/feed', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/events', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/events/:id', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/voting', element: <Navigate to="/choose-tenant" replace /> },
   { path: '/voting/:id', element: <LegacyVotingRedirect /> },
-  { path: '/me', element: <Navigate to="/app/profile" replace /> },
-  { path: '/profile', element: <Navigate to="/app/profile" replace /> },
-  { path: '/admin', element: <Navigate to="/app/admin" replace /> },
-  { path: '/admin/applications', element: <Navigate to="/app/admin" replace /> },
+  { path: '/me', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/profile', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/admin', element: <Navigate to="/choose-tenant" replace /> },
+  { path: '/admin/applications', element: <Navigate to="/choose-tenant" replace /> },
   { path: '*', element: <NotFoundPage /> },
 ];
 

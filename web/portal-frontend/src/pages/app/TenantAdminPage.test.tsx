@@ -6,20 +6,19 @@ import { TenantAdminPage } from './TenantAdminPage';
 
 vi.mock('@gravity-ui/uikit', () => ({
   Avatar: (props: React.ComponentProps<'div'>) => <div {...props} />,
-  Button: ({ loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
-    <button {...props} />
-  ),
+  Button: (props: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
   Card: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
   Icon: () => <span />,
   Label: (props: React.ComponentProps<'span'>) => <span {...props} />,
   Loader: () => <div data-testid="loader" />,
-  Select: ({ onUpdate, value, ...props }: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
+  Select: (props: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
     <div data-testid="select" {...props} />
   ),
   Switch: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Table: (props: React.ComponentProps<'div'>) => <div {...props} />,
   TextInput: ({ onUpdate, ...props }: React.ComponentProps<'input'> & { onUpdate?: (value: string) => void }) => {
     const { startContent, ...rest } = props as React.ComponentProps<'input'> & { startContent?: React.ReactNode };
+    void startContent;
     return <input onChange={(event) => onUpdate?.(event.target.value)} {...rest} />;
   },
 }));

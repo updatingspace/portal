@@ -7,6 +7,7 @@ import { can } from '../../../features/rbac/can';
 import { PollCard } from '../../../features/voting/components/PollCard';
 import { isRateLimitError, usePolls } from '../../../features/voting';
 import type { Poll, PollStatus } from '../../../features/voting';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { getLocale } from '@/shared/lib/locale';
 import { logger } from '../../../utils/logger';
 import {
@@ -46,6 +47,7 @@ export const PollsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const { user } = useAuth();
+  const routeBase = useRouteBase();
 
   const offset = (page - 1) * PAGE_SIZE;
   const effectiveStatus = statusFilter === 'all' ? undefined : (statusFilter as PollStatus);
@@ -66,7 +68,7 @@ export const PollsPage: React.FC = () => {
     status: effectiveStatus,
   });
 
-  const polls = data?.items ?? [];
+  const polls = useMemo(() => data?.items ?? [], [data?.items]);
   const filteredPolls = useMemo(() => filterByQuery(polls, searchQuery), [polls, searchQuery]);
   const pagination = data?.pagination;
   const totalPages = pagination ? Math.ceil(pagination.total / PAGE_SIZE) : 1;
@@ -82,7 +84,7 @@ export const PollsPage: React.FC = () => {
         total: data.pagination.total,
       },
     });
-  }, [data?.pagination.total, statusFilter]);
+  }, [data, statusFilter]);
 
   const handlePageChange: React.ComponentProps<typeof Pagination>['onUpdate'] = (newPage) => {
     setPage(newPage);
@@ -132,14 +134,14 @@ export const PollsPage: React.FC = () => {
       actions={
         <>
           {canManage && (
-            <Link to="/app/voting/create">
+            <Link to={`${routeBase}/voting/create`}>
               <Button view="action">Создать опрос</Button>
             </Link>
           )}
-          <Link to="/app/voting/templates">
+          <Link to={`${routeBase}/voting/templates`}>
             <Button view="outlined">Шаблоны</Button>
           </Link>
-          <Link to="/app/voting/analytics">
+          <Link to={`${routeBase}/voting/analytics`}>
             <Button view="outlined">Аналитика</Button>
           </Link>
         </>
@@ -174,11 +176,11 @@ export const PollsPage: React.FC = () => {
           action={
             <div className="voting-v2__toolbar-right">
               {canManage && (
-                <Link to="/app/voting/create">
+                <Link to={`${routeBase}/voting/create`}>
                   <Button view="action">Создать опрос</Button>
                 </Link>
               )}
-              <Link to="/app/voting/templates">
+              <Link to={`${routeBase}/voting/templates`}>
                 <Button view="outlined">Открыть шаблоны</Button>
               </Link>
             </div>
@@ -190,8 +192,8 @@ export const PollsPage: React.FC = () => {
             {filteredPolls.map((poll) => {
               const primaryLink =
                 poll.status === 'draft' && canManage
-                  ? `/app/voting/${poll.id}/manage`
-                  : `/app/voting/${poll.id}`;
+                  ? `${routeBase}/voting/${poll.id}/manage`
+                  : `${routeBase}/voting/${poll.id}`;
               const primaryLabel = poll.status === 'draft' && canManage ? 'Настроить' : 'Открыть';
               const showManage = canManage && poll.status !== 'draft';
               const showResults = poll.status === 'closed';
@@ -209,14 +211,14 @@ export const PollsPage: React.FC = () => {
                         </Button>
                       </Link>
                       {showManage && (
-                        <Link to={`/app/voting/${poll.id}/manage`}>
+                        <Link to={`${routeBase}/voting/${poll.id}/manage`}>
                           <Button view="outlined" size="m">
                             Управление
                           </Button>
                         </Link>
                       )}
                       {showResults && (
-                        <Link to={`/app/voting/${poll.id}/results`}>
+                        <Link to={`${routeBase}/voting/${poll.id}/results`}>
                           <Button view="outlined" size="m">
                             Результаты
                           </Button>

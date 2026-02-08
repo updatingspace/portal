@@ -24,7 +24,6 @@ import {
 } from './useActivity';
 import {
   createActivityFeedV2,
-  createActivityFeedV2Empty,
   createAccountLinks,
   createSources,
   createActivityEvents,
