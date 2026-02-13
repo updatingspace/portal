@@ -1,4 +1,5 @@
 import uuid
+from uuid import UUID
 
 from django.db import transaction
 from django.db.models import Q
@@ -8,7 +9,9 @@ from ninja.errors import HttpError
 
 from core.schemas import ErrorOut
 from portal.access import AccessService
+from portal.audit import log_audit_event as _log_audit
 from portal.context import PortalContext
+from portal.dsar import erase_user_data, export_user_data
 from portal.enums import TeamStatus, Visibility
 from portal.models import (
     Community,
@@ -47,6 +50,19 @@ def _ctx(request) -> PortalContext:
     return ctx
 
 
+def _parse_uuid(value: str, *, code: str, message: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except Exception as exc:
+        raise HttpError(400, error_payload(code, message)) from exc
+
+
+def _dsar_audit_target(ctx: PortalContext, target_user_id: UUID) -> tuple[str, str]:
+    if str(ctx.user_id) == str(target_user_id):
+        return "self", "self"
+    return "delegated", str(target_user_id)
+
+
 def _require_community_member(tenant, community_id, user_id) -> None:
     if not CommunityMembership.objects.filter(
         tenant=tenant, community_id=community_id, user_id=user_id
@@ -76,6 +92,14 @@ def _check_any_permissions(
             continue
     if last_error:
         raise last_error
+
+
+def _ensure_dsar_subject(ctx: PortalContext, target_user_id: UUID) -> None:
+    if ctx.user_id == target_user_id:
+        return
+    if "system_admin" in ctx.master_flags:
+        return
+    raise HttpError(403, error_payload("FORBIDDEN", "DSAR access denied"))
 
 
 @router.get(
@@ -143,6 +167,20 @@ def portal_me_patch(request, payload: PortalProfileUpdateIn = REQUIRED_BODY):
         updates["bio"] = payload.bio
     PortalProfile.objects.filter(id=profile.id).update(**updates)
     profile.refresh_from_db()
+
+    # Audit: log which fields were changed (no PII values)
+    changed_fields = sorted(k for k in updates if k != "updated_at")
+    if changed_fields:
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="profile.updated",
+            target_type="portal_profile",
+            target_id=str(profile.id),
+            metadata={"changed_fields": changed_fields},
+            request_id=ctx.request_id,
+        )
+
     return PortalProfileOut(
         tenant_id=profile.tenant_id,
         user_id=profile.user_id,
@@ -154,6 +192,63 @@ def portal_me_patch(request, payload: PortalProfileUpdateIn = REQUIRED_BODY):
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )
+
+
+@router.get(
+    "/portal/internal/dsar/users/{target_user_id}/export",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut, 400: ErrorOut},
+    operation_id="portal_dsar_export",
+)
+def portal_dsar_export(request, target_user_id: str):
+    ctx = _ctx(request)
+    tenant = ensure_tenant(ctx)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, parsed_user_id)
+    payload = export_user_data(tenant_id=tenant.id, user_id=parsed_user_id)
+    _log_audit(
+        tenant_id=tenant.id,
+        actor_user_id=ctx.user_id,
+        action="dsar.exported",
+        target_type="dsar_request",
+        target_id=audit_target_id,
+        metadata={"subject_scope": subject_scope},
+        request_id=ctx.request_id,
+    )
+    return payload
+
+
+@router.post(
+    "/portal/internal/dsar/users/{target_user_id}/erase",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut, 400: ErrorOut},
+    operation_id="portal_dsar_erase",
+)
+@transaction.atomic
+def portal_dsar_erase(request, target_user_id: str):
+    ctx = _ctx(request)
+    tenant = ensure_tenant(ctx)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, parsed_user_id)
+    payload = erase_user_data(tenant_id=tenant.id, user_id=parsed_user_id)
+    _log_audit(
+        tenant_id=tenant.id,
+        actor_user_id=ctx.user_id,
+        action="dsar.erased",
+        target_type="dsar_request",
+        target_id=audit_target_id,
+        metadata={"subject_scope": subject_scope},
+        request_id=ctx.request_id,
+    )
+    return payload
 
 
 @router.get(
