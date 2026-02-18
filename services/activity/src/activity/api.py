@@ -6,9 +6,10 @@ import time
 import uuid
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from ninja import Body, Router
 from ninja.errors import HttpError
@@ -16,7 +17,9 @@ from ninja.errors import HttpError
 from activity import schemas
 from activity.connectors import install_connectors
 from activity.context import require_activity_context
+from activity.dsar import erase_user_data, export_user_data
 from activity.enums import ScopeType, Visibility
+from activity.audit import log_audit_event as _log_audit
 from activity.models import (
     AccountLink,
     ActivityEvent,
@@ -29,6 +32,7 @@ from activity.models import (
     uuid_from_str,
 )
 from activity.permissions import Permissions, has_permission, require_permission
+from activity.privacy import mask_for_api, mask_identifier
 from activity.media import (
     build_news_media_key,
     generate_download_url,
@@ -69,6 +73,21 @@ NEWS_ALLOWED_IMAGE_TYPES = {
     "image/webp",
     "image/gif",
 }
+
+
+def _ensure_dsar_subject(ctx, target_user_id: UUID) -> None:
+    if ctx.user_id == target_user_id:
+        return
+    if "system_admin" in ctx.master_flags:
+        return
+    raise HttpError(403, error_payload("FORBIDDEN", "DSAR access denied"))
+
+
+def _parse_uuid(value: str, *, code: str, message: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except Exception as exc:
+        raise HttpError(400, error_payload(code, message)) from exc
 
 
 def _serialize_event(item, tenant_id: uuid.UUID) -> schemas.ActivityEventOut:
@@ -113,6 +132,30 @@ def _serialize_event(item, tenant_id: uuid.UUID) -> schemas.ActivityEventOut:
         scope_id=item.scope_id,
         source_ref=item.source_ref,
     )
+
+
+def _serialize_account_link(item: AccountLink) -> schemas.AccountLinkOut:
+    settings_json = dict(item.settings_json or {})
+    settings_json.pop("_privacy", None)
+    return schemas.AccountLinkOut(
+        id=item.id,
+        tenant_id=item.tenant_id,
+        user_id=item.user_id,
+        source_id=item.source_id,
+        status=item.status,
+        settings_json=mask_for_api(
+            settings_json,
+            key="settings_json",
+        ),
+        external_identity_ref=mask_identifier(item.external_identity_ref),
+    )
+
+
+def _dsar_audit_target(ctx, target_user_id: UUID) -> tuple[str, str]:
+    if str(ctx.user_id) == str(target_user_id):
+        return "self", "self"
+    return "delegated", str(target_user_id)
+
 
 # Register built-in connectors once.
 install_connectors()
@@ -1125,6 +1168,63 @@ def feed_get_v2(
 
 
 @router.get(
+    "/feed/internal/dsar/users/{target_user_id}/export",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut, 400: ErrorOut},
+    summary="Export activity personal data",
+    operation_id="activity_dsar_export",
+)
+def dsar_export(request, target_user_id: str):
+    ctx = require_activity_context(request, require_user=True)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, parsed_user_id)
+    payload = export_user_data(tenant_id=ctx.tenant_id, user_id=parsed_user_id)
+    _log_audit(
+        tenant_id=ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        action="dsar.exported",
+        target_type="dsar_request",
+        target_id=audit_target_id,
+        metadata={"subject_scope": subject_scope},
+        request_id=ctx.request_id,
+    )
+    return payload
+
+
+@router.post(
+    "/feed/internal/dsar/users/{target_user_id}/erase",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut, 400: ErrorOut},
+    summary="Erase activity personal data",
+    operation_id="activity_dsar_erase",
+)
+def dsar_erase(request, target_user_id: str):
+    ctx = require_activity_context(request, require_user=True)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, parsed_user_id)
+    with transaction.atomic():
+        payload = erase_user_data(tenant_id=ctx.tenant_id, user_id=parsed_user_id)
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="dsar.erased",
+            target_type="dsar_request",
+            target_id=audit_target_id,
+            metadata={"subject_scope": subject_scope},
+            request_id=ctx.request_id,
+        )
+        return payload
+
+
+@router.get(
     "/games",
     response={200: list[schemas.GameOut]},
     summary="List games (tenant catalog)",
@@ -1181,14 +1281,16 @@ def account_links_create(
     ctx = require_activity_context(request, require_user=True)
     require_not_suspended(ctx)
     require_permission(ctx=ctx, permission_key=Permissions.SOURCES_LINK)
-    return create_account_link(
+    link = create_account_link(
         tenant_id=ctx.tenant_id,
         user_id=ctx.user_id,
         source_id=payload.source_id,
         status=payload.status,
         settings_json=payload.settings_json,
         external_identity_ref=payload.external_identity_ref,
+        request_id=ctx.request_id,
     )
+    return _serialize_account_link(link)
 
 
 @router.post(
