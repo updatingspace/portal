@@ -6,18 +6,24 @@ Uses mocks for permission checks.
 """
 from __future__ import annotations
 
+import importlib
 import hashlib
 import hmac
 import json
+import os
+import sys
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from io import StringIO
 from unittest import mock
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import Client, TestCase, override_settings
+from django.core.management import call_command
+from django.core.exceptions import ImproperlyConfigured
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 
@@ -666,3 +672,230 @@ class EventModelTests(TestCase):
         )
         # Event object has default __str__ which shows model name and pk
         self.assertIn(str(event.id), str(event))
+
+
+class EventsSettingsSecurityTests(SimpleTestCase):
+    @staticmethod
+    def _import_settings(env: dict[str, str]):
+        original_module = sys.modules.get("app.settings")
+        try:
+            sys.modules.pop("app.settings", None)
+            with patch.dict(os.environ, env, clear=True):
+                return importlib.import_module("app.settings")
+        finally:
+            sys.modules.pop("app.settings", None)
+            if original_module is not None:
+                sys.modules["app.settings"] = original_module
+
+    def test_requires_secret_key_in_strict_mode(self):
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            self._import_settings(
+                {
+                    "DJANGO_DEBUG": "False",
+                    "ALLOWED_HOSTS": "localhost,events",
+                    "DATABASE_URL": "postgres://user:pass@db:5432/events_db",
+                }
+            )
+
+        self.assertIn("DJANGO_SECRET_KEY", str(ctx.exception))
+
+    def test_rejects_wildcard_allowed_hosts_in_strict_mode(self):
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            self._import_settings(
+                {
+                    "DJANGO_DEBUG": "False",
+                    "DJANGO_SECRET_KEY": "test-secret",
+                    "ALLOWED_HOSTS": "*",
+                    "DATABASE_URL": "postgres://user:pass@db:5432/events_db",
+                }
+            )
+
+        self.assertIn("ALLOWED_HOSTS", str(ctx.exception))
+
+    def test_explicit_debug_escape_hatches_enable_local_defaults(self):
+        settings_module = self._import_settings(
+            {
+                "DJANGO_DEBUG": "True",
+                "DJANGO_ALLOW_INSECURE_DEFAULTS": "1",
+                "DJANGO_ALLOW_SQLITE": "1",
+            }
+        )
+
+        self.assertEqual(settings_module.SECRET_KEY, "events-secret")
+        self.assertEqual(settings_module.ALLOWED_HOSTS, ["*"])
+        self.assertEqual(
+            settings_module.DATABASES["default"]["ENGINE"],
+            "django.db.backends.sqlite3",
+        )
+        self.assertEqual(settings_module.X_FRAME_OPTIONS, "DENY")
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
+class EventsDsarApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = str(uuid.uuid4())
+        self.tenant_slug = "aef"
+        self.user_id = str(uuid.uuid4())
+        self.other_user_id = str(uuid.uuid4())
+
+        self.created_event = self.Event.objects.create(
+            tenant_id=self.tenant_id,
+            scope_type="TENANT",
+            scope_id=self.tenant_id,
+            title="Created Event",
+            description="Owned by user",
+            starts_at=timezone.now(),
+            ends_at=timezone.now(),
+            visibility="public",
+            created_by=self.user_id,
+        )
+        self.other_event = self.Event.objects.create(
+            tenant_id=self.tenant_id,
+            scope_type="TENANT",
+            scope_id=self.tenant_id,
+            title="Other Event",
+            description="Someone else",
+            starts_at=timezone.now(),
+            ends_at=timezone.now(),
+            visibility="public",
+            created_by=self.other_user_id,
+        )
+        self.rsvp = self.RSVP.objects.create(
+            tenant_id=self.tenant_id,
+            event=self.other_event,
+            user_id=self.user_id,
+            status="going",
+        )
+        self.attendance_self = self.Attendance.objects.create(
+            tenant_id=self.tenant_id,
+            event=self.other_event,
+            user_id=self.user_id,
+            marked_by=self.other_user_id,
+        )
+        self.attendance_marked = self.Attendance.objects.create(
+            tenant_id=self.tenant_id,
+            event=self.other_event,
+            user_id=self.other_user_id,
+            marked_by=self.user_id,
+        )
+        self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="event.created",
+            payload={
+                "event_id": str(self.created_event.id),
+                "created_by": self.user_id,
+            },
+        )
+        self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="event.rsvp.changed",
+            payload={
+                "event_id": str(self.other_event.id),
+                "user_id": self.user_id,
+            },
+        )
+
+    @property
+    def Event(self):
+        from django.apps import apps
+
+        return apps.get_model("events", "Event")
+
+    @property
+    def RSVP(self):
+        from django.apps import apps
+
+        return apps.get_model("events", "RSVP")
+
+    @property
+    def Attendance(self):
+        from django.apps import apps
+
+        return apps.get_model("events", "Attendance")
+
+    @property
+    def OutboxMessage(self):
+        from django.apps import apps
+
+        return apps.get_model("events", "OutboxMessage")
+
+    def test_dsar_export_returns_events_bundle(self):
+        path = f"/api/v1/events/internal/dsar/users/{self.user_id}/export"
+        response = self.client.get(
+            path,
+            **_headers(
+                method="GET",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["service"], "events")
+        self.assertEqual(len(data["events_created"]), 1)
+        self.assertEqual(len(data["rsvps"]), 1)
+        self.assertEqual(len(data["attendance"]), 2)
+        self.assertEqual(len(data["outbox"]), 2)
+
+    def test_dsar_erase_anonymizes_creator_and_deletes_user_rows(self):
+        path = f"/api/v1/events/internal/dsar/users/{self.user_id}/erase"
+        response = self.client.post(
+            path,
+            data=b"",
+            content_type="application/json",
+            **_headers(
+                method="POST",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.created_event.refresh_from_db()
+        self.attendance_marked.refresh_from_db()
+
+        anonymous_user_id = uuid.UUID(int=0)
+        self.assertEqual(self.created_event.created_by, anonymous_user_id)
+        self.assertFalse(self.RSVP.objects.filter(id=self.rsvp.id).exists())
+        self.assertFalse(self.Attendance.objects.filter(id=self.attendance_self.id).exists())
+        self.assertEqual(self.attendance_marked.marked_by, anonymous_user_id)
+
+        outbox_payloads = list(
+            self.OutboxMessage.objects.filter(tenant_id=self.tenant_id)
+            .order_by("event_type")
+            .values_list("payload", flat=True)
+        )
+        self.assertEqual(outbox_payloads[0]["created_by"], "[redacted]")
+        self.assertEqual(outbox_payloads[1]["user_id"], "[redacted]")
+
+    @override_settings(EVENTS_RETENTION_PUBLISHED_OUTBOX_DAYS=30)
+    def test_purge_retention_deletes_only_old_published_outbox_rows(self):
+        old_item = self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="event.updated",
+            payload={},
+            published_at=timezone.now() - timedelta(days=31),
+        )
+        recent_item = self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="event.updated",
+            payload={},
+            published_at=timezone.now() - timedelta(days=3),
+        )
+
+        call_command("purge_retention", stdout=StringIO())
+
+        self.assertFalse(self.OutboxMessage.objects.filter(id=old_item.id).exists())
+        self.assertTrue(self.OutboxMessage.objects.filter(id=recent_item.id).exists())
