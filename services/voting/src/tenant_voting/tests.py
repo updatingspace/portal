@@ -12,15 +12,22 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
+from io import StringIO
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from tenant_voting.models import (
     Nomination,
     Option,
+    OutboxMessage,
     Poll,
+    PollInvite,
+    PollParticipant,
     PollScopeType,
     PollStatus,
     PollVisibility,
@@ -558,3 +565,148 @@ class VotingApiMissingSecretTests(TestCase):
         }
         resp = client.get(POLLS_LIST, **hdrs)
         self.assertEqual(resp.status_code, 500)
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
+class VotingDsarApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = str(uuid.uuid4())
+        self.tenant_slug = "aef"
+        self.user_id = str(uuid.uuid4())
+        self.other_user_id = str(uuid.uuid4())
+
+        self.poll = Poll.objects.create(
+            tenant_id=self.tenant_id,
+            title="Owned Poll",
+            status=PollStatus.ACTIVE,
+            scope_type=PollScopeType.TENANT,
+            scope_id=self.tenant_id,
+            visibility=PollVisibility.PUBLIC,
+            created_by=self.user_id,
+        )
+        self.nomination = Nomination.objects.create(
+            poll=self.poll,
+            tenant_id=self.tenant_id,
+            title="Best Game",
+            sort_order=0,
+        )
+        self.option = Option.objects.create(
+            nomination=self.nomination,
+            tenant_id=self.tenant_id,
+            title="Game A",
+            sort_order=0,
+        )
+        self.vote = Vote.objects.create(
+            tenant_id=self.tenant_id,
+            poll=self.poll,
+            nomination=self.nomination,
+            option=self.option,
+            user_id=self.user_id,
+        )
+        self.participant = PollParticipant.objects.create(
+            tenant_id=self.tenant_id,
+            poll=self.poll,
+            user_id=self.user_id,
+            role="participant",
+        )
+        self.invite_received = PollInvite.objects.create(
+            tenant_id=self.tenant_id,
+            poll=self.poll,
+            user_id=self.user_id,
+            role="participant",
+            invited_by=uuid.UUID(self.other_user_id),
+        )
+        self.invite_sent = PollInvite.objects.create(
+            tenant_id=self.tenant_id,
+            poll=self.poll,
+            user_id=uuid.uuid4(),
+            role="participant",
+            invited_by=uuid.UUID(self.user_id),
+        )
+        OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="voting.vote.cast",
+            payload={
+                "vote_id": str(self.vote.id),
+                "user_id": self.user_id,
+            },
+        )
+
+    def test_dsar_export_returns_voting_bundle(self):
+        path = f"/api/v1/internal/dsar/users/{self.user_id}/export"
+        response = self.client.get(
+            path,
+            **_headers(
+                method="GET",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["service"], "voting")
+        self.assertEqual(len(data["polls_created"]), 1)
+        self.assertEqual(len(data["participants"]), 1)
+        self.assertEqual(len(data["invites_received"]), 1)
+        self.assertEqual(len(data["invites_sent"]), 1)
+        self.assertEqual(len(data["votes"]), 1)
+        self.assertEqual(len(data["outbox"]), 1)
+
+    def test_dsar_erase_anonymizes_creator_and_deletes_votes(self):
+        path = f"/api/v1/internal/dsar/users/{self.user_id}/erase"
+        response = self.client.post(
+            path,
+            data=b"",
+            content_type="application/json",
+            **_headers(
+                method="POST",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.poll.refresh_from_db()
+        self.invite_sent.refresh_from_db()
+
+        anonymous_user_id = uuid.UUID(int=0)
+        self.assertEqual(self.poll.created_by, anonymous_user_id)
+        self.assertFalse(Vote.objects.filter(id=self.vote.id).exists())
+        self.assertFalse(PollParticipant.objects.filter(id=self.participant.id).exists())
+        self.assertFalse(PollInvite.objects.filter(id=self.invite_received.id).exists())
+        self.assertEqual(self.invite_sent.invited_by, anonymous_user_id)
+
+        outbox_payload = OutboxMessage.objects.get(event_type="voting.vote.cast").payload
+        self.assertEqual(outbox_payload["user_id"], "[redacted]")
+
+    @override_settings(VOTING_RETENTION_PUBLISHED_OUTBOX_DAYS=30)
+    def test_purge_retention_deletes_only_old_published_outbox_rows(self):
+        old_item = OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="voting.vote.cast",
+            payload={},
+            published_at=timezone.now() - timedelta(days=31),
+        )
+        recent_item = OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="voting.vote.cast",
+            payload={},
+            published_at=timezone.now() - timedelta(days=2),
+        )
+
+        call_command("purge_retention", stdout=StringIO())
+
+        self.assertFalse(OutboxMessage.objects.filter(id=old_item.id).exists())
+        self.assertTrue(OutboxMessage.objects.filter(id=recent_item.id).exists())
