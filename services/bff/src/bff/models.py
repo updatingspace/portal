@@ -37,4 +37,7 @@ class BffSession(models.Model):
         ]
 
 
-__all__ = ["Tenant", "BffSession"]
+# Audit model lives in bff.audit but must be discoverable by Django.
+from bff.audit import BffAuditEvent  # noqa: E402, F401
+
+__all__ = ["Tenant", "BffSession", "BffAuditEvent"]
