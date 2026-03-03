@@ -1,10 +1,9 @@
-import { ApiError, apiBaseUrl, extractApiErrorMessage, request, requestResult } from '../api/client';
-export { ApiError } from '../api/client';
 import {
-  clearSessionToken,
-  getSessionToken,
-  setSessionToken,
-} from '../api/sessionToken';
+  ApiError,
+  request,
+  requestResult,
+} from '../api/client';
+export { ApiError } from '../api/client';
 
 export type AccountProfile = {
   username: string;
@@ -74,9 +73,6 @@ export type AvatarResponse = {
   avatar_gravatar_enabled?: boolean | null;
 };
 
-const toApiUrl = (path: string) =>
-  `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-
 const statusToKind = (status: number) => {
   if (status === 401) return 'unauthorized' as const;
   if (status === 403) return 'forbidden' as const;
@@ -85,25 +81,12 @@ const statusToKind = (status: number) => {
   return 'unknown' as const;
 };
 
-const parseErrorMessage = async (
-  response: Response,
-): Promise<{ message: string | null; details: unknown | null }> => {
-  try {
-    const data = await response.clone().json();
-    return { message: extractApiErrorMessage(data), details: data };
-  } catch {
-    /* ignore */
-  }
-  return { message: null, details: null };
-};
-
 type AuthResponseMeta = {
-  meta?: { session_token?: string | null } | null;
-  session_token?: string | null;
+  meta?: unknown | null;
 };
 
 export type HeadlessLoginResult =
-  | { ok: true; token: string; meta?: unknown; user?: AccountProfile | null }
+  | { ok: true; meta?: unknown; user?: AccountProfile | null }
   | { ok: false; code?: string; message?: string; retryAfterSeconds?: number };
 
 const extractRetryAfterSeconds = (details: unknown): number | undefined => {
@@ -115,6 +98,24 @@ const extractRetryAfterSeconds = (details: unknown): number | undefined => {
     if (!Number.isNaN(parsed)) return parsed;
   }
   return undefined;
+};
+
+const stripLegacySessionArtifacts = <T extends Record<string, unknown> | null | undefined>(
+  payload: T,
+): T => {
+  if (!payload) return payload;
+  const sanitized = { ...payload } as Record<string, unknown>;
+  delete sanitized.access_token;
+  delete sanitized.session_token;
+  delete sanitized.refresh_token;
+  if (sanitized.meta && typeof sanitized.meta === 'object') {
+    const meta = { ...(sanitized.meta as Record<string, unknown>) };
+    delete meta.access_token;
+    delete meta.session_token;
+    delete meta.refresh_token;
+    sanitized.meta = meta;
+  }
+  return sanitized as T;
 };
 
 export async function fetchFormToken(
@@ -133,7 +134,7 @@ export async function headlessLogin(
   recovery_code?: string,
   form_token?: string,
 ): Promise<HeadlessLoginResult> {
-  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
+  const res = await requestResult<Record<string, unknown> & { user?: AccountProfile | null }>(
     '/auth/login',
     {
       method: 'POST',
@@ -150,20 +151,11 @@ export async function headlessLogin(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
+  const sanitized = stripLegacySessionArtifacts(res.data);
   return {
     ok: true,
-    token,
-    meta: res.data?.meta ?? res.data,
-    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+    meta: sanitized,
+    user: (sanitized as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
 }
 
@@ -173,7 +165,7 @@ export async function headlessSignup(
   password: string,
   form_token?: string,
 ): Promise<HeadlessLoginResult> {
-  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
+  const res = await requestResult<Record<string, unknown> & { user?: AccountProfile | null }>(
     '/auth/signup',
     {
       method: 'POST',
@@ -195,30 +187,20 @@ export async function headlessSignup(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
+  const sanitized = stripLegacySessionArtifacts(res.data);
   return {
     ok: true,
-    token,
-    meta: res.data?.meta ?? res.data,
-    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+    meta: sanitized,
+    user: (sanitized as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
 }
 
 export async function me(): Promise<AccountProfile | null> {
-  const res = await requestResult<{ user: AccountProfile | null }>('/auth/me', {
+  const res = await requestResult<{ user: AccountProfile | null }>('/account/me', {
     skipAuthClear: true,
   });
   if (!res.ok) {
-    if (res.status === 401 && res.error.code === 'INVALID_OR_EXPIRED_TOKEN') {
-      clearSessionToken();
+    if (res.status === 401) {
       return null;
     }
     throw new ApiError(res.error.message ?? 'Не удалось получить профиль', {
@@ -238,80 +220,43 @@ export async function updateProfile(body: {
   first_name?: string;
   last_name?: string;
 }): Promise<OkOut> {
-  return request('/auth/profile', { method: 'PATCH', body });
+  return request('/account/profile', { method: 'PATCH', body });
 }
 
 export async function uploadAvatar(file: File): Promise<AvatarResponse> {
   const form = new FormData();
   form.append('avatar', file);
-  const headers: Record<string, string> = {};
-  const token = getSessionToken();
-  if (token) headers['X-Session-Token'] = token;
-  const response = await fetch(toApiUrl('/auth/avatar'), {
-    method: 'POST',
-    body: form,
-    headers,
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message =
-      messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    throw new ApiError(message, {
-      status: response.status,
-      kind: statusToKind(response.status),
-      details,
-    });
-  }
-  return response.json();
+  return request('/account/avatar', { method: 'POST', body: form });
 }
 
 export async function deleteAvatar(): Promise<AvatarResponse> {
-  const headers: Record<string, string> = {};
-  const token = getSessionToken();
-  if (token) headers['X-Session-Token'] = token;
-  const response = await fetch(toApiUrl('/auth/avatar'), {
-    method: 'DELETE',
-    headers,
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message =
-      messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    throw new ApiError(message, {
-      status: response.status,
-      kind: statusToKind(response.status),
-      details,
-    });
-  }
-  return response.json();
+  return request('/account/avatar', { method: 'DELETE' });
 }
 
 export async function getEmailStatus(): Promise<{ email: string; verified: boolean }> {
-  return request('/auth/email');
+  return request('/account/email');
 }
 
 export async function changeEmail(newEmail: string): Promise<OkOut> {
-  return request('/auth/email/change', {
+  return request('/account/email/change', {
     method: 'POST',
     body: { new_email: newEmail },
   });
 }
 
 export async function resendEmailVerification(): Promise<OkOut> {
-  return request('/auth/email/resend', { method: 'POST' });
+  return request('/account/email/resend', { method: 'POST' });
 }
 
 export async function changePassword(payload: {
   current_password: string;
   new_password: string;
 }): Promise<OkOut> {
-  return request('/auth/change_password', { method: 'POST', body: payload });
+  return request('/account/change_password', { method: 'POST', body: payload });
 }
 
 export async function listSessionsHeadless(): Promise<SessionRow[]> {
-  const data = await request<{ sessions?: SessionRow[] | null }>('/auth/sessions');
+  const data = await request<{ sessions?: SessionRow[] | null }>('/account/sessions');
   return Array.isArray(data.sessions) ? data.sessions : [];
 }
 
@@ -320,7 +265,7 @@ export async function revokeSessionHeadless(
   reason: string | null = null,
 ): Promise<{ ok: boolean; id?: string; revoked_reason?: string | null }> {
   const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-  return request(`/auth/sessions/${id}${qs}`, {
+  return request(`/account/sessions/${id}${qs}`, {
     method: 'DELETE',
   });
 }
@@ -329,7 +274,7 @@ export async function bulkRevokeSessionsHeadless(): Promise<{
   ok: boolean;
   revoked_ids?: string[];
 }> {
-  return request('/auth/sessions/bulk', {
+  return request('/account/sessions/bulk', {
     method: 'POST',
     body: { all_except_current: true, reason: 'bulk_except_current' },
   });
@@ -370,7 +315,7 @@ export async function beginPasskeyLogin(): Promise<{ request_options: PublicKeyR
 }
 
 export async function completePasskeyLogin(credential: WebAuthnAssertion): Promise<void> {
-  const res = await requestResult<AuthResponseMeta & { access_token?: string }>(
+  const res = await requestResult<Record<string, unknown>>(
     '/auth/passkeys/login/complete',
     {
       method: 'POST',
@@ -386,26 +331,16 @@ export async function completePasskeyLogin(credential: WebAuthnAssertion): Promi
       code: res.error.code,
     });
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
 }
 
 export async function logout(): Promise<void> {
-  await request('/auth/logout', { method: 'POST' });
-  clearSessionToken();
+  await request('/logout', { method: 'POST' });
 }
 
 // ----- OAuth linking -----
 export async function getOAuthProviders(): Promise<{ id: string; name: string }[]> {
   const data = await request<{ providers: { id: string; name: string }[] }>(
-    '/auth/oauth/providers',
+    '/account/oauth/providers',
   );
   return data.providers ?? [];
 }
@@ -415,7 +350,7 @@ export async function getOAuthLink(
   nextPath: string,
 ): Promise<{ url: string; method: string }> {
   const data = await request<{ authorize_url: string; method: string }>(
-    `/auth/oauth/link/${providerId}?next=${encodeURIComponent(nextPath)}`,
+    `/account/oauth/link/${providerId}?next=${encodeURIComponent(nextPath)}`,
   );
   return { url: data.authorize_url, method: data.method };
 }
@@ -429,7 +364,7 @@ export type MfaStatus = {
 };
 
 export async function fetchMfaStatus(): Promise<MfaStatus> {
-  return request('/auth/mfa/status');
+  return request('/account/mfa/status');
 }
 
 export type TotpBegin = {
@@ -440,19 +375,19 @@ export type TotpBegin = {
 };
 
 export async function beginTotp(): Promise<TotpBegin> {
-  return request('/auth/mfa/totp/begin', { method: 'POST' });
+  return request('/account/mfa/totp/begin', { method: 'POST' });
 }
 
 export async function confirmTotp(code: string): Promise<{ ok: boolean; recovery_codes?: string[] | null }> {
-  return request('/auth/mfa/totp/confirm', { method: 'POST', body: { code } });
+  return request('/account/mfa/totp/confirm', { method: 'POST', body: { code } });
 }
 
 export async function disableTotp(): Promise<void> {
-  await request('/auth/mfa/totp/disable', { method: 'POST' });
+  await request('/account/mfa/totp/disable', { method: 'POST' });
 }
 
 export async function regenerateRecoveryCodes(): Promise<string[]> {
-  const data = await request<{ recovery_codes: string[] }>('/auth/mfa/recovery/regenerate', {
+  const data = await request<{ recovery_codes: string[] }>('/account/mfa/recovery/regenerate', {
     method: 'POST',
   });
   return data.recovery_codes ?? [];
@@ -494,7 +429,7 @@ export type AuthenticatorSummary = {
 };
 
 export async function passkeysBegin(passwordless = false): Promise<{ creation_options: PublicKeyCreationOptions }> {
-  return request('/auth/passkeys/begin', { method: 'POST', body: { passwordless } });
+  return request('/account/passkeys/begin', { method: 'POST', body: { passwordless } });
 }
 
 export async function passkeysComplete(payload: {
@@ -502,7 +437,7 @@ export async function passkeysComplete(payload: {
   credential: WebAuthnAttestation;
   passwordless?: boolean;
 }): Promise<{ ok: boolean; authenticator?: AuthenticatorSummary; recovery_codes?: string[] | null }> {
-  return request('/auth/passkeys/complete', {
+  return request('/account/passkeys/complete', {
     method: 'POST',
     body: {
       name: payload.name,
@@ -513,16 +448,16 @@ export async function passkeysComplete(payload: {
 }
 
 export async function listAuthenticators(): Promise<AuthenticatorSummary[]> {
-  const data = await request<{ authenticators: AuthenticatorSummary[] }>('/auth/passkeys');
+  const data = await request<{ authenticators: AuthenticatorSummary[] }>('/account/passkeys');
   return data.authenticators ?? [];
 }
 
 export async function deleteWebAuthnAuthenticators(_ids: string[]): Promise<void> {
-  await request('/auth/passkeys/delete', { method: 'POST', body: { ids: _ids } });
+  await request('/account/passkeys/delete', { method: 'POST', body: { ids: _ids } });
 }
 
 export async function renameWebAuthnAuthenticator(_id: string, _name: string): Promise<void> {
-  await request('/auth/passkeys/rename', {
+  await request('/account/passkeys/rename', {
     method: 'POST',
     body: { authenticator_id: _id, new_name: _name },
   });
