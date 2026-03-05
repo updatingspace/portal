@@ -9,6 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("activity", "0006_encrypt_sensitive_activity_data"),
+        ("activity", "0006_news_comment_threads_and_reactions"),
     ]
 
     operations = [
