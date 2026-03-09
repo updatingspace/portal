@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'UpdSpace Platform',
-  tagline: 'AEF.updspace.com — Gaming Intranet & Multi-tenant Platform',
+  title: 'UpdSpace Documentation',
+  tagline: 'Current architecture, service contracts, operations, and compliance notes',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -15,10 +15,9 @@ const config: Config = {
   baseUrl: '/',
 
   organizationName: 'updatingspace',
-  projectName: 'aef-vote',
+  projectName: 'updspace-portal',
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
 
   i18n: {
     defaultLocale: 'ru',
@@ -27,6 +26,9 @@ const config: Config = {
 
   markdown: {
     mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
   },
 
   themes: ['@docusaurus/theme-mermaid'],
@@ -37,7 +39,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/updatingspace/aef-vote/tree/master/documentation/',
+          editUrl: 'https://github.com/updatingspace/aef-vote/tree/master/docs/',
           showLastUpdateTime: true,
           showLastUpdateAuthor: true,
         },
@@ -47,7 +49,7 @@ const config: Config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl: 'https://github.com/updatingspace/aef-vote/tree/master/documentation/',
+          editUrl: 'https://github.com/updatingspace/aef-vote/tree/master/docs/',
           blogTitle: 'Changelog & Updates',
           blogDescription: 'Обновления платформы UpdSpace',
         },
@@ -81,7 +83,7 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'docsSidebar',
           position: 'left',
-          label: 'Документация',
+          label: 'Docs',
         },
         {
           type: 'docSidebar',
@@ -93,7 +95,7 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'guidesSidebar',
           position: 'left',
-          label: 'Руководства',
+          label: 'Guides',
         },
         {to: '/blog', label: 'Changelog', position: 'left'},
         {
@@ -111,26 +113,27 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Документация',
+          title: 'Docs',
           items: [
-            {label: 'Введение', to: '/docs/intro'},
-            {label: 'Архитектура', to: '/docs/architecture/overview'},
-            {label: 'Сервисы', to: '/docs/services/overview'},
+            {label: 'Overview', to: '/docs/intro'},
+            {label: 'Architecture', to: '/docs/architecture/overview'},
+            {label: 'Services', to: '/docs/services/overview'},
           ],
         },
         {
-          title: 'Разработка',
+          title: 'Operations',
           items: [
             {label: 'Quick Start', to: '/docs/guides/quick-start'},
-            {label: 'API Reference', to: '/docs/api/overview'},
-            {label: 'Contributing', to: '/docs/guides/contributing'},
+            {label: 'Testing', to: '/docs/guides/testing'},
+            {label: 'Documentation Playbook', to: '/docs/guides/documentation-playbook'},
           ],
         },
         {
-          title: 'Ресурсы',
+          title: 'Legal',
           items: [
-            {label: 'Changelog', to: '/blog'},
-            {label: 'GitHub', href: 'https://github.com/updatingspace/aef-vote'},
+            {label: 'Privacy Overview', to: '/docs/legal/overview'},
+            {label: 'Cookie Notice', to: '/docs/legal/cookie-notice'},
+            {label: 'DSAR Procedure', to: '/docs/legal/dsar-procedure'},
           ],
         },
       ],

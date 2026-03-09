@@ -1,173 +1,73 @@
 ---
-sidebar_position: 1
-title: Обзор Access Control
-description: Централизованная авторизация
+title: Access Overview
 ---
 
-# Access Control Service
+# Access Overview
 
-**Access Control** — централизованный сервис авторизации (RBAC).
+Access - это не только "таблица прав". В текущем репозитории сервис объединяет три поддомена:
 
-- **Path**: `services/access`
-- **Port**: 8002
+- RBAC и policy overrides;
+- rollout management;
+- personalization/homepage modals.
 
-## Ключевые функции
+## Main API surfaces
 
-1. **Permission Check** — проверка доступа к действию
-2. **Role Management** — управление ролями
-3. **Role Bindings** — назначение ролей пользователям
-4. **Policy Overrides** — явные разрешения/запреты
+| Prefix | Purpose |
+| --- | --- |
+| `/access/*` | permission checks, roles, bindings, overrides, tenant admin APIs |
+| `/rollout/*` | feature flags, experiments, kill switches |
+| `/personalization/*` | homepage modals and lightweight personalization config |
 
-## Статус реализации
+## Main models
 
-| Функционал | Статус |
-|------------|--------|
-| Permission check | ✅ Done |
-| Master flags integration | ✅ Done |
-| RBAC (roles + bindings) | ✅ Done |
-| Policy overrides | ✅ Done |
-| MVP permissions list | ✅ Done |
+| Model | Purpose |
+| --- | --- |
+| `Permission` | atomic capability key |
+| `Role` | named bundle of permissions |
+| `RolePermission` | mapping between roles and permissions |
+| `RoleBinding` | grants role to user in scope |
+| `PolicyOverride` | explicit allow/deny exception |
+| `TenantAdminAuditEvent` | audit trail for admin changes |
+| `FeatureFlag` / `Experiment` / `KillSwitch` | rollout control |
+| `RolloutAuditLog` | rollout change history |
+| `HomePageModal` | personalization content shown in UI |
 
-## Архитектура проверки
+## Service position
+
+Access почти не владеет пользовательским контентом, но влияет на поведение почти всех сервисов, потому что authorization decisions сходятся сюда.
+
+## Internal module graph
 
 ```mermaid
-graph TD
-    Request[Check Request] --> Master{Master Flags}
-    
-    Master -->|suspended/banned| Deny1[DENY]
-    Master -->|system_admin| Allow1[ALLOW + Audit]
-    Master -->|normal| Policy{Policy Override?}
-    
-    Policy -->|explicit deny| Deny2[DENY]
-    Policy -->|explicit allow| Allow2[ALLOW]
-    Policy -->|no override| RBAC{RBAC Check}
-    
-    RBAC -->|has permission| Allow3[ALLOW]
-    RBAC -->|no permission| Deny3[DENY]
+flowchart LR
+    Callers["BFF and internal services"] --> Context["context.py"]
+    Context --> RBAC["api.py"]
+    Context --> Rollout["rollout_api.py"]
+    Context --> Personalization["core/api.py"]
+    RBAC --> Services["services.py"]
+    RBAC --> Models["models.py"]
+    Rollout --> RolloutServices["rollout_services.py"]
+    Rollout --> Models
+    Personalization --> CoreModels["core/models.py"]
 ```
 
-## Приоритеты
+## Service mesh position
 
-1. **Master Flags** (высший приоритет)
-   - `suspended=true` → DENY ALL
-   - `banned=true` → DENY ALL
-   - `system_admin=true` → ALLOW ALL (с аудитом)
-
-2. **Policy Overrides**
-   - Явный `DENY` для пользователя → deny
-   - Явный `ALLOW` для пользователя → allow
-
-3. **RBAC**
-   - User → RoleBinding → Role → RolePermission → Permission
-
-## Scopes
-
-```python
-class ScopeType(str, Enum):
-    GLOBAL = "GLOBAL"       # Платформенный уровень
-    TENANT = "TENANT"       # Уровень tenant
-    COMMUNITY = "COMMUNITY" # Сообщество
-    TEAM = "TEAM"           # Команда
-    SERVICE = "SERVICE"     # Сервис-специфичный
+```mermaid
+flowchart LR
+    BFF --> Access["Access"]
+    Portal --> Access
+    Voting --> Access
+    Events --> Access
+    Activity --> Access
+    Gamification --> Access
 ```
 
-Права проверяются в контексте scope:
+## Design consequence
 
-```python
-check(
-    action="voting.vote.cast",
-    scope={"type": "COMMUNITY", "id": "community-uuid"}
-)
-```
+Если capability model или scope semantics меняются, это one-to-many change:
 
-## API
-
-### Check Permission
-
-```http
-POST /api/v1/check
-Content-Type: application/json
-
-{
-  "tenant_id": "uuid",
-  "user_id": "uuid",
-  "action": "voting.vote.cast",
-  "scope": {
-    "type": "COMMUNITY",
-    "id": "community-uuid"
-  },
-  "resource_visibility": "community",
-  "resource_owner_id": null
-}
-```
-
-**Response:**
-```json
-{
-  "allowed": true,
-  "reason_code": "RBAC_ALLOW",
-  "effective_roles": ["member", "voter"]
-}
-```
-
-### Policy Overrides
-
-Policy overrides allow system administrators to force `allow`/`deny` decisions for specific permissions,
-either globally or scoped to a tenant.
-
-```http
-POST /api/v1/access/policy-overrides
-Content-Type: application/json
-
-{
-  "tenant_id": "uuid",
-  "user_id": "uuid",
-  "action": "deny",
-  "permission_key": "voting.vote.cast",  # optional
-  "reason": "suspended",
-  "expires_at": "2026-01-15T00:00:00Z"
-}
-```
-
-```http
-GET /api/v1/access/policy-overrides?user_id=uuid&active=true
-```
-
-```http
-DELETE /api/v1/access/policy-overrides/{id}
-```
-
-All policy override endpoints require the internal HMAC headers (`X-Updspace-Signature`, etc.) and a
-system-admin master flag. Overrides are tenant-scoped (`X-Tenant-Id` must match `tenant_id` in the payload).
-
-### Reason Codes
-
-| Code | Description |
-|------|-------------|
-| `MASTER_DENY` | Suspended/banned |
-| `SYSTEM_ADMIN` | System admin bypass |
-| `POLICY_DENY` | Explicit policy deny |
-| `POLICY_ALLOW` | Explicit policy allow |
-| `RBAC_ALLOW` | Role has permission |
-| `RBAC_DENY` | No role with permission |
-
-## Интеграция в сервисы
-
-```python
-# В каждом сервисе
-from core.access import check_permission
-
-async def create_post(request, data: PostCreate):
-    allowed = await check_permission(
-        tenant_id=request.tenant_id,
-        user_id=request.user_id,
-        action="portal.posts.create",
-        scope={"type": "COMMUNITY", "id": data.community_id},
-        master_flags=request.master_flags,
-    )
-    
-    if not allowed:
-        raise PermissionDenied()
-    
-    # Create post...
-```
+- frontend guards;
+- BFF capability probes;
+- доменные сервисы;
+- tenant admin UI.

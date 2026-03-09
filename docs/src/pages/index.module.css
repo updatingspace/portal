@@ -1,23 +1,89 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
-
 .heroBanner {
-  padding: 4rem 0;
-  text-align: center;
+  background:
+    radial-gradient(circle at top left, rgba(23, 171, 160, 0.24), transparent 34%),
+    radial-gradient(circle at 80% 20%, rgba(15, 118, 110, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(7, 17, 29, 0.98) 0%, rgba(12, 20, 36, 0.98) 100%);
+  color: #f8fafc;
   position: relative;
   overflow: hidden;
+  padding: 6rem 0 4rem;
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+.heroGrid {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  align-items: center;
+}
+
+.heroCopy {
+  max-width: 42rem;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #99f6e4;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.heroTitle {
+  margin: 1rem 0 1rem;
+  font-size: clamp(2.6rem, 6vw, 4.8rem);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+
+.heroSubtitle {
+  margin: 0;
+  max-width: 38rem;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.88);
 }
 
 .buttons {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  gap: 0.9rem;
+  margin-top: 1.8rem;
+  flex-wrap: wrap;
+}
+
+.heroPanel {
+  padding: 1.4rem;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.52);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
+}
+
+.heroPanelHeader {
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #99f6e4;
+  margin-bottom: 0.9rem;
+}
+
+.heroList {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: rgba(226, 232, 240, 0.92);
+  line-height: 1.8;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 4.5rem 0 3rem;
+  }
+
+  .heroGrid {
+    grid-template-columns: 1fr;
+  }
 }

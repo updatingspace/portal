@@ -1,30 +1,70 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
- */
-
-/* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-color-primary: #0f766e;
+  --ifm-color-primary-dark: #0d655e;
+  --ifm-color-primary-darker: #0c5f58;
+  --ifm-color-primary-darkest: #0a4e48;
+  --ifm-color-primary-light: #11877e;
+  --ifm-color-primary-lighter: #129188;
+  --ifm-color-primary-lightest: #17aba0;
+  --ifm-background-color: #f5f7fb;
+  --ifm-font-family-base: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --ifm-heading-font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --ifm-code-font-size: 94%;
+  --ifm-navbar-background-color: rgba(245, 247, 251, 0.92);
+  --ifm-footer-background-color: #0c1424;
+  --ifm-card-background-color: rgba(255, 255, 255, 0.84);
+  --ifm-global-radius: 18px;
+  --docusaurus-highlighted-code-line-bg: rgba(15, 118, 110, 0.12);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #43d0c6;
+  --ifm-color-primary-dark: #27c9bd;
+  --ifm-color-primary-darker: #19c1b4;
+  --ifm-color-primary-darkest: #149c92;
+  --ifm-color-primary-light: #5fd7ce;
+  --ifm-color-primary-lighter: #6edbd3;
+  --ifm-color-primary-lightest: #99e5df;
+  --ifm-background-color: #07111d;
+  --ifm-navbar-background-color: rgba(7, 17, 29, 0.92);
+  --ifm-card-background-color: rgba(15, 26, 42, 0.72);
+  --docusaurus-highlighted-code-line-bg: rgba(67, 208, 198, 0.18);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.navbar {
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.table-of-contents {
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.theme-doc-markdown h1,
+.theme-doc-markdown h2,
+.theme-doc-markdown h3 {
+  letter-spacing: -0.02em;
+}
+
+.theme-doc-markdown .card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.theme-doc-markdown blockquote {
+  border-left-color: var(--ifm-color-primary);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
 }

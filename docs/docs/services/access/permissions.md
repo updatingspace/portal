@@ -1,266 +1,40 @@
 ---
-sidebar_position: 3
-title: Permissions
-description: Список всех permissions платформы
+title: Permission Naming
 ---
 
-# Permissions
+# Permission Naming
 
-## Формат
+В проекте используется capability naming в формате:
 
-```
+```text
 {service}.{resource}.{action}
 ```
 
 Примеры:
+
 - `portal.profile.read_self`
-- `voting.vote.cast`
+- `activity.feed.read`
 - `events.event.create`
+- `voting.poll.read`
+- `gamification.achievements.assign`
 
-## Portal Permissions
+## Why naming matters
 
-| Permission | Description | Roles |
-|------------|-------------|-------|
-| `portal.profile.read_self` | Читать свой профиль | member |
-| `portal.profile.edit_self` | Редактировать свой профиль | member |
-| `portal.communities.list` | Список сообществ | member |
-| `portal.communities.create` | Создавать сообщества | admin |
-| `portal.applications.review` | Просматривать/одобрять заявки | admin |
-| `portal.communities.read` | Читать сообщества | member |
-| `portal.communities.members.read` | Проверять членство в сообществе | member |
-| `portal.communities.members.manage` | Управлять участниками сообщества | admin |
-| `portal.teams.list` | Список команд | member |
-| `portal.teams.create` | Создавать команды | admin |
-| `portal.communities.manage` | Управлять сообществами | admin |
-| `portal.teams.manage` | Управлять командами | moderator |
-| `portal.teams.members.read` | Проверять членство в команде | member |
-| `portal.teams.members.manage` | Управлять участниками команды | admin |
-| `portal.posts.read` | Читать посты | member |
-| `portal.posts.create` | Создавать посты | moderator |
-| `portal.posts.create_public` | Создавать публичные посты | member |
-| `portal.posts.create_community` | Создавать посты сообщества | member |
-| `portal.posts.create_team` | Создавать посты команды | member |
-| `portal.posts.create_private` | Создавать приватные посты | member |
-| `portal.posts.read_private` | Читать приватные посты | admin |
-| `portal.roles.read` | Просматривать роли | admin |
-| `portal.roles.write` | Управлять ролями | admin |
-| `portal.role_bindings.write` | Назначать роли | admin |
-| `portal.permissions.read` | Читать каталог permissions | admin |
+Единый формат нужен для трех вещей:
 
-## Voting Permissions
+- понятно читать guards и service checks;
+- не плодить синонимы одного и того же права;
+- поддерживать прогнозируемые tenant admin интерфейсы.
 
-| Permission | Description | Roles |
-|------------|-------------|-------|
-| `voting.poll.read` | Просматривать голосования | voter |
-| `voting.vote.cast` | Голосовать | voter |
-| `voting.vote.read_own` | Читать свои голоса | voter |
-| `voting.results.read` | Просматривать результаты | voter |
-| `voting.votings.admin` | Администрировать голосования | voting_admin |
-| `voting.nominations.admin` | Администрировать номинации | voting_admin |
+## Рекомендации
 
-### Локальные роли опроса (Voting)
+- `service` должен совпадать с bounded context, а не с названием страницы;
+- `resource` должен быть устойчивым доменным существительным;
+- `action` должен быть коротким и недвусмысленным;
+- если нужен master flag, он не должен притворяться обычным permission key.
 
-Сервис Voting вводит роли на уровне конкретного опроса (Owner/Admin/Moderator/Observer/Participant).
-Это не Access permissions: они дополняют глобальные проверки и позволяют управлять
-конкретным опросом даже без роли `voting_admin`.
+## Smells
 
-## Events Permissions
-
-| Permission | Description | Roles |
-|------------|-------------|-------|
-| `events.event.read` | Просматривать события | participant |
-| `events.event.create` | Создавать события | organizer |
-| `events.event.manage` | Редактировать/удалять события | organizer |
-| `events.rsvp.set` | Отмечать участие | participant |
-| `events.attendance.mark` | Отмечать посещение | organizer |
-
-## System Administrator RBAC
-
-`system_admin=true` (мастер-флаг из UpdSpaceID) — это единственный identity, который имеет
-полный доступ к tenant-порталу без дополнительной проверки.
-
-- Может создавать/редактировать роли и role bindings для любых тенантов через Access API (`POST /api/v1/role-bindings`,
-  `PATCH /api/v1/role-bindings/{id}` и т.д.).
-- Может назначать `events:organizer` и `events:participant`, а также другие роли, которые разрешают
-  создание/управление событиями и RSVP.
-- Обновлённое API Events (`PATCH /api/v1/events/{event_id}` + `events.event.manage`) требует именно
-  эту permission или системного администратора, поэтому администратор системы всегда может отредактировать
-  или отменить событие и сразу увидеть изменения в журнале.
-
-Audit logging все ещё обязателен: Access сохраняет, кто и когда выполнил действие с `system_admin`.
-
-## Activity Permissions
-
-| Permission | Description | Roles |
-|------------|-------------|-------|
-| `activity.feed.read` | Читать ленту | member |
-| `activity.sources.link` | Подключать источники | member |
-| `activity.sources.manage` | Управлять источниками | admin |
-| `activity.admin.sync` | Запускать синхронизацию | admin |
-| `activity.admin.games` | Управлять каталогом игр | admin |
-| `activity.news.create` | Создавать новости | member |
-| `activity.news.manage` | Управлять новостями | admin |
-
-## Role Templates
-
-### Для всех tenant'ов
-
-#### member (default)
-```python
-MEMBER_PERMISSIONS = [
-    "portal.profile.read_self",
-    "portal.profile.edit_self",
-    "portal.communities.list",
-    "portal.communities.read",
-    "portal.teams.list",
-    "portal.communities.members.read",
-    "portal.teams.members.read",
-    "portal.posts.create_public",
-    "portal.posts.create_community",
-    "portal.posts.create_team",
-    "portal.posts.create_private",
-    "voting.poll.read",
-    "voting.vote.cast",
-    "voting.vote.read_own",
-    "voting.results.read",
-    "events.event.read",
-    "events.rsvp.set",
-    "activity.feed.read",
-    "activity.sources.link",
-    "activity.news.create",
-]
-```
-
-#### moderator
-```python
-MODERATOR_PERMISSIONS = MEMBER_PERMISSIONS + [
-    "portal.teams.manage",
-    "portal.posts.create",
-]
-```
-
-#### admin
-```python
-ADMIN_PERMISSIONS = MODERATOR_PERMISSIONS + [
-    "portal.applications.review",
-    "portal.communities.manage",
-    "portal.roles.read",
-    "portal.roles.write",
-    "portal.role_bindings.write",
-    "portal.permissions.read",
-    "voting.votings.admin",
-    "voting.nominations.admin",
-    "events.event.create",
-    "events.event.manage",
-    "events.attendance.mark",
-    "activity.sources.manage",
-]
-```
-
-## Seed Script
-
-```python
-# access/management/commands/seed_permissions.py
-
-PERMISSIONS = [
-    # Portal
-    ("portal.profile.read_self", "Read own profile", "PORTAL"),
-    ("portal.profile.edit_self", "Edit own profile", "PORTAL"),
-    ("portal.applications.review", "Review applications", "PORTAL"),
-    ("portal.communities.read", "Read communities", "PORTAL"),
-    ("portal.communities.manage", "Manage communities", "PORTAL"),
-    ("portal.teams.manage", "Manage teams", "PORTAL"),
-    ("portal.posts.read", "Read posts", "PORTAL"),
-    ("portal.posts.create", "Create posts", "PORTAL"),
-    ("portal.roles.read", "Read roles", "PORTAL"),
-    ("portal.roles.write", "Write roles", "PORTAL"),
-    ("portal.role_bindings.write", "Assign roles", "PORTAL"),
-    ("portal.permissions.read", "Read permission catalog", "PORTAL"),
-    
-    # Voting
-    ("voting.poll.read", "Read polls", "VOTING"),
-    ("voting.vote.cast", "Cast vote", "VOTING"),
-    ("voting.results.read", "Read results", "VOTING"),
-    ("voting.votings.admin", "Admin votings", "VOTING"),
-    ("voting.nominations.admin", "Admin nominations", "VOTING"),
-    
-    # Events
-    ("events.event.read", "Read events", "EVENTS"),
-    ("events.event.create", "Create events", "EVENTS"),
-    ("events.event.manage", "Manage events", "EVENTS"),
-    ("events.rsvp.set", "Set RSVP", "EVENTS"),
-    ("events.attendance.mark", "Mark attendance", "EVENTS"),
-    
-    # Activity
-    ("activity.feed.read", "Read feed", "ACTIVITY"),
-    ("activity.sources.link", "Link sources", "ACTIVITY"),
-    ("activity.sources.manage", "Manage sources", "ACTIVITY"),
-]
-
-def seed():
-    for key, description, service in PERMISSIONS:
-        Permission.objects.update_or_create(
-            key=key,
-            defaults={"description": description, "service": service}
-        )
-```
-
-## Проверка в коде
-
-### Декоратор
-
-```python
-from access.decorators import require_permission
-
-@require_permission("portal.posts.create")
-def create_post(request, data):
-    ...
-```
-
-### Явная проверка
-
-```python
-from access.client import check_permission
-
-if not await check_permission(request, "voting.vote.cast", scope):
-    raise PermissionDenied("You cannot vote in this poll")
-```
-
-## Расширение
-
-Для добавления нового permission:
-
-1. Добавить в PERMISSIONS list
-2. Запустить `python manage.py seed_permissions`
-3. Добавить в соответствующую роль
-4. Использовать в сервисе
-
-```python
-# 1. В permissions_mvp.py
-("voting.poll.delete", "Delete polls", "VOTING"),
-
-# 2. Seed
-python manage.py seed_permissions
-
-# 3. В роль
-Role.objects.get(name="voting_admin").permissions.add(
-    Permission.objects.get(key="voting.poll.delete")
-)
-
-# 4. В сервисе
-@require_permission("voting.poll.delete")
-def delete_poll(request, poll_id):
-    ...
-```
-
-## Базовая роль по умолчанию
-
-Access автоматически применяет базовую роль `member` для каждого пользователя в tenant по каждому сервису.
-Явный `RoleBinding` для этой роли больше не обязателен.
-
-Переопределение tenant-админом:
-
-1. Создать tenant-роль с именем `member` для нужного `service`.
-2. Назначить ей нужный набор permissions.
-
-Tenant-роль `member` имеет приоритет над глобальным шаблоном `member`.
+- `portal.admin` вместо предметного `portal.roles.read` или `portal.communities.manage`;
+- смешивание UI state и capability semantics;
+- использование одного permission key для чтения и мутаций.
