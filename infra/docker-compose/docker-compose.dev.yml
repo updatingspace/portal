@@ -117,7 +117,7 @@ services:
       - DJANGO_SECRET_KEY=dev-id-secret
       - DATABASE_URL=postgres://user:pass@db_id:5432/id_db
       - REDIS_URL=redis://redis:6379/0
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - SESSION_COOKIE_SECURE=false
       - CSRF_COOKIE_SECURE=false
       # CORS for portal integration
@@ -244,7 +244,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-voting-secret
       - DATABASE_URL=postgres://user:pass@db_voting:5432/voting_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
     depends_on:
@@ -280,7 +280,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-gamification-secret
       - DATABASE_URL=postgres://user:pass@db_gamification:5432/gamification_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
       - ACTIVITY_SERVICE_URL=http://activity:8006/api/v1

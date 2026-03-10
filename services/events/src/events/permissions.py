@@ -72,7 +72,6 @@ def has_permission(
         "X-Tenant-Id": str(tenant_id),
         "X-Tenant-Slug": str(tenant_slug),
         "X-User-Id": str(user_id),
-        "X-Forwarded-Proto": "https",
         "X-Master-Flags": json.dumps(master_flags, separators=(",", ":"), default=str),
         "X-Updspace-Timestamp": ts,
         "X-Updspace-Signature": sig,

@@ -125,7 +125,6 @@ def _access_check_allowed(
         "X-Tenant-Id": str(tenant_id),
         "X-Tenant-Slug": str(tenant_slug),
         "X-User-Id": str(user_id),
-        "X-Forwarded-Proto": "https",
         "X-Master-Flags": json.dumps(master_flags, separators=(",", ":"), default=str),
     }
     headers.update(_internal_hmac_headers(method="POST", path=path, body=body, request_id=request_id))

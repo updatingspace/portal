@@ -35,6 +35,19 @@ class PortalSettingsSecurityTests(SimpleTestCase):
 
         self.assertIn("BFF_INTERNAL_HMAC_SECRET", str(ctx.exception))
 
+    def test_accepts_legacy_django_allowed_hosts_env(self):
+        settings_module = self._import_settings(
+            {
+                "DJANGO_DEBUG": "False",
+                "DJANGO_SECRET_KEY": "test-secret",
+                "DJANGO_ALLOWED_HOSTS": "localhost,portal",
+                "DATABASE_URL": "postgres://user:pass@db:5432/portal_db",
+                "BFF_INTERNAL_HMAC_SECRET": "test-hmac-secret",
+            }
+        )
+
+        self.assertEqual(settings_module.ALLOWED_HOSTS, ["localhost", "portal"])
+
     def test_enables_https_hardening_in_strict_mode(self):
         settings_module = self._import_settings(
             {

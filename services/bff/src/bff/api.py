@@ -26,6 +26,7 @@ from ninja import NinjaAPI, Router
 from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
+from .middleware import AuthContext
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
@@ -1933,13 +1934,99 @@ def _account_context_headers(request: HttpRequest, ctx) -> dict[str, str]:
         "X-Request-Id": request.request_id,
         "X-User-Id": ctx.user_id,
     }
-    if tenant:
+    tenant_id = str(
+        getattr(ctx, "active_tenant_id", "")
+        or getattr(ctx, "tenant_id", "")
+        or ""
+    ).strip()
+    tenant_slug = str(
+        getattr(ctx, "active_tenant_slug", "")
+        or getattr(ctx, "tenant_slug", "")
+        or ""
+    ).strip()
+    if tenant_id:
+        headers["X-Tenant-Id"] = tenant_id
+        headers["X-Tenant-Slug"] = tenant_slug
+    elif tenant:
         headers["X-Tenant-Id"] = str(tenant.id)
         headers["X-Tenant-Slug"] = str(tenant.slug)
-    else:
-        headers["X-Tenant-Id"] = ctx.tenant_id
-        headers["X-Tenant-Slug"] = ctx.tenant_slug
     return headers
+
+
+def _build_tenant_auth_context(
+    ctx,
+    *,
+    tenant_id: str,
+    tenant_slug: str,
+) -> AuthContext:
+    return AuthContext(
+        session_id=ctx.session_id,
+        tenant_id=str(tenant_id),
+        tenant_slug=str(tenant_slug),
+        user_id=str(ctx.user_id),
+        master_flags=dict(getattr(ctx, "master_flags", {}) or {}),
+        active_tenant_id=str(tenant_id),
+        active_tenant_slug=str(tenant_slug),
+    )
+
+
+def _dsar_tenant_contexts(request: HttpRequest, ctx) -> list[AuthContext]:
+    tenant_order: dict[str, str] = {}
+
+    def _remember(tenant_id: Any, tenant_slug: Any) -> None:
+        tid = str(tenant_id or "").strip()
+        if not tid:
+            return
+        slug = str(tenant_slug or "").strip()
+        if tid not in tenant_order or (not tenant_order[tid] and slug):
+            tenant_order[tid] = slug
+
+    _remember(
+        getattr(ctx, "active_tenant_id", "") or getattr(ctx, "tenant_id", ""),
+        getattr(ctx, "active_tenant_slug", "") or getattr(ctx, "tenant_slug", ""),
+    )
+
+    for membership in _fetch_user_memberships(request, ctx, use_cache=False):
+        if not isinstance(membership, dict):
+            continue
+        _remember(membership.get("tenant_id"), membership.get("tenant_slug"))
+
+    if not tenant_order:
+        _remember(getattr(ctx, "tenant_id", ""), getattr(ctx, "tenant_slug", ""))
+
+    return [
+        _build_tenant_auth_context(ctx, tenant_id=tenant_id, tenant_slug=tenant_slug)
+        for tenant_id, tenant_slug in tenant_order.items()
+    ]
+
+
+def _aggregate_dsar_export_bundle(
+    *,
+    service_name: str,
+    user_id: str,
+    tenant_bundles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    aggregate: dict[str, Any] = {
+        "service": service_name,
+        "user_id": str(user_id),
+        "exported_at": timezone.now().isoformat(),
+        "tenants": [],
+    }
+
+    for bundle in tenant_bundles:
+        if bundle.get("skipped"):
+            if not aggregate["tenants"]:
+                aggregate.update(bundle)
+            continue
+        aggregate["tenants"].append(bundle)
+
+    aggregate["tenants"].sort(
+        key=lambda item: (
+            str(item.get("tenant_slug", "")),
+            str(item.get("tenant_id", "")),
+        )
+    )
+    return aggregate
 
 
 def _call_dsar_service(
@@ -2103,6 +2190,9 @@ def delete_account_me(request: HttpRequest):
     if err:
         return err
 
+    tenant_contexts = _dsar_tenant_contexts(request, ctx)
+    from .models import BffSession
+
     service_calls = (
         (
             "portal",
@@ -2137,21 +2227,41 @@ def delete_account_me(request: HttpRequest):
     )
 
     for service_name, setting_name, upstream_path in service_calls:
-        _, response = _call_dsar_erase_service(
-            request,
-            ctx,
-            service_name=service_name,
-            upstream_setting=setting_name,
-            upstream_path=upstream_path,
-        )
-        if response is not None:
-            return response
+        for tenant_ctx in tenant_contexts:
+            bundle, response = _call_dsar_erase_service(
+                request,
+                tenant_ctx,
+                service_name=service_name,
+                upstream_setting=setting_name,
+                upstream_path=upstream_path,
+            )
+            if response is not None:
+                return response
+            if bundle and bundle.get("skipped"):
+                break
 
     identity_error = _delete_identity_account(request, ctx)
     if identity_error is not None:
         return identity_error
 
-    erase_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
+    bff_tenant_ids = {
+        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+        for tenant_ctx in tenant_contexts
+        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+    }
+    bff_tenant_ids.update(
+        str(tenant_id)
+        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
+            "tenant_id",
+            flat=True,
+        )
+        if str(tenant_id).strip()
+    )
+    if not bff_tenant_ids:
+        bff_tenant_ids.add(str(ctx.tenant_id))
+    for tenant_id in sorted(bff_tenant_ids):
+        erase_bff_user_data(tenant_id=tenant_id, user_id=ctx.user_id)
+
     services_erased = [
         "portal",
         "activity",
@@ -2175,6 +2285,7 @@ def delete_account_me(request: HttpRequest):
             metadata={
                 "subject_scope": "self",
                 "services_erased": services_erased,
+                "tenant_ids_erased": sorted(bff_tenant_ids),
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2186,6 +2297,7 @@ def delete_account_me(request: HttpRequest):
             target_id=str(ctx.user_id),
             metadata={
                 "services_erased": services_erased,
+                "tenant_ids_erased": sorted(bff_tenant_ids),
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2208,8 +2320,34 @@ def export_account_me(request: HttpRequest):
     if err:
         return err
 
+    tenant_contexts = _dsar_tenant_contexts(request, ctx)
+    from .models import BffSession
+
+    bff_tenant_ids = {
+        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+        for tenant_ctx in tenant_contexts
+        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+    }
+    bff_tenant_ids.update(
+        str(tenant_id)
+        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
+            "tenant_id",
+            flat=True,
+        )
+        if str(tenant_id).strip()
+    )
     bundles: dict[str, Any] = {
-        "bff": export_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id),
+        "bff": _aggregate_dsar_export_bundle(
+            service_name="bff",
+            user_id=ctx.user_id,
+            tenant_bundles=[
+                export_bff_user_data(
+                    tenant_id=tenant_id,
+                    user_id=ctx.user_id,
+                )
+                for tenant_id in sorted(bff_tenant_ids)
+            ],
+        ),
     }
     service_calls = (
         (
@@ -2245,17 +2383,26 @@ def export_account_me(request: HttpRequest):
     )
 
     for service_name, setting_name, upstream_path in service_calls:
-        bundle, response = _call_dsar_export_service(
-            request,
-            ctx,
+        tenant_bundles: list[dict[str, Any]] = []
+        for tenant_ctx in tenant_contexts:
+            bundle, response = _call_dsar_export_service(
+                request,
+                tenant_ctx,
+                service_name=service_name,
+                upstream_setting=setting_name,
+                upstream_path=upstream_path,
+            )
+            if response is not None:
+                return response
+            if bundle is not None:
+                tenant_bundles.append(bundle)
+                if bundle.get("skipped"):
+                    break
+        bundles[service_name] = _aggregate_dsar_export_bundle(
             service_name=service_name,
-            upstream_setting=setting_name,
-            upstream_path=upstream_path,
+            user_id=ctx.user_id,
+            tenant_bundles=tenant_bundles,
         )
-        if response is not None:
-            return response
-        if bundle is not None:
-            bundles[service_name] = bundle
 
     try:
         from .audit import log_audit_event as _log_audit
@@ -2269,6 +2416,9 @@ def export_account_me(request: HttpRequest):
             metadata={
                 "subject_scope": "self",
                 "services_exported": sorted(bundles.keys()),
+                "tenant_ids_exported": [
+                    tenant_ctx.tenant_id for tenant_ctx in tenant_contexts
+                ],
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2277,9 +2427,9 @@ def export_account_me(request: HttpRequest):
 
     return {
         "service": "bff",
-        "tenant_id": ctx.tenant_id,
         "user_id": ctx.user_id,
         "exported_at": timezone.now().isoformat(),
+        "tenant_ids": [tenant_ctx.tenant_id for tenant_ctx in tenant_contexts],
         "bundles": bundles,
     }
 

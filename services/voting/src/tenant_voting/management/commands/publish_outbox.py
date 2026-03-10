@@ -219,7 +219,6 @@ class Command(BaseCommand):
         headers = {
             "Content-Type": "application/json",
             "X-Source-Service": "voting",
-            "X-Forwarded-Proto": "https",
         }
         
         # Add HMAC signature if configured

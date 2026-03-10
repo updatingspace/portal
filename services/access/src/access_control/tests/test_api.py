@@ -309,7 +309,7 @@ class TenantAdminAuditApiTests(TestCase):
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
-class DsartApiTests(TestCase):
+class DsarApiTests(TestCase):
     def setUp(self):
         super().setUp()
         self.client = Client()

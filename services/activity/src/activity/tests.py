@@ -1264,6 +1264,36 @@ class SensitiveDataProtectionTests(TestCase):
             120,
         )
 
+    def test_encrypted_json_field_roundtrips_plain_string_without_double_serializing(self):
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json="steam-profile-id",
+        )
+
+        stored_value = self._fetch_db_value("act_source", "config_json", source.id)
+
+        self.assertIsInstance(stored_value, str)
+        self.assertTrue(stored_value.startswith("enc::"))
+        self.assertEqual(Source.objects.get(id=source.id).config_json, "steam-profile-id")
+
+    def test_encryption_cache_refreshes_when_key_material_changes(self):
+        from activity.privacy import decrypt_text, encrypt_text
+
+        with override_settings(
+            ACTIVITY_DATA_ENCRYPTION_KEY="activity-key-one",
+            ACTIVITY_DATA_ENCRYPTION_OLD_KEYS=[],
+        ):
+            first_token = encrypt_text("alpha")
+
+        with override_settings(
+            ACTIVITY_DATA_ENCRYPTION_KEY="activity-key-two",
+            ACTIVITY_DATA_ENCRYPTION_OLD_KEYS=["activity-key-one"],
+        ):
+            second_token = encrypt_text("beta")
+            self.assertEqual(decrypt_text(first_token), "alpha")
+            self.assertEqual(decrypt_text(second_token), "beta")
+
     @patch("activity.permissions.has_permission", return_value=True)
     def test_account_link_api_masks_sensitive_response_fields(self, mock_has_permission):
         del mock_has_permission

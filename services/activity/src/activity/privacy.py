@@ -4,7 +4,7 @@ import base64
 import hashlib
 import json
 import re
-from functools import lru_cache
+import threading
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
@@ -90,8 +90,6 @@ def _derive_fernet_key(material: str) -> bytes:
     digest = hashlib.sha256(material.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest)
 
-
-@lru_cache(maxsize=8)
 def _build_fernet(primary: str, old_keys: tuple[str, ...]) -> MultiFernet:
     fernets = [Fernet(_derive_fernet_key(primary))]
     fernets.extend(
@@ -102,9 +100,28 @@ def _build_fernet(primary: str, old_keys: tuple[str, ...]) -> MultiFernet:
     return MultiFernet(fernets)
 
 
+_FERNET_LOCK = threading.Lock()
+_FERNET_CACHE: MultiFernet | None = None
+_FERNET_CACHE_FINGERPRINT = ""
+
+
+def _encryption_fingerprint(primary: str, old_keys: tuple[str, ...]) -> str:
+    combined = "\0".join((primary, *old_keys))
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
+
 def _get_fernet() -> MultiFernet:
     primary, old_keys = _encryption_materials()
-    return _build_fernet(primary, old_keys)
+    fingerprint = _encryption_fingerprint(primary, old_keys)
+
+    global _FERNET_CACHE
+    global _FERNET_CACHE_FINGERPRINT
+
+    with _FERNET_LOCK:
+        if _FERNET_CACHE is None or _FERNET_CACHE_FINGERPRINT != fingerprint:
+            _FERNET_CACHE = _build_fernet(primary, old_keys)
+            _FERNET_CACHE_FINGERPRINT = fingerprint
+        return _FERNET_CACHE
 
 
 def is_encrypted_value(value: Any) -> bool:

@@ -25,6 +25,18 @@ def read_env(name: str, default: str | None = None) -> str | None:
     return value or default
 
 
+def read_env_alias(
+    primary: str,
+    *aliases: str,
+    default: str | None = None,
+) -> str | None:
+    for name in (primary, *aliases):
+        value = read_env(name)
+        if value is not None:
+            return value
+    return default
+
+
 def read_env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -32,8 +44,8 @@ def read_env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def read_env_list(name: str) -> list[str]:
-    value = read_env(name)
+def read_env_list(name: str, *aliases: str) -> list[str]:
+    value = read_env_alias(name, *aliases)
     if value is None:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -56,7 +68,7 @@ def require_env(name: str, *, insecure_default: str | None = None) -> str:
 
 
 def read_allowed_hosts() -> list[str]:
-    hosts = read_env_list("ALLOWED_HOSTS")
+    hosts = read_env_list("ALLOWED_HOSTS", "DJANGO_ALLOWED_HOSTS")
     if not hosts:
         if ALLOW_INSECURE_DEFAULTS:
             return ["*"]
@@ -123,7 +135,6 @@ BFF_CSRF_COOKIE_DOMAIN = read_env("BFF_CSRF_COOKIE_DOMAIN")
 
 CSRF_COOKIE_NAME = BFF_CSRF_COOKIE_NAME
 CSRF_HEADER_NAME = BFF_CSRF_HEADER
-CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = BFF_COOKIE_SAMESITE
 CSRF_COOKIE_DOMAIN = BFF_CSRF_COOKIE_DOMAIN
 CSRF_COOKIE_PATH = "/"

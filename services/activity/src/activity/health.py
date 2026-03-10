@@ -81,10 +81,7 @@ def _check_access_service() -> CheckResult:
 
     try:
         with httpx.Client(timeout=5.0) as client:
-            resp = client.get(
-                f"{access_url}/health",
-                headers={"X-Forwarded-Proto": "https"},
-            )
+            resp = client.get(f"{access_url}/health")
             latency = (time.perf_counter() - start) * 1000
 
             if resp.status_code == 200:

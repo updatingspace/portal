@@ -18,7 +18,6 @@ const config: Config = {
   projectName: 'updspace-portal',
 
   onBrokenLinks: 'throw',
-
   i18n: {
     defaultLocale: 'ru',
     locales: ['ru', 'en'],

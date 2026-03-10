@@ -221,12 +221,13 @@ class BffAccountDeletionTests(TestCase):
             BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
         ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.delete(
-                    "/api/v1/account/me",
-                    HTTP_HOST=self.host,
-                    HTTP_X_CSRF_TOKEN="csrf-token",
-                )
+            with patch("bff.api._fetch_user_memberships", return_value=[]):
+                with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                    resp = self.client.delete(
+                        "/api/v1/account/me",
+                        HTTP_HOST=self.host,
+                        HTTP_X_CSRF_TOKEN="csrf-token",
+                    )
 
         self.assertEqual(resp.status_code, 204)
         self.assertEqual(
@@ -300,6 +301,11 @@ class BffAccountDeletionTests(TestCase):
             ["access", "activity", "bff", "events", "gamification", "portal", "voting"],
         )
         self.assertEqual(data["bundles"]["bff"]["service"], "bff")
+        self.assertEqual(len(data["bundles"]["bff"]["tenants"]), 1)
+        self.assertEqual(
+            data["bundles"]["bff"]["tenants"][0]["tenant_id"],
+            str(self.tenant.id),
+        )
         self.assertEqual(
             calls,
             [
@@ -309,6 +315,181 @@ class BffAccountDeletionTests(TestCase):
                 ("GET", f"internal/dsar/users/{self.user_id}/export"),
                 ("GET", f"gamification/internal/dsar/users/{self.user_id}/export"),
                 ("GET", f"internal/dsar/users/{self.user_id}/export"),
+            ],
+        )
+
+    def test_delete_account_runs_dsar_cleanup_for_all_memberships(self):
+        other_tenant = Tenant.objects.create(slug="beta")
+        other_session = SessionStore().create(
+            tenant_id=str(other_tenant.id),
+            user_id=self.user_id,
+            master_flags={"email_verified": True},
+            ttl=timedelta(minutes=10),
+        )
+        self.client.cookies[self.cookie_name] = self.primary_session.session_id
+        self.client.cookies["updspace_csrf"] = "csrf-token"
+        erase_calls: list[tuple[str, str, str]] = []
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+            timeout=None,
+        ):
+            if upstream_path.endswith("/erase"):
+                erase_calls.append(
+                    (
+                        str(context_headers.get("X-Tenant-Id", "")),
+                        method,
+                        upstream_path,
+                    )
+                )
+                return httpx.Response(200, json={"ok": True})
+            if upstream_path == "auth/me" and method == "DELETE":
+                return httpx.Response(204, content=b"")
+            return httpx.Response(200, json={"ok": True})
+
+        memberships = [
+            {"tenant_id": str(self.tenant.id), "tenant_slug": self.tenant.slug},
+            {"tenant_id": str(other_tenant.id), "tenant_slug": other_tenant.slug},
+        ]
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api._fetch_user_memberships", return_value=memberships):
+                with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                    resp = self.client.delete(
+                        "/api/v1/account/me",
+                        HTTP_HOST=self.host,
+                        HTTP_X_CSRF_TOKEN="csrf-token",
+                    )
+
+        self.assertEqual(resp.status_code, 204)
+        self.assertEqual(
+            erase_calls,
+            [
+                (str(self.tenant.id), "POST", f"portal/internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"portal/internal/dsar/users/{self.user_id}/erase"),
+                (str(self.tenant.id), "POST", f"feed/internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"feed/internal/dsar/users/{self.user_id}/erase"),
+                (str(self.tenant.id), "POST", f"access/internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"access/internal/dsar/users/{self.user_id}/erase"),
+                (str(self.tenant.id), "POST", f"internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"internal/dsar/users/{self.user_id}/erase"),
+                (str(self.tenant.id), "POST", f"gamification/internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"gamification/internal/dsar/users/{self.user_id}/erase"),
+                (str(self.tenant.id), "POST", f"internal/dsar/users/{self.user_id}/erase"),
+                (str(other_tenant.id), "POST", f"internal/dsar/users/{self.user_id}/erase"),
+            ],
+        )
+        self.assertIsNone(SessionStore().get(other_session.session_id))
+
+    def test_export_account_aggregates_bundles_for_all_memberships(self):
+        other_tenant = Tenant.objects.create(slug="beta")
+        self.client.cookies[self.cookie_name] = self.primary_session.session_id
+        calls: list[tuple[str, str, str]] = []
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+            timeout=None,
+        ):
+            calls.append(
+                (
+                    str(context_headers.get("X-Tenant-Id", "")),
+                    method,
+                    upstream_path,
+                )
+            )
+            if upstream_path.endswith("/export"):
+                service_name = upstream_path.split("/", 1)[0]
+                if upstream_path.startswith("internal/"):
+                    service_name = (
+                        "events"
+                        if upstream_base_url.startswith("http://events")
+                        else "voting"
+                    )
+                return httpx.Response(
+                    200,
+                    json={
+                        "service": service_name,
+                        "tenant_id": str(context_headers.get("X-Tenant-Id", "")),
+                        "tenant_slug": str(context_headers.get("X-Tenant-Slug", "")),
+                        "user_id": self.user_id,
+                    },
+                )
+            return httpx.Response(200, json={"ok": True})
+
+        memberships = [
+            {"tenant_id": str(self.tenant.id), "tenant_slug": self.tenant.slug},
+            {"tenant_id": str(other_tenant.id), "tenant_slug": other_tenant.slug},
+        ]
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api._fetch_user_memberships", return_value=memberships):
+                with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                    resp = self.client.get("/api/v1/account/me/export", HTTP_HOST=self.host)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(
+            data["tenant_ids"],
+            [str(self.tenant.id), str(other_tenant.id)],
+        )
+        self.assertEqual(
+            [
+                item["tenant_id"]
+                for item in data["bundles"]["portal"]["tenants"]
+            ],
+            [str(self.tenant.id), str(other_tenant.id)],
+        )
+        self.assertEqual(
+            calls,
+            [
+                (str(self.tenant.id), "GET", f"portal/internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"portal/internal/dsar/users/{self.user_id}/export"),
+                (str(self.tenant.id), "GET", f"feed/internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"feed/internal/dsar/users/{self.user_id}/export"),
+                (str(self.tenant.id), "GET", f"access/internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"access/internal/dsar/users/{self.user_id}/export"),
+                (str(self.tenant.id), "GET", f"internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"internal/dsar/users/{self.user_id}/export"),
+                (str(self.tenant.id), "GET", f"gamification/internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"gamification/internal/dsar/users/{self.user_id}/export"),
+                (str(self.tenant.id), "GET", f"internal/dsar/users/{self.user_id}/export"),
+                (str(other_tenant.id), "GET", f"internal/dsar/users/{self.user_id}/export"),
             ],
         )
 
