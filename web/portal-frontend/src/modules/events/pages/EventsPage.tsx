@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { Calendar } from '@gravity-ui/date-components';
 import { dateTime, settings } from '@gravity-ui/date-utils';
 import {
@@ -121,6 +122,7 @@ const OWNERSHIP_OPTIONS: { value: OwnershipFilter; content: string }[] = [
 export const EventsPage: React.FC = () => {
     const [page, setPage] = useState(1);
     const navigate = useNavigate();
+    const routeBase = useRouteBase();
     const { user } = useAuth();
     const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
     const [activeTab, setActiveTab] = useState<EventStatusFilter>('upcoming');
@@ -158,7 +160,7 @@ export const EventsPage: React.FC = () => {
             return { scopeType: 'TENANT' as const, scopeId: user.tenant.id };
         }
         return {};
-    }, [user?.tenant?.id]);
+    }, [user]);
 
     const { data, isLoading, isError, refetch } = useEventsList({
         limit: PAGE_SIZE,
@@ -202,7 +204,7 @@ export const EventsPage: React.FC = () => {
                 if (!aDate || !bDate) return 0;
                 return aDate.getTime() - bDate.getTime();
             });
-    }, [events, ownershipFilter, query, rsvpFilter, user?.id, visibilityFilter]);
+    }, [events, ownershipFilter, query, rsvpFilter, user, visibilityFilter]);
 
     const filteredEvents = useMemo(() => {
         if (selectedDate) {
@@ -227,7 +229,7 @@ export const EventsPage: React.FC = () => {
     };
 
     const handleEdit = (event: EventWithCounts) => {
-        navigate(`/app/events/${event.id}/edit`);
+        navigate(`${routeBase}/events/${event.id}/edit`);
     };
 
     const handleDateChange = (value: CalendarValue) => {
@@ -305,7 +307,7 @@ export const EventsPage: React.FC = () => {
                                 </Text>
                             </div>
                             {canCreate && (
-                                <Link to="/app/events/create">
+                                <Link to={`${routeBase}/events/create`}>
                                     <Button view="action" size="l" className="shadow-sm">
                                         <Icon data={PlusIcon} />
                                         Создать

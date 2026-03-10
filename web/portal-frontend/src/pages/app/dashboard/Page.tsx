@@ -6,14 +6,16 @@ import { DashboardCardSkeleton } from './ui/DashboardCardSkeleton';
 import { DashboardHero } from './ui/DashboardHero';
 import { DashboardHeroSkeleton } from './ui/DashboardHeroSkeleton';
 import { useDashboardStats } from './model/useDashboardStats';
+import { useRouteBase } from '../../../shared/hooks/useRouteBase';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { stats, isLoading } = useDashboardStats();
+  const routeBase = useRouteBase();
 
-  const handleOpenFeed = useCallback(() => navigate('/app/feed'), [navigate]);
-  const handleOpenEvents = useCallback(() => navigate('/app/events'), [navigate]);
-  const handleOpenVoting = useCallback(() => navigate('/app/voting'), [navigate]);
+  const handleOpenFeed = useCallback(() => navigate(`${routeBase}/feed`), [navigate, routeBase]);
+  const handleOpenEvents = useCallback(() => navigate(`${routeBase}/events`), [navigate, routeBase]);
+  const handleOpenVoting = useCallback(() => navigate(`${routeBase}/voting`), [navigate, routeBase]);
 
   return (
     <div className="container-fluid" style={{ maxWidth: 1100 }}>

@@ -1,24 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, Card, Loader, Text } from '@gravity-ui/uikit';
+import { Button, Card, Label, Text } from '@gravity-ui/uikit';
+
 import { PollForm } from '../../../../features/voting/components/PollForm';
 import { useCreatePoll, usePollTemplates } from '../../../../features/voting';
 import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
-import type { PollCreatePayload, PollTemplate, PollUpdatePayload, ResultsVisibility } from '../../../../features/voting/types';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { logger } from '../../../../utils/logger';
+import type {
+  PollCreatePayload,
+  PollTemplate,
+  PollUpdatePayload,
+  ResultsVisibility,
+} from '../../../../features/voting/types';
+import { VotingLoadingState, VotingPageLayout } from '../../ui';
 
 const creationSteps = [
   {
-    title: 'Выберите старт',
-    detail: 'Возьмите шаблон или начните с пустого опроса.',
+    title: '1. Выбор старта',
+    detail: 'Шаблон или пустой опрос.',
   },
   {
-    title: 'Настройте параметры',
-    detail: 'Определите видимость, расписание и правила результатов.',
+    title: '2. Настройка правил',
+    detail: 'Видимость, расписание, правила публикации результатов.',
   },
   {
-    title: 'Добавьте вопросы',
-    detail: 'Создайте вопросы и варианты ответов перед публикацией.',
+    title: '3. Подготовка вопросов',
+    detail: 'После создания перейдите к настройке вопросов и участников.',
   },
 ];
 
@@ -39,6 +48,7 @@ const featureHighlights = [
 
 export const PollCreatePage: React.FC = () => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const location = useLocation();
   const { data: templates = [], isLoading: templatesLoading } = usePollTemplates();
   const createPollMutation = useCreatePoll();
@@ -55,9 +65,22 @@ export const PollCreatePage: React.FC = () => {
     const template = templates.find((item) => item.slug === templateSlug) ?? null;
     if (!template) return;
 
+    // Sync route-selected template into local wizard state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedTemplate(template);
     setShowForm(true);
   }, [location.state, templates]);
+
+  useEffect(() => {
+    logger.info('Voting v2 page loaded', {
+      area: 'voting',
+      event: 'voting_v2.page_loaded',
+      data: {
+        page: 'create',
+        templates: templates.length,
+      },
+    });
+  }, [templates.length]);
 
   const templateDefaults = useMemo(() => {
     if (!selectedTemplate) return null;
@@ -88,12 +111,20 @@ export const PollCreatePage: React.FC = () => {
 
     createPollMutation.mutate(data as PollCreatePayload, {
       onSuccess: (poll) => {
+        logger.info('Voting v2 poll created', {
+          area: 'voting',
+          event: 'voting_v2.poll_created',
+          data: {
+            pollId: poll.id,
+            template: selectedTemplate?.slug ?? null,
+          },
+        });
         toaster.add({
           name: 'poll-created',
           title: 'Опрос создан',
           theme: 'success',
         });
-        navigate(`/app/voting/${poll.id}/manage`, { state: { tab: 'questions' } });
+        navigate(`${routeBase}/voting/${poll.id}/manage`, { state: { tab: 'questions' } });
       },
       onError: (error) => {
         notifyApiError(error, 'Не удалось создать опрос');
@@ -117,29 +148,22 @@ export const PollCreatePage: React.FC = () => {
   };
 
   if (templatesLoading) {
-    return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
-        <Loader size="l" />
-      </div>
-    );
+    return <VotingLoadingState text="Загружаем шаблоны опросов…" />;
   }
 
   if (showForm) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50">
-        <div className="bg-white border-b border-slate-200">
-          <div className="container max-w-6xl mx-auto px-4 py-6">
-            <Text variant="header-1" className="text-slate-900">
-              {selectedTemplate ? `Создание по шаблону «${selectedTemplate.title}»` : 'Новый опрос'}
-            </Text>
-            <Text variant="body-2" color="secondary" className="mt-1">
-              Настройте параметры и создайте опрос. Вопросы можно будет добавить сразу после сохранения.
-            </Text>
-          </div>
-        </div>
-
-        <div className="container max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1.6fr,1fr]">
-          <Card className="p-6">
+      <VotingPageLayout
+        title={selectedTemplate ? `Создание по шаблону «${selectedTemplate.title}»` : 'Новый опрос'}
+        description="Настройте параметры и создайте опрос. Вопросы можно будет добавить сразу после сохранения."
+        actions={
+          <Button view="outlined" onClick={handleCancel}>
+            Назад к выбору старта
+          </Button>
+        }
+      >
+        <div className="voting-v2__split">
+          <Card className="voting-v2__card">
             <PollForm
               initialData={
                 selectedTemplate
@@ -159,35 +183,32 @@ export const PollCreatePage: React.FC = () => {
             />
           </Card>
 
-          <div className="space-y-4">
-            <Card className="p-5 border border-dashed border-slate-200">
-              <Text variant="subheader-2">Шаблон</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
+          <div className="voting-v2__grid">
+            <Card className="voting-v2__card voting-v2__card--soft">
+              <Text variant="subheader-2" className="voting-v2__section-title">Шаблон</Text>
+              <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
                 {selectedTemplate
                   ? selectedTemplate.description
-                  : 'Шаблон не выбран. Можно выбрать позже в списке.'}
+                  : 'Шаблон не выбран. Можно выбрать позже.'}
               </Text>
-              {selectedTemplate && (
-                <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                  <li>
-                    <span className="font-semibold text-slate-800">Видимость:</span> {selectedTemplate.visibility}
-                  </li>
-                  <li>
-                    <span className="font-semibold text-slate-800">Вопросов:</span> {selectedTemplate.questions?.length ?? 0}
-                  </li>
-                  <li>
-                    <span className="font-semibold text-slate-800">ID шаблона:</span> {selectedTemplate.slug}
-                  </li>
-                </ul>
-              )}
+              {selectedTemplate ? (
+                <div className="voting-v2__meta-grid" style={{ marginTop: 10 }}>
+                  <div>
+                    <strong>Видимость:</strong> {selectedTemplate.visibility}
+                  </div>
+                  <div>
+                    <strong>Вопросов:</strong> {selectedTemplate.questions?.length ?? 0}
+                  </div>
+                  <div>
+                    <strong>ID:</strong> {selectedTemplate.slug}
+                  </div>
+                </div>
+              ) : null}
             </Card>
 
-            <Card className="p-5 bg-slate-50">
-              <Text variant="subheader-2">Что дальше</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
-                После создания перейдите к настройке вопросов и участников.
-              </Text>
-              <ul className="mt-4 space-y-2 text-sm text-slate-600 list-disc list-inside">
+            <Card className="voting-v2__card">
+              <Text variant="subheader-2" className="voting-v2__section-title">Что дальше</Text>
+              <ul className="voting-v2__list voting-v2__small voting-v2__muted">
                 <li>Добавьте вопросы и варианты ответа</li>
                 <li>Пригласите участников для приватных опросов</li>
                 <li>Опубликуйте опрос, когда всё готово</li>
@@ -195,106 +216,94 @@ export const PollCreatePage: React.FC = () => {
             </Card>
           </div>
         </div>
-      </div>
+      </VotingPageLayout>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
-      <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6">
-          <Text variant="header-1" className="text-slate-900">
-            Создание опроса
-          </Text>
-          <Text variant="body-2" color="secondary" className="mt-1">
-            Запустите голосование за несколько минут — выберите шаблон или начните с нуля.
-          </Text>
-        </div>
-      </div>
-
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
-        <Card className="p-5">
-          <Text variant="subheader-2">Как это работает</Text>
-          <ol className="mt-3 space-y-3 list-decimal list-inside text-sm text-slate-600">
-            {creationSteps.map((step) => (
-              <li key={step.title}>
-                <span className="font-semibold text-slate-800">{step.title}:</span> {step.detail}
-              </li>
-            ))}
-          </ol>
-        </Card>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card className="p-6 border border-dashed border-slate-200">
-            <div className="flex flex-col h-full justify-between gap-4">
-              <div>
-                <Text variant="subheader-2">Пустой опрос</Text>
-                <Text variant="body-2" color="secondary" className="mt-1">
-                  Полный контроль над настройками, видимостью и вопросами.
-                </Text>
-              </div>
-              <Button view="action" onClick={handleBlankPoll} width="max">
-                Начать с нуля
-              </Button>
+    <VotingPageLayout
+      title="Создание опроса"
+      description="Запустите голосование за несколько минут — выберите шаблон или начните с нуля."
+    >
+      <Card className="voting-v2__card voting-v2__card--soft">
+        <Text variant="subheader-2" className="voting-v2__section-title">Как это работает</Text>
+        <div className="voting-v2__grid" style={{ marginTop: 12 }}>
+          {creationSteps.map((step) => (
+            <div key={step.title} className="voting-v2__stats-item">
+              <div className="voting-v2__stats-value">{step.title}</div>
+              <div className="voting-v2__stats-label">{step.detail}</div>
             </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex flex-col h-full justify-between gap-4">
-              <div>
-                <Text variant="subheader-2">Шаблоны</Text>
-                <Text variant="body-2" color="secondary" className="mt-1">
-                  {templateCount ? `${templateCount} готовых сценария` : 'Шаблоны пока не настроены.'}
-                </Text>
-              </div>
-              <Button view="outlined" onClick={() => templates[0] && handleTemplateSelect(templates[0])} width="max" disabled={!templateCount}>
-                Выбрать шаблон
-              </Button>
-            </div>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-3">
-          {featureHighlights.map((highlight) => (
-            <Card key={highlight.title} className="p-5">
-              <Text variant="subheader-2">{highlight.title}</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
-                {highlight.description}
-              </Text>
-            </Card>
           ))}
         </div>
+      </Card>
 
-        {featuredTemplates.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Text variant="subheader-2">Популярные шаблоны</Text>
-              <Text variant="caption-2" color="secondary">Всего {templateCount}</Text>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {featuredTemplates.map((template) => (
-                <Card
-                  key={template.slug}
-                  className="p-5 hover:shadow-md transition cursor-pointer"
-                  onClick={() => handleTemplateSelect(template)}
-                >
-                  <Text variant="subheader-2">{template.title}</Text>
-                  <Text variant="body-2" color="secondary" className="mt-1">
-                    {template.description}
-                  </Text>
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded-full border border-slate-200 px-3 py-1">{template.visibility}</span>
-                    <span className="rounded-full border border-slate-200 px-3 py-1">{template.questions?.length ?? 0} вопросов</span>
-                  </div>
-                  <Button view="normal" width="max" className="mt-4">
+      <div className="voting-v2__grid voting-v2__grid--2">
+        <Card className="voting-v2__card">
+          <Text variant="subheader-2" className="voting-v2__section-title">Пустой опрос</Text>
+          <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+            Полный контроль над настройками, видимостью и вопросами.
+          </Text>
+          <div className="voting-form__actions">
+            <Button view="action" onClick={handleBlankPoll}>
+              Начать с нуля
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="voting-v2__card">
+          <Text variant="subheader-2" className="voting-v2__section-title">Шаблоны</Text>
+          <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+            {templateCount ? `${templateCount} готовых сценария` : 'Шаблоны пока не настроены.'}
+          </Text>
+          <div className="voting-form__actions">
+            <Button view="outlined" onClick={() => templates[0] && handleTemplateSelect(templates[0])} disabled={!templateCount}>
+              Выбрать шаблон
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      <div className="voting-v2__grid voting-v2__grid--3">
+        {featureHighlights.map((highlight) => (
+          <Card key={highlight.title} className="voting-v2__card">
+            <Text variant="subheader-2" className="voting-v2__section-title">{highlight.title}</Text>
+            <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+              {highlight.description}
+            </Text>
+          </Card>
+        ))}
+      </div>
+
+      {featuredTemplates.length > 0 ? (
+        <>
+          <div className="voting-v2__toolbar">
+            <Text variant="subheader-2" className="voting-v2__section-title">Популярные шаблоны</Text>
+            <Text variant="caption-2" color="secondary">Всего {templateCount}</Text>
+          </div>
+          <div className="voting-v2__grid voting-v2__grid--3">
+            {featuredTemplates.map((template) => (
+              <Card
+                key={template.slug}
+                className="voting-v2__card"
+              >
+                <Text variant="subheader-2" className="voting-v2__section-title">{template.title}</Text>
+                <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+                  {template.description}
+                </Text>
+                <div className="voting-v2__pills" style={{ marginTop: 8 }}>
+                  <Label size="xs" theme="info">{template.visibility}</Label>
+                  <Label size="xs" theme="utility">{template.questions?.length ?? 0} вопросов</Label>
+                </div>
+                <div className="voting-form__actions">
+                  <Button view="normal" onClick={() => handleTemplateSelect(template)}>
                     Использовать шаблон
                   </Button>
-                </Card>
-              ))}
-            </div>
+                </div>
+              </Card>
+            ))}
           </div>
-        )}
-      </div>
-    </div>
+        </>
+      ) : null}
+    </VotingPageLayout>
   );
 };

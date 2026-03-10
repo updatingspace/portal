@@ -40,7 +40,7 @@ export const VoteButton: React.FC<VoteButtonProps> = ({
       onClick={handleClick}
       disabled={isDisabled || isLoading}
       view={isSelected ? 'action' : 'outlined'}
-      className="w-full flex items-center justify-center gap-2"
+      className="voting-v2__toolbar-left"
     >
       {isLoading ? (
         <Loader size="s" />
@@ -48,7 +48,7 @@ export const VoteButton: React.FC<VoteButtonProps> = ({
         <>
           {children}
           {isSelected && (
-            <span className="text-xs">✓</span>
+            <span>✓</span>
           )}
         </>
       )}

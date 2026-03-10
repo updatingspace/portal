@@ -2,16 +2,18 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EventForm } from '../../../features/events/components';
 import type { EventWithCounts } from '../../../features/events';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 
 export const CreateEventPage: React.FC = () => {
     const navigate = useNavigate();
+    const routeBase = useRouteBase();
 
     const handleSuccess = (event: EventWithCounts) => {
-        navigate(`/app/events/${event.id}`);
+        navigate(`${routeBase}/events/${event.id}`);
     };
 
     const handleCancel = () => {
-        navigate('/app/events');
+        navigate(`${routeBase}/events`);
     };
 
     return (

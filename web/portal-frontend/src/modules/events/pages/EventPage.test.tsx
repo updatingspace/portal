@@ -6,7 +6,7 @@ import { vi } from 'vitest';
 import { EventPage } from './EventPage';
 
 vi.mock('@gravity-ui/uikit', () => ({
-  Button: ({ loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
+  Button: (props: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
   Card: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Text: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Icon: () => <span data-testid="icon" />,

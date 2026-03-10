@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Card, Loader, Text } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
+import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
 import type { ActivityEvent } from '../../../../types/activity';
 import { PostCard } from './PostCard';
 import { PostCardSkeleton } from './PostCardSkeleton';
@@ -33,12 +34,13 @@ export const ProfileFeed: React.FC<ProfileFeedProps> = ({
   onCreatePost,
 }) => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
 
   if (!canViewPosts) {
     return (
       <Card view="filled" className="profile-hub__feed-state">
         <Text variant="subheader-2">{profileHubStrings.feedNoPermission}</Text>
-        <Button view="outlined" size="m" onClick={() => navigate('/app')}>
+        <Button view="outlined" size="m" onClick={() => navigate(routeBase)}>
           {profileHubStrings.common.toHome}
         </Button>
       </Card>

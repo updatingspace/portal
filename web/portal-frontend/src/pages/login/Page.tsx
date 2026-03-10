@@ -7,7 +7,7 @@ import { redirectToLogin } from '../../modules/portal/auth';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get('next') ?? '/app';
+  const next = params.get('next') ?? '/choose-tenant';
 
   return (
     <div className="container py-5">

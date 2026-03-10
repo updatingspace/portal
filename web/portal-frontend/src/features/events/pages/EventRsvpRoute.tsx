@@ -1,5 +1,6 @@
 import React, {useMemo} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import {Loader, ToasterComponent, ToasterProvider} from '@gravity-ui/uikit';
 import {toaster} from '@gravity-ui/uikit/toaster-singleton';
 
@@ -9,6 +10,7 @@ import {EventRsvpPage} from './EventRsvpPage/EventRsvpPage';
 export const EventRsvpRoute: React.FC = () => {
     const {id = ''} = useParams<{id: string}>();
     const navigate = useNavigate();
+    const routeBase = useRouteBase();
 
     const eventQuery = useEvent(id);
     const setRsvpMutation = useSetRsvp(id);
@@ -44,10 +46,10 @@ export const EventRsvpRoute: React.FC = () => {
                 event={event}
                 myRsvp={event.myRsvp ?? undefined}
                 onRsvpChange={(value) => setRsvpMutation.mutate(value)}
-                onBack={() => navigate('/app/events')}
+                onBack={() => navigate(`${routeBase}/events`)}
                 onAddToCalendar={() => exportIcsMutation.mutate(id)}
                 // onEdit — оставил как хук для твоей логики (диалог/страница редактирования)
-                onEdit={() => navigate(`/app/events/${id}?edit=1`)}
+                onEdit={() => navigate(`${routeBase}/events/${id}?edit=1`)}
                 onSaveDescription={async (markup) => {
                     await new Promise<void>((resolve, reject) => {
                         updateEventMutation.mutate(

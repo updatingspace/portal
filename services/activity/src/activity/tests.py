@@ -525,6 +525,22 @@ class NewsCreateTests(TestCase):
             ),
         )
         self.assertEqual(react_resp.status_code, 200)
+        list_reactions_resp = self.client.get(
+            f"/api/v1/news/{news_id}/reactions?limit=10",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-react-list",
+                user_id=user_id,
+                method="GET",
+                path=f"/api/v1/news/{news_id}/reactions",
+            ),
+        )
+        self.assertEqual(list_reactions_resp.status_code, 200)
+        list_payload = list_reactions_resp.json()
+        self.assertEqual(len(list_payload), 1)
+        self.assertEqual(list_payload[0]["emoji"], "🔥")
+        self.assertEqual(list_payload[0]["user_id"], str(user_id))
 
         comment_body = json.dumps({"body": "Круто!"}).encode("utf-8")
         comment_resp = self.client.post(
@@ -542,6 +558,150 @@ class NewsCreateTests(TestCase):
             ),
         )
         self.assertEqual(comment_resp.status_code, 200)
+        parent_comment = comment_resp.json()
+        parent_comment_id = parent_comment["id"]
+        self.assertIsNone(parent_comment["parent_id"])
+        self.assertEqual(parent_comment["likes_count"], 0)
+
+        reply_body = json.dumps({"body": "Ответ", "parent_id": parent_comment_id}).encode("utf-8")
+        reply_resp = self.client.post(
+            f"/api/v1/news/{news_id}/comments",
+            data=reply_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-reply",
+                user_id=user_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/comments",
+                body=reply_body,
+            ),
+        )
+        self.assertEqual(reply_resp.status_code, 200)
+        reply_payload = reply_resp.json()
+        self.assertEqual(reply_payload["parent_id"], parent_comment_id)
+
+        second_comment_body = json.dumps({"body": "Ещё один корень"}).encode("utf-8")
+        second_comment_resp = self.client.post(
+            f"/api/v1/news/{news_id}/comments",
+            data=second_comment_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-2",
+                user_id=user_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/comments",
+                body=second_comment_body,
+            ),
+        )
+        self.assertEqual(second_comment_resp.status_code, 200)
+        second_root_comment = second_comment_resp.json()
+
+        list_comments_resp = self.client.get(
+            f"/api/v1/news/{news_id}/comments?limit=10",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-list",
+                user_id=user_id,
+                method="GET",
+                path=f"/api/v1/news/{news_id}/comments",
+            ),
+        )
+        self.assertEqual(list_comments_resp.status_code, 200)
+        comments_payload = list_comments_resp.json()
+        self.assertEqual(len(comments_payload), 3)
+
+        root_page_resp = self.client.get(
+            f"/api/v1/news/{news_id}/comments/page?limit=1",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-page-1",
+                user_id=user_id,
+                method="GET",
+                path=f"/api/v1/news/{news_id}/comments/page",
+            ),
+        )
+        self.assertEqual(root_page_resp.status_code, 200)
+        root_page_payload = root_page_resp.json()
+        self.assertEqual(len(root_page_payload["items"]), 1)
+        self.assertTrue(root_page_payload["has_more"])
+        self.assertIsNotNone(root_page_payload["next_cursor"])
+        self.assertEqual(root_page_payload["items"][0]["id"], parent_comment_id)
+        self.assertEqual(root_page_payload["items"][0]["replies_count"], 1)
+
+        root_page_2_resp = self.client.get(
+            f"/api/v1/news/{news_id}/comments/page?limit=1&cursor={root_page_payload['next_cursor']}",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-page-2",
+                user_id=user_id,
+                method="GET",
+                path=f"/api/v1/news/{news_id}/comments/page",
+            ),
+        )
+        self.assertEqual(root_page_2_resp.status_code, 200)
+        root_page_2_payload = root_page_2_resp.json()
+        self.assertEqual(len(root_page_2_payload["items"]), 1)
+        self.assertEqual(root_page_2_payload["items"][0]["id"], second_root_comment["id"])
+
+        child_page_resp = self.client.get(
+            f"/api/v1/news/{news_id}/comments/page?parent_id={parent_comment_id}&limit=10",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-page-child",
+                user_id=user_id,
+                method="GET",
+                path=f"/api/v1/news/{news_id}/comments/page",
+            ),
+        )
+        self.assertEqual(child_page_resp.status_code, 200)
+        child_page_payload = child_page_resp.json()
+        self.assertEqual(len(child_page_payload["items"]), 1)
+        self.assertEqual(child_page_payload["items"][0]["id"], reply_payload["id"])
+
+        like_body = json.dumps({"action": "add"}).encode("utf-8")
+        like_resp = self.client.post(
+            f"/api/v1/news/{news_id}/comments/{parent_comment_id}/likes",
+            data=like_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-like",
+                user_id=user_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/comments/{parent_comment_id}/likes",
+                body=like_body,
+            ),
+        )
+        self.assertEqual(like_resp.status_code, 200)
+        like_payload = like_resp.json()
+        self.assertEqual(like_payload["likes_count"], 1)
+        self.assertTrue(like_payload["my_liked"])
+
+        delete_resp = self.client.delete(
+            f"/api/v1/news/{news_id}/comments/{parent_comment_id}",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-comment-delete",
+                user_id=user_id,
+                method="DELETE",
+                path=f"/api/v1/news/{news_id}/comments/{parent_comment_id}",
+            ),
+        )
+        self.assertEqual(delete_resp.status_code, 200)
+        deleted_payload = delete_resp.json()
+        self.assertTrue(deleted_payload["deleted"])
+        self.assertEqual(deleted_payload["body"], "Комментарий удалён")
+        self.assertIsNone(deleted_payload["user_id"])
 
 
 class FeedFilteringTests(TestCase):

@@ -4,19 +4,21 @@ import { Loader, Card } from '@gravity-ui/uikit';
 import { useEvent } from '../../../features/events';
 import { EventForm } from '../../../features/events/components';
 import type { EventWithCounts } from '../../../features/events';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 
 export const EditEventPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const routeBase = useRouteBase();
 
     const { data: event, isLoading, isError } = useEvent(id || '');
 
     const handleSuccess = (updatedEvent: EventWithCounts) => {
-        navigate(`/app/events/${updatedEvent.id}`);
+        navigate(`${routeBase}/events/${updatedEvent.id}`);
     };
 
     const handleCancel = () => {
-        navigate(`/app/events/${id}`);
+        navigate(`${routeBase}/events/${id}`);
     };
 
     if (isLoading) {

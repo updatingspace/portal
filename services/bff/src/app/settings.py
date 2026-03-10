@@ -93,6 +93,24 @@ try:
 except ValueError:
     BFF_SESSION_RATE_LIMIT_PER_MIN = 60
 
+# Rate limit specifically for switch-tenant (tighter than general session)
+try:
+    BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN = int(os.getenv("BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN", "15"))
+except ValueError:
+    BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN = 15
+
+# TTL for cached tenants list (seconds)
+try:
+    BFF_TENANTS_CACHE_TTL = int(os.getenv("BFF_TENANTS_CACHE_TTL", "120"))
+except ValueError:
+    BFF_TENANTS_CACHE_TTL = 120
+
+# Rollout evaluation cache TTL (seconds)
+try:
+    BFF_ROLLOUT_CACHE_TTL = int(os.getenv("BFF_ROLLOUT_CACHE_TTL", "60"))
+except ValueError:
+    BFF_ROLLOUT_CACHE_TTL = 60
+
 try:
     BFF_PROXY_TIMEOUT_SECONDS = float(os.getenv("BFF_PROXY_TIMEOUT_SECONDS", "10"))
 except ValueError:

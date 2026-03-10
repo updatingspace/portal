@@ -4,19 +4,21 @@ import { useNavigate } from 'react-router-dom';
 
 import { requestResult } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { useRouteBase } from '../../shared/hooks/useRouteBase';
 
 export const AuthActions: React.FC = () => {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
 
   const userMenuItems = useMemo<DropdownMenuItem[]>(
     () =>
       user
         ? [
-            { action: () => navigate('/app/profile'), text: 'Profile' },
-            { action: () => navigate('/app/settings'), text: 'Settings' },
+            { action: () => navigate(`${routeBase}/profile`), text: 'Profile' },
+            { action: () => navigate(`${routeBase}/settings`), text: 'Settings' },
             ...(user.isSuperuser
-              ? [{ action: () => navigate('/app/admin'), text: 'Admin' }]
+              ? [{ action: () => navigate(`${routeBase}/admin`), text: 'Admin' }]
               : []),
             {
               action: async () => {
@@ -36,7 +38,7 @@ export const AuthActions: React.FC = () => {
             },
           ]
         : [],
-    [navigate, setUser, user],
+    [navigate, setUser, user, routeBase],
   );
 
   if (!user || !userMenuItems.length) {

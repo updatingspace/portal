@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, StreamingHttpResponse
 from ninja import NinjaAPI, Router
 
@@ -15,6 +18,7 @@ from .errors import error_response
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
+from .tenant import validate_tenant_slug, resolve_tenant_by_slug, get_or_create_global_tenant
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -45,6 +49,466 @@ def _require_auth(request: HttpRequest):
             status=401,
         )
     return ctx, None
+
+
+def _require_auth_tenantless(request: HttpRequest):
+    """Require authentication but allow tenantless state (no active tenant)."""
+    ctx = getattr(request, "auth_ctx", None)
+    if not ctx:
+        return None, error_response(
+            code="UNAUTHENTICATED",
+            message="Authentication required",
+            request_id=getattr(request, "request_id", None),
+            status=401,
+        )
+    return ctx, None
+
+
+def _resolve_auth_tenant(request: HttpRequest):
+    """Resolve tenant for auth endpoints.
+
+    Tries host-based resolution first (legacy subdomain mode).
+    Falls back to the global portal tenant for path-based tenancy so that
+    login / callback can work from a non-tenant domain.
+    """
+    tenant = getattr(request, "tenant", None)
+    if tenant:
+        return tenant
+    return get_or_create_global_tenant()
+
+
+def _fetch_user_memberships(request: HttpRequest, ctx, *, use_cache: bool = True) -> list[dict[str, Any]]:
+    """Fetch user's tenant memberships from ID service, with optional caching.
+
+    NOTE: This is used by tenantless endpoints (entry/me, session/tenants,
+    switch-tenant) where we need ALL memberships across ALL tenants.
+    We intentionally do NOT send X-Tenant-Id / X-Tenant-Slug headers
+    to the ID service so it returns the full membership list rather than
+    scoping to a single tenant.
+    """
+    store = SessionStore()
+
+    if use_cache:
+        cached = store.get_cached_user_tenants(ctx.user_id)
+        if cached is not None:
+            return cached
+
+    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    if not id_upstream:
+        return []
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=id_upstream,
+            upstream_path="me",
+            method="GET",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers={
+                "X-Request-Id": getattr(request, "request_id", ""),
+                "X-User-Id": ctx.user_id,
+                # No X-Tenant-Id / X-Tenant-Slug here — we want ALL memberships.
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Failed to fetch memberships from ID", exc_info=True)
+        return []
+
+    if resp.status_code != 200:
+        return []
+
+    try:
+        data = resp.json()
+    except Exception:
+        return []
+
+    memberships = data.get("memberships") if isinstance(data, dict) else None
+    if not isinstance(memberships, list):
+        return []
+
+    # Normalize to list of dicts with required fields
+    result = []
+    for m in memberships:
+        if not isinstance(m, dict):
+            continue
+        result.append({
+            "tenant_id": str(m.get("tenant_id", "")),
+            "tenant_slug": str(m.get("tenant_slug", "")),
+            "display_name": str(m.get("display_name", m.get("tenant_slug", ""))),
+            "status": str(m.get("status", "active")),
+            "base_role": str(m.get("base_role", "member")),
+        })
+
+    # Cache the result
+    ttl = int(getattr(settings, "BFF_TENANTS_CACHE_TTL", 120))
+    store.cache_user_tenants(ctx.user_id, result, ttl=ttl)
+
+    return result
+
+
+def _hash_user_key(user_id: str) -> str:
+    """Create a hashed user key for AB bucketing (no raw user_id in logs)."""
+    secret = str(getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "") or "ab-salt")
+    return hashlib.sha256(f"{secret}:{user_id}".encode()).hexdigest()[:16]
+
+
+def _evaluate_rollout(request: HttpRequest, ctx, tenant_id: str) -> dict[str, Any]:
+    """Evaluate rollout/AB flags via Access service, with caching."""
+    access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
+    if not access_upstream:
+        return {"feature_flags": {}, "experiments": {}}
+
+    user_key_hashed = _hash_user_key(ctx.user_id)
+    cache_key = f"bff:rollout:{tenant_id}:{user_key_hashed}"
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # Extract roles from master_flags if present
+    user_roles = []
+    if isinstance(ctx.master_flags, dict):
+        if ctx.master_flags.get("system_admin"):
+            user_roles.append("system_admin")
+
+    payload = {
+        "tenant_id": tenant_id,
+        "user_key_hashed": user_key_hashed,
+        "user_roles": user_roles,
+        "context": {"path": request.path},
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=access_upstream,
+            upstream_path="access/rollout/evaluate",
+            method="POST",
+            query_string="",
+            body=body,
+            incoming_headers=request.headers,
+            context_headers={
+                "Content-Type": "application/json",
+                "X-Request-Id": getattr(request, "request_id", ""),
+                "X-Tenant-Id": tenant_id,
+                "X-User-Id": ctx.user_id,
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Rollout evaluate failed", exc_info=True)
+        return {"feature_flags": {}, "experiments": {}}
+
+    if resp.status_code != 200:
+        return {"feature_flags": {}, "experiments": {}}
+
+    try:
+        result = resp.json()
+    except Exception:
+        return {"feature_flags": {}, "experiments": {}}
+
+    rollout_data = {
+        "feature_flags": result.get("feature_flags", {}),
+        "experiments": result.get("experiments", {}),
+    }
+
+    ttl = int(getattr(settings, "BFF_ROLLOUT_CACHE_TTL", 60))
+    cache.set(cache_key, rollout_data, timeout=ttl)
+
+    return rollout_data
+
+
+# -----------------------------------------------
+# Path-based multi-tenancy endpoints
+# -----------------------------------------------
+
+@router.post("/session/switch-tenant")
+def session_switch_tenant(request: HttpRequest):
+    """Switch active tenant in BFF session.
+
+    Validates membership, sets active_tenant_* in session.
+    Returns active tenant info + redirect path.
+    """
+    ctx, err = _require_auth_tenantless(request)
+    if err:
+        return err
+
+    try:
+        raw_body = (request.body or b"{}").decode("utf-8")
+        body = json.loads(raw_body)
+        if isinstance(body, str):
+            # Handle double-encoded JSON payloads (e.g. "{\"tenant_slug\":\"aef\"}")
+            body = json.loads(body)
+    except Exception:
+        return error_response(
+            code="BAD_REQUEST",
+            message="Invalid JSON",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    tenant_slug = str(body.get("tenant_slug", "")).strip().lower()
+
+    if not validate_tenant_slug(tenant_slug):
+        return error_response(
+            code="INVALID_SLUG",
+            message="Invalid tenant slug format",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    # Rate limit switch-tenant specifically
+    from django.core.cache import cache as rl_cache
+
+    limit = int(getattr(settings, "BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN", 15))
+    if limit > 0:
+        rl_key = f"bff:rl:switch:{ctx.user_id}"
+        current = rl_cache.get(rl_key)
+        if current is not None and int(current) >= limit:
+            return error_response(
+                code="RATE_LIMITED",
+                message="Too many tenant switch requests",
+                request_id=getattr(request, "request_id", None),
+                status=429,
+            )
+        if current is None:
+            rl_cache.set(rl_key, 1, timeout=60)
+        else:
+            rl_cache.incr(rl_key)
+
+    # Fetch memberships and check if user has access to requested tenant
+    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
+
+    target_membership = None
+    for m in memberships:
+        if m.get("tenant_slug") == tenant_slug:
+            target_membership = m
+            break
+
+    if not target_membership:
+        # Check if tenant exists at all (to distinguish 403 vs 404)
+        resolved = resolve_tenant_by_slug(tenant_slug)
+        if not resolved:
+            return error_response(
+                code="TENANT_NOT_FOUND",
+                message="Tenant not found",
+                request_id=getattr(request, "request_id", None),
+                status=404,
+            )
+        return error_response(
+            code="TENANT_FORBIDDEN",
+            message="You don't have access to this tenant",
+            request_id=getattr(request, "request_id", None),
+            status=403,
+        )
+
+    if target_membership.get("status") != "active":
+        return error_response(
+            code="TENANT_FORBIDDEN",
+            message="Your membership in this tenant is not active",
+            request_id=getattr(request, "request_id", None),
+            status=403,
+        )
+
+    # Set active tenant in session
+    store = SessionStore()
+    tenant_id = target_membership["tenant_id"]
+    updated = store.set_active_tenant(
+        ctx.session_id,
+        tenant_id=tenant_id,
+        tenant_slug=tenant_slug,
+    )
+    if not updated:
+        return error_response(
+            code="SESSION_ERROR",
+            message="Failed to update session",
+            request_id=getattr(request, "request_id", None),
+            status=500,
+        )
+
+    # Invalidate tenants cache to get fresh data on next request
+    store.invalidate_user_tenants_cache(ctx.user_id)
+
+    logger.info(
+        "Tenant switched",
+        extra={
+            "request_id": getattr(request, "request_id", None),
+            "user_id": ctx.user_id,
+            "tenant_id": tenant_id,
+            "tenant_slug": tenant_slug,
+        },
+    )
+
+    # Only return relative redirect paths (anti open-redirect)
+    redirect_to = f"/t/{tenant_slug}/"
+
+    return {
+        "active_tenant": {
+            "tenant_id": tenant_id,
+            "tenant_slug": tenant_slug,
+            "display_name": target_membership.get("display_name", tenant_slug),
+            "base_role": target_membership.get("base_role", "member"),
+        },
+        "redirect_to": redirect_to,
+    }
+
+
+@router.get("/session/tenants")
+def session_tenants(request: HttpRequest):
+    """Return list of tenants the user has membership in."""
+    ctx, err = _require_auth_tenantless(request)
+    if err:
+        return err
+
+    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
+
+    return [
+        {
+            "tenant_id": m.get("tenant_id", ""),
+            "tenant_slug": m.get("tenant_slug", ""),
+            "display_name": m.get("display_name", ""),
+            "status": m.get("status", ""),
+            "base_role": m.get("base_role", ""),
+        }
+        for m in memberships
+    ]
+
+
+@router.get("/entry/me")
+def entry_me(request: HttpRequest):
+    """Tenantless entry point: user info, memberships, last tenant.
+
+    Used by the tenant chooser / launchpad screen before a tenant is selected.
+    """
+    ctx, err = _require_auth_tenantless(request)
+    if err:
+        return err
+
+    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
+
+    # Get last_tenant from session
+    session = SessionStore().get(ctx.session_id)
+    last_tenant_slug = session.last_tenant_slug if session else ""
+
+    last_tenant = None
+    if last_tenant_slug:
+        last_tenant = {"tenant_slug": last_tenant_slug}
+
+    # Fetch pending applications if ID service supports it
+    pending_applications: list[dict[str, Any]] = []
+    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    if id_upstream:
+        try:
+            resp = proxy_request(
+                upstream_base_url=id_upstream,
+                upstream_path="tenant-applications",
+                method="GET",
+                query_string=f"user_id={ctx.user_id}&status=pending",
+                body=b"",
+                incoming_headers=request.headers,
+                context_headers={
+                    "X-Request-Id": getattr(request, "request_id", ""),
+                    "X-User-Id": ctx.user_id,
+                },
+                request_id=getattr(request, "request_id", ""),
+            )
+            if resp.status_code == 200:
+                apps_data = resp.json()
+                if isinstance(apps_data, list):
+                    pending_applications = [
+                        {
+                            "id": str(a.get("id", "")),
+                            "slug": str(a.get("slug", "")),
+                            "status": str(a.get("status", "pending")),
+                        }
+                        for a in apps_data
+                        if isinstance(a, dict)
+                    ]
+        except Exception:
+            # Best effort — don't fail entry/me if applications endpoint doesn't exist
+            pass
+
+    return {
+        "user": {"id": ctx.user_id, "email": ""},
+        "memberships": memberships,
+        "last_tenant": last_tenant,
+        "pending_tenant_applications": pending_applications,
+    }
+
+
+@router.post("/entry/tenant-applications")
+def entry_tenant_applications(request: HttpRequest):
+    """Submit a new tenant application (proxy to ID service)."""
+    ctx, err = _require_auth_tenantless(request)
+    if err:
+        return err
+
+    try:
+        body = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        return error_response(
+            code="BAD_REQUEST",
+            message="Invalid JSON",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    slug = str(body.get("slug", "")).strip().lower()
+    if not validate_tenant_slug(slug):
+        return error_response(
+            code="INVALID_SLUG",
+            message="Invalid tenant slug format",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    if not id_upstream:
+        return error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID service not configured",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    proxy_body = json.dumps({
+        "slug": slug,
+        "name": str(body.get("name", slug)),
+        "description": str(body.get("description", "")),
+        "user_id": ctx.user_id,
+    }, separators=(",", ":")).encode("utf-8")
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=id_upstream,
+            upstream_path="tenant-applications",
+            method="POST",
+            query_string="",
+            body=proxy_body,
+            incoming_headers=request.headers,
+            context_headers={
+                "Content-Type": "application/json",
+                "X-Request-Id": getattr(request, "request_id", ""),
+                "X-User-Id": ctx.user_id,
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        return error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID service unavailable",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    content_type = resp.headers.get("content-type", "application/json")
+    return HttpResponse(
+        resp.content,
+        status=resp.status_code,
+        content_type=content_type,
+    )
 
 
 def _resolve_access_check_path(upstream: str) -> str:
@@ -283,14 +747,43 @@ def session_me(request: HttpRequest):
 
     capabilities, roles = _load_effective_access_snapshot(request, ctx)
 
+    # Path-based tenancy: include active tenant and available tenants
+    active_tenant_info = None
+    if ctx.active_tenant_id and ctx.active_tenant_slug:
+        active_tenant_info = {
+            "tenant_id": ctx.active_tenant_id,
+            "tenant_slug": ctx.active_tenant_slug,
+            "display_name": ctx.active_tenant_slug,
+            "base_role": "member",
+        }
+        # Enrich from tenant_membership if available
+        if tenant_membership and isinstance(tenant_membership, dict):
+            active_tenant_info["display_name"] = str(
+                tenant_membership.get("display_name", ctx.active_tenant_slug)
+            )
+            active_tenant_info["base_role"] = str(
+                tenant_membership.get("base_role", "member")
+            )
+
+    # Fetch available tenants for the user
+    available_tenants = _fetch_user_memberships(request, ctx, use_cache=True)
+
+    # Evaluate rollout flags + experiments
+    active_tid = ctx.active_tenant_id or ctx.tenant_id
+    rollout = _evaluate_rollout(request, ctx, active_tid) if active_tid else {"feature_flags": {}, "experiments": {}}
+
     return {
         "user": {"id": ctx.user_id, "master_flags": ctx.master_flags},
         "tenant": {"id": ctx.tenant_id, "slug": ctx.tenant_slug},
+        "active_tenant": active_tenant_info,
+        "available_tenants": available_tenants,
         "portal_profile": portal_profile,
         "id_profile": id_profile,
         "tenant_membership": tenant_membership,
         "capabilities": capabilities,
         "roles": roles,
+        "feature_flags": rollout.get("feature_flags", {}),
+        "experiments": rollout.get("experiments", {}),
         "id_frontend_base_url": id_frontend_base_url,
         "request_id": request.request_id,
     }
@@ -333,14 +826,7 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     Initiates OIDC login flow by redirecting to ID.UpdSpace.
     After user authenticates, they are redirected back to /auth/callback.
     """
-    tenant = getattr(request, "tenant", None)
-    if not tenant:
-        return error_response(
-            code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
-        )
+    tenant = _resolve_auth_tenant(request)
 
     # Get OIDC configuration
     id_public_url = getattr(settings, "ID_PUBLIC_BASE_URL", "") or getattr(
@@ -427,23 +913,25 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             request_id=getattr(request, "request_id", None),
             status=400,
         )
-    tenant = getattr(request, "tenant", None)
-    if not tenant:
-        return error_response(
-            code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
-        )
+    tenant = _resolve_auth_tenant(request)
 
     state_tenant_id = str(state_data.get("tenant_id") or "").strip()
     if state_tenant_id and state_tenant_id != str(tenant.id):
-        return error_response(
-            code="TENANT_MISMATCH",
-            message="OAuth state tenant does not match current tenant",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
+        # If state says different tenant AND host resolved a non-global tenant, mismatch
+        host_tenant = getattr(request, "tenant", None)
+        if host_tenant:
+            return error_response(
+                code="TENANT_MISMATCH",
+                message="OAuth state tenant does not match current tenant",
+                request_id=getattr(request, "request_id", None),
+                status=400,
+            )
+        # Path-based mode: trust the state tenant_id over global placeholder
+        from .tenant import ResolvedTenant
+        from .models import Tenant as TenantModel
+        state_t = TenantModel.objects.filter(id=state_tenant_id).first()
+        if state_t:
+            tenant = ResolvedTenant(id=str(state_t.id), slug=state_t.slug)
 
     cache.delete(f"oauth_state:{state}")
     next_path = state_data.get("next", "/")
@@ -576,14 +1064,7 @@ def session_login(request: HttpRequest):
     Magic link login flow (POST with email).
     For redirect-based OIDC login, use GET /auth/login.
     """
-    tenant = getattr(request, "tenant", None)
-    if not tenant:
-        return error_response(
-            code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
-        )
+    tenant = _resolve_auth_tenant(request)
 
     try:
         payload = json.loads((request.body or b"{}").decode("utf-8"))
@@ -681,14 +1162,7 @@ def session_login(request: HttpRequest):
 
 @router.get("/session/callback")
 def session_callback(request: HttpRequest, code: str, next: str | None = None):
-    tenant = getattr(request, "tenant", None)
-    if not tenant:
-        return error_response(
-            code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
-        )
+    tenant = _resolve_auth_tenant(request)
 
     upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "")
     if not upstream:
@@ -898,11 +1372,16 @@ def _proxy_group(
 
     body = request.body or b""
     
+    # Use active tenant from session (path-based) preferring over legacy tenant
+    effective_tenant_id = ctx.active_tenant_id if ctx.active_tenant_id else ctx.tenant_id
+    effective_tenant_slug = ctx.active_tenant_slug if ctx.active_tenant_slug else ctx.tenant_slug
+
     # Debug log for master_flags being sent
     logger.debug(
-        "Proxying to %s with master_flags: %s",
+        "Proxying to %s with master_flags: %s, tenant: %s",
         group,
         ctx.master_flags,
+        effective_tenant_slug,
         extra={"request_id": request.request_id},
     )
     
@@ -920,8 +1399,8 @@ def _proxy_group(
             incoming_headers=request.headers,
             context_headers={
                 "X-Request-Id": request.request_id,
-                "X-Tenant-Id": ctx.tenant_id,
-                "X-Tenant-Slug": ctx.tenant_slug,
+                "X-Tenant-Id": effective_tenant_id,
+                "X-Tenant-Slug": effective_tenant_slug,
                 "X-User-Id": ctx.user_id,
                 "X-Master-Flags": json.dumps(
                     ctx.master_flags,
@@ -1126,6 +1605,14 @@ def proxy_voting(request: HttpRequest, path: str):
     "/events",
 )
 def proxy_events_root(request: HttpRequest):
+    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "")
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/events/",
+)
+def proxy_events_root_slash(request: HttpRequest):
     return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "")
 
 

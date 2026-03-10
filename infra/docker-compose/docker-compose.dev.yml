@@ -121,8 +121,8 @@ services:
       - SESSION_COOKIE_SECURE=false
       - CSRF_COOKIE_SECURE=false
       # CORS for portal integration
-      - CORS_ALLOWED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://aef.localhost,http://localhost:5173
-      - CSRF_TRUSTED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://aef.localhost,http://localhost:5173
+      - CORS_ALLOWED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://portal.localhost,http://aef.localhost,http://localhost:5173
+      - CSRF_TRUSTED_ORIGINS=http://localhost:5175,http://id.localhost:5175,http://id.localhost,http://portal.localhost,http://aef.localhost,http://localhost:5173
       # Local SSO dev mode
       - DEV_AUTH_MODE=true
       - DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001
@@ -171,7 +171,8 @@ services:
       # Local domains
       - BFF_TENANT_HOST_SUFFIX=localhost
       - BFF_DEV_AUTO_TENANT=true
-      - BFF_COOKIE_DOMAIN=.aef.localhost
+      # Path-based mode: no fixed cookie domain; cookie is origin-locked (DEBUG=None)
+      # - BFF_COOKIE_DOMAIN=.aef.localhost
       # Internal trust
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       # Public IdP base URL used for OIDC login redirects
@@ -191,8 +192,9 @@ services:
       - activity
     labels:
       - traefik.enable=true
-      # Serve API from both api.<tenant>.localhost and <tenant>.localhost for same-origin dev
-      - traefik.http.routers.bff.rule=(Host(`api.aef.localhost`) || Host(`aef.localhost`)) && PathPrefix(`/api/v1`)
+      # Path-based multi-tenancy: portal.localhost is the canonical entry point.
+      # Legacy subdomain routes kept for backward-compat.
+      - traefik.http.routers.bff.rule=(Host(`portal.localhost`) || Host(`api.aef.localhost`) || Host(`aef.localhost`)) && PathPrefix(`/api/v1`)
       - traefik.http.routers.bff.entrypoints=web
       - traefik.http.services.bff.loadbalancer.server.port=8080
 
@@ -343,7 +345,7 @@ services:
       - bff
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`aef.localhost`)
+      - traefik.http.routers.frontend.rule=Host(`portal.localhost`) || Host(`aef.localhost`)
       - traefik.http.routers.frontend.entrypoints=web
       - traefik.http.services.frontend.loadbalancer.server.port=5173
 

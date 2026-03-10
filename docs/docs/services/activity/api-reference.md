@@ -376,15 +376,40 @@ pollUnread();
 
 ---
 
-### GET /news/{news_id}/comments
+### GET /news/{news_id}/reactions
 
-Список комментариев.
+Список реакций с пользователем и временем.
 
 **Permissions**: `activity.feed.read`
 
 **Query**:
 
-- `limit` (default 50, max 100)
+- `limit` (default 200, max 500)
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": 10,
+    "user_id": "uuid",
+    "emoji": "🔥",
+    "created_at": "2026-02-03T12:00:00Z"
+  }
+]
+```
+
+---
+
+### GET /news/{news_id}/comments
+
+Список комментариев (включая удалённые ноды для сохранения дерева).
+
+**Permissions**: `activity.feed.read`
+
+**Query**:
+
+- `limit` (default 200, max 500)
 
 **Response** `200 OK`:
 
@@ -394,9 +419,51 @@ pollUnread();
     "id": 1,
     "user_id": "uuid",
     "body": "Круто!",
-    "created_at": "2026-02-03T12:00:00Z"
+    "created_at": "2026-02-03T12:00:00Z",
+    "parent_id": null,
+    "deleted": false,
+    "likes_count": 2,
+    "my_liked": true,
+    "replies_count": 4
   }
 ]
+```
+
+---
+
+### GET /news/{news_id}/comments/page
+
+Постраничная загрузка комментариев по родителю (для lazy tree на фронте).
+
+**Permissions**: `activity.feed.read`
+
+**Query**:
+
+- `parent_id` (optional, если не задано — корневые комментарии)
+- `limit` (default 30, max 100)
+- `cursor` (opaque string из предыдущего ответа)
+
+**Response** `200 OK`:
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "user_id": "uuid",
+      "body": "Круто!",
+      "created_at": "2026-02-03T12:00:00Z",
+      "parent_id": null,
+      "deleted": false,
+      "likes_count": 2,
+      "my_liked": true,
+      "replies_count": 4
+    }
+  ],
+  "next_cursor": "MjAyNi0wMi0wM1QxMjowMDowMCswMDowMDox",
+  "has_more": true,
+  "parent_id": null
+}
 ```
 
 ---
@@ -410,7 +477,7 @@ pollUnread();
 **Request**:
 
 ```json
-{ "body": "Круто!" }
+{ "body": "Круто!", "parent_id": null }
 ```
 
 **Response** `200 OK`:
@@ -420,7 +487,59 @@ pollUnread();
   "id": 1,
   "user_id": "uuid",
   "body": "Круто!",
-  "created_at": "2026-02-03T12:00:00Z"
+  "created_at": "2026-02-03T12:00:00Z",
+  "parent_id": null,
+  "deleted": false,
+  "likes_count": 0,
+  "my_liked": false,
+  "replies_count": 0
+}
+```
+
+---
+
+### POST /news/{news_id}/comments/{comment_id}/likes
+
+Поставить/убрать лайк комментария.
+
+**Permissions**: `activity.feed.read`
+
+**Request**:
+
+```json
+{ "action": "add" }
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "likes_count": 3,
+  "my_liked": true
+}
+```
+
+---
+
+### DELETE /news/{news_id}/comments/{comment_id}
+
+Мягкое удаление комментария. Нода остаётся в дереве, контент скрывается.
+
+**Permissions**: автор комментария или `activity.news.manage`
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": 1,
+  "user_id": null,
+  "body": "Комментарий удалён",
+  "created_at": "2026-02-03T12:00:00Z",
+  "parent_id": null,
+  "deleted": true,
+  "likes_count": 3,
+  "my_liked": false,
+  "replies_count": 4
 }
 ```
 

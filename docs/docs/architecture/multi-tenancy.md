@@ -10,21 +10,68 @@ UpdSpace — мультитенантная платформа. Каждый ten
 
 ## Определение Tenant
 
-### По Subdomain
+### Canonical URL (Path-Based) — НОВЫЙ
+
+Основной способ идентификации tenant — путь в URL:
+```
+portal.updating.space/t/aef/...   → tenant_slug = "aef"
+portal.updating.space/t/gaming/... → tenant_slug = "gaming"
+```
+
+Активный tenant хранится в серверной сессии BFF и переключается через API.
+
+### Legacy: По Subdomain
 ```
 aef.updspace.com    → tenant_slug = "aef"
 gaming.updspace.com → tenant_slug = "gaming"
 ```
+Subdomain-based подход сохранён для обратной совместимости.
 
 ### Резолвинг в BFF
+
 ```python
-# middleware/tenant.py
+# Новый: path-based через API
+POST /api/v1/session/switch-tenant
+{"slug": "aef"}
+
+# Legacy: host-based через middleware
 def resolve_tenant(request):
     host = request.META.get("HTTP_HOST", "")
-    subdomain = host.split(".")[0]  # aef.updspace.com → aef
-    
+    subdomain = host.split(".")[0]
     tenant = Tenant.objects.get(slug=subdomain)
-    request.tenant = tenant
+```
+
+## Сессия и активный Tenant
+
+Активный tenant хранится в серверной сессии BFF (Redis):
+
+```python
+session = {
+    "user_id": "...",
+    "active_tenant_id": "uuid",
+    "active_tenant_slug": "aef",
+    "active_tenant_set_at": "ISO datetime",
+    "last_tenant_slug": "aef",  # для redirect после логина
+}
+```
+
+### Эндпоинты
+
+| Endpoint | Method | Описание |
+|----------|--------|----------|
+| `/api/v1/session/switch-tenant` | POST | Переключить tenant |
+| `/api/v1/session/tenants` | GET | Список доступных tenants |
+| `/api/v1/entry/me` | GET | Tenantless: профиль + pending applications |
+| `/api/v1/session/me` | GET | Полный контекст с active_tenant, flags, experiments |
+
+### Frontend маршруты
+
+```
+/                     → Landing
+/login                → Login
+/choose-tenant        → Выбор tenant (auth required)
+/t/:tenantSlug/*      → Приложение внутри tenant (TenantGate)
+/app/*                → Legacy маршруты (обратная совместимость)
 ```
 
 ## Модель данных Tenant

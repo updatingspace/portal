@@ -333,6 +333,30 @@ class OidcAuthLoginTests(TestCase):
         self.assertIn("redirect_uri=", location)
         self.assertIn("state=", location)
 
+    def test_auth_login_allows_session_without_active_tenant(self):
+        """Public auth endpoints should not require active tenant selection."""
+        global_tenant = Tenant.objects.create(slug="__portal__")
+        session = SessionStore().create(
+            tenant_id=str(global_tenant.id),
+            user_id=str(uuid.uuid4()),
+            master_flags={},
+            ttl=timedelta(minutes=10),
+        )
+        self.client.cookies["updspace_session"] = session.session_id
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="localhost",
+            ID_PUBLIC_BASE_URL="http://id.localhost",
+            BFF_OIDC_CLIENT_ID="test-client-id",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                "/api/v1/auth/login?next=/choose-tenant",
+                HTTP_HOST="portal.localhost",
+            )
+
+        self.assertEqual(resp.status_code, 302)
+
     def test_auth_login_without_client_id_returns_error(self):
         """GET /auth/login without OIDC client_id configured returns 502."""
         with self.settings(

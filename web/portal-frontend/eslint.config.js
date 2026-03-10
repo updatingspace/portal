@@ -19,5 +19,18 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "Property[key.name='align'][value.type='Literal'][value.value='left']",
+          message: "Use logical table alignment: 'start' or 'end' instead of 'left'.",
+        },
+        {
+          selector: "Property[key.name='align'][value.type='Literal'][value.value='right']",
+          message: "Use logical table alignment: 'start' or 'end' instead of 'right'.",
+        },
+      ],
+    },
   },
 ])

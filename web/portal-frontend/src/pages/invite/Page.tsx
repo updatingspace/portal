@@ -31,7 +31,7 @@ export const InvitePage: React.FC = () => {
       await refreshProfile();
 
       // Redirect to app after short delay
-      setTimeout(() => navigate('/app'), 1500);
+      setTimeout(() => navigate('/choose-tenant'), 1500);
     } catch (e) {
       notifyApiError(e, 'Failed to activate invite');
     } finally {

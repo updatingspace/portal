@@ -14,6 +14,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '../../../contexts/AuthContext';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { createClientAccessDeniedError } from '../../../api/accessDenied';
 import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
@@ -38,6 +39,7 @@ const VISIBILITY_OPTIONS: { value: 'all' | GrantVisibility; content: string }[] 
 export const AchievementDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const { user } = useAuth();
   const canAssign = can(user, 'gamification.achievements.assign');
   const canRevoke = can(user, 'gamification.achievements.revoke');
@@ -86,7 +88,7 @@ export const AchievementDetailPage: React.FC = () => {
       {
         id: 'actions',
         name: '',
-        align: 'right',
+        align: 'end',
         template: (item) =>
           canRevoke ? (
             <Button
@@ -160,14 +162,14 @@ export const AchievementDetailPage: React.FC = () => {
               </Text>
             </div>
             <div className="gamification-toolbar">
-              <Button view="flat" size="m" onClick={() => navigate('/app/gamification')}>
+              <Button view="flat" size="m" onClick={() => navigate(`${routeBase}/gamification`)}>
                 Назад
               </Button>
               {achievement?.canEdit && (
                 <Button
                   view="action"
                   size="m"
-                  onClick={() => navigate(`/app/gamification/achievements/${achievement.id}/edit`)}
+                  onClick={() => navigate(`${routeBase}/gamification/achievements/${achievement.id}/edit`)}
                 >
                   Редактировать
                 </Button>

@@ -47,7 +47,7 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
   onReset,
   qa,
 }) => {
-  const hasFilters = sortValue !== 'best' || sourceValue !== 'all' || timeValue !== 'week';
+  const hasFilters = sortValue !== 'recent' || sourceValue !== 'all' || timeValue !== 'week';
 
   return (
     <div className="feed-filters" data-qa={qa}>
@@ -57,7 +57,7 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
         </Text>
         <Select
           value={[sortValue]}
-          onUpdate={(values) => onSortChange((values[0] ?? 'best') as string)}
+          onUpdate={(values) => onSortChange((values[0] ?? 'recent') as string)}
           options={SORT_OPTIONS}
           width="max"
         />

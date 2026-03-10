@@ -241,23 +241,93 @@ export async function reactToNews(
   });
 }
 
-export async function listNewsComments(newsId: string, limit = 50): Promise<
-  { id: number; user_id: string; body: string; created_at: string }[]
-> {
-  return request<{ id: number; user_id: string; body: string; created_at: string }[]>(
+export type NewsReactionDetail = {
+  id: number;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+};
+
+export async function listNewsReactions(newsId: string, limit = 200): Promise<NewsReactionDetail[]> {
+  return request<NewsReactionDetail[]>(
+    `/activity/news/${newsId}/reactions?limit=${limit}`,
+  );
+}
+
+export type NewsCommentDetail = {
+  id: number;
+  user_id: string | null;
+  body: string;
+  created_at: string;
+  parent_id?: number | null;
+  deleted?: boolean;
+  likes_count?: number;
+  my_liked?: boolean;
+  replies_count?: number;
+};
+
+export type NewsCommentsPage = {
+  items: NewsCommentDetail[];
+  next_cursor: string | null;
+  has_more: boolean;
+  parent_id: number | null;
+};
+
+export async function listNewsComments(newsId: string, limit = 200): Promise<NewsCommentDetail[]> {
+  return request<NewsCommentDetail[]>(
     `/activity/news/${newsId}/comments?limit=${limit}`,
   );
+}
+
+export async function listNewsCommentsPage(
+  newsId: string,
+  params: { parentId?: number | null; limit?: number; cursor?: string | null } = {},
+): Promise<NewsCommentsPage> {
+  const search = new URLSearchParams();
+  if (typeof params.parentId === 'number') {
+    search.set('parent_id', String(params.parentId));
+  }
+  if (typeof params.limit === 'number') {
+    search.set('limit', String(params.limit));
+  }
+  if (params.cursor) {
+    search.set('cursor', params.cursor);
+  }
+  const query = search.toString();
+  const suffix = query ? `?${query}` : '';
+  return request<NewsCommentsPage>(`/activity/news/${newsId}/comments/page${suffix}`);
 }
 
 export async function createNewsComment(
   newsId: string,
   body: string,
-): Promise<{ id: number; user_id: string; body: string; created_at: string }> {
-  return request<{ id: number; user_id: string; body: string; created_at: string }>(
+  parentId?: number | null,
+): Promise<NewsCommentDetail> {
+  return request<NewsCommentDetail>(
     `/activity/news/${newsId}/comments`,
     {
       method: 'POST',
-      body: { body },
+      body: { body, parent_id: parentId ?? undefined },
+    },
+  );
+}
+
+export async function deleteNewsComment(newsId: string, commentId: number): Promise<NewsCommentDetail> {
+  return request<NewsCommentDetail>(`/activity/news/${newsId}/comments/${commentId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function likeNewsComment(
+  newsId: string,
+  commentId: number,
+  payload: { action?: 'add' | 'remove' } = {},
+): Promise<{ likes_count: number; my_liked: boolean }> {
+  return request<{ likes_count: number; my_liked: boolean }>(
+    `/activity/news/${newsId}/comments/${commentId}/likes`,
+    {
+      method: 'POST',
+      body: { action: payload.action ?? 'add' },
     },
   );
 }

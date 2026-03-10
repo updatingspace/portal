@@ -251,6 +251,23 @@ setup_oidc_client() {
     else
         log_warn "Portal OIDC client setup skipped (may already exist)"
     fi
+
+    # Add portal.localhost redirect URIs for path-based multi-tenancy
+    log_info "Registering portal.localhost redirect URIs..."
+    docker compose -f "$compose_file" exec -T updspaceid python src/manage.py shell -c "
+from idp.models import OidcClient
+try:
+    c = OidcClient.objects.get(client_id='portal-dev-client')
+    uris = c.redirect_uris or []
+    for u in ['http://portal.localhost/api/v1/auth/callback','http://portal.localhost/api/v1/session/callback','http://portal.localhost/callback']:
+        if u not in uris:
+            uris.append(u)
+    c.redirect_uris = uris
+    c.save()
+    print('OK')
+except Exception as e:
+    print(f'SKIP: {e}')
+" 2>/dev/null && log_success "portal.localhost redirect URIs registered" || log_warn "redirect URI registration skipped"
 }
 
 # Health check all services
@@ -309,13 +326,13 @@ print_urls() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
     echo ""
     echo "Access URLs:"
-    echo -e "  ${YELLOW}Portal Frontend${NC}  → http://aef.localhost"
+    echo -e "  ${YELLOW}Portal Frontend${NC}  → http://portal.localhost  (legacy: http://aef.localhost)"
     if [[ "$ID_MODE" == "local" ]]; then
         echo -e "  ${YELLOW}ID Frontend${NC}      → http://id.localhost"
     else
         echo -e "  ${YELLOW}ID Frontend${NC}      → ${ID_PUBLIC_BASE_URL:-https://id.updspace.com}"
     fi
-    echo -e "  ${YELLOW}BFF API${NC}          → http://aef.localhost/api/v1/"
+    echo -e "  ${YELLOW}BFF API${NC}          → http://portal.localhost/api/v1/"
     echo -e "  ${YELLOW}Traefik Dashboard${NC}→ http://localhost:8081"
     echo ""
     echo "Quick commands:"
@@ -331,7 +348,7 @@ print_urls() {
         echo "Remote ID mode:"
         echo "  configure BFF_OIDC_CLIENT_ID and BFF_OIDC_CLIENT_SECRET in .env"
         echo "  ensure redirect URI is registered in id.updspace.com:"
-        echo "    http://aef.localhost/api/v1/auth/callback"
+        echo "    http://portal.localhost/api/v1/auth/callback"
     fi
     echo ""
 }
@@ -339,7 +356,7 @@ print_urls() {
 main() {
     echo ""
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}         ${GREEN}AEF-Vote Development Environment${NC}                 ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}         ${GREEN}UpdSpace Portal Development Environment${NC}          ${BLUE}║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     

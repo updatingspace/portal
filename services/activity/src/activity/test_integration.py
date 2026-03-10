@@ -213,6 +213,16 @@ class NewsIntegrationTests(TestCase):
         self.assertEqual(reactions[0]["emoji"], "🔥")
         self.assertEqual(reactions[0]["count"], 1)
 
+        reactions_list_resp = self._get(
+            f"/api/v1/news/{news_id}/reactions?limit=10",
+            "rid-react-2",
+        )
+        self.assertEqual(reactions_list_resp.status_code, 200)
+        reactions_list = reactions_list_resp.json()
+        self.assertEqual(reactions_list[0]["emoji"], "🔥")
+        self.assertEqual(reactions_list[0]["user_id"], self.user_id)
+        self.assertTrue(reactions_list[0]["created_at"])
+
         comment_payload = {"body": "Годно!"}
         comment_resp = self._post(
             f"/api/v1/news/{news_id}/comments",
@@ -220,14 +230,82 @@ class NewsIntegrationTests(TestCase):
             "rid-comment-1",
         )
         self.assertEqual(comment_resp.status_code, 200)
+        parent_comment = comment_resp.json()
+        parent_comment_id = parent_comment["id"]
+        self.assertIsNone(parent_comment["parent_id"])
+
+        reply_resp = self._post(
+            f"/api/v1/news/{news_id}/comments",
+            {"body": "Ответ", "parent_id": parent_comment_id},
+            "rid-comment-1-1",
+        )
+        self.assertEqual(reply_resp.status_code, 200)
+        reply_comment = reply_resp.json()
+        self.assertEqual(reply_comment["parent_id"], parent_comment_id)
+
+        second_root_resp = self._post(
+            f"/api/v1/news/{news_id}/comments",
+            {"body": "Корень 2"},
+            "rid-comment-1-2",
+        )
+        self.assertEqual(second_root_resp.status_code, 200)
+        second_root_comment = second_root_resp.json()
 
         list_resp = self._get(f"/api/v1/news/{news_id}/comments?limit=10", "rid-comment-2")
         self.assertEqual(list_resp.status_code, 200)
         comments = list_resp.json()
+        self.assertEqual(len(comments), 3)
         self.assertEqual(comments[0]["body"], "Годно!")
 
+        roots_page_resp = self._get(
+            f"/api/v1/news/{news_id}/comments/page?limit=1",
+            "rid-comment-page-1",
+        )
+        self.assertEqual(roots_page_resp.status_code, 200)
+        roots_page = roots_page_resp.json()
+        self.assertEqual(len(roots_page["items"]), 1)
+        self.assertTrue(roots_page["has_more"])
+        self.assertEqual(roots_page["items"][0]["id"], parent_comment_id)
+        self.assertEqual(roots_page["items"][0]["replies_count"], 1)
+
+        roots_page_2_resp = self._get(
+            f"/api/v1/news/{news_id}/comments/page?limit=1&cursor={roots_page['next_cursor']}",
+            "rid-comment-page-2",
+        )
+        self.assertEqual(roots_page_2_resp.status_code, 200)
+        roots_page_2 = roots_page_2_resp.json()
+        self.assertEqual(len(roots_page_2["items"]), 1)
+        self.assertEqual(roots_page_2["items"][0]["id"], second_root_comment["id"])
+
+        child_page_resp = self._get(
+            f"/api/v1/news/{news_id}/comments/page?parent_id={parent_comment_id}&limit=10",
+            "rid-comment-page-child",
+        )
+        self.assertEqual(child_page_resp.status_code, 200)
+        child_page = child_page_resp.json()
+        self.assertEqual(len(child_page["items"]), 1)
+        self.assertEqual(child_page["items"][0]["id"], reply_comment["id"])
+
+        like_resp = self._post(
+            f"/api/v1/news/{news_id}/comments/{parent_comment_id}/likes",
+            {"action": "add"},
+            "rid-comment-like-1",
+        )
+        self.assertEqual(like_resp.status_code, 200)
+        self.assertEqual(like_resp.json()["likes_count"], 1)
+        self.assertTrue(like_resp.json()["my_liked"])
+
+        delete_resp = self._delete(
+            f"/api/v1/news/{news_id}/comments/{parent_comment_id}",
+            "rid-comment-delete-1",
+        )
+        self.assertEqual(delete_resp.status_code, 200)
+        self.assertTrue(delete_resp.json()["deleted"])
+        self.assertIsNone(delete_resp.json()["user_id"])
+        self.assertEqual(delete_resp.json()["body"], "Комментарий удалён")
+
         post = NewsPost.objects.get(id=news_id)
-        self.assertEqual(post.comments_count, 1)
+        self.assertEqual(post.comments_count, 3)
         self.assertEqual(post.reactions_count, 1)
 
     def test_news_media_upload_url(self):

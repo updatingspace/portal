@@ -40,7 +40,7 @@ export const PublicLayout: React.FC = () => {
               )}
             />
             {user ? (
-              <Button view="action" onClick={() => navigate('/app')}>Go to App</Button>
+              <Button view="action" onClick={() => navigate('/choose-tenant')}>Go to App</Button>
             ) : (
               <Button view="outlined" onClick={() => navigate('/login')}>Login</Button>
             )}

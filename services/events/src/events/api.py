@@ -551,3 +551,17 @@ def event_ics(request, event_id: str):
 
 
 api.add_router("/events", router)
+
+
+# Root endpoint for backward compatibility with BFF
+@api.get("/", response=EventListOut, tags=["events"])
+def list_events_root(
+    request,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = Query(None, alias="to"),
+    scope_type: str | None = Query(None, alias="scope_type"),
+    scope_id: str | None = Query(None, alias="scope_id"),
+    limit: int = Query(100, ge=1, le=250),
+    offset: int = Query(0, ge=0),
+):
+    return list_events(request, from_, to, scope_type, scope_id, limit, offset)

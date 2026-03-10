@@ -11,7 +11,7 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
 }) => {
   if (participants.length === 0) {
     return (
-      <div className="text-center py-4 text-gray-500">
+      <div className="voting-v2__state-card voting-v2__muted">
         Участники пока не добавлены
       </div>
     );
@@ -43,20 +43,20 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({
   } as const;
 
   return (
-    <div className="space-y-4">
+    <div className="voting-v2__grid">
       {orderedRoles.map((role) => (
         <div key={role}>
-          <Text variant="subheader-1" className="capitalize mb-2">
+          <Text variant="subheader-1" className="voting-v2__section-title">
             {role} · {participantsByRole[role].length}
           </Text>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="voting-v2__grid voting-v2__grid--2">
             {participantsByRole[role].map((participant) => (
               <div
                 key={participant.user_id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className="voting-v2__row"
               >
-                <span className="text-sm text-slate-900">{participant.user_id}</span>
+                <span>{participant.user_id}</span>
                 <Label theme={statusTheme[participant.status]} size="xs">
                   {participant.status}
                 </Label>
