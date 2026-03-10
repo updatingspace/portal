@@ -32,6 +32,7 @@ def _host_headers(
     user_id: uuid.UUID,
     method: str = "GET",
     body: bytes = b"",
+    master_flags: dict[str, bool] | None = None,
 ) -> dict[str, str]:
     request_id = str(uuid.uuid4())
     ts = str(int(time.time()))
@@ -49,7 +50,7 @@ def _host_headers(
         "HTTP_X_TENANT_ID": str(tenant_id),
         "HTTP_X_TENANT_SLUG": slug,
         "HTTP_X_USER_ID": str(user_id),
-        "HTTP_X_MASTER_FLAGS": json.dumps({}, separators=(",", ":")),
+        "HTTP_X_MASTER_FLAGS": json.dumps(master_flags or {}, separators=(",", ":")),
         "HTTP_X_UPDSPACE_TIMESTAMP": ts,
         "HTTP_X_UPDSPACE_SIGNATURE": signature,
     }
@@ -506,6 +507,30 @@ class PortalDsarApiTests(TestCase):
         audits = list(PortalAuditEvent.objects.filter(action="dsar.erased"))
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0].target_id, "self")
+
+    def test_system_admin_can_export_other_user_via_json_master_flags(self):
+        from portal.models import PortalAuditEvent
+
+        admin_user_id = uuid.uuid4()
+        path = f"/api/v1/portal/internal/dsar/users/{self.user_id}/export"
+        resp = self.client.get(
+            path,
+            **_host_headers(
+                path=path,
+                tenant_id=self.tenant_id,
+                slug="aef",
+                user_id=admin_user_id,
+                master_flags={"system_admin": True},
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["portal_profile"]["user_id"], str(self.user_id))
+        audits = list(PortalAuditEvent.objects.filter(action="dsar.exported"))
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0].target_id, str(self.user_id))
+        self.assertEqual(audits[0].metadata["subject_scope"], "delegated")
+        self.assertEqual(audits[0].actor_user_id, admin_user_id)
 
     def test_purge_retention_deletes_only_old_portal_audit_rows(self):
         from portal.audit import PortalAuditEvent

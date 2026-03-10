@@ -94,10 +94,21 @@ def _check_any_permissions(
         raise last_error
 
 
+def _has_system_admin_flag(master_flags: object) -> bool:
+    if isinstance(master_flags, dict):
+        return bool(
+            master_flags.get("system_admin") is True
+            or master_flags.get("is_system_admin") is True
+        )
+    if isinstance(master_flags, (set, frozenset, list, tuple)):
+        return "system_admin" in master_flags or "is_system_admin" in master_flags
+    return False
+
+
 def _ensure_dsar_subject(ctx: PortalContext, target_user_id: UUID) -> None:
     if ctx.user_id == target_user_id:
         return
-    if "system_admin" in ctx.master_flags:
+    if _has_system_admin_flag(ctx.master_flags):
         return
     raise HttpError(403, error_payload("FORBIDDEN", "DSAR access denied"))
 

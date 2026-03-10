@@ -90,6 +90,7 @@ def _derive_fernet_key(material: str) -> bytes:
     digest = hashlib.sha256(material.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest)
 
+
 def _build_fernet(primary: str, old_keys: tuple[str, ...]) -> MultiFernet:
     fernets = [Fernet(_derive_fernet_key(primary))]
     fernets.extend(
@@ -179,8 +180,9 @@ def decrypt_json(value: Any) -> Any:
     decoded = decrypt_text(value)
     try:
         return json.loads(decoded)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Invalid JSON value in sensitive Activity field") from exc
+    except json.JSONDecodeError:
+        # Backward-compatible fallback for encrypted plain-string payloads.
+        return decoded
 
 
 def mask_identifier(value: Any, *, visible_suffix: int = 4) -> Any:

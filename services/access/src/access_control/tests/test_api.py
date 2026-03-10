@@ -350,7 +350,14 @@ class DsarApiTests(TestCase):
             metadata={"user_id": self.user_id, "note": "keep"},
         )
 
-    def _request(self, method: str, path: str):
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        user_id: str | None = None,
+        master_flags: dict[str, Any] | None = None,
+    ):
         body = b""
         request_id = str(uuid.uuid4())
         headers = _build_headers(
@@ -360,8 +367,8 @@ class DsarApiTests(TestCase):
             request_id=request_id,
             tenant_id=self.tenant_id,
             tenant_slug=self.tenant_slug,
-            user_id=self.user_id,
-            master_flags={},
+            user_id=user_id or self.user_id,
+            master_flags=master_flags or {},
         )
         return getattr(self.client, method.lower())(
             path,
@@ -407,6 +414,24 @@ class DsarApiTests(TestCase):
         self.assertEqual(len(dsar_audits), 1)
         self.assertEqual(dsar_audits[0].target_id, "self")
         self.assertEqual(str(dsar_audits[0].performed_by), str(self.user_id))
+
+    def test_system_admin_can_export_other_user_dsar_bundle(self):
+        admin_user_id = str(uuid.uuid4())
+        path = f"/api/v1/access/internal/dsar/users/{self.user_id}/export"
+        resp = self._request(
+            "GET",
+            path,
+            user_id=admin_user_id,
+            master_flags={"system_admin": True},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["user_id"], self.user_id)
+        dsar_audits = list(TenantAdminAuditEvent.objects.filter(action="dsar.exported"))
+        self.assertEqual(len(dsar_audits), 1)
+        self.assertEqual(dsar_audits[0].target_id, self.user_id)
+        self.assertEqual(dsar_audits[0].metadata["subject_scope"], "delegated")
+        self.assertEqual(str(dsar_audits[0].performed_by), admin_user_id)
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")

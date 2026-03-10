@@ -26,6 +26,8 @@ const config: Config = {
   markdown: {
     mermaid: true,
     hooks: {
+      // Docusaurus 3.x expects this under markdown.hooks; the top-level
+      // option is deprecated in the version pinned by this repo.
       onBrokenMarkdownLinks: 'warn',
     },
   },

@@ -56,6 +56,17 @@ router = Router(tags=["Access Control"], auth=None)
 admin_router = Router(tags=["Access Control Admin"], auth=None)
 
 
+def _has_system_admin_flag(master_flags: object) -> bool:
+    if isinstance(master_flags, dict):
+        return bool(
+            master_flags.get("system_admin") is True
+            or master_flags.get("is_system_admin") is True
+        )
+    if isinstance(master_flags, (set, frozenset, list, tuple)):
+        return "system_admin" in master_flags or "is_system_admin" in master_flags
+    return False
+
+
 def _require_tenant_header_matches(request, tenant_id) -> None:
     header = request.headers.get("X-Tenant-Id")
     if header and str(header) != str(tenant_id):
@@ -130,7 +141,7 @@ def _binding_to_admin_out(binding: RoleBinding) -> TenantAdminBindingOut:
 def _ensure_dsar_subject(ctx, target_user_id: UUID) -> None:
     if str(ctx.user_id) == str(target_user_id):
         return
-    if bool(ctx.master_flags.get("system_admin")):
+    if _has_system_admin_flag(ctx.master_flags):
         return
     raise PermissionError("DSAR access denied")
 

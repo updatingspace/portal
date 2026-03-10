@@ -8,8 +8,7 @@ from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 
-from bff.audit import BffAuditEvent
-from bff.models import BffSession
+from bff.models import BffAuditEvent, BffSession
 from bff.session_store import _cache_key
 
 

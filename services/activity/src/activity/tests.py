@@ -1277,6 +1277,12 @@ class SensitiveDataProtectionTests(TestCase):
         self.assertTrue(stored_value.startswith("enc::"))
         self.assertEqual(Source.objects.get(id=source.id).config_json, "steam-profile-id")
 
+    def test_decrypt_json_accepts_legacy_plain_string_ciphertext(self):
+        from activity.privacy import decrypt_json, encrypt_text
+
+        encrypted = encrypt_text("legacy-plain-string")
+        self.assertEqual(decrypt_json(encrypted), "legacy-plain-string")
+
     def test_encryption_cache_refreshes_when_key_material_changes(self):
         from activity.privacy import decrypt_text, encrypt_text
 
