@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from django.db.models import Q
 from django.utils import timezone
 
 from tenant_voting.models import OutboxMessage, Poll, PollInvite, PollParticipant, Vote

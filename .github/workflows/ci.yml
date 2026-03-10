@@ -68,6 +68,9 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: app.settings
       PYTHONPATH: src
+      DJANGO_DEBUG: '1'
+      DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
+      DJANGO_ALLOW_SQLITE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
