@@ -13,6 +13,8 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 
+from activity.privacy import redact_for_log
+
 
 class JsonFormatter(logging.Formatter):
     """
@@ -64,7 +66,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_for_log(record.getMessage(), key="message"),
             "service": self.service_name,
             "module": record.module,
             "function": record.funcName,
@@ -75,19 +77,26 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_record["exception"] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
-                "message": str(record.exc_info[1]) if record.exc_info[1] else None,
-                "traceback": traceback.format_exception(*record.exc_info),
+                "message": redact_for_log(
+                    str(record.exc_info[1]) if record.exc_info[1] else None,
+                    key="exception_message",
+                ),
+                "traceback": [
+                    redact_for_log(line, key="traceback")
+                    for line in traceback.format_exception(*record.exc_info)
+                ],
             }
 
         # Add any extra fields
         for key, value in record.__dict__.items():
             if key not in self.RESERVED_ATTRS:
+                safe_value = redact_for_log(value, key=key)
                 try:
                     # Try to serialize the value
-                    json.dumps(value)
-                    log_record[key] = value
+                    json.dumps(safe_value)
+                    log_record[key] = safe_value
                 except (TypeError, ValueError):
-                    log_record[key] = str(value)
+                    log_record[key] = str(safe_value)
 
         return json.dumps(log_record, default=str)
 

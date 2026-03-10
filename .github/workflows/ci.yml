@@ -68,6 +68,9 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: app.settings
       PYTHONPATH: src
+      DJANGO_DEBUG: '1'
+      DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
+      DJANGO_ALLOW_SQLITE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -122,7 +125,7 @@ jobs:
             dockerfile: services/voting/Dockerfile
             build_args: ''
           - image: updatingspace-portal-frontend
-            context: .
+            context: web/portal-frontend
             dockerfile: web/portal-frontend/Dockerfile
             build_args: |
               VITE_BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}
@@ -136,8 +139,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: false
           build-args: ${{ matrix.build_args }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
   publish-images:
     name: Publish image (${{ matrix.image }})
@@ -179,7 +182,7 @@ jobs:
             dockerfile: services/voting/Dockerfile
             build_args: ''
           - image: updatingspace-portal-frontend
-            context: .
+            context: web/portal-frontend
             dockerfile: web/portal-frontend/Dockerfile
             build_args: |
               VITE_BUILD_ID=${{ needs.generate-build-id.outputs.build_id }}
@@ -202,5 +205,121 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.generate-build-id.outputs.build_id }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
           build-args: ${{ matrix.build_args }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  deploy-frontend-yandex-object-storage:
+    name: Deploy frontend to Yandex Object Storage
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs:
+      - generate-build-id
+      - publish-images
+    defaults:
+      run:
+        working-directory: web/portal-frontend
+    env:
+      YC_BUCKET_NAME: ${{ secrets.YC_BUCKET_NAME }}
+      YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
+      YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+      YC_OBJECT_STORAGE_ENDPOINT: ${{ vars.YC_OBJECT_STORAGE_ENDPOINT || 'https://storage.yandexcloud.net' }}
+      YC_API_GATEWAY_ID: ${{ secrets.YC_API_GATEWAY_ID }}
+      YC_BFF_CONTAINER_ID: ${{ secrets.YC_BFF_CONTAINER_ID }}
+      YC_API_GATEWAY_SERVICE_ACCOUNT_ID: ${{ secrets.YC_API_GATEWAY_SERVICE_ACCOUNT_ID }}
+      YC_SA_KEY_JSON: ${{ secrets.YC_SA_KEY_JSON }}
+      YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Yandex Cloud frontend deploy secrets
+        if: >-
+          env.YC_BUCKET_NAME == '' ||
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID == '' ||
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY == ''
+        run: |
+          echo "Skipping frontend deploy: required Yandex Cloud secrets are not configured."
+          exit 0
+      - uses: actions/setup-node@v4
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != ''
+        with:
+          node-version: '22.12.0'
+      - name: Enable corepack and install dependencies
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != ''
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm install --frozen-lockfile
+      - name: Build frontend bundle
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != ''
+        env:
+          VITE_BUILD_ID: ${{ needs.generate-build-id.outputs.build_id }}
+          VITE_BFF_BASE_URL: /api/v1
+          VITE_API_BASE_URL: /api/v1
+          VITE_LOGIN_PATH: /api/v1/auth/login
+        run: pnpm run build:docker
+      - name: Configure AWS CLI credentials (S3-compatible)
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != ''
+        run: aws --version
+      - name: Upload static bundle to Object Storage
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ru-central1
+          FRONTEND_DIST_DIR: dist
+        run: ../../scripts/ci/deploy-frontend-object-storage.sh
+      - name: Install yc CLI
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != '' &&
+          env.YC_API_GATEWAY_ID != '' &&
+          env.YC_BFF_CONTAINER_ID != '' &&
+          env.YC_API_GATEWAY_SERVICE_ACCOUNT_ID != '' &&
+          env.YC_SA_KEY_JSON != ''
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh \
+            | bash -s -- -i "${HOME}/yandex-cloud" -n
+      - name: Update shared API Gateway spec
+        if: >-
+          env.YC_BUCKET_NAME != '' &&
+          env.YC_OBJECT_STORAGE_ACCESS_KEY_ID != '' &&
+          env.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY != '' &&
+          env.YC_API_GATEWAY_ID != '' &&
+          env.YC_BFF_CONTAINER_ID != '' &&
+          env.YC_API_GATEWAY_SERVICE_ACCOUNT_ID != '' &&
+          env.YC_SA_KEY_JSON != ''
+        run: |
+          SA_KEY_FILE="${RUNNER_TEMP}/yc-sa-key.json"
+          printf '%s' "${YC_SA_KEY_JSON}" > "${SA_KEY_FILE}"
+
+          "${HOME}/yandex-cloud/bin/yc" config profile create ci || true
+          "${HOME}/yandex-cloud/bin/yc" config profile activate ci
+          "${HOME}/yandex-cloud/bin/yc" config set service-account-key "${SA_KEY_FILE}"
+
+          if [ -n "${YC_CLOUD_ID}" ]; then
+            "${HOME}/yandex-cloud/bin/yc" config set cloud-id "${YC_CLOUD_ID}"
+          fi
+          if [ -n "${YC_FOLDER_ID}" ]; then
+            "${HOME}/yandex-cloud/bin/yc" config set folder-id "${YC_FOLDER_ID}"
+          fi
+
+          "${HOME}/yandex-cloud/bin/yc" serverless api-gateway update \
+            --id "${YC_API_GATEWAY_ID}" \
+            --spec ../../infra/yandex/api-gateway/portal-shared-gateway.openapi.yaml \
+            --variables "frontend_bucket=${YC_BUCKET_NAME},bff_container_id=${YC_BFF_CONTAINER_ID},gateway_service_account_id=${YC_API_GATEWAY_SERVICE_ACCOUNT_ID}"

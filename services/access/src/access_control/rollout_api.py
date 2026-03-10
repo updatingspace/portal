@@ -37,7 +37,6 @@ from access_control.schemas import (
     RolloutEvaluateOut,
 )
 from access_control.services import (
-    MasterFlags,
     master_flags_from_dict,
 )
 

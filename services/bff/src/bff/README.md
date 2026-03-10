@@ -23,6 +23,7 @@ All frontend calls go through:
 
 ## BFF endpoints
 
+- `GET /api/v1/csrf` → issues Django CSRF cookie/token for SPA bootstrap
 - `GET /api/v1/session/me` → aggregates `user + portal_profile`
 - `POST /api/v1/session/logout`
 - `POST /api/v1/internal/session/establish` (server-to-server from UpdSpaceID; sets HttpOnly cookie)
@@ -53,13 +54,14 @@ METHOD\nPATH\nSHA256(body)\nREQUEST_ID\nTIMESTAMP
 ## Security
 
 - CORS should allow only `*.updspace.com` (default via `CORS_ALLOWED_ORIGIN_REGEXES`)
-- CSRF for cookie-auth API: double-submit token (`updspace_csrf` cookie + `X-CSRF-Token` header)
+- CSRF for cookie-auth API: Django `CsrfViewMiddleware` + `csrf_protect`, host-only CSRF cookie (`updspace_csrf` by default), `X-CSRF-Token` header
 - Rate limit: `/api/v1/session/*`
 
 ## Settings
 
 - `BFF_TENANT_HOST_SUFFIX` (default `updspace.com`)
 - `BFF_COOKIE_DOMAIN` (recommended `.updspace.com`)
+- `BFF_CSRF_COOKIE_DOMAIN` (default unset → host-only CSRF cookie)
 - `BFF_INTERNAL_HMAC_SECRET` (required for proxy signing)
 - `BFF_UPDSPACEID_CALLBACK_SECRET` (required for `/internal/session/establish`)
 - `BFF_UPSTREAM_PORTAL_URL`, `BFF_UPSTREAM_VOTING_URL`, `BFF_UPSTREAM_EVENTS_URL`, `BFF_UPSTREAM_FEED_URL`

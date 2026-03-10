@@ -21,6 +21,17 @@ All browser traffic must be same-origin and go through BFF under `/api/v1/*`.
 - `GET /api/v1/auth/login?next=/app` (or configured via `VITE_LOGIN_PATH`)
   - Starts auth flow (BFF handles redirects to UpdSpaceID)
 
+- `POST /api/v1/auth/login`, `POST /api/v1/auth/signup`, `POST /api/v1/auth/passkeys/login/complete`
+  - BFF may accept headless auth payloads for embedded Portal UX
+  - On success BFF establishes `updspace_session` as HttpOnly cookie
+  - Frontend must not persist or read session/access tokens from JS storage
+
+## Account API
+
+- All authenticated account-management calls must use `/api/v1/account/*`
+  - Examples: `/account/me`, `/account/profile`, `/account/avatar`, `/account/sessions`, `/account/mfa/*`, `/account/passkeys/*`, `/account/oauth/*`
+  - Frontend relies on `credentials: include` only
+
 ## Error envelope
 
 Frontend expects an error payload compatible with:

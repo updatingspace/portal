@@ -167,6 +167,34 @@ class Post(models.Model):
         ]
 
 
+class PortalAuditEvent(models.Model):
+    """Immutable audit record for portal lifecycle operations."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField(db_index=True)
+    actor_user_id = models.UUIDField(db_index=True)
+    action = models.CharField(max_length=64)
+    target_type = models.CharField(max_length=32, blank=True)
+    target_id = models.CharField(max_length=128, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    request_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "portal_audit_event"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant_id", "action"], name="p_audit_tnt_action_idx"),
+            models.Index(fields=["tenant_id", "created_at"], name="p_audit_tnt_created_idx"),
+            models.Index(
+                fields=["tenant_id", "actor_user_id", "-created_at"],
+                name="p_audit_tnt_actor_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.action} by {self.actor_user_id} ({self.tenant_id})"
+
 __all__ = [
     "Tenant",
     "PortalProfile",
@@ -175,4 +203,5 @@ __all__ = [
     "Team",
     "TeamMembership",
     "Post",
+    "PortalAuditEvent",
 ]

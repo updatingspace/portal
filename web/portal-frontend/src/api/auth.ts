@@ -169,5 +169,5 @@ export async function authWithTelegram(payload: TelegramAuthPayload): Promise<Au
 }
 
 export async function deleteAccount(): Promise<void> {
-  await request('/auth/me', { method: 'DELETE' });
+  await request('/account/me', { method: 'DELETE' });
 }

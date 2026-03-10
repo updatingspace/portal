@@ -5,35 +5,33 @@ const sidebars: SidebarsConfig = {
     'intro',
     {
       type: 'category',
-      label: '🏗️ Архитектура',
+      label: 'Architecture',
       collapsed: false,
       items: [
         'architecture/overview',
+        'architecture/service-mesh',
         'architecture/principles',
-        'architecture/multi-tenancy',
         'architecture/security',
+        'architecture/multi-tenancy',
         'architecture/flows',
       ],
     },
     {
       type: 'category',
-      label: '⚙️ Сервисы',
+      label: 'Services',
       collapsed: false,
       link: {type: 'doc', id: 'services/overview'},
       items: [
         {
           type: 'category',
-          label: 'UpdSpaceID (Identity)',
+          label: 'UpdSpaceID',
           items: [
             'services/id/overview',
-            'services/id/models',
-            'services/id/api',
-            'services/id/oauth-providers',
           ],
         },
         {
           type: 'category',
-          label: 'BFF Gateway',
+          label: 'BFF',
           items: [
             'services/bff/overview',
             'services/bff/routing',
@@ -51,7 +49,7 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Portal Core',
+          label: 'Portal',
           items: [
             'services/portal/overview',
             'services/portal/models',
@@ -70,33 +68,57 @@ const sidebars: SidebarsConfig = {
         {
           type: 'category',
           label: 'Events',
-          items: ['services/events/overview'],
+          items: [
+            'services/events/overview',
+            'services/events/feat-research',
+            'services/events/roadmap',
+          ],
         },
         {
           type: 'category',
           label: 'Activity',
           items: [
             'services/activity/overview',
+            'services/activity/api-reference',
             'services/activity/connectors',
+            'services/activity/roadmap',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Gamification',
+          items: [
+            'services/gamification/overview',
+            'services/gamification/models',
           ],
         },
       ],
     },
     {
       type: 'category',
-      label: '🖥️ Frontend',
+      label: 'Frontend',
       items: [
         'frontend/overview',
         'frontend/portal',
+        'frontend/activity',
         'frontend/id',
       ],
     },
     {
       type: 'category',
-      label: '📊 Статус & Roadmap',
+      label: 'Legal & Privacy',
       items: [
-        'status/current',
-        'status/roadmap',
+        'legal/overview',
+        'legal/privacy-notice',
+        'legal/policy-152fz',
+        'legal/cookie-notice',
+        'legal/consents',
+        'legal/retention-schedule',
+        'legal/dsar-procedure',
+        'legal/incident-response',
+        'legal/records-of-processing',
+        'legal/processors-register',
+        'legal/cross-border-transfers',
       ],
     },
   ],
@@ -110,6 +132,8 @@ const sidebars: SidebarsConfig = {
     'guides/local-dev',
     'guides/docker-setup',
     'guides/testing',
+    'guides/documentation-playbook',
+    'guides/yandex-cloud-deploy',
     'guides/contributing',
   ],
 };

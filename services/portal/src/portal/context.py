@@ -1,3 +1,4 @@
+import json
 import uuid
 from dataclasses import dataclass
 
@@ -30,6 +31,12 @@ def _parse_uuid(value: str, *, code: str, header: str) -> uuid.UUID:
 def _parse_flags(value: str | None) -> frozenset[str]:
     if not value:
         return frozenset()
+    try:
+        data = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        data = None
+    if isinstance(data, dict):
+        return frozenset({key for key, is_enabled in data.items() if is_enabled})
     raw = [part.strip() for part in str(value).split(",")]
     return frozenset({p for p in raw if p})
 

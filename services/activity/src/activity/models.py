@@ -7,6 +7,7 @@ from django.db import models
 from django.utils import timezone
 
 from activity.enums import AccountLinkStatus, ScopeType, SourceType, Visibility
+from activity.fields import EncryptedJSONField, EncryptedTextField
 
 
 def sha256_hex(value: str) -> str:
@@ -34,7 +35,7 @@ class Source(models.Model):
     id = models.BigAutoField(primary_key=True)
     tenant_id = models.UUIDField()
     type = models.CharField(max_length=32, choices=SourceType.choices)
-    config_json = models.JSONField(default=dict)
+    config_json = EncryptedJSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -61,8 +62,8 @@ class AccountLink(models.Model):
         choices=AccountLinkStatus.choices,
         default=AccountLinkStatus.ACTIVE,
     )
-    settings_json = models.JSONField(default=dict)
-    external_identity_ref = models.CharField(
+    settings_json = EncryptedJSONField(default=dict)
+    external_identity_ref = EncryptedTextField(
         max_length=256,
         blank=True,
         null=True,
@@ -97,7 +98,7 @@ class RawEvent(models.Model):
         on_delete=models.CASCADE,
         related_name="raw_events",
     )
-    payload_json = models.JSONField(default=dict)
+    payload_json = EncryptedJSONField(default=dict)
     fetched_at = models.DateTimeField(default=timezone.now)
     dedupe_hash = models.CharField(max_length=64)
 
@@ -394,6 +395,35 @@ class FeedLastSeen(models.Model):
                 name="act_feed_last_seen_idx",
             ),
         ]
+
+
+class ActivityAuditEvent(models.Model):
+    """Immutable audit record for activity lifecycle operations."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField(db_index=True)
+    actor_user_id = models.UUIDField(db_index=True)
+    action = models.CharField(max_length=64)
+    target_type = models.CharField(max_length=32, blank=True)
+    target_id = models.CharField(max_length=128, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    request_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_audit_event"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant_id", "action"], name="a_audit_tnt_action_idx"),
+            models.Index(fields=["tenant_id", "created_at"], name="a_audit_tnt_created_idx"),
+            models.Index(
+                fields=["tenant_id", "actor_user_id", "-created_at"],
+                name="a_audit_tnt_actor_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.action} by {self.actor_user_id} ({self.tenant_id})"
 
 
 def source_ref_for_raw(*, source: Source, raw_event_id: int) -> str:

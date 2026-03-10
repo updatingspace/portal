@@ -3,26 +3,34 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 
 from activity.connectors.steam import SteamConnector
 from activity.connectors.base import RawEventIn
+from activity.logging_config import JsonFormatter
 from activity.models import (
     AccountLink,
     ActivityEvent,
     FeedLastSeen,
+    NewsComment,
+    NewsPost,
+    NewsReaction,
     Outbox,
     OutboxEventType,
     RawEvent,
     Source,
     Subscription,
 )
+from activity.privacy import REDACTED_VALUE
 from activity.services import (
     FeedFilters,
     get_unread_count,
@@ -253,6 +261,169 @@ class ActivityDedupeWebhookTests(TestCase):
             ActivityEvent.objects.filter(tenant_id=tenant_id).count(),
             1,
         )
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
+class ActivityDsarApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = uuid.uuid4()
+        self.user_id = uuid.uuid4()
+        self.source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="minecraft",
+            config_json={},
+        )
+        self.account_link = AccountLink.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            source=self.source,
+            status="active",
+            external_identity_ref="steam:12345",
+        )
+        self.raw_event = RawEvent.objects.create(
+            tenant_id=self.tenant_id,
+            account_link=self.account_link,
+            payload_json={"linked_user_id": str(self.user_id), "source": "minecraft"},
+            dedupe_hash="dedupe-1",
+        )
+        self.activity_event = ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=self.user_id,
+            target_user_id=None,
+            type="news.posted",
+            occurred_at=datetime.now(tz=timezone.utc),
+            title="Posted an update",
+            payload_json={"news_id": "n1", "linked_user_id": str(self.user_id), "body": "hello"},
+            visibility="public",
+            scope_type="tenant",
+            scope_id=str(self.tenant_id),
+            source_ref="news:event:1",
+            raw_event=self.raw_event,
+        )
+        self.news_post = NewsPost.objects.create(
+            tenant_id=self.tenant_id,
+            author_user_id=self.user_id,
+            title="My title",
+            body="My secret body",
+            tags_json=["private"],
+            media_json=[{"type": "image", "key": "uploads/private.png"}],
+            visibility="public",
+            scope_type="tenant",
+            scope_id=str(self.tenant_id),
+            comments_count=1,
+            reactions_count=1,
+        )
+        self.news_comment = NewsComment.objects.create(
+            tenant_id=self.tenant_id,
+            post=self.news_post,
+            user_id=self.user_id,
+            body="Comment body",
+        )
+        self.news_reaction = NewsReaction.objects.create(
+            tenant_id=self.tenant_id,
+            post=self.news_post,
+            user_id=self.user_id,
+            emoji="🔥",
+        )
+        self.subscription = Subscription.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            rules_json={"scopes": [{"scope_type": "TENANT", "scope_id": str(self.tenant_id)}]},
+        )
+        self.last_seen = FeedLastSeen.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+        )
+        self.outbox = Outbox.objects.create(
+            tenant_id=self.tenant_id,
+            event_type=OutboxEventType.FEED_UPDATED,
+            aggregate_type="activity_event",
+            aggregate_id=str(self.activity_event.id),
+            payload_json={
+                "event_id": self.activity_event.id,
+                "actor_user_id": str(self.user_id),
+                "linked_user_id": str(self.user_id),
+            },
+        )
+
+    def test_dsar_export_returns_activity_bundle(self):
+        from activity.audit import ActivityAuditEvent
+
+        path = f"/api/v1/feed/internal/dsar/users/{self.user_id}/export"
+        resp = self.client.get(
+            path,
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="tenant",
+                request_id="rid-dsar-export",
+                user_id=self.user_id,
+                path=path,
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["service"], "activity")
+        self.assertEqual(len(data["account_links"]), 1)
+        self.assertEqual(len(data["raw_events"]), 1)
+        self.assertEqual(len(data["activity_events"]), 1)
+        self.assertEqual(len(data["news_posts"]), 1)
+        self.assertEqual(len(data["outbox"]), 1)
+        audits = list(ActivityAuditEvent.objects.filter(action="dsar.exported"))
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0].target_id, "self")
+
+    def test_dsar_erase_redacts_content_and_deletes_raw_data(self):
+        from activity.audit import ActivityAuditEvent
+
+        path = f"/api/v1/feed/internal/dsar/users/{self.user_id}/erase"
+        resp = self.client.post(
+            path,
+            data=b"",
+            content_type="application/json",
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="tenant",
+                request_id="rid-dsar-erase",
+                user_id=self.user_id,
+                method="POST",
+                path=path,
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertFalse(AccountLink.objects.filter(id=self.account_link.id).exists())
+        self.assertFalse(RawEvent.objects.filter(id=self.raw_event.id).exists())
+        self.assertFalse(Subscription.objects.filter(id=self.subscription.id).exists())
+        self.assertFalse(FeedLastSeen.objects.filter(id=self.last_seen.id).exists())
+        self.assertFalse(NewsReaction.objects.filter(id=self.news_reaction.id).exists())
+
+        self.news_post.refresh_from_db()
+        self.news_comment.refresh_from_db()
+        self.activity_event.refresh_from_db()
+        self.outbox.refresh_from_db()
+
+        anonymous_user_id = uuid.UUID(int=0)
+        self.assertEqual(self.news_post.author_user_id, anonymous_user_id)
+        self.assertEqual(self.news_post.title, "[deleted]")
+        self.assertEqual(self.news_post.body, "[deleted by user request]")
+        self.assertEqual(self.news_post.tags_json, [])
+        self.assertEqual(self.news_post.media_json, [])
+        self.assertEqual(self.news_post.reactions_count, 0)
+
+        self.assertEqual(self.news_comment.user_id, anonymous_user_id)
+        self.assertEqual(self.news_comment.body, "[deleted by user request]")
+
+        self.assertIsNone(self.activity_event.actor_user_id)
+        self.assertIsNone(self.activity_event.raw_event_id)
+        self.assertEqual(self.activity_event.title, "Activity from deleted account")
+        self.assertEqual(self.activity_event.payload_json["redacted"], True)
+
+        self.assertEqual(self.outbox.payload_json["actor_user_id"], "[redacted]")
+        self.assertEqual(self.outbox.payload_json["linked_user_id"], "[redacted]")
+        audits = list(ActivityAuditEvent.objects.filter(action="dsar.erased"))
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0].target_id, "self")
 
 
 class OutboxPatternTests(TestCase):
@@ -835,7 +1006,7 @@ class SteamConnectorTests(TestCase):
         )
 
         key = connector.dedupe_key(raw)
-        self.assertEqual(key, "achievement:12345:440:tf_play_game_friends")
+        self.assertEqual(key, "achievement:440:tf_play_game_friends")
 
     def test_dedupe_key_playtime(self):
         """Test dedupe key generation for playtime."""
@@ -851,7 +1022,7 @@ class SteamConnectorTests(TestCase):
         )
 
         key = connector.dedupe_key(raw)
-        self.assertIn("playtime:12345:440:", key)
+        self.assertIn("playtime:440:", key)
         self.assertIn(now.strftime("%Y-%m-%d"), key)
 
     def test_normalize_achievement(self):
@@ -889,10 +1060,52 @@ class SteamConnectorTests(TestCase):
         event = connector.normalize(raw, account_link)
 
         self.assertEqual(event.type, "game.achievement")
-        self.assertIn("With Friends Like These", event.title)
-        self.assertIn("Team Fortress 2", event.title)
+        self.assertEqual(event.title, "Unlocked a Steam achievement")
         self.assertEqual(event.actor_user_id, user_id)
+        self.assertEqual(event.visibility, "private")
         self.assertEqual(event.payload_json["source"], "steam")
+        self.assertEqual(event.payload_json["kind"], "achievement")
+        self.assertNotIn("game_name", event.payload_json)
+        self.assertNotIn("achievement_name", event.payload_json)
+        self.assertNotIn("Team Fortress 2", event.source_ref)
+
+    def test_normalize_playtime_minimizes_behavioral_detail(self):
+        connector = SteamConnector()
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        source = Source.objects.create(
+            tenant_id=tenant_id,
+            type="steam",
+            config_json={},
+        )
+        account_link = AccountLink.objects.create(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source=source,
+            status="active",
+        )
+        raw = RawEvent.objects.create(
+            tenant_id=tenant_id,
+            account_link=account_link,
+            payload_json={
+                "kind": "playtime",
+                "steamid": "12345",
+                "appid": 440,
+                "game_name": "Team Fortress 2",
+                "playtime_forever": 125,
+                "playtime_2weeks": 30,
+                "rtime_last_played": 1705000000,
+            },
+            dedupe_hash="playtime-test",
+        )
+
+        event = connector.normalize(raw, account_link)
+
+        self.assertEqual(event.type, "game.playtime")
+        self.assertEqual(event.title, "Played on Steam")
+        self.assertEqual(event.visibility, "private")
+        self.assertEqual(event.payload_json, {"source": "steam", "kind": "playtime"})
 
     def test_normalize_private_profile(self):
         """Test normalization of private profile events."""
@@ -925,6 +1138,326 @@ class SteamConnectorTests(TestCase):
 
         self.assertEqual(event.type, "steam.private")
         self.assertEqual(event.visibility, "private")
+        self.assertEqual(
+            event.payload_json,
+            {"source": "steam", "profile_visibility": "private"},
+        )
+
+    @patch("activity.connectors.steam.SteamApiClient")
+    def test_sync_does_not_emit_external_identity_in_raw_payload(self, mock_client_cls):
+        mock_client = mock_client_cls.return_value
+        mock_client.get_player_summary.return_value = {"communityvisibilitystate": 3}
+        mock_client.get_owned_games.return_value = [
+            type(
+                "Game",
+                (),
+                {
+                    "appid": 440,
+                    "name": "Team Fortress 2",
+                    "playtime_forever": 125,
+                    "playtime_2weeks": 30,
+                    "rtime_last_played": 1705000000,
+                },
+            )()
+        ]
+        mock_client.get_player_achievements.return_value = [
+            type(
+                "Achievement",
+                (),
+                {
+                    "apiname": "tf_play_game_friends",
+                    "achieved": True,
+                    "unlocktime": 1705000000,
+                    "name": "With Friends Like These",
+                    "description": "Win with friends",
+                },
+            )()
+        ]
+
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        source = Source.objects.create(
+            tenant_id=tenant_id,
+            type="steam",
+            config_json={"api_key": "test-key-for-unit-test"},
+        )
+        account_link = AccountLink.objects.create(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source=source,
+            status="active",
+            external_identity_ref="76561198012345678",
+        )
+
+        events = SteamConnector().sync(account_link)
+
+        self.assertTrue(events)
+        for event in events:
+            self.assertNotIn("steamid", event.payload_json)
+            self.assertNotIn("personaname", event.payload_json)
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
+class SensitiveDataProtectionTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = uuid.uuid4()
+        self.user_id = uuid.uuid4()
+
+    def _fetch_db_value(self, table: str, column: str, row_id: int):
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {column} FROM {table} WHERE id = %s",
+                [row_id],
+            )
+            row = cursor.fetchone()
+        return row[0] if row else None
+
+    @property
+    def connection(self):
+        from django.db import connection
+
+        return connection
+
+    def test_sensitive_fields_are_encrypted_at_rest(self):
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json={"api_key": "top-secret", "max_games": 5},
+        )
+        link = AccountLink.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            source=source,
+            status="active",
+            settings_json={"access_token": "secret-token"},
+            external_identity_ref="76561198012345678",
+        )
+        raw = RawEvent.objects.create(
+            tenant_id=self.tenant_id,
+            account_link=link,
+            payload_json={"kind": "playtime", "playtime_forever": 120},
+            dedupe_hash="enc-test",
+        )
+
+        source_value = self._fetch_db_value("act_source", "config_json", source.id)
+        link_settings_value = self._fetch_db_value("act_account_link", "settings_json", link.id)
+        external_ref_value = self._fetch_db_value("act_account_link", "external_identity_ref", link.id)
+        raw_payload_value = self._fetch_db_value("act_raw_event", "payload_json", raw.id)
+
+        for value in (source_value, link_settings_value, external_ref_value, raw_payload_value):
+            self.assertIsInstance(value, str)
+            self.assertTrue(value.startswith("enc::"))
+
+        self.assertNotIn("top-secret", source_value)
+        self.assertNotIn("secret-token", link_settings_value)
+        self.assertNotIn("76561198012345678", external_ref_value)
+        self.assertNotIn("playtime_forever", raw_payload_value)
+
+        self.assertEqual(Source.objects.get(id=source.id).config_json["api_key"], "top-secret")
+        self.assertEqual(
+            AccountLink.objects.get(id=link.id).external_identity_ref,
+            "76561198012345678",
+        )
+        self.assertEqual(
+            RawEvent.objects.get(id=raw.id).payload_json["playtime_forever"],
+            120,
+        )
+
+    def test_encrypted_json_field_roundtrips_plain_string_without_double_serializing(self):
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json="steam-profile-id",
+        )
+
+        stored_value = self._fetch_db_value("act_source", "config_json", source.id)
+
+        self.assertIsInstance(stored_value, str)
+        self.assertTrue(stored_value.startswith("enc::"))
+        self.assertEqual(Source.objects.get(id=source.id).config_json, "steam-profile-id")
+
+    def test_decrypt_json_accepts_legacy_plain_string_ciphertext(self):
+        from activity.privacy import decrypt_json, encrypt_text
+
+        encrypted = encrypt_text("legacy-plain-string")
+        self.assertEqual(decrypt_json(encrypted), "legacy-plain-string")
+
+    def test_encryption_cache_refreshes_when_key_material_changes(self):
+        from activity.privacy import decrypt_text, encrypt_text
+
+        with override_settings(
+            ACTIVITY_DATA_ENCRYPTION_KEY="activity-key-one",
+            ACTIVITY_DATA_ENCRYPTION_OLD_KEYS=[],
+        ):
+            first_token = encrypt_text("alpha")
+
+        with override_settings(
+            ACTIVITY_DATA_ENCRYPTION_KEY="activity-key-two",
+            ACTIVITY_DATA_ENCRYPTION_OLD_KEYS=["activity-key-one"],
+        ):
+            second_token = encrypt_text("beta")
+            self.assertEqual(decrypt_text(first_token), "alpha")
+            self.assertEqual(decrypt_text(second_token), "beta")
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_account_link_api_masks_sensitive_response_fields(self, mock_has_permission):
+        del mock_has_permission
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json={},
+        )
+        payload = {
+            "source_id": source.id,
+            "status": "active",
+            "settings_json": {
+                "steam_id": "76561198012345678",
+                "access_token": "secret-token",
+            },
+            "external_identity_ref": "76561198012345678",
+        }
+        body = json.dumps(payload).encode("utf-8")
+
+        response = self.client.post(
+            "/api/v1/account-links",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="tenant",
+                request_id="rid-mask-1",
+                user_id=self.user_id,
+                method="POST",
+                path="/api/v1/account-links",
+                body=body,
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertNotEqual(data["external_identity_ref"], payload["external_identity_ref"])
+        self.assertTrue(data["external_identity_ref"].endswith("5678"))
+        self.assertTrue(data["settings_json"]["steam_id"].endswith("5678"))
+        self.assertEqual(data["settings_json"]["access_token"], REDACTED_VALUE)
+
+    def test_json_formatter_redacts_sensitive_log_fields(self):
+        formatter = JsonFormatter(service_name="activity")
+        record = logging.LogRecord(
+            name="activity.test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=123,
+            msg="Steam sync failed",
+            args=(),
+            exc_info=None,
+        )
+        record.steam_id = "76561198012345678"
+        record.payload_json = {"playtime_forever": 120, "steamid": "76561198012345678"}
+        record.response_text = '{"steamid":"76561198012345678"}'
+
+        formatted = formatter.format(record)
+        payload = json.loads(formatted)
+
+        self.assertNotIn("76561198012345678", formatted)
+        self.assertTrue(payload["steam_id"].endswith("5678"))
+        self.assertEqual(payload["payload_json"], REDACTED_VALUE)
+        self.assertEqual(payload["response_text"], REDACTED_VALUE)
+
+    @override_settings(ACTIVITY_RAW_EVENT_RETENTION_DAYS=7)
+    def test_purge_raw_events_deletes_only_expired_rows(self):
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json={},
+        )
+        link = AccountLink.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            source=source,
+            status="active",
+        )
+        old_raw = RawEvent.objects.create(
+            tenant_id=self.tenant_id,
+            account_link=link,
+            payload_json={"kind": "playtime"},
+            fetched_at=datetime.now(timezone.utc) - timedelta(days=8),
+            dedupe_hash="old-raw",
+        )
+        new_raw = RawEvent.objects.create(
+            tenant_id=self.tenant_id,
+            account_link=link,
+            payload_json={"kind": "playtime"},
+            fetched_at=datetime.now(timezone.utc) - timedelta(days=1),
+            dedupe_hash="new-raw",
+        )
+        activity = ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=self.user_id,
+            type="game.playtime",
+            occurred_at=datetime.now(timezone.utc),
+            title="Played Team Fortress 2",
+            payload_json={"source": "steam"},
+            visibility="public",
+            scope_type="tenant",
+            scope_id=str(self.tenant_id),
+            source_ref="steam:test:playtime",
+            raw_event=old_raw,
+        )
+
+        output = StringIO()
+        call_command("purge_raw_events", stdout=output)
+
+        self.assertFalse(RawEvent.objects.filter(id=old_raw.id).exists())
+        self.assertTrue(RawEvent.objects.filter(id=new_raw.id).exists())
+        activity.refresh_from_db()
+        self.assertIsNone(activity.raw_event)
+
+    def test_same_steam_event_for_different_links_is_not_cross_deduped(self):
+        source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json={},
+        )
+        link_a = AccountLink.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            source=source,
+            status="active",
+        )
+        link_b = AccountLink.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=uuid.uuid4(),
+            source=source,
+            status="active",
+        )
+
+        raw_in = RawEventIn(
+            occurred_at=datetime.now(timezone.utc),
+            payload_json={
+                "kind": "achievement",
+                "appid": 440,
+                "apiname": "tf_play_game_friends",
+            },
+        )
+
+        self.assertEqual(
+            ingest_raw_and_normalize(
+                tenant_id=self.tenant_id,
+                account_link=link_a,
+                raw_in=raw_in,
+            ),
+            (True, True),
+        )
+        self.assertEqual(
+            ingest_raw_and_normalize(
+                tenant_id=self.tenant_id,
+                account_link=link_b,
+                raw_in=raw_in,
+            ),
+            (True, True),
+        )
+        self.assertEqual(RawEvent.objects.filter(tenant_id=self.tenant_id).count(), 2)
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
@@ -967,3 +1500,162 @@ class PermissionTests(TestCase):
             ),
         )
         self.assertEqual(resp.status_code, 403)
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
+class ActivityAccountLinkAuditTests(TestCase):
+    """Verify that creating an account link writes an ActivityAuditEvent and Outbox."""
+
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = uuid.uuid4()
+        self.user_id = uuid.uuid4()
+        self.source = Source.objects.create(
+            tenant_id=self.tenant_id,
+            type="steam",
+            config_json={},
+        )
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_account_link_creates_audit_event(self, mock_has_permission):
+        from activity.audit import ActivityAuditEvent
+
+        body = json.dumps({
+            "source_id": self.source.id,
+            "status": "active",
+            "settings_json": {},
+            "external_identity_ref": "steam-user-12345",
+        }).encode("utf-8")
+        resp = self.client.post(
+            "/api/v1/account-links",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="test",
+                request_id="rid-audit-1",
+                user_id=self.user_id,
+                method="POST",
+                path="/api/v1/account-links",
+                body=body,
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        audits = list(
+            ActivityAuditEvent.objects.filter(
+                tenant_id=self.tenant_id,
+                actor_user_id=self.user_id,
+                action="account_link.created",
+            )
+        )
+        self.assertEqual(len(audits), 1)
+        event = audits[0]
+        self.assertEqual(event.target_type, "account_link")
+        self.assertEqual(event.metadata["source_type"], "steam")
+        self.assertEqual(event.metadata["status"], "active")
+        self.assertEqual(event.metadata["lawful_basis"], "consent")
+        self.assertTrue(event.metadata["consent_captured"])
+        self.assertEqual(event.request_id, "rid-audit-1")
+        # Verify no raw PII leaks (external_identity_ref must not appear)
+        self.assertNotIn("steam-user-12345", json.dumps(event.metadata))
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_account_link_publishes_outbox_event(self, mock_has_permission):
+        body = json.dumps({
+            "source_id": self.source.id,
+            "status": "active",
+            "settings_json": {},
+        }).encode("utf-8")
+        resp = self.client.post(
+            "/api/v1/account-links",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="test",
+                request_id="rid-audit-2",
+                user_id=self.user_id,
+                method="POST",
+                path="/api/v1/account-links",
+                body=body,
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        outbox_events = list(
+            Outbox.objects.filter(
+                tenant_id=self.tenant_id,
+                event_type=OutboxEventType.ACCOUNT_LINKED,
+            )
+        )
+        self.assertEqual(len(outbox_events), 1)
+        payload = outbox_events[0].payload_json
+        self.assertEqual(payload["source_type"], "steam")
+        self.assertEqual(str(payload["user_id"]), str(self.user_id))
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_account_link_persists_internal_privacy_metadata(self, mock_has_permission):
+        body = json.dumps({
+            "source_id": self.source.id,
+            "status": "active",
+            "settings_json": {"steam_id": "76561198012345678"},
+            "external_identity_ref": "steam-user-12345",
+        }).encode("utf-8")
+        resp = self.client.post(
+            "/api/v1/account-links",
+            data=body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=self.tenant_id,
+                tenant_slug="test",
+                request_id="rid-audit-3",
+                user_id=self.user_id,
+                method="POST",
+                path="/api/v1/account-links",
+                body=body,
+            ),
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        link = AccountLink.objects.get(tenant_id=self.tenant_id, user_id=self.user_id, source=self.source)
+        privacy = link.settings_json["_privacy"]
+        self.assertEqual(privacy["lawful_basis"], "consent")
+        self.assertEqual(privacy["captured_via"], "self_service_account_link")
+        self.assertEqual(privacy["source_type"], "steam")
+        self.assertEqual(privacy["request_id"], "rid-audit-3")
+        self.assertNotIn("_privacy", resp.json()["settings_json"])
+
+    def test_purge_retention_deletes_old_activity_audit_rows(self):
+        from activity.audit import ActivityAuditEvent
+
+        old_event = ActivityAuditEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=self.user_id,
+            action="account_link.created",
+            target_type="account_link",
+            target_id="1",
+            metadata={},
+            request_id="rid-old",
+            created_at=datetime.now(timezone.utc) - timedelta(days=400),
+        )
+        fresh_event = ActivityAuditEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=self.user_id,
+            action="account_link.created",
+            target_type="account_link",
+            target_id="2",
+            metadata={},
+            request_id="rid-fresh",
+        )
+
+        call_command(
+            "purge_retention",
+            "--raw-events-days=30",
+            "--processed-outbox-days=14",
+            "--audit-days=365",
+            stdout=StringIO(),
+        )
+
+        self.assertFalse(ActivityAuditEvent.objects.filter(id=old_event.id).exists())
+        self.assertTrue(ActivityAuditEvent.objects.filter(id=fresh_event.id).exists())

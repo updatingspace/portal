@@ -116,7 +116,7 @@ services:
       - DJANGO_SECRET_KEY=dev-id-secret
       - DATABASE_URL=postgres://user:pass@db_id:5432/id_db
       - REDIS_URL=redis://redis:6379/0
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - SESSION_COOKIE_SECURE=false
       - CSRF_COOKIE_SECURE=false
       # CORS for portal integration
@@ -155,7 +155,7 @@ services:
       - DJANGO_SECRET_KEY=bff-secret
       - DATABASE_URL=postgres://user:pass@db_bff:5432/bff_db
       - REDIS_URL=redis://redis:6379/1
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=.localhost,localhost,127.0.0.1,bff
       # Upstreams
       - BFF_UPSTREAM_ID_URL=${BFF_UPSTREAM_ID_URL:-http://updspaceid:8001/api/v1}
       - ID_BASE_URL=${ID_BASE_URL:-http://updspaceid:8001/api/v1}
@@ -209,7 +209,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-access-secret
       - DATABASE_URL=postgres://user:pass@db_access:5432/access_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,access
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
     depends_on:
       - db_access
@@ -226,7 +226,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-portal-secret
       - DATABASE_URL=postgres://user:pass@db_portal:5432/portal_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,portal
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
     depends_on:
       - db_portal
@@ -243,7 +243,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-voting-secret
       - DATABASE_URL=postgres://user:pass@db_voting:5432/voting_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
     depends_on:
@@ -261,7 +261,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-events-secret
       - DATABASE_URL=postgres://user:pass@db_events:5432/events_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,events
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
     depends_on:
@@ -279,7 +279,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-gamification-secret
       - DATABASE_URL=postgres://user:pass@db_gamification:5432/gamification_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=*
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
       - ACTIVITY_SERVICE_URL=http://activity:8006/api/v1
@@ -298,7 +298,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-activity-secret
       - DATABASE_URL=postgres://user:pass@db_activity:5432/activity_db
-      - DJANGO_ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,activity
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
     depends_on:
       - db_activity

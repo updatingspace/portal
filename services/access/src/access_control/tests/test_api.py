@@ -309,6 +309,132 @@ class TenantAdminAuditApiTests(TestCase):
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
+class DsarApiTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.client = Client()
+        self.tenant_id = str(uuid.uuid4())
+        self.tenant_slug = "aef"
+        self.user_id = str(uuid.uuid4())
+        self.role = Role.objects.create(
+            tenant_id=self.tenant_id,
+            service="portal",
+            name="member",
+            is_system_template=False,
+        )
+        self.permission, _ = Permission.objects.get_or_create(
+            key="portal.roles.read",
+            defaults={"description": "Read roles", "service": "portal"},
+        )
+        RolePermission.objects.get_or_create(role=self.role, permission=self.permission)
+        self.binding = RoleBinding.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            scope_type=ScopeType.TENANT,
+            scope_id=self.tenant_id,
+            role=self.role,
+        )
+        self.override = PolicyOverride.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            action="deny",
+            permission_id=self.permission.key,
+            reason="temporary",
+        )
+        self.audit_event = TenantAdminAuditEvent.objects.create(
+            tenant_id=self.tenant_id,
+            performed_by=self.user_id,
+            action="role.binding.created",
+            target_type="user",
+            target_id=self.user_id,
+            metadata={"user_id": self.user_id, "note": "keep"},
+        )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        user_id: str | None = None,
+        master_flags: dict[str, Any] | None = None,
+    ):
+        body = b""
+        request_id = str(uuid.uuid4())
+        headers = _build_headers(
+            method=method,
+            path=path,
+            body=body,
+            request_id=request_id,
+            tenant_id=self.tenant_id,
+            tenant_slug=self.tenant_slug,
+            user_id=user_id or self.user_id,
+            master_flags=master_flags or {},
+        )
+        return getattr(self.client, method.lower())(
+            path,
+            data=body if method == "POST" else None,
+            content_type="application/json" if method == "POST" else None,
+            HTTP_X_REQUEST_ID=headers["HTTP_X_REQUEST_ID"],
+            HTTP_X_TENANT_ID=headers["HTTP_X_TENANT_ID"],
+            HTTP_X_TENANT_SLUG=headers["HTTP_X_TENANT_SLUG"],
+            HTTP_X_USER_ID=headers["HTTP_X_USER_ID"],
+            HTTP_X_MASTER_FLAGS=headers["HTTP_X_MASTER_FLAGS"],
+            HTTP_X_UPDSPACE_TIMESTAMP=headers["HTTP_X_UPDSPACE_TIMESTAMP"],
+            HTTP_X_UPDSPACE_SIGNATURE=headers["HTTP_X_UPDSPACE_SIGNATURE"],
+        )
+
+    def test_dsar_export_returns_access_bundle(self):
+        path = f"/api/v1/access/internal/dsar/users/{self.user_id}/export"
+        resp = self._request("GET", path)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["service"], "access")
+        self.assertEqual(len(data["role_bindings"]), 1)
+        self.assertEqual(len(data["policy_overrides"]), 1)
+        self.assertEqual(len(data["audit_events"]), 1)
+        dsar_audits = list(TenantAdminAuditEvent.objects.filter(action="dsar.exported"))
+        self.assertEqual(len(dsar_audits), 1)
+        self.assertEqual(dsar_audits[0].target_id, "self")
+        self.assertEqual(dsar_audits[0].metadata["subject_scope"], "self")
+
+    def test_dsar_erase_deletes_bindings_and_redacts_audit(self):
+        path = f"/api/v1/access/internal/dsar/users/{self.user_id}/erase"
+        resp = self._request("POST", path)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(RoleBinding.objects.filter(id=self.binding.id).exists())
+        self.assertFalse(PolicyOverride.objects.filter(id=self.override.id).exists())
+
+        self.audit_event.refresh_from_db()
+        self.assertEqual(self.audit_event.target_id, "[redacted]")
+        self.assertEqual(str(self.audit_event.performed_by), str(uuid.UUID(int=0)))
+        self.assertEqual(self.audit_event.metadata["user_id"], "[redacted]")
+        self.assertEqual(self.audit_event.metadata["note"], "keep")
+
+        dsar_audits = list(TenantAdminAuditEvent.objects.filter(action="dsar.erased"))
+        self.assertEqual(len(dsar_audits), 1)
+        self.assertEqual(dsar_audits[0].target_id, "self")
+        self.assertEqual(str(dsar_audits[0].performed_by), str(self.user_id))
+
+    def test_system_admin_can_export_other_user_dsar_bundle(self):
+        admin_user_id = str(uuid.uuid4())
+        path = f"/api/v1/access/internal/dsar/users/{self.user_id}/export"
+        resp = self._request(
+            "GET",
+            path,
+            user_id=admin_user_id,
+            master_flags={"system_admin": True},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["user_id"], self.user_id)
+        dsar_audits = list(TenantAdminAuditEvent.objects.filter(action="dsar.exported"))
+        self.assertEqual(len(dsar_audits), 1)
+        self.assertEqual(dsar_audits[0].target_id, self.user_id)
+        self.assertEqual(dsar_audits[0].metadata["subject_scope"], "delegated")
+        self.assertEqual(str(dsar_audits[0].performed_by), admin_user_id)
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
 class TenantAdminApiTests(TestCase):
     def setUp(self):
         super().setUp()

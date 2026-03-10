@@ -3,18 +3,30 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, StreamingHttpResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseRedirect,
+    JsonResponse,
+    StreamingHttpResponse,
+)
+from django.middleware.csrf import get_token
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_protect
 from ninja import NinjaAPI, Router
 
+from .dsar import erase_user_data as erase_bff_user_data
+from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
+from .middleware import AuthContext
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
@@ -22,6 +34,8 @@ from .tenant import validate_tenant_slug, resolve_tenant_by_slug, get_or_create_
 
 logger = logging.getLogger(__name__)
 router = Router()
+router.add_decorator(csrf_protect, mode="view")
+public_router = Router()
 
 
 SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
@@ -31,12 +45,21 @@ SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
     ("activity", "activity.feed.read"),
     ("gamification", "gamification.achievements.read"),
 )
+HEADLESS_AUTH_SESSION_PATHS: frozenset[str] = frozenset(
+    {"login", "signup", "passkeys/login/complete"}
+)
 
 
 @dataclass(frozen=True)
 class _LoginPayload:
     email: str
     next: str | None
+
+
+@dataclass(frozen=True)
+class _SessionPrincipal:
+    user_id: str
+    master_flags: dict[str, Any]
 
 
 def _require_auth(request: HttpRequest):
@@ -75,6 +98,223 @@ def _resolve_auth_tenant(request: HttpRequest):
     if tenant:
         return tenant
     return get_or_create_global_tenant()
+
+
+def _coerce_bool_flag(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _extract_master_flags(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = payload.get("master_flags")
+    if isinstance(raw, dict):
+        return dict(raw)
+
+    user = payload.get("user")
+    if isinstance(user, dict):
+        nested = user.get("master_flags")
+        if isinstance(nested, dict):
+            return dict(nested)
+
+        derived: dict[str, Any] = {}
+        for source_key, target_key in (
+            ("system_admin", "system_admin"),
+            ("email_verified", "email_verified"),
+            ("suspended", "suspended"),
+            ("banned", "banned"),
+        ):
+            coerced = _coerce_bool_flag(user.get(source_key))
+            if coerced is not None:
+                derived[target_key] = coerced
+        if derived:
+            return derived
+
+    return {}
+
+
+def _extract_user_id(payload: dict[str, Any]) -> str:
+    direct = payload.get("user_id") or payload.get("id")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    user = payload.get("user")
+    if isinstance(user, dict):
+        nested = user.get("user_id") or user.get("id")
+        if isinstance(nested, str) and nested.strip():
+            return nested.strip()
+    return ""
+
+
+def _extract_auth_session_secret(
+    *,
+    headers: Mapping[str, str],
+    payload: dict[str, Any] | None,
+) -> str:
+    header_token = headers.get("X-Session-Token") or headers.get("x-session-token")
+    if isinstance(header_token, str) and header_token.strip():
+        return header_token.strip()
+
+    if not payload:
+        return ""
+
+    for key in ("access_token", "session_token"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    meta = payload.get("meta")
+    if isinstance(meta, dict):
+        nested = meta.get("session_token")
+        if isinstance(nested, str) and nested.strip():
+            return nested.strip()
+
+    return ""
+
+
+def _sanitize_auth_success_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(payload)
+    sanitized.pop("access_token", None)
+    sanitized.pop("session_token", None)
+    sanitized.pop("refresh_token", None)
+
+    meta = sanitized.get("meta")
+    if isinstance(meta, dict):
+        sanitized_meta = dict(meta)
+        sanitized_meta.pop("session_token", None)
+        sanitized_meta.pop("access_token", None)
+        sanitized_meta.pop("refresh_token", None)
+        sanitized["meta"] = sanitized_meta
+
+    return sanitized
+
+
+def _resolve_auth_principal_from_payload(payload: dict[str, Any]) -> _SessionPrincipal | None:
+    user_id = _extract_user_id(payload)
+    if not user_id:
+        return None
+    return _SessionPrincipal(
+        user_id=user_id,
+        master_flags=_extract_master_flags(payload),
+    )
+
+
+def _fetch_auth_principal_from_session_secret(
+    request: HttpRequest,
+    *,
+    upstream: str,
+    session_secret: str,
+) -> _SessionPrincipal | None:
+    if not session_secret:
+        return None
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path="auth/me",
+            method="GET",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers={
+                "X-Request-Id": getattr(request, "request_id", ""),
+                "X-Session-Token": session_secret,
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to resolve auth principal from session secret",
+            extra={"request_id": getattr(request, "request_id", None)},
+            exc_info=True,
+        )
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    try:
+        payload = resp.json()
+    except Exception:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    return _resolve_auth_principal_from_payload(payload)
+
+
+def _resolve_auth_principal(
+    request: HttpRequest,
+    *,
+    upstream: str,
+    response_headers: Mapping[str, str],
+    payload: dict[str, Any] | None,
+) -> _SessionPrincipal | None:
+    direct = _resolve_auth_principal_from_payload(payload or {})
+    if direct:
+        return direct
+
+    session_secret = _extract_auth_session_secret(headers=response_headers, payload=payload)
+    if session_secret:
+        return _fetch_auth_principal_from_session_secret(
+            request,
+            upstream=upstream,
+            session_secret=session_secret,
+        )
+    return None
+
+
+def _resolve_auth_ttl(payload: dict[str, Any] | None) -> timedelta:
+    ttl_candidate: Any = None
+    if payload:
+        ttl_candidate = payload.get("ttl_seconds")
+        if ttl_candidate in (None, ""):
+            ttl_candidate = payload.get("expires_in")
+        meta = payload.get("meta")
+        if ttl_candidate in (None, "") and isinstance(meta, dict):
+            ttl_candidate = meta.get("ttl_seconds") or meta.get("expires_in")
+    try:
+        if ttl_candidate not in (None, ""):
+            return timedelta(seconds=max(int(ttl_candidate), 1))
+    except Exception:
+        pass
+    return timedelta(days=14)
+
+
+def _set_bff_session_cookie(
+    response: HttpResponse,
+    *,
+    session_id: str,
+    ttl: timedelta,
+) -> None:
+    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
+    response.set_cookie(
+        cookie_name,
+        session_id,
+        httponly=True,
+        secure=not getattr(settings, "DEBUG", False),
+        samesite=getattr(settings, "BFF_COOKIE_SAMESITE", "Lax"),
+        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
+        path="/",
+        max_age=int(ttl.total_seconds()),
+    )
+
+
+def _clear_bff_session_cookie(response: HttpResponse) -> None:
+    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
+    response.delete_cookie(
+        cookie_name,
+        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
+        path="/",
+    )
 
 
 def _fetch_user_memberships(request: HttpRequest, ctx, *, use_cache: bool = True) -> list[dict[str, Any]]:
@@ -789,6 +1029,17 @@ def session_me(request: HttpRequest):
     }
 
 
+@router.get("/csrf")
+def csrf_token(request: HttpRequest):
+    return JsonResponse(
+        {
+            "ok": True,
+            "csrfToken": get_token(request),
+            "request_id": request.request_id,
+        }
+    )
+
+
 @router.post("/session/logout")
 def session_logout(request: HttpRequest):
     ctx, err = _require_auth(request)
@@ -1264,7 +1515,7 @@ def session_callback(request: HttpRequest, code: str, next: str | None = None):
     return response
 
 
-@router.post("/internal/session/establish")
+@public_router.post("/internal/session/establish")
 def internal_establish_session(request: HttpRequest):
     body = request.body or b""
     signature = request.headers.get("X-UpdSpaceID-Signature")
@@ -1677,6 +1928,512 @@ def proxy_activity(request: HttpRequest, path: str):
     return _proxy_group(request, "feed", "BFF_UPSTREAM_FEED_URL", path)
 
 
+def _account_context_headers(request: HttpRequest, ctx) -> dict[str, str]:
+    tenant = getattr(request, "tenant", None)
+    headers = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+    }
+    tenant_id = str(
+        getattr(ctx, "active_tenant_id", "")
+        or getattr(ctx, "tenant_id", "")
+        or ""
+    ).strip()
+    tenant_slug = str(
+        getattr(ctx, "active_tenant_slug", "")
+        or getattr(ctx, "tenant_slug", "")
+        or ""
+    ).strip()
+    if tenant_id:
+        headers["X-Tenant-Id"] = tenant_id
+        headers["X-Tenant-Slug"] = tenant_slug
+    elif tenant:
+        headers["X-Tenant-Id"] = str(tenant.id)
+        headers["X-Tenant-Slug"] = str(tenant.slug)
+    return headers
+
+
+def _build_tenant_auth_context(
+    ctx,
+    *,
+    tenant_id: str,
+    tenant_slug: str,
+) -> AuthContext:
+    return AuthContext(
+        session_id=ctx.session_id,
+        tenant_id=str(tenant_id),
+        tenant_slug=str(tenant_slug),
+        user_id=str(ctx.user_id),
+        master_flags=dict(getattr(ctx, "master_flags", {}) or {}),
+        active_tenant_id=str(tenant_id),
+        active_tenant_slug=str(tenant_slug),
+    )
+
+
+def _dsar_tenant_contexts(request: HttpRequest, ctx) -> list[AuthContext]:
+    tenant_order: dict[str, str] = {}
+
+    def _remember(tenant_id: Any, tenant_slug: Any) -> None:
+        tid = str(tenant_id or "").strip()
+        if not tid:
+            return
+        slug = str(tenant_slug or "").strip()
+        if tid not in tenant_order or (not tenant_order[tid] and slug):
+            tenant_order[tid] = slug
+
+    _remember(
+        getattr(ctx, "active_tenant_id", "") or getattr(ctx, "tenant_id", ""),
+        getattr(ctx, "active_tenant_slug", "") or getattr(ctx, "tenant_slug", ""),
+    )
+
+    for membership in _fetch_user_memberships(request, ctx, use_cache=False):
+        if not isinstance(membership, dict):
+            continue
+        _remember(membership.get("tenant_id"), membership.get("tenant_slug"))
+
+    if not tenant_order:
+        _remember(getattr(ctx, "tenant_id", ""), getattr(ctx, "tenant_slug", ""))
+
+    return [
+        _build_tenant_auth_context(ctx, tenant_id=tenant_id, tenant_slug=tenant_slug)
+        for tenant_id, tenant_slug in tenant_order.items()
+    ]
+
+
+def _aggregate_dsar_export_bundle(
+    *,
+    service_name: str,
+    user_id: str,
+    tenant_bundles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    aggregate: dict[str, Any] = {
+        "service": service_name,
+        "user_id": str(user_id),
+        "exported_at": timezone.now().isoformat(),
+        "tenants": [],
+    }
+
+    for bundle in tenant_bundles:
+        if bundle.get("skipped"):
+            if not aggregate["tenants"]:
+                aggregate.update(bundle)
+            continue
+        aggregate["tenants"].append(bundle)
+
+    aggregate["tenants"].sort(
+        key=lambda item: (
+            str(item.get("tenant_slug", "")),
+            str(item.get("tenant_id", "")),
+        )
+    )
+    return aggregate
+
+
+def _call_dsar_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+    operation: str,
+    method: str,
+    failure_code: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    upstream = getattr(settings, upstream_setting, "")
+    if not upstream:
+        return {"skipped": True, "reason": "upstream_not_configured"}, None
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path=upstream_path,
+            method=method,
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception(
+            "DSAR upstream unavailable",
+            extra={"service": service_name, "operation": operation},
+        )
+        return None, error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message=f"{service_name} DSAR {operation} unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code != 200:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return None, error_response(
+            code=failure_code,
+            message=f"{service_name} DSAR {operation} failed",
+            request_id=request.request_id,
+            status=502,
+            details={"service": service_name, **details},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"ok": True}
+
+    return payload if isinstance(payload, dict) else {"ok": True}, None
+
+
+def _call_dsar_export_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="export",
+        method="GET",
+        failure_code="DSAR_EXPORT_FAILED",
+    )
+
+
+def _call_dsar_erase_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="erase",
+        method="POST",
+        failure_code="DSAR_ERASE_FAILED",
+    )
+
+
+def _delete_identity_account(request: HttpRequest, ctx) -> HttpResponse | None:
+    upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(
+        settings,
+        "ID_BASE_URL",
+        "",
+    )
+    if not upstream:
+        return error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID upstream is not configured",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path="auth/me",
+            method="DELETE",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception("Identity account deletion failed")
+        return error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID service unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code not in {200, 204}:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return error_response(
+            code="ACCOUNT_DELETE_FAILED",
+            message="Identity account deletion failed",
+            request_id=request.request_id,
+            status=502,
+            details=details,
+        )
+
+    return None
+
+
+@router.delete("/account/me")
+def delete_account_me(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    tenant_contexts = _dsar_tenant_contexts(request, ctx)
+    from .models import BffSession
+
+    service_calls = (
+        (
+            "portal",
+            "BFF_UPSTREAM_PORTAL_URL",
+            f"portal/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "activity",
+            "BFF_UPSTREAM_FEED_URL",
+            f"feed/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "access",
+            "BFF_UPSTREAM_ACCESS_URL",
+            f"access/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "events",
+            "BFF_UPSTREAM_EVENTS_URL",
+            f"internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "gamification",
+            "BFF_UPSTREAM_GAMIFICATION_URL",
+            f"gamification/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "voting",
+            "BFF_UPSTREAM_VOTING_URL",
+            f"internal/dsar/users/{ctx.user_id}/erase",
+        ),
+    )
+
+    for service_name, setting_name, upstream_path in service_calls:
+        for tenant_ctx in tenant_contexts:
+            bundle, response = _call_dsar_erase_service(
+                request,
+                tenant_ctx,
+                service_name=service_name,
+                upstream_setting=setting_name,
+                upstream_path=upstream_path,
+            )
+            if response is not None:
+                return response
+            if bundle and bundle.get("skipped"):
+                break
+
+    identity_error = _delete_identity_account(request, ctx)
+    if identity_error is not None:
+        return identity_error
+
+    bff_tenant_ids = {
+        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+        for tenant_ctx in tenant_contexts
+        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+    }
+    bff_tenant_ids.update(
+        str(tenant_id)
+        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
+            "tenant_id",
+            flat=True,
+        )
+        if str(tenant_id).strip()
+    )
+    if not bff_tenant_ids:
+        bff_tenant_ids.add(str(ctx.tenant_id))
+    for tenant_id in sorted(bff_tenant_ids):
+        erase_bff_user_data(tenant_id=tenant_id, user_id=ctx.user_id)
+
+    services_erased = [
+        "portal",
+        "activity",
+        "access",
+        "events",
+        "gamification",
+        "voting",
+        "id",
+        "bff",
+    ]
+
+    try:
+        from .audit import log_audit_event as _log_audit
+
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="dsar.erased",
+            target_type="dsar_request",
+            target_id="self",
+            metadata={
+                "subject_scope": "self",
+                "services_erased": services_erased,
+                "tenant_ids_erased": sorted(bff_tenant_ids),
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="account.deleted",
+            target_type="user_account",
+            target_id=str(ctx.user_id),
+            metadata={
+                "services_erased": services_erased,
+                "tenant_ids_erased": sorted(bff_tenant_ids),
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Failed to write dsar/account deletion audit events", exc_info=True)
+
+    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
+    response = HttpResponse(status=204)
+    response.delete_cookie(
+        cookie_name,
+        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
+        path="/",
+    )
+    return response
+
+
+@router.get("/account/me/export")
+def export_account_me(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    tenant_contexts = _dsar_tenant_contexts(request, ctx)
+    from .models import BffSession
+
+    bff_tenant_ids = {
+        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+        for tenant_ctx in tenant_contexts
+        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
+    }
+    bff_tenant_ids.update(
+        str(tenant_id)
+        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
+            "tenant_id",
+            flat=True,
+        )
+        if str(tenant_id).strip()
+    )
+    bundles: dict[str, Any] = {
+        "bff": _aggregate_dsar_export_bundle(
+            service_name="bff",
+            user_id=ctx.user_id,
+            tenant_bundles=[
+                export_bff_user_data(
+                    tenant_id=tenant_id,
+                    user_id=ctx.user_id,
+                )
+                for tenant_id in sorted(bff_tenant_ids)
+            ],
+        ),
+    }
+    service_calls = (
+        (
+            "portal",
+            "BFF_UPSTREAM_PORTAL_URL",
+            f"portal/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "activity",
+            "BFF_UPSTREAM_FEED_URL",
+            f"feed/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "access",
+            "BFF_UPSTREAM_ACCESS_URL",
+            f"access/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "events",
+            "BFF_UPSTREAM_EVENTS_URL",
+            f"internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "gamification",
+            "BFF_UPSTREAM_GAMIFICATION_URL",
+            f"gamification/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "voting",
+            "BFF_UPSTREAM_VOTING_URL",
+            f"internal/dsar/users/{ctx.user_id}/export",
+        ),
+    )
+
+    for service_name, setting_name, upstream_path in service_calls:
+        tenant_bundles: list[dict[str, Any]] = []
+        for tenant_ctx in tenant_contexts:
+            bundle, response = _call_dsar_export_service(
+                request,
+                tenant_ctx,
+                service_name=service_name,
+                upstream_setting=setting_name,
+                upstream_path=upstream_path,
+            )
+            if response is not None:
+                return response
+            if bundle is not None:
+                tenant_bundles.append(bundle)
+                if bundle.get("skipped"):
+                    break
+        bundles[service_name] = _aggregate_dsar_export_bundle(
+            service_name=service_name,
+            user_id=ctx.user_id,
+            tenant_bundles=tenant_bundles,
+        )
+
+    try:
+        from .audit import log_audit_event as _log_audit
+
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="dsar.exported",
+            target_type="dsar_bundle",
+            target_id="self",
+            metadata={
+                "subject_scope": "self",
+                "services_exported": sorted(bundles.keys()),
+                "tenant_ids_exported": [
+                    tenant_ctx.tenant_id for tenant_ctx in tenant_contexts
+                ],
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Failed to write dsar.exported audit event", exc_info=True)
+
+    return {
+        "service": "bff",
+        "user_id": ctx.user_id,
+        "exported_at": timezone.now().isoformat(),
+        "tenant_ids": [tenant_ctx.tenant_id for tenant_ctx in tenant_contexts],
+        "bundles": bundles,
+    }
+
+
 @router.api_operation(
     ["GET", "POST", "PUT", "PATCH", "DELETE"],
     "/account/{path:path}",
@@ -1741,13 +2498,7 @@ def proxy_account(request: HttpRequest, path: str):
     )
 
 
-@router.api_operation(
-    ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    "/auth/{path:path}",
-    auth=None,  # Auth endpoints are often public (login)
-)
-def proxy_auth(request: HttpRequest, path: str):
-    # We don't use _proxy_group because it requires auth
+def _proxy_public_auth_path(request: HttpRequest, path: str):
     upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(
         settings,
         "ID_BASE_URL",
@@ -1760,12 +2511,12 @@ def proxy_auth(request: HttpRequest, path: str):
             request_id=getattr(request, "request_id", None),
             status=502,
         )
-    
+
     body = request.body or b""
     try:
         resp = proxy_request(
             upstream_base_url=upstream,
-            upstream_path=f"auth/{path}",  # ID service exposes /auth/
+            upstream_path=f"auth/{path}",
             method=request.method,
             query_string=request.META.get("QUERY_STRING", ""),
             body=body,
@@ -1783,11 +2534,123 @@ def proxy_auth(request: HttpRequest, path: str):
             status=502,
         )
 
-    return HttpResponse(
+    content_type = resp.headers.get("content-type", "application/json")
+    response = HttpResponse(
         resp.content,
         status=resp.status_code,
-        content_type=resp.headers.get("content-type", "application/json"),
+        content_type=content_type,
     )
+
+    if resp.status_code >= 400:
+        if path == "logout":
+            auth_ctx = getattr(request, "auth_ctx", None)
+            if auth_ctx:
+                SessionStore().revoke(auth_ctx.session_id)
+            _clear_bff_session_cookie(response)
+        return response
+
+    if path == "logout":
+        auth_ctx = getattr(request, "auth_ctx", None)
+        if auth_ctx:
+            SessionStore().revoke(auth_ctx.session_id)
+        _clear_bff_session_cookie(response)
+        return response
+
+    if path not in HEADLESS_AUTH_SESSION_PATHS:
+        return response
+
+    tenant = _resolve_auth_tenant(request)
+
+    payload: dict[str, Any] | None = None
+    if "json" in content_type.lower():
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        if isinstance(data, dict):
+            payload = data
+
+    principal = _resolve_auth_principal(
+        request,
+        upstream=upstream,
+        response_headers=resp.headers,
+        payload=payload,
+    )
+    if not principal:
+        logger.warning(
+            "Headless auth succeeded but BFF could not establish session",
+            extra={
+                "request_id": request.request_id,
+                "path": path,
+                "status_code": resp.status_code,
+            },
+        )
+        return response
+
+    try:
+        uuid.UUID(principal.user_id)
+    except (TypeError, ValueError, AttributeError):
+        logger.warning(
+            "Headless auth returned invalid principal user id",
+            extra={
+                "request_id": request.request_id,
+                "path": path,
+                "user_id": principal.user_id,
+            },
+        )
+        return error_response(
+            code="UPSTREAM_INVALID_PRINCIPAL",
+            message="Auth service returned an invalid session principal",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    ttl = _resolve_auth_ttl(payload)
+    session = SessionStore().create(
+        tenant_id=str(tenant.id),
+        user_id=principal.user_id,
+        master_flags=principal.master_flags,
+        ttl=ttl,
+    )
+
+    if payload is not None:
+        sanitized_payload = _sanitize_auth_success_payload(payload)
+        response = HttpResponse(
+            json.dumps(sanitized_payload, separators=(",", ":")).encode("utf-8"),
+            status=resp.status_code,
+            content_type=content_type,
+        )
+
+    _set_bff_session_cookie(
+        response,
+        session_id=session.session_id,
+        ttl=ttl,
+    )
+    return response
+
+
+@router.post("/auth/login", auth=None)
+def proxy_auth_login_headless(request: HttpRequest):
+    return _proxy_public_auth_path(request, "login")
+
+
+@router.post("/auth/signup", auth=None)
+def proxy_auth_signup_headless(request: HttpRequest):
+    return _proxy_public_auth_path(request, "signup")
+
+
+@router.post("/auth/passkeys/login/complete", auth=None)
+def proxy_auth_passkey_login_complete(request: HttpRequest):
+    return _proxy_public_auth_path(request, "passkeys/login/complete")
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/auth/{path:path}",
+    auth=None,
+)
+def proxy_auth(request: HttpRequest, path: str):
+    return _proxy_public_auth_path(request, path)
 
 
 ########################################
@@ -1795,4 +2658,5 @@ def proxy_auth(request: HttpRequest, path: str):
 ########################################
 
 api = NinjaAPI(title="UpdSpace BFF", version="1")
+api.add_router("/", public_router)
 api.add_router("/", router)

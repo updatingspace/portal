@@ -1,9 +1,6 @@
-"""
-Migration for rollout models: FeatureFlag, Experiment, KillSwitch, RolloutAuditLog.
-"""
-import django.db.models.deletion
-from django.db import migrations, models
 import uuid
+
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):

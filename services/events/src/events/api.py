@@ -4,7 +4,9 @@ import logging
 import uuid
 from datetime import datetime, timezone as dt_timezone
 from typing import Any, cast
+from uuid import UUID
 
+from django.db import transaction
 from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone as dj_timezone
@@ -13,6 +15,7 @@ from ninja import NinjaAPI, Query, Router
 from ninja.errors import HttpError
 
 from .context import InternalContext, require_internal_context
+from .dsar import erase_user_data, export_user_data
 from .models import Event, RSVP, RSVPStatus
 from .permissions import has_permission, has_scope_membership
 from .portal_client import PortalServiceUnavailable, portal_client
@@ -82,6 +85,50 @@ def _parse_iso_datetime(value: str, *, code: str, message: str) -> datetime:
         return _to_aware(datetime.fromisoformat(value))
     except Exception as exc:
         raise HttpError(400, cast(Any, {"code": code, "message": message})) from exc
+
+
+def _has_system_admin_flag(master_flags: object) -> bool:
+    if isinstance(master_flags, dict):
+        return bool(
+            master_flags.get("system_admin") is True
+            or master_flags.get("is_system_admin") is True
+        )
+    if isinstance(master_flags, (set, frozenset, list, tuple)):
+        return "system_admin" in master_flags or "is_system_admin" in master_flags
+    return False
+
+
+def _ensure_dsar_subject(ctx: InternalContext, target_user_id: UUID) -> None:
+    if str(ctx.user_id) == str(target_user_id):
+        return
+    if _has_system_admin_flag(ctx.master_flags):
+        return
+    raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "DSAR access denied"}))
+
+
+@router.get("/internal/dsar/users/{target_user_id}/export", response=dict)
+def dsar_export(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    return export_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
+
+
+@router.post("/internal/dsar/users/{target_user_id}/erase", response=dict)
+@transaction.atomic
+def dsar_erase(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    return erase_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
 
 
 def _require_perm_ctx(ctx: InternalContext, permission_key: str, scope_type: str, scope_id: str):
@@ -270,9 +317,9 @@ def _ics_escape_text(value: str) -> str:
     """
     RFC5545 TEXT escaping:
       - backslash -> \\,
-      - semicolon -> \;,
-      - comma -> \,,
-      - newline -> \n
+      - semicolon -> \\;,
+      - comma -> \\,
+      - newline -> \\n
     """
     value = value.replace("\r\n", "\n").replace("\r", "\n")
     value = value.replace("\\", "\\\\")
