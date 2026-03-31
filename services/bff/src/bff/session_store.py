@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -10,6 +11,8 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from .models import BffSession, Tenant
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -52,15 +55,31 @@ class SessionStore:
             timeout=int(ttl.total_seconds()),
         )
 
-        if getattr(settings, "BFF_SESSION_DB_FALLBACK", False):
-            tenant = Tenant.objects.get(id=tenant_id)
-            BffSession.objects.create(
-                id=session_id,
-                tenant=tenant,
-                user_id=user_id,
-                master_flags=master_flags,
-                expires_at=expires_at,
+        tenant = Tenant.objects.get(id=tenant_id)
+        BffSession.objects.create(
+            id=session_id,
+            tenant=tenant,
+            user_id=user_id,
+            master_flags=master_flags,
+            expires_at=expires_at,
+        )
+
+        # Audit: session creation (PII-safe)
+        try:
+            from .audit import log_audit_event as _log_audit
+
+            _log_audit(
+                tenant_id=tenant_id,
+                actor_user_id=user_id,
+                action="session.created",
+                target_type="bff_session",
+                target_id=session_id,
+                metadata={
+                    "ttl_seconds": int(ttl.total_seconds()),
+                },
             )
+        except Exception:
+            logger.warning("Failed to write session.created audit event", exc_info=True)
 
         return SessionData(**payload)
 
@@ -95,11 +114,32 @@ class SessionStore:
 
     def revoke(self, session_id: str) -> None:
         cache.delete(_cache_key(session_id))
-        if getattr(settings, "BFF_SESSION_DB_FALLBACK", False):
-            (
-                BffSession.objects.filter(
-                    id=session_id,
-                    revoked_at__isnull=True,
-                )
-                .update(revoked_at=timezone.now())
+
+        # Look up session to get tenant/user for audit before revoking
+        session_row = BffSession.objects.filter(
+            id=session_id,
+            revoked_at__isnull=True,
+        ).first()
+
+        (
+            BffSession.objects.filter(
+                id=session_id,
+                revoked_at__isnull=True,
             )
+            .update(revoked_at=timezone.now())
+        )
+
+        # Audit: session revocation (PII-safe)
+        if session_row:
+            try:
+                from .audit import log_audit_event as _log_audit
+
+                _log_audit(
+                    tenant_id=str(session_row.tenant_id),
+                    actor_user_id=str(session_row.user_id),
+                    action="session.revoked",
+                    target_type="bff_session",
+                    target_id=session_id,
+                )
+            except Exception:
+                logger.warning("Failed to write session.revoked audit event", exc_info=True)

@@ -32,6 +32,8 @@ from activity.models import (
     Subscription,
     make_dedupe_hash,
 )
+from activity.privacy import safe_exception_label
+from activity.audit import log_audit_event as _log_audit
 from core.errors import error_payload
 
 logger = logging.getLogger(__name__)
@@ -466,6 +468,7 @@ def create_account_link(
     status: str | None,
     settings_json: dict | None,
     external_identity_ref: str | None,
+    request_id: str = "",
 ) -> AccountLink:
     source = Source.objects.filter(tenant_id=tenant_id, id=source_id).first()
     if not source:
@@ -476,18 +479,27 @@ def create_account_link(
     st = (
         status or AccountLinkStatus.ACTIVE
     ).strip() or AccountLinkStatus.ACTIVE
+    external_identity_ref = (external_identity_ref or "").strip() or None
     if st not in AccountLinkStatus.values:
         raise HttpError(
             400,
             error_payload("INVALID_STATUS", "Некорректный статус"),
         )
+    effective_settings = dict(settings_json or {})
+    effective_settings["_privacy"] = {
+        "lawful_basis": "consent",
+        "consent_captured_at": timezone.now().isoformat(),
+        "captured_via": "self_service_account_link",
+        "source_type": source.type,
+        "request_id": str(request_id),
+    }
     try:
-        return AccountLink.objects.create(
+        link = AccountLink.objects.create(
             tenant_id=tenant_id,
             user_id=user_id,
             source=source,
             status=st,
-            settings_json=settings_json or {},
+            settings_json=effective_settings,
             external_identity_ref=external_identity_ref,
         )
     except IntegrityError as exc:
@@ -495,6 +507,40 @@ def create_account_link(
             409,
             error_payload("ALREADY_LINKED", "Источник уже привязан"),
         ) from exc
+
+    # Audit: log link creation (PII-safe — no external identity)
+    _log_audit(
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        action="account_link.created",
+        target_type="account_link",
+        target_id=str(link.id),
+        metadata={
+            "source_id": source_id,
+            "source_type": source.type,
+            "status": st,
+            "lawful_basis": "consent",
+            "consent_captured": True,
+        },
+        request_id=request_id,
+    )
+
+    # Outbox: publish ACCOUNT_LINKED for cross-service delivery
+    publish_outbox_event(
+        tenant_id=tenant_id,
+        event_type=OutboxEventType.ACCOUNT_LINKED,
+        aggregate_type="account_link",
+        aggregate_id=str(link.id),
+        payload={
+            "account_link_id": link.id,
+            "user_id": str(user_id),
+            "source_id": source_id,
+            "source_type": source.type,
+            "status": st,
+        },
+    )
+
+    return link
 
 
 @transaction.atomic
@@ -532,7 +578,7 @@ def ingest_raw_and_normalize(
     key = connector.dedupe_key(raw_in)
     dedupe_hash = make_dedupe_hash(
         source_type=account_link.source.type,
-        key=key,
+        key=f"{account_link.id}:{key}",
     )
 
     raw_created = False
@@ -689,7 +735,7 @@ def run_sync(*, tenant_id, account_link_id: int) -> dict[str, int]:
                     "tenant_id": str(tenant_id),
                     "account_link_id": account_link_id,
                     "attempt": attempt,
-                    "error": str(exc),
+                    "error": safe_exception_label(exc),
                 },
             )
             if attempt >= policy.max_attempts:
@@ -711,7 +757,7 @@ def run_sync(*, tenant_id, account_link_id: int) -> dict[str, int]:
             payload={
                 "account_link_id": account_link_id,
                 "source_type": link.source.type,
-                "error": str(last_exc) if last_exc else "unknown",
+                "error": safe_exception_label(last_exc),
             },
         )
 
@@ -720,7 +766,7 @@ def run_sync(*, tenant_id, account_link_id: int) -> dict[str, int]:
         extra={
             "tenant_id": str(tenant_id),
             "account_link_id": account_link_id,
-            "error": str(last_exc) if last_exc else "unknown",
+            "error": safe_exception_label(last_exc),
         },
     )
 
@@ -729,7 +775,7 @@ def run_sync(*, tenant_id, account_link_id: int) -> dict[str, int]:
         error_payload(
             "SYNC_FAILED",
             "Sync failed",
-            details={"error": str(last_exc) if last_exc else "unknown"},
+            details={"error": safe_exception_label(last_exc)},
         ),
     )
 

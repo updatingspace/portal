@@ -7,6 +7,78 @@ global.fetch = vi.fn();
 describe('requestResult business handling', () => {
   afterEach(() => {
     vi.resetAllMocks();
+    document.cookie = 'updspace_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+  });
+
+  it('bootstraps csrf before unsafe requests when the cookie is missing', async () => {
+    (fetch as unknown as vi.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ csrfToken: 'bootstrap-token' }),
+        clone() {
+          return this;
+        },
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+        clone() {
+          return this;
+        },
+        headers: new Headers(),
+      });
+
+    const res = await requestResult('/test', { method: 'POST' });
+
+    expect(res.ok).toBe(true);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/csrf',
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'include',
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/test',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'bootstrap-token',
+        }),
+      }),
+    );
+  });
+
+  it('uses the existing csrf cookie without an extra bootstrap request', async () => {
+    document.cookie = 'updspace_csrf=cookie-token; path=/';
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    const res = await requestResult('/test', { method: 'POST' });
+
+    expect(res.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/test',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-CSRF-Token': 'cookie-token',
+        }),
+      }),
+    );
   });
 
   it('treats 429 with known code as business error', async () => {
@@ -72,6 +144,8 @@ describe('requestResult business handling', () => {
     const pending = request('/test/protected');
     window.history.pushState({}, '', '/app/events');
 
+    await Promise.resolve();
+
     resolveFetch?.({
       ok: false,
       status: 403,
@@ -92,5 +166,40 @@ describe('requestResult business handling', () => {
       requestId: 'req-403-race',
       path: '/app/feed',
     });
+  });
+
+  it('preserves FormData bodies and adds CSRF headers for unsafe requests', async () => {
+    document.cookie = 'updspace_csrf=formdata-csrf-token; path=/';
+
+    const form = new FormData();
+    form.append('avatar', new File(['avatar'], 'avatar.png', { type: 'image/png' }));
+
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    await request('/auth/avatar', { method: 'POST', body: form });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    const [, options] = (fetch as unknown as vi.Mock).mock.calls[0] as [
+      string,
+      {
+        headers: Record<string, string>;
+        body: FormData;
+        credentials: string;
+      },
+    ];
+
+    expect(options.credentials).toBe('include');
+    expect(options.body).toBe(form);
+    expect(options.headers['X-CSRF-Token']).toBe('formdata-csrf-token');
+    expect(options.headers['Content-Type']).toBeUndefined();
   });
 });

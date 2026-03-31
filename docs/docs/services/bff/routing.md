@@ -14,7 +14,10 @@ BFF обрабатывает напрямую (не проксирует):
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/v1/csrf` | Bootstrap Django CSRF cookie/token for SPA |
 | GET | `/api/v1/session/me` | Текущая сессия + профиль |
+| GET | `/api/v1/account/me/export` | Self-service DSAR export aggregator |
+| DELETE | `/api/v1/account/me` | Self-service erase + account deletion orchestration |
 | POST | `/api/v1/session/logout` | Выход |
 | POST | `/api/v1/session/login` | Magic link login (legacy) |
 
@@ -29,7 +32,20 @@ BFF обрабатывает напрямую (не проксирует):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/internal/session` | Create session (from ID) |
+| POST | `/api/v1/internal/session/establish` | Create session (signed callback from ID) |
+
+## CSRF Flow
+
+- `GET /api/v1/csrf` вызывает Django `get_token()` и выставляет host-only CSRF-cookie.
+- Все browser-origin mutating routes в основном BFF router защищены через стандартный Django `csrf_protect`.
+- `POST /api/v1/internal/session/establish` остаётся без browser CSRF, потому что защищён HMAC-подписью от UpdSpaceID.
+- `DELETE /api/v1/account/me` использует тот же browser CSRF path, что и остальные mutating BFF endpoints.
+
+## DSAR Orchestration
+
+- `GET /api/v1/account/me/export` агрегирует bundles из `portal`, `activity`, `access`, `events`, `gamification`, `voting` и локального BFF session/audit store.
+- `DELETE /api/v1/account/me` вызывает internal erase endpoints тех же сервисов, затем делает `DELETE auth/me` в identity provider и удаляет BFF cookie/session.
+- BFF пишет audit события `dsar.exported`, `dsar.erased` и `account.deleted` с PII-safe metadata.
 
 ## Proxy Routes
 
