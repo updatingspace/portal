@@ -42,8 +42,10 @@ const getCookieValue = (name: string): string | null => {
   return null;
 };
 
-const getCsrfToken = () => getCookieValue(csrfCookieName);
+const readCsrfToken = () => getCookieValue(csrfCookieName);
 const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const csrfBootstrapPath = `${baseUrl}/csrf`;
+let csrfBootstrapPromise: Promise<string | null> | null = null;
 export const apiBaseUrl = baseUrl;
 
 const withLeadingSlash = (path: string) =>
@@ -217,6 +219,89 @@ const ensureRequestId = () => {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
+const extractBootstrapCsrfToken = (payload: unknown): string | null => {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const token = (payload as { csrfToken?: unknown }).csrfToken;
+  if (typeof token === 'string' && token.trim()) {
+    return token.trim();
+  }
+
+  return null;
+};
+
+const bootstrapCsrfToken = async (): Promise<string | null> => {
+  if (csrfBootstrapPromise) {
+    return csrfBootstrapPromise;
+  }
+
+  csrfBootstrapPromise = (async () => {
+    try {
+      const response = await fetch(csrfBootstrapPath, {
+        method: 'GET',
+        headers: {
+          'X-Request-Id': ensureRequestId(),
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        logger.warn('CSRF bootstrap request failed', {
+          area: 'api',
+          event: 'csrf_bootstrap_failed',
+          data: { status: response.status },
+        });
+        return null;
+      }
+
+      let tokenFromBody: string | null = null;
+      try {
+        tokenFromBody = extractBootstrapCsrfToken(await response.clone().json());
+      } catch {
+        /* ignore */
+      }
+
+      return readCsrfToken() ?? tokenFromBody;
+    } catch (error) {
+      logger.warn('CSRF bootstrap network failure', {
+        area: 'api',
+        event: 'csrf_bootstrap_network_failed',
+        error,
+      });
+      return null;
+    } finally {
+      csrfBootstrapPromise = null;
+    }
+  })();
+
+  return csrfBootstrapPromise;
+};
+
+const ensureCsrfToken = async (): Promise<string | null> => {
+  const existingToken = readCsrfToken();
+  if (existingToken) {
+    return existingToken;
+  }
+
+  return bootstrapCsrfToken();
+};
+
+export async function getCsrfHeaders(method: string): Promise<Record<string, string>> {
+  const normalizedMethod = method.toUpperCase();
+  if (CSRF_SAFE_METHODS.has(normalizedMethod)) {
+    return {};
+  }
+
+  const csrfToken = await ensureCsrfToken();
+  if (!csrfToken) {
+    return {};
+  }
+
+  return { [csrfHeaderName]: csrfToken };
+}
+
 export type BusinessError = {
   code?: string;
   message?: string;
@@ -280,9 +365,9 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
   const url = `${baseUrl}${normalizedPath}`;
   const method = (options.method ?? 'GET').toUpperCase();
   const routeSnapshot = getCurrentRouteSnapshot();
-  const shouldIncludeCsrf = !CSRF_SAFE_METHODS.has(method);
-  const csrfToken = shouldIncludeCsrf ? getCsrfToken() : null;
-  const csrfHeaders = csrfToken ? { [csrfHeaderName]: csrfToken } : null;
+  const csrfHeaders = await getCsrfHeaders(method);
+  const isFormDataBody =
+    typeof FormData !== 'undefined' && options.body instanceof FormData;
   const startedAt = nowMs();
   const requestId = ensureRequestId();
 
@@ -311,13 +396,18 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
       response = await fetch(url, {
         ...options,
         headers: {
-          'Content-Type': 'application/json',
+          ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           'X-Request-Id': requestId,
-          ...(csrfHeaders ?? {}),
+          ...csrfHeaders,
           ...(options.headers ?? {}),
         },
         credentials: 'include',
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        body:
+          options.body !== undefined
+            ? isFormDataBody
+              ? options.body
+              : JSON.stringify(options.body)
+            : undefined,
       });
     } catch (error) {
       lastError = error as Error;

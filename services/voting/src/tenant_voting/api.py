@@ -3,15 +3,18 @@ import hashlib
 import hmac
 import json
 import time
+from uuid import UUID
 
 import httpx
 from django.conf import settings
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import Router
 # events.models.OutboxMessage import removed (moved to services)
 
 from .context import InternalContext, require_internal_context
+from .dsar import erase_user_data, export_user_data
 from .models import (
     Nomination,
     Option,
@@ -122,6 +125,7 @@ def _access_check_allowed(
         "X-Tenant-Id": str(tenant_id),
         "X-Tenant-Slug": str(tenant_slug),
         "X-User-Id": str(user_id),
+        "X-Forwarded-Proto": "https",
         "X-Master-Flags": json.dumps(master_flags, separators=(",", ":"), default=str),
     }
     headers.update(_internal_hmac_headers(method="POST", path=path, body=body, request_id=request_id))
@@ -238,6 +242,14 @@ def _is_global_admin(ctx: InternalContext) -> bool:
     )
 
 
+def _ensure_dsar_subject(ctx: InternalContext, target_user_id: UUID) -> None:
+    if str(ctx.user_id) == str(target_user_id):
+        return
+    if bool(ctx.master_flags.get("system_admin")):
+        return
+    raise PermissionError("DSAR access denied")
+
+
 def _can_manage_poll(ctx: InternalContext, poll: Poll) -> bool:
     if str(poll.created_by) == ctx.user_id:
         return True
@@ -245,6 +257,43 @@ def _can_manage_poll(ctx: InternalContext, poll: Poll) -> bool:
     if role in {PollRole.OWNER, PollRole.ADMIN}:
         return True
     return _is_global_admin(ctx)
+
+
+@router.get("/internal/dsar/users/{target_user_id}/export", response={200: dict})
+def dsar_export(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    try:
+        parsed_user_id = uuid.UUID(str(target_user_id))
+        _ensure_dsar_subject(ctx, parsed_user_id)
+    except PermissionError as exc:
+        return _error_response(request, status=403, code="FORBIDDEN", message=str(exc))
+    except ValueError:
+        return _error_response(
+            request,
+            status=400,
+            code="INVALID_USER_ID",
+            message="Invalid user id",
+        )
+    return export_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
+
+
+@router.post("/internal/dsar/users/{target_user_id}/erase", response={200: dict})
+@transaction.atomic
+def dsar_erase(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    try:
+        parsed_user_id = uuid.UUID(str(target_user_id))
+        _ensure_dsar_subject(ctx, parsed_user_id)
+    except PermissionError as exc:
+        return _error_response(request, status=403, code="FORBIDDEN", message=str(exc))
+    except ValueError:
+        return _error_response(
+            request,
+            status=400,
+            code="INVALID_USER_ID",
+            message="Invalid user id",
+        )
+    return erase_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
 
 
 def _require_nomination(
