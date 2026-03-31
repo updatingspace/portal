@@ -47,7 +47,7 @@ export type EventVisibility = 'public' | 'community' | 'team' | 'private';
 /**
  * Тип scope
  */
-export type ScopeType = 'tenant' | 'COMMUNITY' | 'TEAM';
+export type ScopeType = 'tenant' | 'TENANT' | 'COMMUNITY' | 'TEAM';
 
 // ============================================================================
 // Error Types

@@ -15,80 +15,34 @@ import type { NewsMediaItem } from '../../../types/activity';
 import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
 import { FeedFilters } from '../components/FeedFilters';
 import { FeedItem } from '../components/FeedItem';
-import { requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
+import { deleteNews, requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
 import { createClientAccessDeniedError, toAccessDeniedError } from '../../../api/accessDenied';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
 import { AccessDeniedScreen } from '../../../features/access-denied';
+import { useFeedFilters } from '../hooks/useFeedFilters';
+import { TITLE_REGEX, extractTags, extractTitle, extractYoutubeIds, mapYoutubeMediaFromIds } from '../utils/composer';
 import './feed-page.css';
-
-const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
-const TAG_REGEX = /#([\p{L}\p{N}_-]{2,})/gu;
-const TITLE_REGEX = /^#\s+(.+)$/m;
-
-type SourceFilter = 'all' | 'news' | 'voting' | 'events';
-
-type TimeFilter = 'day' | 'week' | 'month' | 'all';
-
-type SortFilter = 'best' | 'recent';
-
-const getSourceTypes = (source: SourceFilter) => {
-  if (source === 'news') return ['news.posted', 'post.created'];
-  if (source === 'voting') return ['vote.cast'];
-  if (source === 'events') return ['event.created', 'event.rsvp.changed'];
-  return [];
-};
-
-const getTimeRange = (value: TimeFilter) => {
-  if (value === 'all') return { from: null, to: null };
-  const now = new Date();
-  const base = new Date(now.getTime());
-  if (value === 'day') base.setDate(now.getDate() - 1);
-  if (value === 'week') base.setDate(now.getDate() - 7);
-  if (value === 'month') base.setDate(now.getDate() - 30);
-  return { from: base, to: now };
-};
-
-const extractTitle = (markup: string) => {
-  const match = markup.match(TITLE_REGEX);
-  return match?.[1]?.trim() ?? '';
-};
-
-const extractTags = (markup: string) => {
-  const withoutTitle = markup.replace(TITLE_REGEX, '');
-  const tags = new Set<string>();
-  const matches = withoutTitle.matchAll(TAG_REGEX);
-  for (const match of matches) {
-    const tag = match[1]?.toLowerCase();
-    if (tag) tags.add(tag);
-  }
-  return Array.from(tags);
-};
-
-const extractYoutubeIds = (markup: string) => {
-  const ids = new Set<string>();
-  const matches = markup.matchAll(YOUTUBE_REGEX);
-  for (const match of matches) {
-    if (match[1]) ids.add(match[1]);
-  }
-  return Array.from(ids);
-};
 
 export const FeedPage: React.FC = () => {
   const { user } = useAuth();
   const tenantId = user?.tenant?.id ?? null;
   const canReadFeed = can(user, 'activity.feed.read');
   const canCreateNews = can(user, 'activity.news.create');
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
-  const [sortFilter, setSortFilter] = useState<SortFilter>('best');
+  const canModerateNews = can(user, 'activity.news.manage');
+  const realtimeFlagEnabled = user?.featureFlags?.activity_feed_realtime_enabled === true;
+  const { source, period, sort, setSource, setPeriod, setSort, resetFilters } = useFeedFilters();
   const [newsMedia, setNewsMedia] = useState<NewsMediaItem[]>([]);
   const [newsVisibility, setNewsVisibility] = useState<'public' | 'private'>('public');
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [moderationMode, setModerationMode] = useState(false);
+  const [selectedModerationIds, setSelectedModerationIds] = useState<string[]>([]);
+  const [moderationReason, setModerationReason] = useState('');
+  const [moderationError, setModerationError] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,13 +67,20 @@ export const FeedPage: React.FC = () => {
   }, [editor]);
 
   const typesParam = useMemo(() => {
-    const sourceTypes = getSourceTypes(sourceFilter);
-    return sourceTypes.length > 0 ? sourceTypes.join(',') : undefined;
-  }, [sourceFilter]);
-
-  const { from, to } = useMemo(() => getTimeRange(timeFilter), [timeFilter]);
-  const fromParam = from ? new Date(from).toISOString() : undefined;
-  const toParam = to ? new Date(to).toISOString() : undefined;
+    if (source === 'news') return ['news.posted', 'post.created'].join(',');
+    if (source === 'voting') return ['vote.cast'].join(',');
+    if (source === 'events') return ['event.created', 'event.rsvp.changed'].join(',');
+    return undefined;
+  }, [source]);
+  const range = useMemo(() => {
+    if (period === 'all') return { from: undefined, to: undefined };
+    const now = new Date();
+    const base = new Date(now.getTime());
+    if (period === 'day') base.setDate(now.getDate() - 1);
+    if (period === 'week') base.setDate(now.getDate() - 7);
+    if (period === 'month') base.setDate(now.getDate() - 30);
+    return { from: base.toISOString(), to: now.toISOString() };
+  }, [period]);
 
   const {
     data,
@@ -129,7 +90,7 @@ export const FeedPage: React.FC = () => {
     isLoading,
     error,
     refetch,
-  } = useFeedInfinite({ types: typesParam, from: fromParam, to: toParam, limit: 20 });
+  } = useFeedInfinite({ types: typesParam, from: range.from, to: range.to, limit: 20 });
 
   const { count: unreadCount } = useUnreadCount();
   const { mutate: markAsRead, isPending: isMarkingRead } = useMarkFeedAsRead();
@@ -141,7 +102,7 @@ export const FeedPage: React.FC = () => {
   const items = data?.pages.flatMap((page) => page.items) ?? [];
   const sortedItems = useMemo(() => {
     const base = [...items];
-    if (sortFilter === 'best') {
+    if (sort === 'best') {
       return base.sort((a, b) => {
         const aPayload = (a.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
         const bPayload = (b.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
@@ -152,7 +113,7 @@ export const FeedPage: React.FC = () => {
       });
     }
     return base;
-  }, [items, sortFilter]);
+  }, [items, sort]);
 
   useEffect(() => {
     if (!canReadFeed) return;
@@ -190,7 +151,7 @@ export const FeedPage: React.FC = () => {
     }
 
     autoSubscribedRef.current = true;
-    updateSubscriptions({ scopes: [{ scopeType: 'TENANT', scopeId: tenantId }] }).catch((err) => {
+    updateSubscriptions({ scopes: [{ scopeType: 'tenant', scopeId: tenantId }] }).catch((err) => {
       autoSubscribedRef.current = false;
       notifyApiError(err, 'Не удалось настроить подписку на ленту');
     });
@@ -202,12 +163,6 @@ export const FeedPage: React.FC = () => {
       setComposerOpen(true);
     }
   }, [canCreateNews, composerValue, newsMedia.length]);
-
-  const handleResetFilters = useCallback(() => {
-    setSourceFilter('all');
-    setTimeFilter('week');
-    setSortFilter('best');
-  }, []);
 
   const handleRemoveMedia = useCallback((index: number) => {
     setNewsMedia((prev) => prev.filter((_, idx) => idx !== index));
@@ -267,11 +222,7 @@ export const FeedPage: React.FC = () => {
     const strippedBody = title ? markup.replace(TITLE_REGEX, '').trim() : markup;
     const body = strippedBody || markup;
 
-    const youtubeMedia: NewsMediaItem[] = youtubeIds.map((id) => ({
-      type: 'youtube',
-      url: `https://youtu.be/${id}`,
-      video_id: id,
-    }));
+    const youtubeMedia = mapYoutubeMediaFromIds(youtubeIds);
 
     const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
     if (mergedMedia.length === 0) {
@@ -285,7 +236,7 @@ export const FeedPage: React.FC = () => {
         body,
         tags,
         visibility: newsVisibility,
-        scopeType: 'TENANT',
+        scopeType: 'tenant',
         scopeId: null,
         media: mergedMedia.map((item) => {
           if (item.type === 'image') {
@@ -307,8 +258,8 @@ export const FeedPage: React.FC = () => {
           };
         }),
       });
-      if ((editor as { setValue?: (value: string) => void }).setValue) {
-        (editor as { setValue: (value: string) => void }).setValue('');
+      if ((editor as unknown as { setValue?: (value: string) => void }).setValue) {
+        (editor as unknown as { setValue: (value: string) => void }).setValue('');
       }
       setNewsMedia([]);
       setComposerOpen(false);
@@ -318,6 +269,64 @@ export const FeedPage: React.FC = () => {
       notifyApiError(err, 'Не удалось опубликовать новость');
     }
   }, [createNews, editor, newsMedia, newsVisibility, refetch]);
+
+  const hasContent = sortedItems.length > 0;
+  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
+  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
+  const composerHasText = Boolean(composerValue.trim());
+  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
+  const getItemNewsId = useCallback(
+    (item: { payloadJson?: Record<string, unknown> }) => {
+      const maybe = (item.payloadJson ?? {}).news_id;
+      return typeof maybe === 'string' ? maybe : null;
+    },
+    [],
+  );
+
+  const handleModerationToggle = useCallback((newsId: string, selected: boolean) => {
+    setSelectedModerationIds((prev) => {
+      if (selected) {
+        if (prev.includes(newsId)) return prev;
+        return [...prev, newsId].slice(0, 20);
+      }
+      return prev.filter((id) => id !== newsId);
+    });
+  }, []);
+
+  const handleModerationDeleteSelected = useCallback(async () => {
+    if (!moderationMode) return;
+    if (!moderationReason.trim()) {
+      setModerationError('Укажите причину модераторского действия');
+      return;
+    }
+    if (selectedModerationIds.length === 0) {
+      setModerationError('Выберите хотя бы одну новость');
+      return;
+    }
+    setModerationError(null);
+    try {
+      await Promise.all(selectedModerationIds.map((id) => deleteNews(id)));
+      setSelectedModerationIds([]);
+      setModerationReason('');
+      refetch();
+    } catch (err) {
+      notifyApiError(err, 'Не удалось выполнить массовое модераторское действие');
+    }
+  }, [moderationMode, moderationReason, refetch, selectedModerationIds]);
+
+  useEffect(() => {
+    if (composerError && composerHasMedia) {
+      setComposerError(null);
+    }
+  }, [composerError, composerHasMedia]);
+
+  useEffect(() => {
+    if (!realtimeFlagEnabled) return;
+    const timer = window.setInterval(() => {
+      refetch();
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [realtimeFlagEnabled, refetch]);
 
   if (!canReadFeed) {
     return (
@@ -353,18 +362,6 @@ export const FeedPage: React.FC = () => {
     );
   }
 
-  const hasContent = sortedItems.length > 0;
-  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
-  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
-  const composerHasText = Boolean(composerValue.trim());
-  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
-
-  useEffect(() => {
-    if (composerError && composerHasMedia) {
-      setComposerError(null);
-    }
-  }, [composerError, composerHasMedia]);
-
   return (
     <div className="feed-page" data-qa="feed-page">
       <div className="feed-page__layout">
@@ -386,8 +383,51 @@ export const FeedPage: React.FC = () => {
                   Отметить прочитанным
                 </Button>
               )}
+              {canModerateNews && (
+                <Button
+                  view={moderationMode ? 'outlined-danger' : 'outlined'}
+                  size="m"
+                  onClick={() => {
+                    setModerationMode((prev) => !prev);
+                    setSelectedModerationIds([]);
+                    setModerationReason('');
+                    setModerationError(null);
+                  }}
+                >
+                  {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
+                </Button>
+              )}
             </div>
           </div>
+
+          {moderationMode && (
+            <Card view="filled" className="feed-moderation-panel">
+              <Text variant="subheader-2">Панель модерации</Text>
+              <Text variant="body-2" color="secondary">
+                Выбрано: {selectedModerationIds.length} (максимум 20)
+              </Text>
+              <textarea
+                className="feed-moderation-panel__reason"
+                value={moderationReason}
+                onChange={(event) => setModerationReason(event.target.value)}
+                placeholder="Укажите причину модераторского действия (для аудита)"
+                rows={2}
+              />
+              {moderationError && (
+                <Text variant="caption-2" color="danger">
+                  {moderationError}
+                </Text>
+              )}
+              <div className="feed-moderation-panel__actions">
+                <Button view="outlined" size="m" onClick={() => setSelectedModerationIds([])}>
+                  Очистить выбор
+                </Button>
+                <Button view="flat-danger" size="m" onClick={handleModerationDeleteSelected}>
+                  Удалить выбранные
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {unreadCount > 0 && (
             <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner">
@@ -512,7 +552,7 @@ export const FeedPage: React.FC = () => {
               {Array.from({ length: 4 }).map((_, index) => (
                 <Card key={`skeleton-${index}`} view="filled" className="feed-skeleton">
                   <div className="feed-skeleton__row">
-                    <SkeletonBlock height={32} width={32} />
+                    <SkeletonBlock height={32} width="32px" />
                     <div className="feed-skeleton__content">
                       <SkeletonBlock height={12} width="40%" />
                       <SkeletonBlock height={18} width="70%" />
@@ -525,7 +565,7 @@ export const FeedPage: React.FC = () => {
           ) : !hasContent ? (
             <Card view="filled" className="feed-empty" data-qa="feed-empty">
               <Text variant="subheader-2">
-                {sourceFilter !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
+                {source !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
               </Text>
               <Text variant="body-2" color="secondary">
                 Добавьте интеграции или вернитесь позже.
@@ -533,9 +573,19 @@ export const FeedPage: React.FC = () => {
             </Card>
           ) : (
             <div className="feed-stream__list" data-qa="feed-list">
-              {sortedItems.map((item) => (
-                <FeedItem key={item.id} item={item} showPayload={false} />
-              ))}
+              {sortedItems.map((item) => {
+                const itemNewsId = getItemNewsId(item);
+                return (
+                  <FeedItem
+                    key={item.id}
+                    item={item}
+                    showPayload={false}
+                    moderationMode={moderationMode}
+                    moderationSelected={Boolean(itemNewsId && selectedModerationIds.includes(itemNewsId))}
+                    onModerationToggle={handleModerationToggle}
+                  />
+                );
+              })}
             </div>
           )}
 
@@ -553,22 +603,25 @@ export const FeedPage: React.FC = () => {
           <Card view="filled" className="feed-panel">
             <div className="feed-panel__header">
               <Text variant="subheader-2">Фильтры</Text>
-              {sourceFilter !== 'all' && (
+              {source !== 'all' && (
                 <Label size="xs" theme="info">
                   1
                 </Label>
               )}
             </div>
             <FeedFilters
-              sortValue={sortFilter}
-              onSortChange={(value) => setSortFilter(value as SortFilter)}
-              sourceValue={sourceFilter}
-              onSourceChange={(value) => setSourceFilter(value as SourceFilter)}
-              timeValue={timeFilter}
-              onTimeChange={(value) => setTimeFilter(value as TimeFilter)}
-              onReset={handleResetFilters}
+              sortValue={sort}
+              onSortChange={(value) => setSort(value as 'best' | 'recent')}
+              sourceValue={source}
+              onSourceChange={(value) => setSource(value as 'all' | 'news' | 'voting' | 'events')}
+              timeValue={period}
+              onTimeChange={(value) => setPeriod(value as 'day' | 'week' | 'month' | 'all')}
+              onReset={resetFilters}
               qa="feed-filters"
             />
+            <Text variant="caption-2" color="secondary">
+              Realtime: {realtimeFlagEnabled ? 'включен флагом' : 'выключен (безопасный режим)'}
+            </Text>
           </Card>
         </aside>
       </div>
