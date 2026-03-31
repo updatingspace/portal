@@ -25,6 +25,7 @@ from activity.connectors.base import (
     RetryPolicy,
 )
 from activity.models import AccountLink, ActivityEvent, RawEvent
+from activity.privacy import mask_identifier, safe_exception_label
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class SteamApiClient:
                 extra={
                     "path": path,
                     "status_code": exc.response.status_code,
-                    "response_text": exc.response.text[:500],
+                    "error_type": safe_exception_label(exc),
                 },
             )
             raise
@@ -111,7 +112,7 @@ class SteamApiClient:
         except Exception as exc:
             logger.error(
                 "Steam API error",
-                extra={"path": path, "error": str(exc)},
+                extra={"path": path, "error_type": safe_exception_label(exc)},
                 exc_info=True,
             )
             raise
@@ -177,7 +178,7 @@ class SteamApiClient:
             if exc.response.status_code == 400:
                 logger.debug(
                     "No achievements available",
-                    extra={"steam_id": steam_id, "appid": appid},
+                    extra={"appid": appid},
                 )
                 return []
             raise
@@ -237,22 +238,19 @@ class SteamConnector(Connector):
         kind = payload.get("kind")
 
         if kind == "achievement":
-            steam_id = payload.get("steamid")
             appid = payload.get("appid")
             apiname = payload.get("apiname")
-            return f"achievement:{steam_id}:{appid}:{apiname}"
+            return f"achievement:{appid}:{apiname}"
 
         if kind == "playtime":
-            steam_id = payload.get("steamid")
             appid = payload.get("appid")
             # Dedupe by day to allow daily snapshots
             date_str = raw.occurred_at.strftime("%Y-%m-%d") if raw.occurred_at else "unknown"
-            return f"playtime:{steam_id}:{appid}:{date_str}"
+            return f"playtime:{appid}:{date_str}"
 
         if kind == "private":
-            steam_id = payload.get("steamid")
             date_str = raw.occurred_at.strftime("%Y-%m-%d") if raw.occurred_at else "unknown"
-            return f"private:{steam_id}:{date_str}"
+            return f"private:{date_str}"
 
         return f"unknown:{raw.occurred_at.isoformat() if raw.occurred_at else 'none'}"
 
@@ -282,6 +280,7 @@ class SteamConnector(Connector):
 
         max_games = source_config.get("max_games", 10)
         min_playtime = source_config.get("min_playtime", 60)  # minutes
+        steam_ref = mask_identifier(steam_id)
 
         client = SteamApiClient(api_key)
         results: list[RawEventIn] = []
@@ -293,7 +292,7 @@ class SteamConnector(Connector):
             if not player:
                 logger.info(
                     "Steam player not found",
-                    extra={"steam_id": steam_id},
+                    extra={"account_link_id": account_link.id, "steam_ref": steam_ref},
                 )
                 return []
 
@@ -301,15 +300,13 @@ class SteamConnector(Connector):
             if player.get("communityvisibilitystate", 1) != 3:
                 logger.info(
                     "Steam profile is private",
-                    extra={"steam_id": steam_id},
+                    extra={"account_link_id": account_link.id, "steam_ref": steam_ref},
                 )
                 results.append(
                     RawEventIn(
                         occurred_at=now,
                         payload_json={
                             "kind": "private",
-                            "steamid": steam_id,
-                            "personaname": player.get("personaname"),
                         },
                     )
                 )
@@ -319,7 +316,11 @@ class SteamConnector(Connector):
             games = client.get_owned_games(steam_id)
             logger.info(
                 "Fetched Steam games",
-                extra={"steam_id": steam_id, "game_count": len(games)},
+                extra={
+                    "account_link_id": account_link.id,
+                    "steam_ref": steam_ref,
+                    "game_count": len(games),
+                },
             )
 
             # Sort by recent playtime and filter
@@ -342,7 +343,6 @@ class SteamConnector(Connector):
                                 occurred_at=unlock_dt,
                                 payload_json={
                                     "kind": "achievement",
-                                    "steamid": steam_id,
                                     "appid": game.appid,
                                     "game_name": game.name,
                                     "apiname": ach.apiname,
@@ -357,9 +357,10 @@ class SteamConnector(Connector):
                     logger.warning(
                         "Failed to fetch achievements for game",
                         extra={
-                            "steam_id": steam_id,
+                            "account_link_id": account_link.id,
+                            "steam_ref": steam_ref,
                             "appid": game.appid,
-                            "error": str(exc),
+                            "error": safe_exception_label(exc),
                         },
                     )
 
@@ -373,7 +374,6 @@ class SteamConnector(Connector):
                             occurred_at=last_played_dt,
                             payload_json={
                                 "kind": "playtime",
-                                "steamid": steam_id,
                                 "appid": game.appid,
                                 "game_name": game.name,
                                 "playtime_forever": game.playtime_forever,
@@ -386,7 +386,8 @@ class SteamConnector(Connector):
             logger.info(
                 "Steam sync completed",
                 extra={
-                    "steam_id": steam_id,
+                    "account_link_id": account_link.id,
+                    "steam_ref": steam_ref,
                     "events_count": len(results),
                 },
             )
@@ -417,12 +418,13 @@ class SteamConnector(Connector):
                 scope_type="tenant",
                 scope_id=str(tenant_id),
                 source_ref=f"steam:{account_link.id}:private:{raw.fetched_at.date().isoformat()}",
-                payload_json=payload,
+                payload_json={
+                    "source": "steam",
+                    "profile_visibility": "private",
+                },
             )
 
         if kind == "achievement":
-            game_name = payload.get("game_name", "Game")
-            ach_name = payload.get("name") or payload.get("apiname", "Achievement")
             unlocktime = payload.get("unlocktime", 0)
             occurred_at = (
                 datetime.fromtimestamp(unlocktime, tz=timezone.utc)
@@ -434,25 +436,19 @@ class SteamConnector(Connector):
                 tenant_id=tenant_id,
                 actor_user_id=account_link.user_id,
                 type="game.achievement",
-                title=f"Unlocked '{ach_name}' in {game_name}",
+                title="Unlocked a Steam achievement",
                 occurred_at=occurred_at,
-                visibility="public",
+                visibility="private",
                 scope_type="tenant",
                 scope_id=str(tenant_id),
-                source_ref=f"steam:{account_link.id}:ach:{payload.get('appid')}:{payload.get('apiname')}",
+                source_ref=f"steam:{account_link.id}:achievement:{raw.id}",
                 payload_json={
-                    "game_name": game_name,
-                    "game_appid": payload.get("appid"),
-                    "achievement_name": ach_name,
-                    "achievement_apiname": payload.get("apiname"),
-                    "achievement_description": payload.get("description"),
                     "source": "steam",
+                    "kind": "achievement",
                 },
             )
 
         if kind == "playtime":
-            game_name = payload.get("game_name", "Game")
-            playtime_hours = payload.get("playtime_forever", 0) / 60
             last_played = payload.get("rtime_last_played", 0)
             occurred_at = (
                 datetime.fromtimestamp(last_played, tz=timezone.utc)
@@ -464,18 +460,15 @@ class SteamConnector(Connector):
                 tenant_id=tenant_id,
                 actor_user_id=account_link.user_id,
                 type="game.playtime",
-                title=f"Played {game_name} ({playtime_hours:.1f} hours total)",
+                title="Played on Steam",
                 occurred_at=occurred_at,
-                visibility="public",
+                visibility="private",
                 scope_type="tenant",
                 scope_id=str(tenant_id),
-                source_ref=f"steam:{account_link.id}:playtime:{payload.get('appid')}:{occurred_at.date().isoformat()}",
+                source_ref=f"steam:{account_link.id}:playtime:{raw.id}",
                 payload_json={
-                    "game_name": game_name,
-                    "game_appid": payload.get("appid"),
-                    "playtime_forever_minutes": payload.get("playtime_forever"),
-                    "playtime_2weeks_minutes": payload.get("playtime_2weeks"),
                     "source": "steam",
+                    "kind": "playtime",
                 },
             )
 
@@ -490,5 +483,8 @@ class SteamConnector(Connector):
             scope_type="tenant",
             scope_id=str(tenant_id),
             source_ref=f"steam:{account_link.id}:unknown:{raw.id}",
-            payload_json=payload,
+            payload_json={
+                "kind": kind or "unknown",
+                "source": "steam",
+            },
         )

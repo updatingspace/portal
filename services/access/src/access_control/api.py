@@ -21,6 +21,7 @@ from access_control.models import (
     TenantAdminAuditEvent,
 )
 from access_control.context import require_internal_context
+from access_control.dsar import erase_user_data, export_user_data
 from access_control.schemas import (
     CheckIn,
     CheckOut,
@@ -126,6 +127,20 @@ def _binding_to_admin_out(binding: RoleBinding) -> TenantAdminBindingOut:
     )
 
 
+def _ensure_dsar_subject(ctx, target_user_id: UUID) -> None:
+    if str(ctx.user_id) == str(target_user_id):
+        return
+    if bool(ctx.master_flags.get("system_admin")):
+        return
+    raise PermissionError("DSAR access denied")
+
+
+def _dsar_audit_target(ctx, target_user_id: UUID) -> tuple[str, str]:
+    if str(ctx.user_id) == str(target_user_id):
+        return "self", "self"
+    return "delegated", str(target_user_id)
+
+
 class TenantRolePayload(Schema):
     service: str
     name: str
@@ -133,6 +148,68 @@ class TenantRolePayload(Schema):
 
 
 TenantRolePayload.model_rebuild(force=True)
+
+
+@router.get(
+    "/internal/dsar/users/{target_user_id}/export",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut},
+    operation_id="access_dsar_export",
+)
+def dsar_export(request, target_user_id: UUID):
+    ctx = require_internal_context(request)
+    try:
+        _ensure_dsar_subject(ctx, target_user_id)
+    except PermissionError:
+        return _error(
+            request,
+            status=403,
+            code="FORBIDDEN",
+            message="DSAR access denied",
+        )
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, target_user_id)
+    payload = export_user_data(tenant_id=UUID(str(ctx.tenant_id)), user_id=target_user_id)
+    log_tenant_admin_event(
+        tenant_id=ctx.tenant_id,
+        performed_by=ctx.user_id,
+        action="dsar.exported",
+        target_type="dsar_request",
+        target_id=audit_target_id,
+        metadata={"subject_scope": subject_scope},
+    )
+    return payload
+
+
+@router.post(
+    "/internal/dsar/users/{target_user_id}/erase",
+    response={200: dict, 401: ErrorOut, 403: ErrorOut},
+    operation_id="access_dsar_erase",
+)
+def dsar_erase(request, target_user_id: UUID):
+    ctx = require_internal_context(request)
+    try:
+        _ensure_dsar_subject(ctx, target_user_id)
+    except PermissionError:
+        return _error(
+            request,
+            status=403,
+            code="FORBIDDEN",
+            message="DSAR access denied",
+        )
+    subject_scope, audit_target_id = _dsar_audit_target(ctx, target_user_id)
+    with transaction.atomic():
+        payload = erase_user_data(
+            tenant_id=UUID(str(ctx.tenant_id)),
+            user_id=target_user_id,
+        )
+        log_tenant_admin_event(
+            tenant_id=ctx.tenant_id,
+            performed_by=ctx.user_id,
+            action="dsar.erased",
+            target_type="dsar_request",
+            target_id=audit_target_id,
+            metadata={"subject_scope": subject_scope},
+        )
+        return payload
 
 
 @router.post(

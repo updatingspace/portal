@@ -24,6 +24,12 @@ def _filtered_request_headers(
         lk = k.lower()
         if lk in allowed:
             out[k] = v
+    forwarded_proto = incoming_headers.get("X-Forwarded-Proto") or incoming_headers.get(
+        "x-forwarded-proto"
+    )
+    out["X-Forwarded-Proto"] = (
+        forwarded_proto.split(",", 1)[0].strip() if forwarded_proto else "https"
+    )
     return out
 
 

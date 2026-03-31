@@ -78,6 +78,7 @@ class PortalClient:
             "X-Tenant-Id": ctx.tenant_id,
             "X-Tenant-Slug": ctx.tenant_slug,
             "X-User-Id": ctx.user_id,
+            "X-Forwarded-Proto": "https",
             "X-Updspace-Timestamp": ts,
             "X-Updspace-Signature": sig,
         }

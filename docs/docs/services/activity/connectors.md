@@ -222,7 +222,18 @@ class SteamConnector:
 ```bash
 # Environment variable
 STEAM_API_KEY=your-steam-web-api-key
+ACTIVITY_DATA_ENCRYPTION_KEY=long-random-secret
+ACTIVITY_DATA_ENCRYPTION_OLD_KEYS=previous-secret-1,previous-secret-2
+ACTIVITY_RAW_EVENT_RETENTION_DAYS=7
 ```
+
+#### Безопасность данных
+
+- `Source.config_json`, `AccountLink.settings_json`, `AccountLink.external_identity_ref` и `RawEvent.payload_json` шифруются на уровне приложения.
+- Ответы API для account-link возвращают только masked view для внешних идентификаторов и секретов в `settings_json`.
+- Steam raw events больше не сохраняют `steamid` и `personaname` в payload.
+- Сырые `RawEvent` нужно удалять по retention-window `7` дней через команду `python src/manage.py purge_raw_events`.
+- Структурные логи автоматически редактируют `payload_json`, `config_json`, `settings_json`, секреты и внешние идентификаторы.
 
 #### API Endpoints используемые
 

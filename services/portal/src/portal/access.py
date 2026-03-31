@@ -117,6 +117,7 @@ class AccessService:
                 "X-Tenant-Id": str(ctx.tenant_id),
                 "X-Tenant-Slug": str(ctx.tenant_slug),
                 "X-User-Id": str(ctx.user_id),
+                "X-Forwarded-Proto": "https",
                 "X-Master-Flags": json.dumps(
                     {
                         "suspended": "suspended" in ctx.master_flags,

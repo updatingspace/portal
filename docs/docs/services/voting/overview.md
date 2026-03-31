@@ -30,7 +30,14 @@ description: Сервис голосований
 | Structured logging | ✅ Implemented | JSON logging с correlation IDs |
 | Health checks | ✅ Implemented | Liveness, readiness, detailed endpoints |
 | Security headers | ✅ Implemented | CORS, CSRF, HSTS, X-Frame-Options |
-| Legacy (aef-vote) | ✅ Done | Миграция с legacy |
+| Legacy (aef-vote) | ✅ Hardened | `/nominations` и `/votings` оставлены как compatibility-layer поверх `tenant_voting`; legacy admin import/export/delete больше не публикуются |
+
+## Legacy compatibility surface
+
+- Legacy routes `/api/v1/nominations*` и `/api/v1/votings*` больше не работают через Django session auth.
+- Для них обязателен BFF → service internal HMAC и tenant context headers.
+- Чтение и голосование обслуживаются через multi-tenant `tenant_voting` модели.
+- Legacy admin операции `export/import/delete` для `/votings` отключены из публичного API до отдельной миграции данных.
 
 ## Сценарии использования (Portal / Tenant)
 
