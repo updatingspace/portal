@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Icon, Label, Loader, Select, Text } from '@gravity-ui/uikit';
-import { Plus, ArrowRotateRight } from '@gravity-ui/icons';
-import { MarkdownEditorView, useMarkdownEditor } from '@gravity-ui/markdown-editor';
+import { Button, Card, Text } from '@gravity-ui/uikit';
+import { useMarkdownEditor } from '@gravity-ui/markdown-editor';
 
 import {
   useFeedInfinite,
@@ -12,9 +11,9 @@ import {
   useUpdateSubscriptions,
 } from '../../../hooks/useActivity';
 import type { NewsMediaItem } from '../../../types/activity';
-import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
-import { FeedFilters } from '../components/FeedFilters';
-import { FeedItem } from '../components/FeedItem';
+import { FeedComposerPanel } from '../components/FeedComposerPanel';
+import { FeedControlRail } from '../components/FeedControlRail';
+import { FeedStreamView } from '../components/FeedStreamView';
 import { deleteNews, requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
 import { createClientAccessDeniedError, toAccessDeniedError } from '../../../api/accessDenied';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
@@ -314,6 +313,13 @@ export const FeedPage: React.FC = () => {
     }
   }, [moderationMode, moderationReason, refetch, selectedModerationIds]);
 
+  const toggleModerationMode = useCallback(() => {
+    setModerationMode((prev) => !prev);
+    setSelectedModerationIds([]);
+    setModerationReason('');
+    setModerationError(null);
+  }, []);
+
   useEffect(() => {
     if (composerError && composerHasMedia) {
       setComposerError(null);
@@ -366,264 +372,62 @@ export const FeedPage: React.FC = () => {
     <div className="feed-page" data-qa="feed-page">
       <div className="feed-page__layout">
         <section className="feed-stream">
-          <div className="feed-stream__header">
-            <div className="feed-stream__title">
-              <Text variant="header-1">Лента активности</Text>
-              <Text variant="body-2" color="secondary" className="feed-stream__subtitle">
-                Новости сообщества, голосования и игровые события в одном месте.
-              </Text>
-            </div>
-            <div className="feed-stream__header-actions" data-qa="feed-actions">
-              <Button view="flat" size="m" onClick={() => refetch()}>
-                <Icon data={ArrowRotateRight} />
-                Обновить
-              </Button>
-              {unreadCount > 0 && (
-                <Button view="action" size="m" loading={isMarkingRead} onClick={() => markAsRead()}>
-                  Отметить прочитанным
-                </Button>
-              )}
-              {canModerateNews && (
-                <Button
-                  view={moderationMode ? 'outlined-danger' : 'outlined'}
-                  size="m"
-                  onClick={() => {
-                    setModerationMode((prev) => !prev);
-                    setSelectedModerationIds([]);
-                    setModerationReason('');
-                    setModerationError(null);
-                  }}
-                >
-                  {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {moderationMode && (
-            <Card view="filled" className="feed-moderation-panel">
-              <Text variant="subheader-2">Панель модерации</Text>
-              <Text variant="body-2" color="secondary">
-                Выбрано: {selectedModerationIds.length} (максимум 20)
-              </Text>
-              <textarea
-                className="feed-moderation-panel__reason"
-                value={moderationReason}
-                onChange={(event) => setModerationReason(event.target.value)}
-                placeholder="Укажите причину модераторского действия (для аудита)"
-                rows={2}
-              />
-              {moderationError && (
-                <Text variant="caption-2" color="danger">
-                  {moderationError}
-                </Text>
-              )}
-              <div className="feed-moderation-panel__actions">
-                <Button view="outlined" size="m" onClick={() => setSelectedModerationIds([])}>
-                  Очистить выбор
-                </Button>
-                <Button view="flat-danger" size="m" onClick={handleModerationDeleteSelected}>
-                  Удалить выбранные
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {unreadCount > 0 && (
-            <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner">
-              <Text variant="subheader-2">ОГО, новых новостей: {unreadCount}</Text>
-              <Text variant="body-2" color="secondary">
-                Вы ещё не прочитали их. Пролистайте ленту ниже.
-              </Text>
-            </Card>
-          )}
-
-          {canCreateNews ? (
-            <Card
-              view="filled"
-              className={[
-                'feed-composer',
-                composerOpen ? 'feed-composer--expanded' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              data-qa="feed-composer"
-            >
-              <div className="feed-composer__header">
-                <Text variant="subheader-2">Что происходит?</Text>
-              </div>
-
-              <div
-                className="feed-composer__editor"
-                onClick={() => setComposerOpen(true)}
-              >
-                <MarkdownEditorView
-                  editor={editor}
-                  stickyToolbar={false}
-                  settingsVisible={false}
-                  toolbarsPreset={emptyToolbarsPreset}
-                />
-              </div>
-
-              <div className="feed-composer__footer">
-                <div className="feed-composer__media-bar">
-                  <button
-                    type="button"
-                    className="feed-composer__media-button"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Icon data={Plus} />
-                  </button>
-                  <Text variant="caption-2" color="secondary">
-                    Добавьте изображения (только картинки)
-                  </Text>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(event) => handleImageUpload(event.target.files)}
-                  />
-                </div>
-                {detectedTags.length > 0 && (
-                  <div className="feed-composer__tags">
-                    {detectedTags.map((tag) => (
-                      <span key={tag} className="feed-tag">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {composerError && (
-                  <Text variant="caption-2" color="danger">
-                    {composerError}
-                  </Text>
-                )}
-                <div className="feed-composer__actions">
-                  <Select
-                    value={[newsVisibility]}
-                    onUpdate={(values) => {
-                      const next = values[0] as 'public' | 'private' | undefined;
-                      if (next) setNewsVisibility(next);
-                    }}
-                    options={[
-                      { value: 'public', content: 'Публично' },
-                      { value: 'private', content: 'Только мне' },
-                    ]}
-                  />
-                  <Button
-                    view="action"
-                    size="m"
-                    loading={isCreatingNews || uploading}
-                    disabled={!composerHasText || !composerHasMedia}
-                    onClick={handlePublishNews}
-                  >
-                    Опубликовать
-                  </Button>
-                </div>
-              </div>
-
-              {newsMedia.length > 0 && (
-                <div className="feed-composer__media">
-                  {newsMedia.map((media, index) => (
-                    <div key={`${media.type}-${index}`} className="feed-composer__media-item">
-                      {media.type === 'image' && media.url ? (
-                        <img src={media.url} alt="preview" />
-                      ) : null}
-                      <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
-                        Удалить
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          ) : (
-            <Card view="filled" className="feed-empty" data-qa="feed-composer-locked">
-              <Text variant="subheader-2">Публикация новостей недоступна.</Text>
-              <Text variant="body-2" color="secondary">
-                Для создания новостей требуется дополнительный доступ.
-              </Text>
-            </Card>
-          )}
-
-          {!hasContent && isLoading ? (
-            <div className="feed-stream__list" data-qa="feed-list-loading">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Card key={`skeleton-${index}`} view="filled" className="feed-skeleton">
-                  <div className="feed-skeleton__row">
-                    <SkeletonBlock height={32} width="32px" />
-                    <div className="feed-skeleton__content">
-                      <SkeletonBlock height={12} width="40%" />
-                      <SkeletonBlock height={18} width="70%" />
-                      <SkeletonBlock height={12} width="60%" />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : !hasContent ? (
-            <Card view="filled" className="feed-empty" data-qa="feed-empty">
-              <Text variant="subheader-2">
-                {source !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
-              </Text>
-              <Text variant="body-2" color="secondary">
-                Добавьте интеграции или вернитесь позже.
-              </Text>
-            </Card>
-          ) : (
-            <div className="feed-stream__list" data-qa="feed-list">
-              {sortedItems.map((item) => {
-                const itemNewsId = getItemNewsId(item);
-                return (
-                  <FeedItem
-                    key={item.id}
-                    item={item}
-                    showPayload={false}
-                    moderationMode={moderationMode}
-                    moderationSelected={Boolean(itemNewsId && selectedModerationIds.includes(itemNewsId))}
-                    onModerationToggle={handleModerationToggle}
-                  />
-                );
-              })}
-            </div>
-          )}
-
-          <div ref={loadMoreRef} className="feed-stream__footer" data-qa="feed-footer">
-            {isFetchingNextPage && <Loader size="m" />}
-            {!hasNextPage && hasContent && (
-              <Text variant="caption-2" color="secondary">
-                Больше событий нет
-              </Text>
-            )}
-          </div>
+          <FeedStreamView
+            unreadCount={unreadCount}
+            refetch={refetch}
+            isMarkingRead={isMarkingRead}
+            markAsRead={() => markAsRead()}
+            canModerateNews={canModerateNews}
+            moderationMode={moderationMode}
+            toggleModerationMode={toggleModerationMode}
+            selectedModerationCount={selectedModerationIds.length}
+            moderationReason={moderationReason}
+            setModerationReason={setModerationReason}
+            moderationError={moderationError}
+            clearModerationSelection={() => setSelectedModerationIds([])}
+            handleModerationDeleteSelected={handleModerationDeleteSelected}
+            hasContent={hasContent}
+            isLoading={isLoading}
+            source={source}
+            sortedItems={sortedItems}
+            selectedModerationIds={selectedModerationIds}
+            getItemNewsId={getItemNewsId}
+            handleModerationToggle={handleModerationToggle}
+            loadMoreRef={loadMoreRef}
+            isFetchingNextPage={isFetchingNextPage}
+            hasNextPage={Boolean(hasNextPage)}
+          />
+          <FeedComposerPanel
+            canCreateNews={canCreateNews}
+            composerOpen={composerOpen}
+            setComposerOpen={setComposerOpen}
+            emptyToolbarsPreset={emptyToolbarsPreset}
+            editor={editor}
+            fileInputRef={fileInputRef}
+            handleImageUpload={handleImageUpload}
+            detectedTags={detectedTags}
+            composerError={composerError}
+            newsVisibility={newsVisibility}
+            setNewsVisibility={setNewsVisibility}
+            isCreatingNews={isCreatingNews}
+            uploading={uploading}
+            composerHasText={composerHasText}
+            composerHasMedia={composerHasMedia}
+            handlePublishNews={handlePublishNews}
+            newsMedia={newsMedia}
+            handleRemoveMedia={handleRemoveMedia}
+          />
         </section>
-
-        <aside className="feed-sidebar" data-qa="feed-sidebar">
-          <Card view="filled" className="feed-panel">
-            <div className="feed-panel__header">
-              <Text variant="subheader-2">Фильтры</Text>
-              {source !== 'all' && (
-                <Label size="xs" theme="info">
-                  1
-                </Label>
-              )}
-            </div>
-            <FeedFilters
-              sortValue={sort}
-              onSortChange={(value) => setSort(value as 'best' | 'recent')}
-              sourceValue={source}
-              onSourceChange={(value) => setSource(value as 'all' | 'news' | 'voting' | 'events')}
-              timeValue={period}
-              onTimeChange={(value) => setPeriod(value as 'day' | 'week' | 'month' | 'all')}
-              onReset={resetFilters}
-              qa="feed-filters"
-            />
-            <Text variant="caption-2" color="secondary">
-              Realtime: {realtimeFlagEnabled ? 'включен флагом' : 'выключен (безопасный режим)'}
-            </Text>
-          </Card>
-        </aside>
+        <FeedControlRail
+          source={source}
+          sort={sort}
+          period={period}
+          setSort={(value) => setSort(value)}
+          setSource={(value) => setSource(value)}
+          setPeriod={(value) => setPeriod(value)}
+          resetFilters={resetFilters}
+          realtimeFlagEnabled={realtimeFlagEnabled}
+        />
       </div>
     </div>
   );

@@ -10,3 +10,6 @@ export { FeedItem } from './FeedItem';
 export { FeedFilters } from './FeedFilters';
 export { UnreadBadge } from './UnreadBadge';
 export { AccountLinkCard } from './AccountLinkCard';
+export { FeedComposerPanel } from './FeedComposerPanel';
+export { FeedControlRail } from './FeedControlRail';
+export { FeedStreamView } from './FeedStreamView';

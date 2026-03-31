@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { ThemeProvider } from '@gravity-ui/uikit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -117,5 +117,24 @@ describe('FeedItem', () => {
 
     // Should show fallback icon
     expect(screen.getByText('📌')).toBeInTheDocument();
+  });
+
+  it('renders moderation checkbox in moderation mode', () => {
+    const onModerationToggle = vi.fn();
+    renderWithTheme(
+      <FeedItem
+        item={{
+          ...mockItem,
+          type: 'news.posted',
+          payloadJson: { news_id: 'news-1', body: 'hello', tags: [] },
+        }}
+        moderationMode
+        onModerationToggle={onModerationToggle}
+      />,
+    );
+
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+    expect(onModerationToggle).toHaveBeenCalledWith('news-1', true);
   });
 });
