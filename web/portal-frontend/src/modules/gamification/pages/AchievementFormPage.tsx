@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Button,
@@ -22,10 +22,18 @@ import {
   useCreateCategory,
   useUpdateAchievement,
 } from '../../../hooks/useGamification';
-import type { AchievementImageSet, AchievementStatus } from '../../../types/gamification';
+import type { Achievement, AchievementImageSet, AchievementStatus } from '../../../types/gamification';
 import './gamification.css';
 
 type LocaleEntry = { locale: string; value: string };
+
+type SubmitPayload = {
+  nameI18n: Record<string, string>;
+  description: string;
+  category: string;
+  status?: AchievementStatus;
+  images: AchievementImageSet;
+};
 
 const STATUS_OPTIONS: { value: AchievementStatus; content: string }[] = [
   { value: 'draft', content: 'Черновик' },
@@ -42,83 +50,75 @@ const buildI18nMap = (entries: LocaleEntry[]) =>
     return acc;
   }, {});
 
-export const AchievementFormPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const isEdit = Boolean(id);
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const canCreate = can(user, 'gamification.achievements.create');
-  const canEdit = can(user, 'gamification.achievements.edit');
-  const canPublish = can(user, 'gamification.achievements.publish');
-  const canEditAchievement = isEdit ? canEdit : canCreate;
+const buildInitialFormState = (params: { achievement?: Achievement; language?: string }) => {
+  const { achievement, language } = params;
+  const entries = achievement
+    ? Object.entries(achievement.nameI18n).map(([locale, value]) => ({ locale, value }))
+    : [{ locale: language ?? 'ru', value: '' }];
 
-  if (!canEditAchievement) {
-    return (
-      <AccessDeniedScreen
-        error={createClientAccessDeniedError({
-          requiredPermission: isEdit ? 'gamification.achievements.edit' : 'gamification.achievements.create',
-          tenant: user?.tenant,
-          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для редактирования ачивок.',
-        })}
-      />
-    );
-  }
+  return {
+    nameEntries: entries.length > 0 ? entries : [{ locale: 'ru', value: '' }],
+    description: achievement?.description ?? '',
+    category: achievement?.category ?? '',
+    status: achievement?.status ?? 'draft',
+    images: achievement?.images ?? {},
+  };
+};
 
-  const { data: achievement, isLoading } = useAchievement(id);
-  const { data: categoriesData } = useCategories();
-  const { mutateAsync: createAchievement, isPending: isCreating } = useCreateAchievement();
-  const { mutateAsync: updateAchievement, isPending: isUpdating } = useUpdateAchievement();
-  const { mutateAsync: createCategory, isPending: isCreatingCategory } = useCreateCategory();
+type FormContentProps = {
+  formKey: string;
+  isEdit: boolean;
+  canPublish: boolean;
+  canEditAchievement: boolean;
+  isLoading: boolean;
+  isCreating: boolean;
+  isUpdating: boolean;
+  isCreatingCategory: boolean;
+  categoryOptions: { value: string; content: string }[];
+  achievement?: Achievement;
+  defaultLanguage?: string;
+  onBack: () => void;
+  onSubmit: (payload: SubmitPayload) => Promise<void>;
+  onCreateCategory: (params: { id: string; name: string }) => Promise<string>;
+};
 
-  const [nameEntries, setNameEntries] = useState<LocaleEntry[]>([
-    { locale: user?.language ?? 'ru', value: '' },
-  ]);
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<string>('');
-  const [status, setStatus] = useState<AchievementStatus>('draft');
-  const [images, setImages] = useState<AchievementImageSet>({});
+const AchievementFormContent: React.FC<FormContentProps> = ({
+  formKey,
+  isEdit,
+  canPublish,
+  canEditAchievement,
+  isLoading,
+  isCreating,
+  isUpdating,
+  isCreatingCategory,
+  categoryOptions,
+  achievement,
+  defaultLanguage,
+  onBack,
+  onSubmit,
+  onCreateCategory,
+}) => {
+  const initial = useMemo(
+    () => buildInitialFormState({ achievement, language: defaultLanguage }),
+    [achievement, defaultLanguage],
+  );
+
+  const [nameEntries, setNameEntries] = useState<LocaleEntry[]>(initial.nameEntries);
+  const [description, setDescription] = useState(initial.description);
+  const [category, setCategory] = useState<string>(initial.category);
+  const [status, setStatus] = useState<AchievementStatus>(initial.status);
+  const [images, setImages] = useState<AchievementImageSet>(initial.images);
   const [error, setError] = useState<string | null>(null);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [newCategoryId, setNewCategoryId] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
 
-  const categoryOptions = useMemo(
-    () =>
-      (categoriesData?.items ?? []).map((item) => ({
-        value: item.id,
-        content: item.nameI18n.ru ?? item.nameI18n.en ?? item.id,
-      })),
-    [categoriesData?.items],
-  );
-
-  useEffect(() => {
-    if (!achievement) return;
-    const entries = Object.entries(achievement.nameI18n).map(([locale, value]) => ({
-      locale,
-      value,
-    }));
-    setNameEntries(entries.length > 0 ? entries : [{ locale: 'ru', value: '' }]);
-    setDescription(achievement.description ?? '');
-    setCategory(achievement.category);
-    setStatus(achievement.status);
-    setImages(achievement.images ?? {});
-  }, [achievement]);
-
-
   const previewTitle =
     nameEntries.find((entry) => entry.locale === 'ru')?.value ||
     nameEntries[0]?.value ||
     'Achievement';
-
   const previewImage = images?.medium ?? images?.small ?? images?.large ?? '';
-
-  const handleAddLocale = () => {
-    setNameEntries((prev) => [...prev, { locale: '', value: '' }]);
-  };
-
-  const handleRemoveLocale = (index: number) => {
-    setNameEntries((prev) => prev.filter((_, idx) => idx !== index));
-  };
+  const submitLabel = isEdit ? 'Сохранить' : 'Создать';
 
   const handleSubmit = async () => {
     setError(null);
@@ -131,40 +131,25 @@ export const AchievementFormPage: React.FC = () => {
       setError('Выберите категорию.');
       return;
     }
+
     const statusForSubmit = canPublish ? status : undefined;
     if (
       (statusForSubmit === 'published' || statusForSubmit === 'active') &&
-      !images?.small &&
-      !images?.medium &&
-      !images?.large
+      !images.small &&
+      !images.medium &&
+      !images.large
     ) {
       setError('Для публикации нужно добавить хотя бы одно изображение.');
       return;
     }
 
-    if (isEdit && id) {
-      await updateAchievement({
-        id,
-        payload: {
-          nameI18n,
-          description,
-          category,
-          status: statusForSubmit,
-          images,
-        },
-      });
-      navigate(`/app/gamification/achievements/${id}`);
-      return;
-    }
-
-    const created = await createAchievement({
+    await onSubmit({
       nameI18n,
       description,
       category,
       status: statusForSubmit,
       images,
     });
-    navigate(`/app/gamification/achievements/${created.id}`);
   };
 
   const handleCreateCategory = async () => {
@@ -172,33 +157,43 @@ export const AchievementFormPage: React.FC = () => {
       setError('Заполните slug и название категории.');
       return;
     }
-    const created = await createCategory({
+
+    const createdId = await onCreateCategory({
       id: newCategoryId.trim(),
-      nameI18n: { [user?.language ?? 'ru']: newCategoryName.trim() },
+      name: newCategoryName.trim(),
     });
     setCategoryDialogOpen(false);
     setNewCategoryId('');
     setNewCategoryName('');
-    setCategory(created.id);
+    setCategory(createdId);
   };
 
-  const submitLabel = isEdit ? 'Сохранить' : 'Создать';
-
   return (
-    <div className="gamification-page" data-qa="achievement-form-page">
+    <React.Fragment key={formKey}>
       <div className="gamification-header">
         <div className="gamification-header__text">
           <Text variant="header-1">{isEdit ? 'Редактирование ачивки' : 'Новая ачивка'}</Text>
           <Text variant="body-2" color="secondary">
-            Заполните описание, категории и медиа.
+            Заполните содержание, медиа и статус. Минимальный сценарий: создать черновик → ревью → публикация.
           </Text>
         </div>
         <div className="gamification-toolbar">
-          <Button view="flat" size="m" onClick={() => navigate('/app/gamification')}>
+          <Button view="flat" size="m" onClick={onBack}>
             Назад
           </Button>
         </div>
       </div>
+
+      <Card view="filled">
+        <div className="gamification-scenarios">
+          <Text variant="subheader-2">Чек-лист перед публикацией</Text>
+          <ul className="gamification-scenarios__list">
+            <li>Есть название минимум на одном языке.</li>
+            <li>Назначена корректная категория.</li>
+            <li>Загружено хотя бы одно изображение для карточки.</li>
+          </ul>
+        </div>
+      </Card>
 
       <Card view="filled">
         {isLoading ? (
@@ -228,12 +223,12 @@ export const AchievementFormPage: React.FC = () => {
                         )
                       }
                     />
-                    <Button view="flat" size="s" onClick={() => handleRemoveLocale(index)}>
+                    <Button view="flat" size="s" onClick={() => setNameEntries((prev) => prev.filter((_, idx) => idx !== index))}>
                       Удалить
                     </Button>
                   </div>
                 ))}
-                <Button view="flat" size="s" onClick={handleAddLocale}>
+                <Button view="flat" size="s" onClick={() => setNameEntries((prev) => [...prev, { locale: '', value: '' }])}>
                   Добавить язык
                 </Button>
               </div>
@@ -295,8 +290,8 @@ export const AchievementFormPage: React.FC = () => {
               </div>
 
               <div className="gamification-field">
-                <Text variant="subheader-2">Превью</Text>
-                <Card view="outlined">
+                <Text variant="subheader-2">Превью карточки</Text>
+                <Card view="outlined" className="gamification-preview-card">
                   {previewImage ? (
                     <img className="gamification-media-preview" src={previewImage} alt="preview" />
                   ) : (
@@ -339,16 +334,94 @@ export const AchievementFormPage: React.FC = () => {
             <TextInput value={newCategoryName} onUpdate={setNewCategoryName} placeholder="События" />
           </div>
         </Dialog.Body>
-      <Dialog.Footer
-        textButtonCancel="Отмена"
-        textButtonApply={isCreatingCategory ? 'Создаем...' : 'Создать'}
-        onClickButtonCancel={() => setCategoryDialogOpen(false)}
-        onClickButtonApply={handleCreateCategory}
-        loading={isCreatingCategory}
+        <Dialog.Footer
+          textButtonCancel="Отмена"
+          textButtonApply={isCreatingCategory ? 'Создаем...' : 'Создать'}
+          onClickButtonCancel={() => setCategoryDialogOpen(false)}
+          onClickButtonApply={handleCreateCategory}
+          loading={isCreatingCategory}
+        />
+      </Dialog>
+    </React.Fragment>
+  );
+};
+
+export const AchievementFormPage: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canCreate = can(user, 'gamification.achievements.create');
+  const canEdit = can(user, 'gamification.achievements.edit');
+  const canPublish = can(user, 'gamification.achievements.publish');
+  const canEditAchievement = isEdit ? canEdit : canCreate;
+
+  const { data: achievement, isLoading } = useAchievement(id);
+  const { data: categoriesData } = useCategories();
+  const { mutateAsync: createAchievement, isPending: isCreating } = useCreateAchievement();
+  const { mutateAsync: updateAchievement, isPending: isUpdating } = useUpdateAchievement();
+  const { mutateAsync: createCategory, isPending: isCreatingCategory } = useCreateCategory();
+
+  const categoryOptions = useMemo(
+    () =>
+      (categoriesData?.items ?? []).map((item) => ({
+        value: item.id,
+        content: item.nameI18n.ru ?? item.nameI18n.en ?? item.id,
+      })),
+    [categoriesData?.items],
+  );
+
+  const handleSubmit = async (payload: SubmitPayload) => {
+    if (isEdit && id) {
+      await updateAchievement({ id, payload });
+      navigate(`/app/gamification/achievements/${id}`);
+      return;
+    }
+
+    const created = await createAchievement(payload);
+    navigate(`/app/gamification/achievements/${created.id}`);
+  };
+
+  const handleCreateCategory = async (params: { id: string; name: string }) => {
+    const created = await createCategory({
+      id: params.id,
+      nameI18n: { [user?.language ?? 'ru']: params.name },
+    });
+    return created.id;
+  };
+
+  if (!canEditAchievement) {
+    return (
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: isEdit ? 'gamification.achievements.edit' : 'gamification.achievements.create',
+          tenant: user?.tenant,
+          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для редактирования ачивок.',
+        })}
       />
-    </Dialog>
-  </div>
-);
+    );
+  }
+
+  return (
+    <div className="gamification-page" data-qa="achievement-form-page">
+      <AchievementFormContent
+        formKey={achievement?.id ?? (isEdit ? `edit-${id}` : 'new')}
+        isEdit={isEdit}
+        canPublish={canPublish}
+        canEditAchievement={canEditAchievement}
+        isLoading={isLoading}
+        isCreating={isCreating}
+        isUpdating={isUpdating}
+        isCreatingCategory={isCreatingCategory}
+        categoryOptions={categoryOptions}
+        achievement={achievement}
+        defaultLanguage={user?.language}
+        onBack={() => navigate('/app/gamification')}
+        onSubmit={handleSubmit}
+        onCreateCategory={handleCreateCategory}
+      />
+    </div>
+  );
 };
 
 export default AchievementFormPage;
