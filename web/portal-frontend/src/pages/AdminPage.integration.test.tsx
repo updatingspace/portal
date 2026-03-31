@@ -36,7 +36,34 @@ vi.mock('@gravity-ui/uikit', async () => {
     Modal: ({ children }: { children?: React.ReactNode }) => <div data-testid="modal">{children}</div>,
     Dialog: DialogStub,
     Portal: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-    Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
+    Button: ({
+      children,
+      loading: _loading,
+      view: _view,
+      size: _size,
+      width: _width,
+      ...props
+    }: React.ComponentProps<'button'> & {
+      loading?: boolean;
+      view?: string;
+      size?: string;
+      width?: string;
+    }) => <button {...props}>{children}</button>,
+    TextArea: ({
+      value,
+      onUpdate,
+      placeholder,
+    }: {
+      value?: string;
+      onUpdate?: (value: string) => void;
+      placeholder?: string;
+    }) => (
+      <textarea
+        value={value ?? ''}
+        placeholder={placeholder}
+        onChange={(event) => onUpdate?.(event.target.value)}
+      />
+    ),
   };
 });
 
@@ -146,7 +173,7 @@ describe('AdminPage integration', () => {
   });
 
   test('opens About Project modal from sidebar', async () => {
-    renderWithProviders(<AdminPage />, { route: '/admin' });
+    renderWithProviders(<AdminPage />, { route: '/admin', authUser: superuser });
 
     // Wait for admin page to load
     await screen.findByText('Стартовая панель');
@@ -159,7 +186,6 @@ describe('AdminPage integration', () => {
     expect(await screen.findByText('AEF Vote')).toBeInTheDocument();
     expect(screen.getByText(/Платформа для голосования/i)).toBeInTheDocument();
     expect(screen.getByText(/Информация о версии/i)).toBeInTheDocument();
-    expect(screen.getByText(/Фронтенд:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Бэкенд:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Репозиторий проекта на GitHub/i)).toBeInTheDocument();
   });
 });
