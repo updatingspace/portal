@@ -490,7 +490,7 @@ pollUnread();
   "settings_json": {
     "steam_id": "76561198012345678"
   },
-  "external_identity_ref": "uuid"
+  "external_identity_ref": "76561198012345678"
 }
 ```
 
@@ -504,11 +504,15 @@ pollUnread();
   "source_id": 1,
   "status": "active",
   "settings_json": {
-    "steam_id": "76561198012345678"
+    "steam_id": "*************5678"
   },
-  "external_identity_ref": "uuid"
+  "external_identity_ref": "*************5678"
 }
 ```
+
+> Security note: secrets and external identifiers are encrypted at rest inside Activity, and outbound API payloads return masked values by default.
+
+> Raw Steam payloads are retained for 7 days maximum and should be cleaned up by running `python src/manage.py purge_raw_events` on a schedule.
 
 ---
 

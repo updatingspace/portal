@@ -68,6 +68,11 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: app.settings
       PYTHONPATH: src
+      DJANGO_DEBUG: 'True'
+      DJANGO_SECRET_KEY: ci-test-secret
+      ALLOWED_HOSTS: .updspace.com,testserver,localhost,127.0.0.1,bff,access,portal,voting,events,gamification,activity
+      DATABASE_URL: sqlite:///db.sqlite3
+      BFF_INTERNAL_HMAC_SECRET: ci-internal-hmac
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

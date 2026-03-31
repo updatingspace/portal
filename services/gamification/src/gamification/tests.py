@@ -6,12 +6,17 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
+from io import StringIO
 from unittest import mock
 
 from django.conf import settings
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
-from .models import Achievement, AchievementCategory, AchievementStatus, GrantVisibility
+from .models import Achievement, AchievementCategory, AchievementGrant, AchievementStatus, GrantVisibility
+from .services import create_grant, revoke_grant
 
 
 API_PREFIX = "/api/v1"
@@ -373,3 +378,137 @@ class GamificationApiTests(TestCase):
         )
         resp = self.client.get(list_path, **headers)
         self.assertEqual(resp.status_code, 200)
+
+
+@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
+class GamificationDsarApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant_id = str(uuid.uuid4())
+        self.tenant_slug = "aef"
+        self.user_id = str(uuid.uuid4())
+        self.other_user_id = str(uuid.uuid4())
+        self.category = AchievementCategory.objects.create(
+            tenant_id=self.tenant_id,
+            slug="event",
+            name_i18n={"en": "Event"},
+            order=0,
+            is_active=True,
+        )
+        self.achievement = Achievement.objects.create(
+            tenant_id=self.tenant_id,
+            name_i18n={"en": "Builder"},
+            description="Created by subject",
+            category=self.category,
+            status=AchievementStatus.PUBLISHED,
+            images={"small": "small.png"},
+            created_by=self.user_id,
+        )
+        self.received_grant = create_grant(
+            achievement=self.achievement,
+            recipient_id=uuid.UUID(self.user_id),
+            issuer_id=uuid.UUID(self.other_user_id),
+            reason="Thanks",
+            visibility=GrantVisibility.PUBLIC,
+        )
+        self.issued_grant = create_grant(
+            achievement=self.achievement,
+            recipient_id=uuid.uuid4(),
+            issuer_id=uuid.UUID(self.user_id),
+            reason="Issued by subject",
+            visibility=GrantVisibility.PUBLIC,
+        )
+        self.revoked_grant = create_grant(
+            achievement=self.achievement,
+            recipient_id=uuid.uuid4(),
+            issuer_id=uuid.uuid4(),
+            reason="Will be revoked",
+            visibility=GrantVisibility.PUBLIC,
+        )
+        revoke_grant(grant=self.revoked_grant, revoked_by=uuid.UUID(self.user_id))
+
+    def test_dsar_export_returns_gamification_bundle(self):
+        path = f"/api/v1/gamification/internal/dsar/users/{self.user_id}/export"
+        response = self.client.get(
+            path,
+            **_headers(
+                method="GET",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["service"], "gamification")
+        self.assertEqual(len(data["achievements_created"]), 1)
+        self.assertEqual(len(data["grants_received"]), 1)
+        self.assertEqual(len(data["grants_issued"]), 1)
+        self.assertEqual(len(data["grants_revoked"]), 1)
+        self.assertGreaterEqual(len(data["outbox"]), 3)
+
+    def test_dsar_erase_anonymizes_issuer_and_deletes_received_grants(self):
+        path = f"/api/v1/gamification/internal/dsar/users/{self.user_id}/erase"
+        response = self.client.post(
+            path,
+            data=b"",
+            content_type="application/json",
+            **_headers(
+                method="POST",
+                path=path,
+                body=b"",
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                master_flags={},
+                request_id=str(uuid.uuid4()),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.achievement.refresh_from_db()
+        self.issued_grant.refresh_from_db()
+        self.revoked_grant.refresh_from_db()
+
+        anonymous_user_id = uuid.UUID(int=0)
+        self.assertEqual(self.achievement.created_by, anonymous_user_id)
+        self.assertFalse(AchievementGrant.objects.filter(id=self.received_grant.id).exists())
+        self.assertEqual(self.issued_grant.issuer_id, anonymous_user_id)
+        self.assertEqual(self.revoked_grant.revoked_by, anonymous_user_id)
+
+        payloads = list(
+            self.OutboxMessage.objects.order_by("event_type", "id").values_list("payload", flat=True)
+        )
+        self.assertTrue(any(payload.get("recipient_id") == "[redacted]" for payload in payloads))
+        self.assertTrue(any(payload.get("issuer_id") == "[redacted]" for payload in payloads))
+
+    @property
+    def OutboxMessage(self):
+        from django.apps import apps
+
+        return apps.get_model("gamification", "OutboxMessage")
+
+    @override_settings(GAMIFICATION_RETENTION_PUBLISHED_OUTBOX_DAYS=30)
+    def test_purge_retention_deletes_only_old_published_outbox_rows(self):
+        old_item = self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="gamification.grant.created",
+            payload={},
+            published_at=timezone.now() - timedelta(days=31),
+        )
+        recent_item = self.OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="gamification.grant.created",
+            payload={},
+            published_at=timezone.now() - timedelta(days=2),
+        )
+
+        call_command("purge_retention", stdout=StringIO())
+
+        self.assertFalse(self.OutboxMessage.objects.filter(id=old_item.id).exists())
+        self.assertTrue(self.OutboxMessage.objects.filter(id=recent_item.id).exists())

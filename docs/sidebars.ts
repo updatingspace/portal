@@ -93,6 +93,23 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: '⚖️ Legal & Privacy',
+      items: [
+        'legal/overview',
+        'legal/privacy-notice',
+        'legal/policy-152fz',
+        'legal/cookie-notice',
+        'legal/consents',
+        'legal/retention-schedule',
+        'legal/dsar-procedure',
+        'legal/incident-response',
+        'legal/records-of-processing',
+        'legal/processors-register',
+        'legal/cross-border-transfers',
+      ],
+    },
+    {
+      type: 'category',
       label: '📊 Статус & Roadmap',
       items: [
         'status/current',
@@ -109,6 +126,7 @@ const sidebars: SidebarsConfig = {
     'guides/quick-start',
     'guides/local-dev',
     'guides/docker-setup',
+    'guides/data-lifecycle',
     'guides/testing',
     'guides/contributing',
   ],
