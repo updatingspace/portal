@@ -1,61 +1,175 @@
 from __future__ import annotations
 
-from typing import Any
+import re
+from enum import Enum
+from typing import Annotated, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ninja import Schema
+from pydantic import Field, field_validator, model_validator
 
 
-class NotificationChannelsSchema(Schema):
-    enabled: bool
-    channels: list[str]
+class ThemeEnum(str, Enum):
+    """Available theme options."""
+    LIGHT = "light"
+    DARK = "dark"
+    AUTO = "auto"
 
 
-class NotificationTypesSchema(Schema):
-    polls: dict[str, NotificationChannelsSchema] = {
-        "new_vote": {"enabled": True, "channels": ["email", "in_app"]},
-        "closing_soon": {"enabled": True, "channels": ["email", "in_app"]},
-        "results_published": {"enabled": False, "channels": []},
-    }
-    events: dict[str, NotificationChannelsSchema] = {
-        "new_event": {"enabled": True, "channels": ["email", "in_app"]},
-        "rsvp_reminder": {"enabled": True, "channels": ["email", "in_app"]},
-        "event_starting": {"enabled": True, "channels": ["email", "in_app"]},
-    }
-    community: dict[str, NotificationChannelsSchema] = {
-        "new_member": {"enabled": False, "channels": []},
-        "post_flagged": {"enabled": True, "channels": ["email", "in_app"]},
-        "mention": {"enabled": True, "channels": ["email", "in_app"]},
-    }
-    system: dict[str, NotificationChannelsSchema] = {
-        "security_alert": {"enabled": True, "channels": ["email", "in_app"]},
-        "product_update": {"enabled": True, "channels": ["in_app"]},
-    }
+class LanguageEnum(str, Enum):
+    """Supported interface languages."""
+    EN = "en"
+    RU = "ru"
+
+
+class FontSizeEnum(str, Enum):
+    """Available font size options."""
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+
+
+class ProfileVisibilityEnum(str, Enum):
+    """Profile visibility options."""
+    PUBLIC = "public"
+    MEMBERS = "members"
+    PRIVATE = "private"
+
+
+class EmailDigestEnum(str, Enum):
+    """Email digest frequency options."""
+    INSTANT = "instant"
+    HOURLY = "hourly"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class NotificationChannelEnum(str, Enum):
+    """Notification delivery channels."""
+    EMAIL = "email"
+    IN_APP = "in_app"
+    PUSH = "push"
+
+
+# Regex for hex color validation
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Common IANA timezone names for quick validation
+COMMON_TIMEZONES = frozenset([
+    "UTC", "GMT",
+    "Europe/Moscow", "Europe/London", "Europe/Paris", "Europe/Berlin",
+    "Europe/Tallinn", "Europe/Helsinki", "Europe/Riga", "Europe/Vilnius",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Vancouver", "America/Sao_Paulo",
+    "Asia/Tokyo", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore",
+    "Asia/Dubai", "Asia/Kolkata", "Asia/Hong_Kong",
+    "Australia/Sydney", "Australia/Melbourne", "Australia/Perth",
+    "Pacific/Auckland", "Pacific/Honolulu",
+    "Africa/Johannesburg", "Africa/Cairo",
+])
+
+
+def validate_timezone(tz: str) -> str:
+    """Validate IANA timezone string."""
+    if tz in COMMON_TIMEZONES:
+        return tz
+    try:
+        ZoneInfo(tz)
+        return tz
+    except ZoneInfoNotFoundError:
+        raise ValueError(f"Invalid timezone: {tz}")
+
+
+def validate_hex_color(color: str) -> str:
+    """Validate hex color format (#RRGGBB)."""
+    if not HEX_COLOR_PATTERN.match(color):
+        raise ValueError(f"Invalid hex color format: {color}. Expected #RRGGBB")
+    return color.upper()
+
+
+class NotificationChannelConfigSchema(Schema):
+    """Configuration for a notification channel."""
+    enabled: bool = True
+    channels: list[NotificationChannelEnum] = Field(default_factory=list)
+
+    @field_validator("channels", mode="before")
+    @classmethod
+    def validate_channels(cls, v: list[str]) -> list[str]:
+        valid_channels = {c.value for c in NotificationChannelEnum}
+        for channel in v:
+            if channel not in valid_channels:
+                raise ValueError(f"Invalid channel: {channel}. Valid: {valid_channels}")
+        return v
+
+
+class EmailChannelSchema(Schema):
+    """Email notification channel settings."""
+    enabled: bool = True
+    digest: EmailDigestEnum = EmailDigestEnum.INSTANT
+
+
+class InAppChannelSchema(Schema):
+    """In-app notification channel settings."""
+    enabled: bool = True
+
+
+class PushChannelSchema(Schema):
+    """Push notification channel settings (MVP: disabled)."""
+    enabled: bool = False
+
+
+class QuietHoursSchema(Schema):
+    """Quiet hours configuration for notifications."""
+    enabled: bool = False
+    start: str = "22:00"  # HH:MM format
+    end: str = "08:00"
+
+    @field_validator("start", "end", mode="before")
+    @classmethod
+    def validate_time_format(cls, v: str) -> str:
+        if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", v):
+            raise ValueError(f"Invalid time format: {v}. Expected HH:MM (24h)")
+        return v
 
 
 class NotificationSettingsSchema(Schema):
-    email: dict[str, Any] = {"enabled": True, "digest": "instant"}
-    in_app: dict[str, bool] = {"enabled": True}
-    push: dict[str, bool] = {"enabled": False}
-    types: dict[str, Any] = {}
-    quiet_hours: dict[str, Any] = {"enabled": False, "start": "22:00", "end": "08:00"}
+    """Full notification settings structure."""
+    email: EmailChannelSchema = Field(default_factory=EmailChannelSchema)
+    in_app: InAppChannelSchema = Field(default_factory=InAppChannelSchema)
+    push: PushChannelSchema = Field(default_factory=PushChannelSchema)
+    types: dict[str, Any] = Field(default_factory=dict)
+    quiet_hours: QuietHoursSchema = Field(default_factory=QuietHoursSchema)
 
 
 class AppearanceSchema(Schema):
-    theme: str = "auto"
-    accent_color: str = "#8B5CF6"
-    font_size: str = "medium"
+    """User appearance/theme preferences."""
+    theme: ThemeEnum = ThemeEnum.AUTO
+    accent_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#8B5CF6"
+    font_size: FontSizeEnum = FontSizeEnum.MEDIUM
     high_contrast: bool = False
     reduce_motion: bool = False
 
+    @field_validator("accent_color", mode="before")
+    @classmethod
+    def normalize_color(cls, v: str) -> str:
+        return validate_hex_color(v)
+
 
 class LocalizationSchema(Schema):
-    language: str = "en"
+    """User localization preferences."""
+    language: LanguageEnum = LanguageEnum.EN
     timezone: str = "UTC"
+
+    @field_validator("timezone", mode="before")
+    @classmethod
+    def validate_tz(cls, v: str) -> str:
+        return validate_timezone(v)
 
 
 class PrivacySchema(Schema):
-    profile_visibility: str = "members"
+    """User privacy preferences."""
+    profile_visibility: ProfileVisibilityEnum = ProfileVisibilityEnum.MEMBERS
     show_online_status: bool = True
     show_vote_history: bool = False
     share_activity: bool = True
