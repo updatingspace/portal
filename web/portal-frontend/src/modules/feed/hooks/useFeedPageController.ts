@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useMarkdownEditor } from '@gravity-ui/markdown-editor';
 
 import {
@@ -306,6 +307,18 @@ export function useFeedPageController() {
     setModerationError(null);
   }, []);
 
+  const handleComposerKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        if (!isCreatingNews && !uploading && composerHasText && composerHasMedia) {
+          void handlePublishNews();
+        }
+      }
+    },
+    [composerHasMedia, composerHasText, handlePublishNews, isCreatingNews, uploading],
+  );
+
   useEffect(() => {
     if (composerError && composerHasMedia) {
       setComposerError(null);
@@ -319,6 +332,26 @@ export function useFeedPageController() {
     }, 20_000);
     return () => window.clearInterval(timer);
   }, [realtimeFlagEnabled, refetch]);
+
+  useEffect(() => {
+    if (!canModerateNews) return;
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTypingTarget =
+        tagName === 'input' || tagName === 'textarea' || target?.isContentEditable === true;
+      if (isTypingTarget) return;
+
+      if (event.altKey && event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        toggleModerationMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [canModerateNews, toggleModerationMode]);
 
   return {
     user,
@@ -369,6 +402,7 @@ export function useFeedPageController() {
     composerHasText,
     composerHasMedia,
     handlePublishNews,
+    handleComposerKeyDown,
     newsMedia,
     handleRemoveMedia,
   } as const;
