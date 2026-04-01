@@ -118,6 +118,12 @@
   gap: 6px;
 }
 
+.profile-widget__achievement-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .profile-widget__checklist {
   margin: 0;
   padding-left: 18px;
@@ -154,6 +160,13 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.profile-list-page__achievements-intro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .profile-hub button:focus-visible,

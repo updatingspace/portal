@@ -1,5 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Label } from '@gravity-ui/uikit';
 
 import { isApiError } from '../../../../../api/client';
 import { listAchievements } from '../../../../../api/gamification';
@@ -30,10 +31,17 @@ export const AchievementsListPage: React.FC = () => {
       isLoading={query.isLoading}
       isError={query.isError}
       onRetry={() => void query.refetch()}
+      leadSlot={(
+        <div className="profile-list-page__achievements-intro">
+          <Label size="xs" theme="info">Минимальный сценарий</Label>
+          <span>Открыть ачивку → изучить условия → отслеживать прогресс и статус</span>
+        </div>
+      )}
       items={(query.data ?? []).map((item) => ({
         id: item.id,
         title: item.nameI18n.ru ?? item.nameI18n.en ?? 'Без названия',
         subtitle: item.category,
+        meta: item.status,
       }))}
     />
   );
