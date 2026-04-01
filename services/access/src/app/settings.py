@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "access_control",
     "core",
+    "personalization",
 ]
 
 MIDDLEWARE = [

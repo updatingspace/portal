@@ -72,6 +72,10 @@ MVP_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec(key="gamification.achievements.assign", description="Assign achievements", service="gamification"),
     PermissionSpec(key="gamification.achievements.revoke", description="Revoke achievements", service="gamification"),
     PermissionSpec(key="gamification.achievements.view_private", description="View private achievements", service="gamification"),
+
+    # personalization
+    PermissionSpec(key="personalization.preferences.edit_own", description="Edit own user preferences", service="personalization"),
+    PermissionSpec(key="personalization.preferences.read_own", description="Read own user preferences", service="personalization"),
 ]
 
 
@@ -109,5 +113,9 @@ DEFAULT_MEMBER_ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "gamification": [
         "gamification.achievements.read",
+    ],
+    "personalization": [
+        "personalization.preferences.read_own",
+        "personalization.preferences.edit_own",
     ],
 }
