@@ -346,12 +346,21 @@ export function useFeedPageController() {
       if (event.altKey && event.key.toLowerCase() === 'm') {
         event.preventDefault();
         toggleModerationMode();
+        return;
+      }
+
+      if (event.key === 'Escape' && moderationMode) {
+        event.preventDefault();
+        setModerationMode(false);
+        setSelectedModerationIds([]);
+        setModerationReason('');
+        setModerationError(null);
       }
     };
 
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => window.removeEventListener('keydown', handleWindowKeyDown);
-  }, [canModerateNews, toggleModerationMode]);
+  }, [canModerateNews, moderationMode, toggleModerationMode]);
 
   return {
     user,

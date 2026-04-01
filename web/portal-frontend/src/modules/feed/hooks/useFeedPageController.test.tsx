@@ -161,4 +161,24 @@ describe('useFeedPageController', () => {
     });
     expect(result.current.moderationMode).toBe(true);
   });
+
+  it('exits moderation mode with Escape hotkey', () => {
+    const { result } = renderHook(() => useFeedPageController());
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
+      result.current.setModerationReason('cleanup reason');
+      result.current.handleModerationToggle('news-1', true);
+    });
+    expect(result.current.moderationMode).toBe(true);
+    expect(result.current.selectedModerationIds).toHaveLength(1);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(result.current.moderationMode).toBe(false);
+    expect(result.current.selectedModerationIds).toHaveLength(0);
+    expect(result.current.moderationReason).toBe('');
+  });
 });
