@@ -8,7 +8,14 @@ from django.utils import timezone
 from ninja import Query, Router
 from ninja.errors import HttpError
 
-from .models import ContentWidget, HomePageModal, ModalAnalytics, UserPreference
+from .models import (
+    ContentWidget,
+    DashboardLayout,
+    DashboardWidget,
+    HomePageModal,
+    ModalAnalytics,
+    UserPreference,
+)
 from .schemas import (
     AnalyticsEventIn,
     AnalyticsReportOut,
@@ -21,6 +28,10 @@ from .schemas import (
     HomePageModalOut,
     ModalAnalyticsOut,
     ModalListFilters,
+    DashboardLayoutIn,
+    DashboardLayoutOut,
+    DashboardWidgetIn,
+    DashboardWidgetOut,
     UserPreferencesIn,
     UserPreferencesOut,
 )
@@ -739,3 +750,191 @@ def admin_get_analytics_report(
         "average_ctr": avg_ctr,
         "modals": modal_stats,
     }
+
+
+# =============================================================================
+# Dashboard Endpoints
+# =============================================================================
+
+
+@router.get("/admin/dashboards/layouts", response=list[DashboardLayoutOut], tags=["admin"])
+def admin_list_dashboard_layouts(
+    request: HttpRequest,
+    include_deleted: bool = False,
+):
+    user_id, tenant_id = _get_user_context(request)
+    query = DashboardLayout.objects.filter(tenant_id=UUID(tenant_id))
+    if not include_deleted:
+        query = query.filter(deleted_at__isnull=True)
+    return list(query.order_by("-is_default", "-updated_at"))
+
+
+@router.post("/admin/dashboards/layouts", response=DashboardLayoutOut, tags=["admin"])
+def admin_create_dashboard_layout(
+    request: HttpRequest,
+    payload: DashboardLayoutIn,
+):
+    user_id, tenant_id = _get_user_context(request)
+    data = payload.model_dump()
+
+    if data.get("is_default"):
+        DashboardLayout.objects.filter(
+            tenant_id=UUID(tenant_id),
+            user_id=UUID(user_id),
+            is_default=True,
+            deleted_at__isnull=True,
+        ).update(is_default=False)
+
+    layout = DashboardLayout.objects.create(
+        user_id=UUID(user_id),
+        tenant_id=UUID(tenant_id),
+        layout_name=data["layout_name"],
+        layout_config=data.get("layout_config", {}),
+        is_default=data.get("is_default", False),
+    )
+    return layout
+
+
+@router.put("/admin/dashboards/layouts/{layout_id}", response=DashboardLayoutOut, tags=["admin"])
+def admin_update_dashboard_layout(
+    request: HttpRequest,
+    layout_id: str,
+    payload: DashboardLayoutIn,
+):
+    user_id, tenant_id = _get_user_context(request)
+    layout = get_object_or_404(
+        DashboardLayout,
+        id=layout_id,
+        tenant_id=UUID(tenant_id),
+        user_id=UUID(user_id),
+        deleted_at__isnull=True,
+    )
+    data = payload.model_dump()
+
+    if data.get("is_default"):
+        DashboardLayout.objects.filter(
+            tenant_id=UUID(tenant_id),
+            user_id=UUID(user_id),
+            is_default=True,
+            deleted_at__isnull=True,
+        ).exclude(id=layout.id).update(is_default=False)
+
+    layout.layout_name = data["layout_name"]
+    layout.layout_config = data.get("layout_config", layout.layout_config)
+    layout.is_default = data.get("is_default", layout.is_default)
+    layout.save()
+    return layout
+
+
+@router.delete("/admin/dashboards/layouts/{layout_id}", tags=["admin"])
+def admin_delete_dashboard_layout(
+    request: HttpRequest,
+    layout_id: str,
+    hard: bool = False,
+):
+    user_id, tenant_id = _get_user_context(request)
+    layout = get_object_or_404(
+        DashboardLayout,
+        id=layout_id,
+        tenant_id=UUID(tenant_id),
+        user_id=UUID(user_id),
+    )
+    if hard:
+        layout.delete()
+    else:
+        layout.soft_delete()
+    return {"success": True}
+
+
+@router.get("/admin/dashboards/layouts/{layout_id}/widgets", response=list[DashboardWidgetOut], tags=["admin"])
+def admin_list_dashboard_widgets(
+    request: HttpRequest,
+    layout_id: str,
+    include_deleted: bool = False,
+):
+    user_id, tenant_id = _get_user_context(request)
+    layout = get_object_or_404(
+        DashboardLayout,
+        id=layout_id,
+        tenant_id=UUID(tenant_id),
+        user_id=UUID(user_id),
+    )
+    query = DashboardWidget.objects.filter(layout=layout)
+    if not include_deleted:
+        query = query.filter(deleted_at__isnull=True)
+    return list(query.order_by("position_y", "position_x"))
+
+
+@router.post("/admin/dashboards/layouts/{layout_id}/widgets", response=DashboardWidgetOut, tags=["admin"])
+def admin_create_dashboard_widget(
+    request: HttpRequest,
+    layout_id: str,
+    payload: DashboardWidgetIn,
+):
+    user_id, tenant_id = _get_user_context(request)
+    layout = get_object_or_404(
+        DashboardLayout,
+        id=layout_id,
+        tenant_id=UUID(tenant_id),
+        user_id=UUID(user_id),
+        deleted_at__isnull=True,
+    )
+    data = payload.model_dump()
+    widget = DashboardWidget.objects.create(
+        layout=layout,
+        tenant_id=UUID(tenant_id),
+        widget_key=data["widget_key"],
+        position_x=data.get("position_x", 0),
+        position_y=data.get("position_y", 0),
+        width=data.get("width", 4),
+        height=data.get("height", 3),
+        settings=data.get("settings", {}),
+        is_visible=data.get("is_visible", True),
+    )
+    return widget
+
+
+@router.put("/admin/dashboards/widgets/{widget_id}", response=DashboardWidgetOut, tags=["admin"])
+def admin_update_dashboard_widget(
+    request: HttpRequest,
+    widget_id: str,
+    payload: DashboardWidgetIn,
+):
+    user_id, tenant_id = _get_user_context(request)
+    widget = get_object_or_404(
+        DashboardWidget,
+        id=widget_id,
+        tenant_id=UUID(tenant_id),
+        layout__user_id=UUID(user_id),
+        deleted_at__isnull=True,
+    )
+    data = payload.model_dump()
+    widget.widget_key = data["widget_key"]
+    widget.position_x = data.get("position_x", widget.position_x)
+    widget.position_y = data.get("position_y", widget.position_y)
+    widget.width = data.get("width", widget.width)
+    widget.height = data.get("height", widget.height)
+    widget.settings = data.get("settings", widget.settings)
+    widget.is_visible = data.get("is_visible", widget.is_visible)
+    widget.save()
+    return widget
+
+
+@router.delete("/admin/dashboards/widgets/{widget_id}", tags=["admin"])
+def admin_delete_dashboard_widget(
+    request: HttpRequest,
+    widget_id: str,
+    hard: bool = False,
+):
+    user_id, tenant_id = _get_user_context(request)
+    widget = get_object_or_404(
+        DashboardWidget,
+        id=widget_id,
+        tenant_id=UUID(tenant_id),
+        layout__user_id=UUID(user_id),
+    )
+    if hard:
+        widget.delete()
+    else:
+        widget.soft_delete()
+    return {"success": True}

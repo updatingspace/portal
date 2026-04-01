@@ -76,6 +76,8 @@ MVP_PERMISSIONS: list[PermissionSpec] = [
     # personalization
     PermissionSpec(key="personalization.preferences.edit_own", description="Edit own user preferences", service="personalization"),
     PermissionSpec(key="personalization.preferences.read_own", description="Read own user preferences", service="personalization"),
+    PermissionSpec(key="personalization.content.manage", description="Manage personalization content", service="personalization"),
+    PermissionSpec(key="personalization.dashboards.customize", description="Customize personal dashboards", service="personalization"),
 ]
 
 
@@ -117,5 +119,6 @@ DEFAULT_MEMBER_ROLE_PERMISSIONS: dict[str, list[str]] = {
     "personalization": [
         "personalization.preferences.read_own",
         "personalization.preferences.edit_own",
+        "personalization.dashboards.customize",
     ],
 }

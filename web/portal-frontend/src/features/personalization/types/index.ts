@@ -431,3 +431,51 @@ export interface SortState {
   column: string;
   direction: 'asc' | 'desc';
 }
+
+// =============================================================================
+// Dashboard Customization Types
+// =============================================================================
+
+export interface DashboardLayout {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  layout_name: string;
+  layout_config: Record<string, unknown>;
+  is_default: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DashboardLayoutInput {
+  layout_name: string;
+  layout_config: Record<string, unknown>;
+  is_default?: boolean;
+}
+
+export interface DashboardWidget {
+  id: string;
+  layout_id: string;
+  tenant_id: string;
+  widget_key: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  settings: Record<string, unknown>;
+  is_visible: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DashboardWidgetInput {
+  widget_key: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  settings?: Record<string, unknown>;
+  is_visible?: boolean;
+}

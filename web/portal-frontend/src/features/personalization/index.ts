@@ -59,7 +59,8 @@ export {
   CalendarView,
   PreviewModeToggle,
   PreviewOverlay,
-  usePreviewMode,
+   usePreviewMode,
+   DashboardCustomizer,
 } from './components';
 
 export type {

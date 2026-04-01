@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 from typing import Any
 
 from ninja import Schema
@@ -297,3 +298,52 @@ class AnalyticsReportOut(Schema):
     total_dismissals: int
     average_ctr: float
     modals: list[ModalAnalyticsOut]
+
+
+# =============================================================================
+# Dashboard Schemas
+# =============================================================================
+
+
+class DashboardLayoutOut(Schema):
+    id: UUID
+    user_id: UUID
+    tenant_id: UUID
+    layout_name: str
+    layout_config: dict[str, Any]
+    is_default: bool
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardLayoutIn(Schema):
+    layout_name: str
+    layout_config: dict[str, Any] = {}
+    is_default: bool = False
+
+
+class DashboardWidgetOut(Schema):
+    id: UUID
+    layout_id: UUID
+    tenant_id: UUID
+    widget_key: str
+    position_x: int
+    position_y: int
+    width: int
+    height: int
+    settings: dict[str, Any]
+    is_visible: bool
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardWidgetIn(Schema):
+    widget_key: str
+    position_x: int = 0
+    position_y: int = 0
+    width: int = 4
+    height: int = 3
+    settings: dict[str, Any] = {}
+    is_visible: bool = True

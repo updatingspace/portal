@@ -13,12 +13,17 @@ import type {
   ModalAnalytics,
   AnalyticsReport,
   AnalyticsEventPayload,
+  DashboardLayout,
+  DashboardLayoutInput,
+  DashboardWidget,
+  DashboardWidgetInput,
 } from '../types';
 
 const MODALS_BASE = '/personalization';
 const ADMIN_MODALS_BASE = '/personalization/admin/homepage-modals';
 const WIDGETS_BASE = '/personalization/admin/content-widgets';
 const ANALYTICS_BASE = '/personalization/analytics';
+const DASHBOARDS_BASE = '/personalization/admin/dashboards';
 
 // =============================================================================
 // Homepage Modals API (User-facing)
@@ -245,4 +250,82 @@ export async function fetchAnalyticsReport(
   return request<AnalyticsReport>(
     `${MODALS_BASE}/admin/analytics/report?days=${days}`
   );
+}
+
+// =============================================================================
+// Dashboard API
+// =============================================================================
+
+export async function fetchDashboardLayouts(
+  includeDeleted: boolean = false
+): Promise<DashboardLayout[]> {
+  return request<DashboardLayout[]>(
+    `${DASHBOARDS_BASE}/layouts?include_deleted=${includeDeleted}`
+  );
+}
+
+export async function createDashboardLayout(
+  payload: DashboardLayoutInput
+): Promise<DashboardLayout> {
+  return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateDashboardLayout(
+  layoutId: string,
+  payload: DashboardLayoutInput
+): Promise<DashboardLayout> {
+  return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts/${layoutId}`, {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
+export async function deleteDashboardLayout(
+  layoutId: string,
+  hard: boolean = false
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`${DASHBOARDS_BASE}/layouts/${layoutId}?hard=${hard}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchDashboardWidgets(
+  layoutId: string,
+  includeDeleted: boolean = false
+): Promise<DashboardWidget[]> {
+  return request<DashboardWidget[]>(
+    `${DASHBOARDS_BASE}/layouts/${layoutId}/widgets?include_deleted=${includeDeleted}`
+  );
+}
+
+export async function createDashboardWidget(
+  layoutId: string,
+  payload: DashboardWidgetInput
+): Promise<DashboardWidget> {
+  return request<DashboardWidget>(`${DASHBOARDS_BASE}/layouts/${layoutId}/widgets`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateDashboardWidget(
+  widgetId: string,
+  payload: DashboardWidgetInput
+): Promise<DashboardWidget> {
+  return request<DashboardWidget>(`${DASHBOARDS_BASE}/widgets/${widgetId}`, {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
+export async function deleteDashboardWidget(
+  widgetId: string,
+  hard: boolean = false
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`${DASHBOARDS_BASE}/widgets/${widgetId}?hard=${hard}`, {
+    method: 'DELETE',
+  });
 }

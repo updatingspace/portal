@@ -33,6 +33,12 @@ class HomePageModalApiTests(TestCase):
             email="user@example.com",
             password="StrongPass123!",
         )
+        self.user_id = uuid.uuid4()
+        self.tenant_id = uuid.uuid4()
+        self.headers = {
+            "HTTP_X_USER_ID": str(self.user_id),
+            "HTTP_X_TENANT_ID": str(self.tenant_id),
+        }
 
     def test_list_homepage_modals_filters_by_date_and_active(self):
         now = timezone.now()
@@ -141,6 +147,80 @@ class HomePageModalApiTests(TestCase):
         self.assertEqual(translated["title"], "Заголовок")
         self.assertEqual(translated["content"], "Содержимое")
         self.assertEqual(translated["button_text"], "OK")
+
+    def test_dashboard_layout_and_widget_crud(self):
+        layout_resp = self.client.post(
+            "/api/personalization/admin/dashboards/layouts",
+            data={
+                "layout_name": "main",
+                "layout_config": {"cols": 12, "rows": 8},
+                "is_default": True,
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(layout_resp.status_code, 200)
+        layout_id = layout_resp.json()["id"]
+
+        list_resp = self.client.get(
+            "/api/personalization/admin/dashboards/layouts",
+            **self.headers,
+        )
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertEqual(len(list_resp.json()), 1)
+
+        widget_resp = self.client.post(
+            f"/api/personalization/admin/dashboards/layouts/{layout_id}/widgets",
+            data={
+                "widget_key": "events",
+                "position_x": 0,
+                "position_y": 0,
+                "width": 6,
+                "height": 4,
+                "settings": {"compact": True},
+                "is_visible": True,
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(widget_resp.status_code, 200)
+        widget_id = widget_resp.json()["id"]
+
+        widgets_resp = self.client.get(
+            f"/api/personalization/admin/dashboards/layouts/{layout_id}/widgets",
+            **self.headers,
+        )
+        self.assertEqual(widgets_resp.status_code, 200)
+        self.assertEqual(len(widgets_resp.json()), 1)
+
+        update_widget_resp = self.client.put(
+            f"/api/personalization/admin/dashboards/widgets/{widget_id}",
+            data={
+                "widget_key": "events",
+                "position_x": 1,
+                "position_y": 2,
+                "width": 5,
+                "height": 3,
+                "settings": {"compact": False},
+                "is_visible": False,
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(update_widget_resp.status_code, 200)
+        self.assertEqual(update_widget_resp.json()["position_x"], 1)
+
+        delete_widget_resp = self.client.delete(
+            f"/api/personalization/admin/dashboards/widgets/{widget_id}",
+            **self.headers,
+        )
+        self.assertEqual(delete_widget_resp.status_code, 200)
+
+        delete_layout_resp = self.client.delete(
+            f"/api/personalization/admin/dashboards/layouts/{layout_id}",
+            **self.headers,
+        )
+        self.assertEqual(delete_layout_resp.status_code, 200)
 
 
 class ExtendedContentModelsTests(TestCase):
