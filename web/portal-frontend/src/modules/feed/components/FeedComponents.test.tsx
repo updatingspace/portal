@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { FeedItem } from './FeedItem';
 import { FeedComposerPanel } from './FeedComposerPanel';
+import { FeedStreamView } from './FeedStreamView';
 import { createActivityEvents } from '../../../test/fixtures';
 import type { ActivityEvent } from '../../../types/activity';
 
@@ -218,5 +219,65 @@ describe('FeedComposerPanel', () => {
     renderWithTheme(<FeedComposerPanel {...baseProps} handlePublishNews={handlePublishNews} />);
     fireEvent.click(screen.getByRole('button', { name: 'Опубликовать новость' }));
     expect(handlePublishNews).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('FeedStreamView', () => {
+  const baseEvent: ActivityEvent = {
+    ...createActivityEvents()[0],
+    type: 'news.posted',
+    payloadJson: { news_id: 'news-1', body: 'sample body', tags: [] },
+  };
+
+  const baseProps = {
+    unreadCount: 0,
+    refetch: vi.fn(),
+    isMarkingRead: false,
+    markAsRead: vi.fn(),
+    canModerateNews: true,
+    moderationMode: false,
+    toggleModerationMode: vi.fn(),
+    selectedModerationCount: 0,
+    moderationReason: '',
+    setModerationReason: vi.fn(),
+    moderationError: null,
+    clearModerationSelection: vi.fn(),
+    handleModerationDeleteSelected: vi.fn(),
+    hasContent: true,
+    isLoading: false,
+    source: 'all' as const,
+    sortedItems: [baseEvent],
+    selectedModerationIds: [],
+    getItemNewsId: () => 'news-1',
+    handleModerationToggle: vi.fn(),
+    loadMoreRef: { current: null } as React.RefObject<HTMLDivElement>,
+    isFetchingNextPage: false,
+    hasNextPage: true,
+  };
+
+  it('renders updated unread copy', () => {
+    renderWithTheme(<FeedStreamView {...baseProps} unreadCount={3} />);
+    expect(screen.getByText('Новых событий: 3')).toBeInTheDocument();
+    expect(screen.getByText('Обновите ленту или отметьте события прочитанными.')).toBeInTheDocument();
+  });
+
+  it('renders updated empty copy for filtered state', () => {
+    renderWithTheme(
+      <FeedStreamView
+        {...baseProps}
+        hasContent={false}
+        isLoading={false}
+        source="events"
+        sortedItems={[]}
+      />,
+    );
+    expect(screen.getByText('Нет событий под выбранные фильтры.')).toBeInTheDocument();
+    expect(screen.getByText('Попробуйте сменить фильтры или зайдите позже.')).toBeInTheDocument();
+  });
+
+  it('shows moderation controls with accessibility label', () => {
+    renderWithTheme(<FeedStreamView {...baseProps} moderationMode={true} />);
+    expect(screen.getByRole('button', { name: 'Переключить режим модерации' })).toBeInTheDocument();
+    expect(screen.getByText('Горячая клавиша: Alt + M')).toBeInTheDocument();
   });
 });
