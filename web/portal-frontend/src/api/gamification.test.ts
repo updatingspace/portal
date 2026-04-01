@@ -1,184 +1,184 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('./client', () => ({ request: vi.fn() }));
+import { request } from './client';
 import {
   createAchievement,
-  listAchievements,
-  listGrants,
-  updateAchievement,
+  createCategory,
   createGrant,
+  getAchievement,
+  listAchievements,
+  listCategories,
+  listGrants,
+  revokeGrant,
+  updateAchievement,
+  updateCategory,
 } from './gamification';
 
-const fetchMock = vi.fn();
-global.fetch = fetchMock as unknown as typeof fetch;
-
-describe('gamification api mapping', () => {
+describe('gamification api', () => {
   beforeEach(() => {
-    fetchMock.mockReset();
-    document.cookie = 'updspace_csrf=test-token; path=/';
+    vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    document.cookie = 'updspace_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-  });
-
-  it('maps listAchievements and keeps query contract', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        items: [
-          {
-            id: 'a1',
-            name_i18n: { ru: 'Тест' },
-            description: null,
-            category: 'battle',
-            status: 'published',
-            images: { small: 's.png' },
-            created_by: 'u1',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-02T00:00:00Z',
-            can_edit: true,
-            can_publish: true,
-            can_hide: false,
-          },
-        ],
-        next_cursor: 'next-1',
-      }),
-      clone() {
-        return this;
-      },
-      headers: new Headers(),
+  it('maps achievements list, defaults and query params', async () => {
+    vi.mocked(request).mockResolvedValueOnce({
+      items: [
+        {
+          id: 'a1',
+          status: 'published',
+          name_i18n: { ru: 'A1' },
+          category: 'cat',
+          images: null,
+          created_by: 'u1',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-02T00:00:00Z',
+          can_edit: true,
+        },
+        {
+          id: 'a2',
+        },
+      ],
+      next_cursor: 'next',
     });
 
     const result = await listAchievements({
       status: ['published'],
-      category: ['battle'],
-      q: 'тест',
+      category: ['cat'],
+      q: 'qq',
       created_by: 'me',
-      limit: 20,
+      limit: 10,
       cursor: 'c1',
     });
 
-    expect(result.nextCursor).toBe('next-1');
+    expect(request).toHaveBeenCalledWith(
+      '/gamification/achievements?status=published&category=cat&q=qq&created_by=me&limit=10&cursor=c1',
+    );
+    expect(result.nextCursor).toBe('next');
     expect(result.items[0]).toMatchObject({
       id: 'a1',
       status: 'published',
-      category: 'battle',
       canEdit: true,
-      canPublish: true,
-      canHide: false,
     });
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/gamification/achievements?');
-    expect(fetchMock.mock.calls[0][0]).toContain('status=published');
-    expect(fetchMock.mock.calls[0][0]).toContain('category=battle');
-    expect(fetchMock.mock.calls[0][0]).toContain('created_by=me');
+    expect(result.items[1]).toMatchObject({
+      nameI18n: {},
+      category: '',
+      status: 'draft',
+      images: null,
+      createdBy: '',
+      createdAt: '',
+      updatedAt: '',
+    });
   });
 
-  it('sends normalized payload for create/update achievement', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        id: 'a-created',
-        name_i18n: { ru: 'Создано' },
-        description: 'd',
-        category: 'events',
-        status: 'draft',
-        images: {},
-      }),
-      clone() {
-        return this;
-      },
-      headers: new Headers(),
-    });
+  it('maps single achievement and create/update payloads', async () => {
+    vi.mocked(request)
+      .mockResolvedValueOnce({ id: 'a1', name_i18n: { ru: 'A1' }, status: 'active' })
+      .mockResolvedValueOnce({ id: 'a2', name_i18n: { ru: 'New' } })
+      .mockResolvedValueOnce({ id: 'a2', name_i18n: { ru: 'Upd' }, status: 'hidden' });
+
+    await expect(getAchievement('a1')).resolves.toMatchObject({ id: 'a1', status: 'active' });
 
     await createAchievement({
-      nameI18n: { ru: 'Создано' },
-      category: 'events',
-      description: 'd',
+      nameI18n: { ru: 'New' },
+      category: 'cat',
       status: 'draft',
       images: { small: 's' },
+      description: 'd',
     });
+    await updateAchievement('a2', { status: 'hidden' });
 
-    const createOptions = fetchMock.mock.calls[0][1];
-    expect(createOptions.body).toContain('"name_i18n"');
-    expect(createOptions.body).toContain('"category":"events"');
-
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ id: 'a-created', name_i18n: { ru: 'Обновлено' } }),
-      clone() {
-        return this;
+    expect(request).toHaveBeenNthCalledWith(2, '/gamification/achievements', {
+      method: 'POST',
+      body: {
+        name_i18n: { ru: 'New' },
+        description: 'd',
+        category: 'cat',
+        status: 'draft',
+        images: { small: 's' },
       },
-      headers: new Headers(),
     });
-
-    await updateAchievement('a-created', {
-      nameI18n: { ru: 'Обновлено' },
-      status: 'hidden',
+    expect(request).toHaveBeenNthCalledWith(3, '/gamification/achievements/a2', {
+      method: 'PATCH',
+      body: {
+        name_i18n: undefined,
+        description: undefined,
+        category: undefined,
+        status: 'hidden',
+        images: undefined,
+      },
     });
-
-    const updateOptions = fetchMock.mock.calls[1][1];
-    expect(updateOptions.method).toBe('PATCH');
-    expect(updateOptions.body).toContain('"status":"hidden"');
   });
 
-  it('maps grants list and createGrant payload', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        items: [
-          {
-            id: 'g1',
-            achievement_id: 'a1',
-            recipient_id: 'u2',
-            issuer_id: 'u1',
-            reason: null,
-            visibility: 'private',
-            created_at: '2026-01-10T00:00:00Z',
-            revoked_at: null,
-          },
-        ],
-        next_cursor: null,
-      }),
-      clone() {
-        return this;
+  it('maps categories and category mutations', async () => {
+    vi.mocked(request)
+      .mockResolvedValueOnce({
+        items: [{ id: 'c1' }, { id: 'c2', name_i18n: { ru: 'C2' }, order: 3, is_active: false }],
+      })
+      .mockResolvedValueOnce({ id: 'c3', name_i18n: { ru: 'C3' } })
+      .mockResolvedValueOnce({ id: 'c2', name_i18n: { ru: 'C2u' }, order: 7, is_active: true });
+
+    const listed = await listCategories();
+    await createCategory({ id: 'c3', nameI18n: { ru: 'C3' } });
+    await updateCategory('c2', { order: 7, isActive: true });
+
+    expect(listed.items[0]).toMatchObject({ order: 0, isActive: true });
+    expect(listed.items[1]).toMatchObject({ order: 3, isActive: false });
+    expect(request).toHaveBeenNthCalledWith(2, '/gamification/categories', {
+      method: 'POST',
+      body: {
+        id: 'c3',
+        name_i18n: { ru: 'C3' },
+        order: 0,
+        is_active: true,
       },
-      headers: new Headers(),
     });
-
-    const listResult = await listGrants('a1', { visibility: 'private', limit: 10 });
-    expect(listResult.items[0]).toMatchObject({
-      id: 'g1',
-      achievementId: 'a1',
-      recipientId: 'u2',
-      visibility: 'private',
+    expect(request).toHaveBeenNthCalledWith(3, '/gamification/categories/c2', {
+      method: 'PATCH',
+      body: {
+        name_i18n: undefined,
+        order: 7,
+        is_active: true,
+      },
     });
+  });
 
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        id: 'g2',
+  it('maps grants list/create/revoke and query filtering', async () => {
+    vi.mocked(request)
+      .mockResolvedValueOnce({
+        items: [{ id: 'g1', achievement_id: 'a1', recipient_id: 'u1', issuer_id: 'adm' }, { id: 'g2', achievement_id: 'a1', recipient_id: 'u2', issuer_id: 'adm', visibility: 'private', reason: 'r' }],
+        next_cursor: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'g3',
         achievement_id: 'a1',
         recipient_id: 'u3',
-        issuer_id: 'u1',
-        reason: 'great',
+        issuer_id: 'adm',
         visibility: 'public',
-        created_at: '2026-01-11T00:00:00Z',
-        revoked_at: null,
-      }),
-      clone() {
-        return this;
-      },
-      headers: new Headers(),
-    });
+      })
+      .mockResolvedValueOnce({
+        id: 'g3',
+        achievement_id: 'a1',
+        recipient_id: 'u3',
+        issuer_id: 'adm',
+        revoked_at: '2026-02-01T00:00:00Z',
+      });
 
-    await createGrant('a1', { recipientId: 'u3', reason: 'great', visibility: 'public' });
-    const createGrantBody = fetchMock.mock.calls[1][1].body;
-    expect(createGrantBody).toContain('"recipient_id":"u3"');
-    expect(createGrantBody).toContain('"visibility":"public"');
+    const listed = await listGrants('a1', { visibility: 'private', limit: 5, cursor: 'n' });
+    await createGrant('a1', { recipientId: 'u3', visibility: 'public' });
+    const revoked = await revokeGrant('g3');
+
+    expect(request).toHaveBeenNthCalledWith(1, '/gamification/achievements/a1/grants?visibility=private&limit=5&cursor=n');
+    expect(listed.items[0]).toMatchObject({ visibility: 'public', reason: null, revokedAt: null });
+    expect(listed.items[1]).toMatchObject({ visibility: 'private', reason: 'r' });
+    expect(request).toHaveBeenNthCalledWith(2, '/gamification/achievements/a1/grants', {
+      method: 'POST',
+      body: {
+        recipient_id: 'u3',
+        reason: '',
+        visibility: 'public',
+      },
+    });
+    expect(request).toHaveBeenNthCalledWith(3, '/gamification/grants/g3/revoke', { method: 'POST' });
+    expect(revoked.revokedAt).toBe('2026-02-01T00:00:00Z');
   });
 });

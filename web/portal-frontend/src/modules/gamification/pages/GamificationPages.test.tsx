@@ -12,11 +12,39 @@ const mockCreateAchievement = vi.fn(async () => ({ id: 'created-id' }));
 const mockCreateCategory = vi.fn(async () => ({ id: 'new-category' }));
 const mockCreateGrant = vi.fn(async () => ({}));
 const mockRevokeGrant = vi.fn(async () => ({}));
+const mockFetchNextPage = vi.fn(async () => ({}));
 
 let mockUser: Record<string, unknown> | null = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
 let mockParams: { id?: string } = {};
 let mockAchievementById = true;
 let mockProfiles: Array<{ userId: string; firstName: string; lastName: string; displayName?: string | null; username?: string | null }> = [];
+let mockAchievementsPages: Array<{ items: Array<Record<string, unknown>> }> = [{
+  items: [
+    {
+      id: 'a1',
+      nameI18n: { ru: 'A1' },
+      category: 'cat',
+      status: 'draft',
+      updatedAt: '2026-01-01T00:00:00Z',
+      canEdit: true,
+      canPublish: true,
+      canHide: true,
+    },
+    {
+      id: 'a2',
+      nameI18n: { ru: 'A2' },
+      category: 'cat',
+      status: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      canEdit: true,
+      canPublish: true,
+      canHide: true,
+    },
+  ],
+}];
+let mockDashboardIsLoading = false;
+let mockDashboardHasNextPage = false;
+let mockDashboardIsFetchingNextPage = false;
 const permissionMap = new Map<string, boolean>();
 
 vi.mock('react-router-dom', () => ({
@@ -51,35 +79,12 @@ vi.mock('../../portal/api', () => ({
 vi.mock('../../../hooks/useGamification', () => ({
   useAchievementsList: () => ({
     data: {
-      pages: [{
-        items: [
-          {
-            id: 'a1',
-            nameI18n: { ru: 'A1' },
-            category: 'cat',
-            status: 'draft',
-            updatedAt: '2026-01-01T00:00:00Z',
-            canEdit: true,
-            canPublish: true,
-            canHide: true,
-          },
-          {
-            id: 'a2',
-            nameI18n: { ru: 'A2' },
-            category: 'cat',
-            status: 'published',
-            updatedAt: '2026-01-01T00:00:00Z',
-            canEdit: true,
-            canPublish: true,
-            canHide: true,
-          },
-        ],
-      }],
+      pages: mockAchievementsPages,
     },
-    isLoading: false,
-    isFetchingNextPage: false,
-    hasNextPage: false,
-    fetchNextPage: vi.fn(),
+    isLoading: mockDashboardIsLoading,
+    isFetchingNextPage: mockDashboardIsFetchingNextPage,
+    hasNextPage: mockDashboardHasNextPage,
+    fetchNextPage: mockFetchNextPage,
   }),
   useCategories: () => ({
     data: { items: [{ id: 'cat', nameI18n: { ru: 'Категория' } }] },
@@ -136,7 +141,37 @@ vi.mock('@gravity-ui/uikit', () => {
     </select>
   );
   const Table = ({ data, emptyMessage }: { data: unknown[]; emptyMessage: string }) => (
-    <div>{data.length ? `rows:${data.length}` : emptyMessage}</div>
+    !data.length ? (
+      <div>{emptyMessage}</div>
+    ) : (
+      <div>{`rows:${data.length}`}</div>
+    )
+  );
+  const RichTable = ({
+    data,
+    columns = [],
+    emptyMessage,
+  }: {
+    data: Array<Record<string, unknown>>;
+    columns?: Array<{ id: string; template?: (row: Record<string, unknown>) => React.ReactNode }>;
+    emptyMessage: string;
+  }) => (
+    !data.length ? (
+      <div>{emptyMessage}</div>
+    ) : (
+      <div>
+        <div>{`rows:${data.length}`}</div>
+        {data.map((row) => (
+          <div key={String(row.id)}>
+            {columns.map((column) => (
+              <div key={`${String(row.id)}-${column.id}`}>
+                {column.template ? column.template(row) : null}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
   );
   const DropdownMenu = ({ items }: { items: Array<{ text: string; action?: () => void }> }) => (
     <div>{items.map((item) => <button key={item.text} onClick={item.action}>{item.text}</button>)}</div>
@@ -158,7 +193,7 @@ vi.mock('@gravity-ui/uikit', () => {
     Icon: () => <span />,
     Label: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
     Select,
-    Table,
+    Table: RichTable,
     Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
     TextInput: ({ value = '', onUpdate, placeholder }: { value?: string; onUpdate?: (v: string) => void; placeholder?: string }) => (
       <input value={value} placeholder={placeholder} onChange={(e) => onUpdate?.(e.target.value)} />
@@ -178,10 +213,38 @@ describe('Gamification pages edge cases', () => {
     mockCreateCategory.mockClear();
     mockCreateGrant.mockClear();
     mockRevokeGrant.mockClear();
+    mockFetchNextPage.mockClear();
     mockUser = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
     mockParams = {};
     mockAchievementById = true;
     mockProfiles = [];
+    mockDashboardIsLoading = false;
+    mockDashboardHasNextPage = false;
+    mockDashboardIsFetchingNextPage = false;
+    mockAchievementsPages = [{
+      items: [
+        {
+          id: 'a1',
+          nameI18n: { ru: 'A1' },
+          category: 'cat',
+          status: 'draft',
+          updatedAt: '2026-01-01T00:00:00Z',
+          canEdit: true,
+          canPublish: true,
+          canHide: true,
+        },
+        {
+          id: 'a2',
+          nameI18n: { ru: 'A2' },
+          category: 'cat',
+          status: 'published',
+          updatedAt: '2026-01-01T00:00:00Z',
+          canEdit: true,
+          canPublish: true,
+          canHide: true,
+        },
+      ],
+    }];
     permissionMap.clear();
   });
 
@@ -197,6 +260,43 @@ describe('Gamification pages edge cases', () => {
     expect(screen.getByText('Всего ачивок')).toBeInTheDocument();
     expect(screen.getByText('Контент-менеджер создаёт черновик и заполняет медиа/локализации.')).toBeInTheDocument();
     expect(screen.getByText('rows:2')).toBeInTheDocument();
+  });
+
+  it('executes dashboard row actions and reset filters', async () => {
+    render(<GamificationDashboardPage />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Открыть' })[0] as HTMLButtonElement);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Редактировать' })[0] as HTMLButtonElement);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Опубликовать' })[0] as HTMLButtonElement);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Скрыть' })[0] as HTMLButtonElement);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/app/gamification/achievements/a1');
+    expect(mockNavigate).toHaveBeenCalledWith('/app/gamification/achievements/a1/edit');
+    expect(mockUpdateAchievement).toHaveBeenCalledWith({ id: 'a1', payload: { status: 'published' } });
+    expect(mockUpdateAchievement).toHaveBeenCalledWith({ id: 'a1', payload: { status: 'hidden' } });
+
+    fireEvent.change(screen.getByPlaceholderText('Поиск по названию'), { target: { value: 'abc' } });
+    expect((screen.getByPlaceholderText('Поиск по названию') as HTMLInputElement).value).toBe('abc');
+    fireEvent.click(screen.getByRole('button', { name: 'Сбросить' }));
+    expect((screen.getByPlaceholderText('Поиск по названию') as HTMLInputElement).value).toBe('');
+  });
+
+  it('shows load more button and triggers pagination', () => {
+    mockDashboardHasNextPage = true;
+    render(<GamificationDashboardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }));
+    expect(mockFetchNextPage).toHaveBeenCalled();
+  });
+
+  it('shows loading and empty dashboard states', () => {
+    mockDashboardIsLoading = true;
+    mockAchievementsPages = [{ items: [] }];
+    const { rerender } = render(<GamificationDashboardPage />);
+    expect(screen.getByText('Загружаем...')).toBeInTheDocument();
+
+    mockDashboardIsLoading = false;
+    rerender(<GamificationDashboardPage />);
+    expect(screen.getByText('Пока нет ачивок')).toBeInTheDocument();
   });
 
   it('shows access denied on form when permission is missing', () => {
@@ -278,7 +378,7 @@ describe('Gamification pages edge cases', () => {
     expect(screen.getByText('Ачивка не найдена.')).toBeInTheDocument();
   });
 
-  it('selects recipient from search and grants achievement', async () => {
+  it('selects recipient from search, grants and revokes achievement', async () => {
     mockParams = { id: 'a1' };
     mockProfiles = [{ userId: 'u77', firstName: 'Ivan', lastName: 'Petrov', username: 'ivan' }];
     render(<AchievementDetailPage />);
@@ -293,6 +393,7 @@ describe('Gamification pages edge cases', () => {
         payload: { recipientId: 'u77', reason: undefined, visibility: 'public' },
       });
     });
-    expect(mockRevokeGrant).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }));
+    await vi.waitFor(() => expect(mockRevokeGrant).toHaveBeenCalledWith({ grantId: 'g1' }));
   });
 });
