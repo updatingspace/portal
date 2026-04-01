@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -7,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from core.models import HomePageModal
+from core.models import ContentWidget, HomePageModal, ModalAnalytics
 
 User = get_user_model()
 
@@ -99,3 +100,71 @@ class HomePageModalApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
+
+    def test_homepage_modal_soft_delete_and_restore(self):
+        modal = HomePageModal.objects.create(
+            title="Soft delete",
+            content="Will be deleted",
+            is_active=True,
+        )
+
+        self.assertIsNone(modal.deleted_at)
+        modal.soft_delete()
+        modal.refresh_from_db()
+        self.assertIsNotNone(modal.deleted_at)
+
+        modal.restore()
+        modal.refresh_from_db()
+        self.assertIsNone(modal.deleted_at)
+
+    def test_homepage_modal_translation_fallback(self):
+        modal = HomePageModal.objects.create(
+            title="Default title",
+            content="Default content",
+            button_text="OK",
+            translations={
+                "ru": {
+                    "title": "Заголовок",
+                    "content": "Содержимое",
+                }
+            },
+        )
+
+        translated = modal.get_translated_content("ru")
+        self.assertEqual(translated["title"], "Заголовок")
+        self.assertEqual(translated["content"], "Содержимое")
+        self.assertEqual(translated["button_text"], "OK")
+
+
+class ExtendedContentModelsTests(TestCase):
+    def test_content_widget_soft_delete(self):
+        widget = ContentWidget.objects.create(
+            tenant_id=uuid.uuid4(),
+            name="Top banner",
+            widget_type="banner",
+            placement="top",
+            content={"title": "Welcome"},
+        )
+
+        self.assertIsNone(widget.deleted_at)
+        widget.soft_delete()
+        widget.refresh_from_db()
+        self.assertIsNotNone(widget.deleted_at)
+
+    def test_modal_analytics_event_persisted(self):
+        modal = HomePageModal.objects.create(
+            title="Track me",
+            content="Analytics content",
+            is_active=True,
+        )
+
+        event = ModalAnalytics.objects.create(
+            modal=modal,
+            tenant_id=uuid.uuid4(),
+            event_type=ModalAnalytics.EventType.VIEW,
+            metadata={"source": "test"},
+        )
+
+        self.assertEqual(event.modal_id, modal.id)
+        self.assertEqual(event.event_type, ModalAnalytics.EventType.VIEW)
+        self.assertEqual(event.metadata["source"], "test")
