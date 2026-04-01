@@ -1300,6 +1300,363 @@ def proxy_activity(request: HttpRequest, path: str):
     return _proxy_group(request, "feed", "BFF_UPSTREAM_FEED_URL", path)
 
 
+def _account_context_headers(request: HttpRequest, ctx) -> dict[str, str]:
+    tenant = getattr(request, "tenant", None)
+    headers = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+    }
+    if tenant:
+        headers["X-Tenant-Id"] = str(tenant.id)
+        headers["X-Tenant-Slug"] = str(tenant.slug)
+    else:
+        headers["X-Tenant-Id"] = ctx.tenant_id
+        headers["X-Tenant-Slug"] = ctx.tenant_slug
+    return headers
+
+
+def _call_dsar_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+    operation: str,
+    method: str,
+    failure_code: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    upstream = getattr(settings, upstream_setting, "")
+    if not upstream:
+        return {"skipped": True, "reason": "upstream_not_configured"}, None
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path=upstream_path,
+            method=method,
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception(
+            "DSAR upstream unavailable",
+            extra={"service": service_name, "operation": operation},
+        )
+        return None, error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message=f"{service_name} DSAR {operation} unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code != 200:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return None, error_response(
+            code=failure_code,
+            message=f"{service_name} DSAR {operation} failed",
+            request_id=request.request_id,
+            status=502,
+            details={"service": service_name, **details},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"ok": True}
+
+    return payload if isinstance(payload, dict) else {"ok": True}, None
+
+
+def _call_dsar_export_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="export",
+        method="GET",
+        failure_code="DSAR_EXPORT_FAILED",
+    )
+
+
+def _call_dsar_erase_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="erase",
+        method="POST",
+        failure_code="DSAR_ERASE_FAILED",
+    )
+
+
+def _delete_identity_account(request: HttpRequest, ctx) -> HttpResponse | None:
+    upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(
+        settings,
+        "ID_BASE_URL",
+        "",
+    )
+    if not upstream:
+        return error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID upstream is not configured",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path="auth/me",
+            method="DELETE",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception("Identity account deletion failed")
+        return error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID service unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code not in {200, 204}:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return error_response(
+            code="ACCOUNT_DELETE_FAILED",
+            message="Identity account deletion failed",
+            request_id=request.request_id,
+            status=502,
+            details=details,
+        )
+
+    return None
+
+
+@router.delete("/account/me")
+def delete_account_me(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    service_calls = (
+        (
+            "portal",
+            "BFF_UPSTREAM_PORTAL_URL",
+            f"portal/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "activity",
+            "BFF_UPSTREAM_FEED_URL",
+            f"feed/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "access",
+            "BFF_UPSTREAM_ACCESS_URL",
+            f"access/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "events",
+            "BFF_UPSTREAM_EVENTS_URL",
+            f"internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "gamification",
+            "BFF_UPSTREAM_GAMIFICATION_URL",
+            f"gamification/internal/dsar/users/{ctx.user_id}/erase",
+        ),
+        (
+            "voting",
+            "BFF_UPSTREAM_VOTING_URL",
+            f"internal/dsar/users/{ctx.user_id}/erase",
+        ),
+    )
+
+    for service_name, setting_name, upstream_path in service_calls:
+        _, response = _call_dsar_erase_service(
+            request,
+            ctx,
+            service_name=service_name,
+            upstream_setting=setting_name,
+            upstream_path=upstream_path,
+        )
+        if response is not None:
+            return response
+
+    identity_error = _delete_identity_account(request, ctx)
+    if identity_error is not None:
+        return identity_error
+
+    erase_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
+    services_erased = [
+        "portal",
+        "activity",
+        "access",
+        "events",
+        "gamification",
+        "voting",
+        "id",
+        "bff",
+    ]
+
+    try:
+        from .audit import log_audit_event as _log_audit
+
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="dsar.erased",
+            target_type="dsar_request",
+            target_id="self",
+            metadata={
+                "subject_scope": "self",
+                "services_erased": services_erased,
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="account.deleted",
+            target_type="user_account",
+            target_id=str(ctx.user_id),
+            metadata={
+                "services_erased": services_erased,
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Failed to write dsar/account deletion audit events", exc_info=True)
+
+    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
+    response = HttpResponse(status=204)
+    response.delete_cookie(
+        cookie_name,
+        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
+        path="/",
+    )
+    return response
+
+
+@router.get("/account/me/export")
+def export_account_me(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    bundles: dict[str, Any] = {
+        "bff": export_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id),
+    }
+    service_calls = (
+        (
+            "portal",
+            "BFF_UPSTREAM_PORTAL_URL",
+            f"portal/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "activity",
+            "BFF_UPSTREAM_FEED_URL",
+            f"feed/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "access",
+            "BFF_UPSTREAM_ACCESS_URL",
+            f"access/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "events",
+            "BFF_UPSTREAM_EVENTS_URL",
+            f"internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "gamification",
+            "BFF_UPSTREAM_GAMIFICATION_URL",
+            f"gamification/internal/dsar/users/{ctx.user_id}/export",
+        ),
+        (
+            "voting",
+            "BFF_UPSTREAM_VOTING_URL",
+            f"internal/dsar/users/{ctx.user_id}/export",
+        ),
+    )
+
+    for service_name, setting_name, upstream_path in service_calls:
+        bundle, response = _call_dsar_export_service(
+            request,
+            ctx,
+            service_name=service_name,
+            upstream_setting=setting_name,
+            upstream_path=upstream_path,
+        )
+        if response is not None:
+            return response
+        if bundle is not None:
+            bundles[service_name] = bundle
+
+    try:
+        from .audit import log_audit_event as _log_audit
+
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="dsar.exported",
+            target_type="dsar_bundle",
+            target_id="self",
+            metadata={
+                "subject_scope": "self",
+                "services_exported": sorted(bundles.keys()),
+            },
+            request_id=getattr(request, "request_id", ""),
+        )
+    except Exception:
+        logger.warning("Failed to write dsar.exported audit event", exc_info=True)
+
+    return {
+        "service": "bff",
+        "tenant_id": ctx.tenant_id,
+        "user_id": ctx.user_id,
+        "exported_at": timezone.now().isoformat(),
+        "bundles": bundles,
+    }
+
+
 @router.api_operation(
     ["GET", "POST", "PUT", "PATCH", "DELETE"],
     "/feature-flags",
