@@ -15,14 +15,33 @@ export * from './types';
 export * from './api/personalizationApi';
 
 // Hooks
-export * from './hooks/usePreferences';
+export * from './hooks';
 
-// Components
-export * from './components/settings/ThemeSelector';
-export * from './components/settings/LanguageSelector';
-export * from './components/settings/TimezoneSelector';
-export * from './components/settings/FontSizeSelector';
-export * from './components/settings/ColorPicker';
-export * from './components/settings/NotificationToggle';
-export * from './components/settings/PrivacyToggle';
-export * from './components/settings/SettingsSection';
+// Components - explicit exports to avoid naming conflicts with types
+export {
+  SettingsSection,
+  ThemeSelector,
+  LanguageSelector,
+  TimezoneSelector,
+  FontSizeSelector,
+  ColorPicker,
+  NotificationToggle,
+  PrivacyToggle,
+  AppearanceSettings as AppearanceSettingsPanel,
+  NotificationsSettings as NotificationsSettingsPanel,
+  PrivacySettings as PrivacySettingsPanel,
+} from './components';
+
+export type {
+  SettingsSectionProps,
+  ThemeSelectorProps,
+  LanguageSelectorProps,
+  TimezoneSelectorProps,
+  FontSizeSelectorProps,
+  ColorPickerProps,
+  NotificationToggleProps,
+  PrivacyToggleProps,
+  AppearanceSettingsProps,
+  NotificationsSettingsProps,
+  PrivacySettingsProps,
+} from './components';
