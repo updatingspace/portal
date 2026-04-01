@@ -26,10 +26,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { activityKeys } from '../../../hooks/useActivity';
 import { useQueryClient } from '@tanstack/react-query';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
-
-const YOUTUBE_REGEX = /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/gi;
-const TAG_REGEX = /#([\p{L}\p{N}_-]{2,})/gu;
-const TITLE_REGEX = /^#\s+(.+)$/m;
+import { extractTags, extractTitle, extractYoutubeIds } from '../utils/composer';
 
 const getNewsPayload = (item: ActivityEvent): NewsPayload | null => {
   if (item.type !== 'news.posted') return null;
@@ -53,41 +50,22 @@ const formatTimestamp = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 };
 
-const extractYoutubeIds = (markup: string) => {
-  const ids = new Set<string>();
-  const matches = markup.matchAll(YOUTUBE_REGEX);
-  for (const match of matches) {
-    if (match[1]) ids.add(match[1]);
-  }
-  return Array.from(ids);
-};
-
-const extractTags = (markup: string) => {
-  const withoutTitle = markup.replace(TITLE_REGEX, '');
-  const tags = new Set<string>();
-  const matches = withoutTitle.matchAll(TAG_REGEX);
-  for (const match of matches) {
-    const tag = match[1]?.toLowerCase();
-    if (tag) tags.add(tag);
-  }
-  return Array.from(tags);
-};
-
-const extractTitle = (markup: string) => {
-  const match = markup.match(TITLE_REGEX);
-  return match?.[1]?.trim() ?? '';
-};
-
 export interface FeedItemProps {
   item: ActivityEvent;
   showPayload?: boolean;
   compact?: boolean;
+  moderationMode?: boolean;
+  moderationSelected?: boolean;
+  onModerationToggle?: (newsId: string, selected: boolean) => void;
 }
 
 export const FeedItem: React.FC<FeedItemProps> = ({
   item,
   showPayload = true,
   compact = false,
+  moderationMode = false,
+  moderationSelected = false,
+  onModerationToggle,
 }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -234,6 +212,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
 
   const authorLabel = item.actorUserId || 'Автор';
   const title = news?.title ?? item.title;
+  const isModeratable = Boolean(newsId);
 
   const body = (
     <div
@@ -263,6 +242,19 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           <Label theme={meta.theme} size={compact ? 'xs' : 's'}>
             {meta.label}
           </Label>
+          {moderationMode && isModeratable && (
+            <label className="feed-item__moderation-check">
+              <input
+                type="checkbox"
+                checked={moderationSelected}
+                onChange={(event) => {
+                  if (!newsId || !onModerationToggle) return;
+                  onModerationToggle(newsId, event.target.checked);
+                }}
+              />
+              <span>Выбрать</span>
+            </label>
+          )}
           {canManage && (
             <div className="feed-item__header-actions">
               <DropdownMenu
@@ -429,16 +421,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </div>
         </Dialog.Body>
         <Dialog.Footer
-          actions={
-            <>
-              <Button view="flat" onClick={() => setEditOpen(false)}>
-                Отмена
-              </Button>
-              <Button view="action" loading={editSaving} onClick={handleEditSave}>
-                Сохранить
-              </Button>
-            </>
-          }
+          textButtonCancel="Отмена"
+          textButtonApply={editSaving ? 'Сохранение...' : 'Сохранить'}
+          onClickButtonCancel={() => setEditOpen(false)}
+          onClickButtonApply={handleEditSave}
+          loading={editSaving}
         />
       </Dialog>
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} aria-label="Удалить новость">
@@ -449,16 +436,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </Text>
         </Dialog.Body>
         <Dialog.Footer
-          actions={
-            <>
-              <Button view="flat" onClick={() => setDeleteOpen(false)}>
-                Отмена
-              </Button>
-              <Button view="flat-danger" loading={deleteSaving} onClick={handleDelete}>
-                Удалить
-              </Button>
-            </>
-          }
+          textButtonCancel="Отмена"
+          textButtonApply={deleteSaving ? 'Удаление...' : 'Удалить'}
+          onClickButtonCancel={() => setDeleteOpen(false)}
+          onClickButtonApply={handleDelete}
+          loading={deleteSaving}
         />
       </Dialog>
     </>
