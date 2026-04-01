@@ -1,5 +1,5 @@
 import { Button, Card, Checkbox, Select, Text, TextInput, useToaster } from '@gravity-ui/uikit';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 
 import { useDashboards, useDashboardWidgets } from '../../hooks/useDashboards';
 import type { DashboardLayout, DashboardWidgetInput } from '../../types';
@@ -19,6 +19,8 @@ type BaseWidgetConfig = {
   description: string;
   defaultSettings: Record<string, unknown>;
 };
+
+type PreviewViewport = 'desktop' | 'tablet' | 'mobile';
 
 const BASE_WIDGETS: Record<string, BaseWidgetConfig> = {
   'activity-feed': {
@@ -48,11 +50,12 @@ const BASE_WIDGETS: Record<string, BaseWidgetConfig> = {
   },
 };
 
-export function DashboardCustomizer() {
+function DashboardCustomizerComponent() {
   const { add: addToast } = useToaster();
   const { layouts, isLoading, createLayout, updateLayout, deleteLayout } = useDashboards();
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
   const [newLayoutName, setNewLayoutName] = useState('');
+  const [previewViewport, setPreviewViewport] = useState<PreviewViewport>('desktop');
   const selectedLayout = useMemo<DashboardLayout | null>(
     () => layouts.find((layout) => layout.id === selectedLayoutId) ?? layouts[0] ?? null,
     [layouts, selectedLayoutId]
@@ -163,7 +166,20 @@ export function DashboardCustomizer() {
         )}
       </div>
 
-      <div className="dashboard-customizer__sections">
+      <div className="dashboard-customizer__row">
+        <Text variant="subheader-1">Responsive preview</Text>
+        <Button view={previewViewport === 'desktop' ? 'action' : 'outlined'} onClick={() => setPreviewViewport('desktop')}>
+          Desktop
+        </Button>
+        <Button view={previewViewport === 'tablet' ? 'action' : 'outlined'} onClick={() => setPreviewViewport('tablet')}>
+          Tablet
+        </Button>
+        <Button view={previewViewport === 'mobile' ? 'action' : 'outlined'} onClick={() => setPreviewViewport('mobile')}>
+          Mobile
+        </Button>
+      </div>
+
+      <div className={`dashboard-customizer__sections dashboard-customizer__sections--${previewViewport}`}>
         <Card view="outlined" className="dashboard-customizer__section">
           <Text variant="subheader-2">Widget library</Text>
           <div className="dashboard-customizer__widget-library">
@@ -237,3 +253,5 @@ export function DashboardCustomizer() {
     </Card>
   );
 }
+
+export const DashboardCustomizer = memo(DashboardCustomizerComponent);

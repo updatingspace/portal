@@ -61,6 +61,7 @@ export {
   PreviewOverlay,
    usePreviewMode,
    DashboardCustomizer,
+   DashboardAnalytics,
 } from './components';
 
 export type {

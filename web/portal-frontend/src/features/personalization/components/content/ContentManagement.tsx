@@ -108,7 +108,7 @@ export function ContentManagement() {
           });
         }
         handleCloseEditor();
-      } catch (error) {
+      } catch {
         addToast({
           name: 'modal-error',
           title: 'Error saving modal',
@@ -133,7 +133,7 @@ export function ContentManagement() {
           theme: 'success',
           autoHiding: 3000,
         });
-      } catch (error) {
+      } catch {
         addToast({
           name: 'delete-error',
           title: 'Error deleting modal',
@@ -156,7 +156,7 @@ export function ContentManagement() {
           theme: 'success',
           autoHiding: 3000,
         });
-      } catch (error) {
+      } catch {
         addToast({
           name: 'restore-error',
           title: 'Error restoring modal',
@@ -184,7 +184,7 @@ export function ContentManagement() {
           theme: 'success',
           autoHiding: 3000,
         });
-      } catch (error) {
+      } catch {
         addToast({
           name: 'bulk-error',
           title: 'Error performing bulk action',

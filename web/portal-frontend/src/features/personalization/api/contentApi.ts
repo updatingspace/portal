@@ -48,7 +48,7 @@ export async function fetchActiveModals(
  * Fetch all homepage modals for admin with filtering
  */
 export async function fetchModals(
-  filters?: ModalListFilters
+  filters?: ModalListFilters & { limit?: number; offset?: number }
 ): Promise<HomePageModal[]> {
   const params = new URLSearchParams();
 
@@ -62,6 +62,8 @@ export async function fetchModals(
       params.set('start_date_from', filters.startDateFrom.toISOString());
     if (filters.startDateTo)
       params.set('start_date_to', filters.startDateTo.toISOString());
+    if (typeof filters.limit === 'number') params.set('limit', String(filters.limit));
+    if (typeof filters.offset === 'number') params.set('offset', String(filters.offset));
   }
 
   const query = params.toString();
@@ -161,12 +163,16 @@ export async function fetchWidgets(options?: {
   includeDeleted?: boolean;
   widgetType?: string;
   placement?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<ContentWidget[]> {
   const params = new URLSearchParams();
 
   if (options?.includeDeleted) params.set('include_deleted', 'true');
   if (options?.widgetType) params.set('widget_type', options.widgetType);
   if (options?.placement) params.set('placement', options.placement);
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit));
+  if (typeof options?.offset === 'number') params.set('offset', String(options.offset));
 
   const query = params.toString();
   return request<ContentWidget[]>(`${WIDGETS_BASE}${query ? `?${query}` : ''}`);
@@ -257,10 +263,12 @@ export async function fetchAnalyticsReport(
 // =============================================================================
 
 export async function fetchDashboardLayouts(
-  includeDeleted: boolean = false
+  includeDeleted: boolean = false,
+  limit: number = 100,
+  offset: number = 0
 ): Promise<DashboardLayout[]> {
   return request<DashboardLayout[]>(
-    `${DASHBOARDS_BASE}/layouts?include_deleted=${includeDeleted}`
+    `${DASHBOARDS_BASE}/layouts?include_deleted=${includeDeleted}&limit=${limit}&offset=${offset}`
   );
 }
 
@@ -294,10 +302,12 @@ export async function deleteDashboardLayout(
 
 export async function fetchDashboardWidgets(
   layoutId: string,
-  includeDeleted: boolean = false
+  includeDeleted: boolean = false,
+  limit: number = 200,
+  offset: number = 0
 ): Promise<DashboardWidget[]> {
   return request<DashboardWidget[]>(
-    `${DASHBOARDS_BASE}/layouts/${layoutId}/widgets?include_deleted=${includeDeleted}`
+    `${DASHBOARDS_BASE}/layouts/${layoutId}/widgets?include_deleted=${includeDeleted}&limit=${limit}&offset=${offset}`
   );
 }
 
@@ -327,5 +337,23 @@ export async function deleteDashboardWidget(
 ): Promise<{ success: boolean }> {
   return request<{ success: boolean }>(`${DASHBOARDS_BASE}/widgets/${widgetId}?hard=${hard}`, {
     method: 'DELETE',
+  });
+}
+
+export async function restoreWidget(widgetId: string): Promise<ContentWidget> {
+  return request<ContentWidget>(`${WIDGETS_BASE}/${widgetId}/restore`, {
+    method: 'POST',
+  });
+}
+
+export async function restoreDashboardLayout(layoutId: string): Promise<DashboardLayout> {
+  return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts/${layoutId}/restore`, {
+    method: 'POST',
+  });
+}
+
+export async function restoreDashboardWidget(widgetId: string): Promise<DashboardWidget> {
+  return request<DashboardWidget>(`${DASHBOARDS_BASE}/widgets/${widgetId}/restore`, {
+    method: 'POST',
   });
 }

@@ -284,6 +284,13 @@ class ContentWidget(models.Model):
             self.updated_by = user_id
         self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
 
+    def restore(self, user_id: uuid.UUID | None = None) -> None:
+        """Restore soft-deleted widget."""
+        self.deleted_at = None
+        if user_id:
+            self.updated_by = user_id
+        self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
+
 
 class DashboardLayout(models.Model):
     """Saved dashboard layout per user within a tenant."""
@@ -321,6 +328,10 @@ class DashboardLayout(models.Model):
         from django.utils import timezone
 
         self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at", "updated_at"])
+
+    def restore(self) -> None:
+        self.deleted_at = None
         self.save(update_fields=["deleted_at", "updated_at"])
 
 
@@ -364,6 +375,10 @@ class DashboardWidget(models.Model):
         from django.utils import timezone
 
         self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at", "updated_at"])
+
+    def restore(self) -> None:
+        self.deleted_at = None
         self.save(update_fields=["deleted_at", "updated_at"])
 
 

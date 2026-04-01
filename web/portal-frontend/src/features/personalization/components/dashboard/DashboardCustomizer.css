@@ -27,6 +27,18 @@
   gap: 16px;
 }
 
+.dashboard-customizer__sections--desktop {
+  grid-template-columns: 1fr 2fr;
+}
+
+.dashboard-customizer__sections--tablet {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dashboard-customizer__sections--mobile {
+  grid-template-columns: 1fr;
+}
+
 .dashboard-customizer__section {
   padding: 12px;
 }

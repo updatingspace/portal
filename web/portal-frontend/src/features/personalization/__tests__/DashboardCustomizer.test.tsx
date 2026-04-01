@@ -99,4 +99,19 @@ describe('DashboardCustomizer', () => {
 
     expect(screen.getByText('Create layout')).toBeInTheDocument();
   });
+
+  it('shows base widget metadata in layout list', async () => {
+    render(<DashboardCustomizer />, { wrapper: createWrapper() });
+    expect(await screen.findByText('Activity Feed')).toBeInTheDocument();
+    expect(screen.getByText('Select or create a layout to manage widgets.')).toBeInTheDocument();
+  });
+
+  it('switches responsive preview modes', async () => {
+    const user = userEvent.setup();
+    render(<DashboardCustomizer />, { wrapper: createWrapper() });
+
+    await user.click(await screen.findByText('Tablet'));
+    await user.click(screen.getByText('Mobile'));
+    expect(screen.getByText('Responsive preview')).toBeInTheDocument();
+  });
 });

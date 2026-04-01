@@ -4,8 +4,10 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createElement, type ReactNode } from 'react';
 
 import { usePreferences } from '../hooks/usePreferences';
+import * as personalizationApi from '../api/personalizationApi';
 
 // Mock the API
 vi.mock('../api/personalizationApi', () => ({
@@ -23,12 +25,8 @@ const createWrapper = () => {
     },
   });
   
-  return function TestWrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+  return function TestWrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children);
   };
 };
 
@@ -74,24 +72,19 @@ describe('usePreferences', () => {
     wrapper = createWrapper();
     vi.clearAllMocks();
     
-    // Setup default mocks
-    const { fetchPreferences, updatePreferences, resetPreferences, fetchDefaultPreferences } = 
-      require('../api/personalizationApi');
-    
-    fetchPreferences.mockResolvedValue(mockPreferences);
-    updatePreferences.mockResolvedValue({ ...mockPreferences });
-    resetPreferences.mockResolvedValue(mockPreferences);
-    fetchDefaultPreferences.mockResolvedValue({
+    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue(mockPreferences);
+    vi.mocked(personalizationApi.updatePreferences).mockResolvedValue({ ...mockPreferences });
+    vi.mocked(personalizationApi.resetPreferences).mockResolvedValue(mockPreferences);
+    vi.mocked(personalizationApi.fetchDefaultPreferences).mockResolvedValue({
       appearance: mockPreferences.appearance,
       localization: mockPreferences.localization,
       notifications: mockPreferences.notifications,
       privacy: mockPreferences.privacy,
     });
+    window.localStorage.clear();
   });
 
   it('fetches preferences on mount', async () => {
-    const { fetchPreferences } = require('../api/personalizationApi');
-    
     const { result } = renderHook(() => usePreferences(), { wrapper });
     
     expect(result.current.isLoading).toBe(true);
@@ -100,13 +93,11 @@ describe('usePreferences', () => {
       expect(result.current.isLoading).toBe(false);
     });
     
-    expect(fetchPreferences).toHaveBeenCalledTimes(1);
+    expect(personalizationApi.fetchPreferences).toHaveBeenCalledTimes(1);
     expect(result.current.preferences).toEqual(mockPreferences);
   });
 
   it('updates appearance preferences', async () => {
-    const { updatePreferences } = require('../api/personalizationApi');
-    
     const { result } = renderHook(() => usePreferences(), { wrapper });
     
     await waitFor(() => {
@@ -116,14 +107,13 @@ describe('usePreferences', () => {
     const newAppearance = { theme: 'dark' as const };
     await result.current.updateAppearance(newAppearance);
     
-    expect(updatePreferences).toHaveBeenCalledWith({
+    expect(personalizationApi.updatePreferences).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(personalizationApi.updatePreferences).mock.calls[0]?.[0]).toEqual({
       appearance: newAppearance,
     });
   });
 
   it('updates notification preferences', async () => {
-    const { updatePreferences } = require('../api/personalizationApi');
-    
     const { result } = renderHook(() => usePreferences(), { wrapper });
     
     await waitFor(() => {
@@ -135,14 +125,13 @@ describe('usePreferences', () => {
     };
     await result.current.updateNotifications(newNotifications);
     
-    expect(updatePreferences).toHaveBeenCalledWith({
+    expect(personalizationApi.updatePreferences).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(personalizationApi.updatePreferences).mock.calls[0]?.[0]).toEqual({
       notifications: newNotifications,
     });
   });
 
   it('resets preferences to defaults', async () => {
-    const { resetPreferences } = require('../api/personalizationApi');
-    
     const { result } = renderHook(() => usePreferences(), { wrapper });
     
     await waitFor(() => {
@@ -151,7 +140,7 @@ describe('usePreferences', () => {
     
     await result.current.resetToDefaults();
     
-    expect(resetPreferences).toHaveBeenCalledTimes(1);
+    expect(personalizationApi.resetPreferences).toHaveBeenCalledTimes(1);
   });
 
   it('handles loading states correctly', async () => {
@@ -163,6 +152,13 @@ describe('usePreferences', () => {
     
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
+    });
+  });
+
+  it('caches preferences to localStorage', async () => {
+    renderHook(() => usePreferences(), { wrapper });
+    await waitFor(() => {
+      expect(window.localStorage.getItem('personalization-preferences-cache-v1')).not.toBeNull();
     });
   });
 });

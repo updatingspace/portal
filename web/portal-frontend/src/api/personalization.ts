@@ -58,6 +58,13 @@ export interface HomePageModalInput {
   order?: number;
 }
 
+export interface ModalAnalyticsTrackInput {
+  modalId: number;
+  eventType: 'view' | 'click' | 'dismiss';
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 const mapHomePageModal = (modal: ApiHomePageModal): HomePageModal => ({
   id: modal.id,
   title: modal.title,
@@ -141,5 +148,19 @@ export const updateHomePageModal = async (
 export const deleteHomePageModal = async (modalId: number): Promise<void> => {
   await request<void>(`/personalization/admin/homepage-modals/${modalId}`, {
     method: 'DELETE',
+  });
+};
+
+export const trackModalAnalyticsEvent = async (
+  payload: ModalAnalyticsTrackInput,
+): Promise<void> => {
+  await request<void>('/personalization/analytics/track', {
+    method: 'POST',
+    body: {
+      modal_id: payload.modalId,
+      event_type: payload.eventType,
+      session_id: payload.sessionId ?? '',
+      metadata: payload.metadata ?? {},
+    },
   });
 };

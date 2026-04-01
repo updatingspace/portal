@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from '@gravity-ui/uikit';
 
-import { fetchHomePageModals, type HomePageModal } from '../api/personalization';
+import {
+  fetchHomePageModals,
+  trackModalAnalyticsEvent,
+  type HomePageModal,
+} from '../api/personalization';
 import { getLocale } from '../shared/lib/locale';
 import { notifyApiError } from '../utils/apiErrorHandling';
 
 const STORAGE_KEY = 'aef-homepage-modals-shown';
+const SESSION_KEY = 'updspace-personalization-session';
 
 interface ShownModalsRecord {
   [modalId: number]: number;
@@ -27,6 +32,20 @@ const markModalAsShown = (modalId: number): void => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(shown));
   } catch {
     // Ignore storage errors.
+  }
+};
+
+const getTrackingSessionId = (): string => {
+  try {
+    const fromStorage = sessionStorage.getItem(SESSION_KEY);
+    if (fromStorage) {
+      return fromStorage;
+    }
+    const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem(SESSION_KEY, sessionId);
+    return sessionId;
+  } catch {
+    return `${Date.now()}-fallback`;
   }
 };
 
@@ -66,6 +85,18 @@ export const HomePageModalDisplay: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const modal = modals[currentModalIndex];
+    if (!isOpen || !modal) {
+      return;
+    }
+    void trackModalAnalyticsEvent({
+      modalId: modal.id,
+      eventType: 'view',
+      sessionId: getTrackingSessionId(),
+    });
+  }, [isOpen, modals, currentModalIndex]);
+
   const currentModal = modals[currentModalIndex];
   const locale = getLocale();
   const translated = currentModal?.translations?.[locale];
@@ -75,6 +106,13 @@ export const HomePageModalDisplay: React.FC = () => {
 
   const handleClose = useCallback(() => {
     if (!currentModal) return;
+
+    void trackModalAnalyticsEvent({
+      modalId: currentModal.id,
+      eventType: 'dismiss',
+      sessionId: getTrackingSessionId(),
+      metadata: { index: currentModalIndex, total: modals.length },
+    });
 
     if (currentModal.displayOnce) {
       markModalAsShown(currentModal.id);
@@ -88,6 +126,15 @@ export const HomePageModalDisplay: React.FC = () => {
   }, [currentModal, currentModalIndex, modals.length]);
 
   const handleButtonClick = useCallback(() => {
+    if (!currentModal) {
+      return;
+    }
+    void trackModalAnalyticsEvent({
+      modalId: currentModal.id,
+      eventType: 'click',
+      sessionId: getTrackingSessionId(),
+      metadata: { hasUrl: !!currentModal.buttonUrl },
+    });
     if (currentModal?.buttonUrl) {
       window.open(currentModal.buttonUrl, '_blank', 'noopener,noreferrer');
     }
