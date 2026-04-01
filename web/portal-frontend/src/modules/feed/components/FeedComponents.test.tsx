@@ -11,11 +11,16 @@ import { ThemeProvider } from '@gravity-ui/uikit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { FeedItem } from './FeedItem';
+import { FeedComposerPanel } from './FeedComposerPanel';
 import { createActivityEvents } from '../../../test/fixtures';
 import type { ActivityEvent } from '../../../types/activity';
 
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: null }),
+}));
+
+vi.mock('@gravity-ui/markdown-editor', () => ({
+  MarkdownEditorView: () => <div data-testid="mock-markdown-editor" />,
 }));
 
 // Wrapper for Gravity UI components
@@ -136,5 +141,53 @@ describe('FeedItem', () => {
     const checkbox = screen.getByRole('checkbox');
     fireEvent.click(checkbox);
     expect(onModerationToggle).toHaveBeenCalledWith('news-1', true);
+  });
+});
+
+describe('FeedComposerPanel', () => {
+  const baseProps = {
+    canCreateNews: true,
+    composerOpen: true,
+    setComposerOpen: vi.fn(),
+    emptyToolbarsPreset: { items: {}, orders: {} },
+    editor: { getValue: vi.fn(), on: vi.fn(), off: vi.fn() },
+    fileInputRef: { current: null } as React.RefObject<HTMLInputElement>,
+    handleImageUpload: vi.fn(),
+    detectedTags: [],
+    composerError: null,
+    newsVisibility: 'public' as const,
+    setNewsVisibility: vi.fn(),
+    isCreatingNews: false,
+    uploading: false,
+    composerHasText: true,
+    composerHasMedia: true,
+    handlePublishNews: vi.fn(),
+    handleComposerKeyDown: vi.fn(),
+    newsMedia: [],
+    handleRemoveMedia: vi.fn(),
+  };
+
+  it('shows access-locked state when user cannot create', () => {
+    renderWithTheme(<FeedComposerPanel {...baseProps} canCreateNews={false} />);
+    expect(screen.getByText('Публикация новостей недоступна.')).toBeInTheDocument();
+  });
+
+  it('calls handleComposerKeyDown on key press', () => {
+    const onKeyDown = vi.fn();
+    renderWithTheme(<FeedComposerPanel {...baseProps} handleComposerKeyDown={onKeyDown} />);
+    fireEvent.keyDown(screen.getByLabelText('Композер новостей'), { key: 'Enter', ctrlKey: true });
+    expect(onKeyDown).toHaveBeenCalled();
+  });
+
+  it('disables publish button when composer has no media', () => {
+    renderWithTheme(<FeedComposerPanel {...baseProps} composerHasMedia={false} />);
+    expect(screen.getByRole('button', { name: 'Опубликовать новость' })).toBeDisabled();
+  });
+
+  it('invokes publish action when publish button clicked', () => {
+    const handlePublishNews = vi.fn();
+    renderWithTheme(<FeedComposerPanel {...baseProps} handlePublishNews={handlePublishNews} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликовать новость' }));
+    expect(handlePublishNews).toHaveBeenCalledTimes(1);
   });
 });
