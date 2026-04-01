@@ -15,9 +15,9 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Breadcrumbs, Button, Card, Icon, Label, Progress, Skeleton } from '@gravity-ui/uikit';
 import { ArrowLeft, ArrowRotateRight, Clock } from '@gravity-ui/icons';
 
-import { useVotingSession } from '../../features/voting/hooks/useVotingUnified';
-import { VotingAlerts, createVotingAlerts } from '../../features/voting/components/VotingAlerts';
-import type { VotingAlert } from '../../features/voting/components/VotingAlerts';
+import { useVotingSession } from '@/features/voting/hooks/useVotingUnified';
+import { VotingAlerts, createVotingAlerts } from '@/features/voting/components/VotingAlerts';
+import type { VotingAlert } from '@/features/voting/components/VotingAlerts';
 
 // ============================================================================
 // Types

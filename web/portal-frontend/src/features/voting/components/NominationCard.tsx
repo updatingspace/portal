@@ -25,8 +25,17 @@ import type { Nomination } from '../unified';
 
 export type VotingMode = 'single' | 'multi' | 'ranked';
 
+/**
+ * Extended nomination for display purposes
+ * Includes vote_count and image_url which may come from legacy or computed sources
+ */
+export interface DisplayNomination extends Nomination {
+  vote_count?: number;
+  image_url?: string;
+}
+
 export interface NominationCardProps {
-  nomination: Nomination;
+  nomination: DisplayNomination;
   mode: VotingMode;
   isSelected?: boolean;
   isVoted?: boolean;
@@ -77,7 +86,7 @@ export const NominationCard: React.FC<NominationCardProps> = ({
   };
   
   // Handle keyboard
-  const handleKeyDown = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (isDisabled) return;
     
     if (event.key === 'Enter' || event.key === ' ') {
@@ -113,15 +122,18 @@ export const NominationCard: React.FC<NominationCardProps> = ({
   const expandedClass = isExpanded ? 'nomination-card--expanded' : '';
   
   return (
-    <Card
-      className={`nomination-card ${selectedClass} ${disabledClass} ${votedClass} ${expandedClass} ${className}`}
+    <div
       role={roleAttr}
       aria-checked={ariaChecked}
       aria-disabled={isDisabled}
       tabIndex={isDisabled ? -1 : 0}
       onClick={handleToggle}
       onKeyDown={handleKeyDown}
+      className={`nomination-card-wrapper ${isDisabled ? 'nomination-card-wrapper--disabled' : ''}`}
     >
+      <Card
+        className={`nomination-card ${selectedClass} ${disabledClass} ${votedClass} ${expandedClass} ${className}`}
+      >
       {/* Header */}
       <div className="nomination-card__header">
         {/* Selection Control */}
@@ -234,6 +246,7 @@ export const NominationCard: React.FC<NominationCardProps> = ({
         </div>
       )}
     </Card>
+    </div>
   );
 };
 

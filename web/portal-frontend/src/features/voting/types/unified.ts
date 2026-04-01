@@ -427,23 +427,13 @@ export interface VotingQueryParams {
 // Re-export modern types for convenience
 export type {
   Poll,
-  ModernNomination as Nomination,
+  Nomination,
   Option,
   Vote,
   PollStatus,
   PollScopeType,
-  PollVisibility,
-  ResultsVisibility,
-  NominationKind,
+  PollResults,
 } from './index';
 
-// Legacy types
-export type {
-  LegacyNomination,
-  LegacyOption,
-  LegacyVoting,
-} from '../../../data/nominations';
-
-export type {
-  VotingCatalogItem,
-} from '../../../api/votings';
+// Re-export the type aliases we created
+export type { ModernNomination, LegacyNomination, LegacyOption, LegacyVoting, VotingCatalogItem };

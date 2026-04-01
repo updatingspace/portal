@@ -16,9 +16,18 @@ export * from './NominationCard';
 export * from './VoteButton';
 export * from './ResultsVisualization';
 export * from './VotingAlerts';
+export * from './ProgressiveDisclosure';
 
-// Skeletons
-export * from './skeletons/VotingCardSkeleton';
+// Skeletons (specific exports to avoid naming conflicts)
+export {
+  VotingListSkeleton,
+  NominationListSkeleton,
+  NominationCardSkeleton,
+  ResultsSkeleton,
+  PageHeaderSkeleton,
+  Skeleton,
+  TextSkeleton,
+} from './skeletons';
 
 // Styles - import in your app entry point
 // import '@/features/voting/components/styles.css';

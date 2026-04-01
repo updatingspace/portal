@@ -36,9 +36,6 @@ export type {
   Vote,
   PollStatus,
   PollScopeType,
-  PollVisibility,
-  ResultsVisibility,
-  NominationKind,
 } from '../types/unified';
 
 // Adapter functions

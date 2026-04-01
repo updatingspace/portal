@@ -12,8 +12,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Icon } from '@gravity-ui/uikit';
-import { CircleInfo, TriangleExclamation, CircleCheck, CircleXmark } from '@gravity-ui/icons';
+import { Alert, Button } from '@gravity-ui/uikit';
 
 // ============================================================================
 // Types
@@ -65,21 +64,6 @@ function getAlertTheme(type: AlertType): AlertTheme {
   }
 }
 
-function getAlertIcon(type: AlertType) {
-  switch (type) {
-    case 'info':
-      return CircleInfo;
-    case 'warning':
-      return TriangleExclamation;
-    case 'success':
-      return CircleCheck;
-    case 'error':
-      return CircleXmark;
-    default:
-      return CircleInfo;
-  }
-}
-
 // ============================================================================
 // Single Alert Component
 // ============================================================================
@@ -108,9 +92,20 @@ const SingleAlert: React.FC<{
   };
   
   const theme = getAlertTheme(alert.type);
-  const IconComponent = getAlertIcon(alert.type);
   
   if (!isVisible) return null;
+  
+  // Build actions for the Alert component
+  const alertActions = alert.actions?.map((action, index) => (
+    <Button
+      key={index}
+      view={action.view ?? (action.primary ? 'action' : 'outlined')}
+      size="s"
+      onClick={action.onClick}
+    >
+      {action.label}
+    </Button>
+  ));
   
   return (
     <Alert
@@ -118,36 +113,9 @@ const SingleAlert: React.FC<{
       title={alert.title}
       message={alert.message}
       onClose={alert.dismissable ? handleDismiss : undefined}
+      actions={alertActions}
       className={`voting-alert voting-alert--${alert.type} ${!isVisible ? 'voting-alert--hidden' : ''}`}
-      role="alert"
-      aria-live={alert.type === 'error' ? 'assertive' : 'polite'}
-    >
-      <div className="voting-alert__content">
-        <div className="voting-alert__icon">
-          <Icon data={IconComponent} size={20} />
-        </div>
-        
-        <div className="voting-alert__body">
-          <div className="voting-alert__title">{alert.title}</div>
-          <div className="voting-alert__message">{alert.message}</div>
-          
-          {alert.actions && alert.actions.length > 0 && (
-            <div className="voting-alert__actions">
-              {alert.actions.map((action, index) => (
-                <Button
-                  key={index}
-                  view={action.view ?? (action.primary ? 'action' : 'outlined')}
-                  size="s"
-                  onClick={action.onClick}
-                >
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </Alert>
+    />
   );
 };
 

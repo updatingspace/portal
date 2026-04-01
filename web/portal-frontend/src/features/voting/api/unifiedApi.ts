@@ -39,11 +39,15 @@ import type {
   VotingSession,
   LegacyVotingSession,
   VotingSessionWithQuestions,
+  LegacyVotingSessionWithQuestions,
   LegacyVotingQuestion,
   ApiConfig,
   VotingQueryParams,
   VotingListResponse,
   VotingDetailResponse,
+} from '../types/unified';
+
+import {
   adaptLegacyVotingToPoll,
   adaptLegacyNominationToModern,
   isLegacyPoll,
@@ -176,9 +180,15 @@ async function fetchVotingSessionDetailModern(
 ): Promise<VotingSessionWithQuestions> {
   const info = await fetchPollInfoModern(pollId);
   
+  // Map nominations to questions with answers (semantic alias)
+  const questions = info.nominations.map(nom => ({
+    ...nom,
+    answers: nom.options, // options → answers semantic mapping
+  }));
+  
   return {
     ...info.poll,
-    questions: info.nominations,
+    questions,
     meta: info.meta,
   };
 }

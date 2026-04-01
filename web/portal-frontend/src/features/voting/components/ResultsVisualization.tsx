@@ -14,7 +14,7 @@
 
 import React, { useMemo } from 'react';
 import { Card, Button, Icon, Label } from '@gravity-ui/uikit';
-import { ArrowDownToLine, Crown } from '@gravity-ui/icons';
+import { ArrowDownToLine, CrownDiamond } from '@gravity-ui/icons';
 import {
   BarChart,
   Bar,
@@ -31,8 +31,15 @@ import type { Nomination } from '../unified';
 // Types
 // ============================================================================
 
+/**
+ * Extended nomination for results display
+ */
+export interface ResultNomination extends Nomination {
+  vote_count?: number;
+}
+
 export interface ResultsVisualizationProps {
-  nominations: Nomination[];
+  nominations: ResultNomination[];
   totalVotes: number;
   title?: string;
   showExport?: boolean;
@@ -175,7 +182,7 @@ export const ResultsVisualization: React.FC<ResultsVisualizationProps> = ({
       {/* Winner Highlight */}
       {winner && (
         <div className="results-visualization__winner">
-          <Icon data={Crown} size={24} className="results-visualization__winner-icon" />
+          <Icon data={CrownDiamond} size={24} className="results-visualization__winner-icon" />
           <div className="results-visualization__winner-info">
             <Label theme="success" size="m">Лидер</Label>
             <div className="results-visualization__winner-title">{winner.title}</div>

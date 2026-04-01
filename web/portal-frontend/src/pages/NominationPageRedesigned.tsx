@@ -16,11 +16,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Breadcrumbs, Button, Card, Icon, Label, Skeleton } from '@gravity-ui/uikit';
 import { ArrowLeft, ArrowRotateRight, Check, Eye, EyeSlash } from '@gravity-ui/icons';
 
-import { useNominationDetail, useCastVoteUnified } from '../../features/voting/hooks/useVotingUnified';
-import { NominationCard, type VotingMode } from '../../features/voting/components/NominationCard';
-import { VoteButton } from '../../features/voting/components/VoteButton';
-import { VotingAlerts, createVotingAlerts, type VotingAlert } from '../../features/voting/components/VotingAlerts';
-import { toaster } from '../../toaster';
+import { useNomination, useCastVoteUnified } from '@/features/voting/hooks/useVotingUnified';
+import { NominationCard, type VotingMode } from '@/features/voting/components/NominationCard';
+import { VoteButton } from '@/features/voting/components/VoteButton';
+import { VotingAlerts, createVotingAlerts, type VotingAlert } from '@/features/voting/components/VotingAlerts';
+import { toaster } from '@/toaster';
 
 // ============================================================================
 // Types
