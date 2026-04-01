@@ -1,47 +1,73 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
 import { ACCESS_DENIED_EVENT } from '../api/accessDenied';
 import { toaster } from '../toaster';
 import { notifyApiError } from './apiErrorHandling';
 
+const createForbiddenApiError = () =>
+  new ApiError('Forbidden from service', {
+    status: 403,
+    kind: 'forbidden',
+    details: {
+      error: {
+        request_id: 'req-321',
+        service: 'portal',
+      },
+    },
+  });
+
+const createServerApiError = () =>
+  new ApiError('Server failed', {
+    status: 500,
+    kind: 'server',
+  });
+
 describe('notifyApiError', () => {
+  let accessDeniedListener: EventListener = () => undefined;
+
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('emits access denied event and skips raw toast for forbidden errors', async () => {
-    const toasterSpy = vi.spyOn(toaster, 'add').mockImplementation(() => undefined);
-    const eventSpy = vi.fn();
+  afterEach(() => {
+    window.removeEventListener(ACCESS_DENIED_EVENT, accessDeniedListener);
+    accessDeniedListener = () => undefined;
+  });
 
-    window.addEventListener(ACCESS_DENIED_EVENT, eventSpy as EventListener);
-
-    const error = new ApiError('Forbidden from service', {
-      status: 403,
-      kind: 'forbidden',
-      details: {
-        error: {
-          request_id: 'req-321',
-          service: 'portal',
-        },
-      },
-    });
+  it('returns forbidden kind for forbidden API errors', () => {
+    const error = createForbiddenApiError();
 
     const kind = notifyApiError(error, 'Не удалось выполнить действие');
 
     expect(kind).toBe('forbidden');
-    expect(toasterSpy).not.toHaveBeenCalled();
-    expect(eventSpy).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener(ACCESS_DENIED_EVENT, eventSpy as EventListener);
   });
 
-  it('shows toast for non-forbidden errors', () => {
+  it('skips raw toast for forbidden API errors', () => {
     const toasterSpy = vi.spyOn(toaster, 'add').mockImplementation(() => undefined);
-    const error = new ApiError('Server failed', {
-      status: 500,
-      kind: 'server',
-    });
+    const error = createForbiddenApiError();
+
+    notifyApiError(error, 'Не удалось выполнить действие');
+
+    expect(toasterSpy).not.toHaveBeenCalled();
+  });
+
+  it('emits access denied event for forbidden API errors', async () => {
+    const eventSpy = vi.fn();
+
+    accessDeniedListener = eventSpy as EventListener;
+    window.addEventListener(ACCESS_DENIED_EVENT, accessDeniedListener);
+
+    const error = createForbiddenApiError();
+
+    notifyApiError(error, 'Не удалось выполнить действие');
+
+    expect(eventSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows toast for non-forbidden API errors', () => {
+    const toasterSpy = vi.spyOn(toaster, 'add').mockImplementation(() => undefined);
+    const error = createServerApiError();
 
     notifyApiError(error, 'Контекст');
 

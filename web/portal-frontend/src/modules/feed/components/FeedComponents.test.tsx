@@ -32,90 +32,119 @@ function renderWithTheme(ui: React.ReactElement) {
   );
 }
 
+function renderFeedItem(props: Partial<React.ComponentProps<typeof FeedItem>> = {}) {
+  const mockItem: ActivityEvent = createActivityEvents()[0];
+  const item = props.item ?? mockItem;
+
+  return renderWithTheme(
+    <FeedItem
+      item={item}
+      showPayload={props.showPayload}
+      compact={props.compact}
+    />,
+  );
+}
+
 describe('FeedItem', () => {
   const mockItem: ActivityEvent = createActivityEvents()[0];
+  const EVENT_TYPE_CASES = [
+    {
+      title: 'achievement',
+      type: 'game.achievement',
+      eventTitle: 'Achievement Unlocked',
+      expectedIcon: '🏆',
+    },
+    {
+      title: 'unknown',
+      type: 'custom.event',
+      eventTitle: 'Custom Event',
+      expectedIcon: '📌',
+    },
+  ] as const;
 
-  it('renders item title', () => {
-    renderWithTheme(<FeedItem item={mockItem} />);
+  it('should render item title', () => {
+    renderFeedItem({ item: mockItem });
 
     expect(screen.getByText(mockItem.title)).toBeInTheDocument();
   });
 
-  it('renders event type icon', () => {
-    renderWithTheme(<FeedItem item={mockItem} />);
+  it('should render event type icon', () => {
+    renderFeedItem({ item: mockItem });
 
-    // Vote cast event should have vote icon
     expect(screen.getByText('🗳️')).toBeInTheDocument();
   });
 
-  it('renders date string', () => {
-    renderWithTheme(<FeedItem item={mockItem} />);
+  it('should render formatted date string', () => {
+    renderFeedItem({ item: mockItem });
 
-    // Date should be formatted
     expect(screen.getByText(/2025/)).toBeInTheDocument();
   });
 
-  it('renders event type label', () => {
-    renderWithTheme(<FeedItem item={mockItem} />);
+  it('should render event type label', () => {
+    renderFeedItem({ item: mockItem });
 
     expect(screen.getByText(/Голосование/i)).toBeInTheDocument();
   });
 
-  it('renders scope type when present', () => {
+  it('should render scope type when it exists', () => {
     const itemWithScope: ActivityEvent = {
       ...mockItem,
       scopeType: 'COMMUNITY',
     };
-    renderWithTheme(<FeedItem item={itemWithScope} />);
+    renderFeedItem({ item: itemWithScope });
 
     expect(screen.getByText('COMMUNITY')).toBeInTheDocument();
   });
 
-  it('renders payload when showPayload is true', () => {
-    renderWithTheme(<FeedItem item={mockItem} showPayload={true} />);
+  it('should render payload when showPayload is true', () => {
+    renderFeedItem({ item: mockItem, showPayload: true });
 
-    // Payload JSON should be displayed
     expect(screen.getByText(/"poll_id"/)).toBeInTheDocument();
   });
 
-  it('hides payload when showPayload is false', () => {
-    renderWithTheme(<FeedItem item={mockItem} showPayload={false} />);
+  it('should hide payload when showPayload is false', () => {
+    renderFeedItem({ item: mockItem, showPayload: false });
 
     expect(screen.queryByText(/"poll_id"/)).not.toBeInTheDocument();
   });
 
-  it('renders compact variant', () => {
-    renderWithTheme(<FeedItem item={mockItem} compact={true} />);
+  it('should render title in compact mode', () => {
+    renderFeedItem({ item: mockItem, compact: true });
 
-    // Should still show title and type
     expect(screen.getByText(mockItem.title)).toBeInTheDocument();
+  });
+
+  it('should render event type label in compact mode', () => {
+    renderFeedItem({ item: mockItem, compact: true });
+
     expect(screen.getByText(/Голосование/i)).toBeInTheDocument();
   });
 
-
-  it('renders different event types correctly', () => {
+  it('should render achievement label for achievement events', () => {
     const achievementItem: ActivityEvent = {
       ...mockItem,
       type: 'game.achievement',
       title: 'Achievement Unlocked',
     };
 
-    renderWithTheme(<FeedItem item={achievementItem} />);
+    renderFeedItem({ item: achievementItem });
 
-    expect(screen.getByText('🏆')).toBeInTheDocument();
     expect(screen.getByText(/Достижение/i)).toBeInTheDocument();
   });
 
-  it('handles unknown event types with fallback', () => {
-    const unknownItem: ActivityEvent = {
+  it.each(EVENT_TYPE_CASES)('should render expected icon for $title event type', ({
+    type,
+    eventTitle,
+    expectedIcon,
+  }) => {
+    const item: ActivityEvent = {
       ...mockItem,
-      type: 'custom.event',
-      title: 'Custom Event',
+      type,
+      title: eventTitle,
     };
 
-    renderWithTheme(<FeedItem item={unknownItem} />);
+    renderFeedItem({ item });
 
-    // Should show fallback icon
-    expect(screen.getByText('📌')).toBeInTheDocument();
+    expect(screen.getByText(expectedIcon)).toBeInTheDocument();
   });
 });

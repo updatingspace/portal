@@ -1,11 +1,12 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AccessDeniedError, emitAccessDenied } from '../../api/accessDenied';
-import { AuthProvider, type UserInfo, useAuth } from '../../contexts/AuthContext';
+import { AuthProvider } from '../../contexts/AuthContext';
 import { AppLayout } from './AppLayout';
+import { AuthInitializer } from '../../test/test-utils';
 
 vi.mock('@gravity-ui/navigation', () => ({
   AsideHeader: ({ renderContent }: { renderContent: () => React.ReactNode }) => (
@@ -17,41 +18,35 @@ vi.mock('./AppHeader', () => ({
   AppHeader: () => <div data-testid="app-header" />,
 }));
 
-const AuthInitializer: React.FC<{ user: UserInfo | null }> = ({ user }) => {
-  const { setUser } = useAuth();
-
-  useEffect(() => {
-    setUser(user);
-  }, [setUser, user]);
-
-  return null;
+const BASE_USER = {
+  id: 'u-1',
+  username: 'u-1',
+  email: 'u-1@example.com',
+  isSuperuser: false,
+  isStaff: false,
+  displayName: 'User 1',
+  tenant: { id: 'tenant-1', slug: 'aef' },
+  capabilities: ['activity.feed.read'],
 };
+
+function renderAppLayout(userOverrides: Partial<typeof BASE_USER> = {}) {
+  return render(
+    <MemoryRouter initialEntries={['/app/feed']}>
+      <AuthProvider bootstrap={false}>
+        <AuthInitializer user={{ ...BASE_USER, ...userOverrides }} />
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/app/feed" element={<div>Feed Content</div>} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </MemoryRouter>,
+  );
+}
 
 describe('AppLayout Access Denied integration', () => {
   it('shows AccessDeniedScreen when api 403 error event is emitted', async () => {
-    render(
-      <MemoryRouter initialEntries={['/app/feed']}>
-        <AuthProvider bootstrap={false}>
-          <AuthInitializer
-            user={{
-              id: 'u-1',
-              username: 'u-1',
-              email: 'u-1@example.com',
-              isSuperuser: false,
-              isStaff: false,
-              displayName: 'User 1',
-              tenant: { id: 'tenant-1', slug: 'aef' },
-              capabilities: ['activity.feed.read'],
-            }}
-          />
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/app/feed" element={<div>Feed Content</div>} />
-            </Route>
-          </Routes>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
+    renderAppLayout();
 
     expect(await screen.findByText('Feed Content')).toBeInTheDocument();
 
@@ -72,29 +67,12 @@ describe('AppLayout Access Denied integration', () => {
   });
 
   it('ignores access denied events for another route path', async () => {
-    render(
-      <MemoryRouter initialEntries={['/app/feed']}>
-        <AuthProvider bootstrap={false}>
-          <AuthInitializer
-            user={{
-              id: 'u-2',
-              username: 'u-2',
-              email: 'u-2@example.com',
-              isSuperuser: false,
-              isStaff: false,
-              displayName: 'User 2',
-              tenant: { id: 'tenant-1', slug: 'aef' },
-              capabilities: ['activity.feed.read'],
-            }}
-          />
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/app/feed" element={<div>Feed Content</div>} />
-            </Route>
-          </Routes>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
+    renderAppLayout({
+      id: 'u-2',
+      username: 'u-2',
+      email: 'u-2@example.com',
+      displayName: 'User 2',
+    });
 
     expect(await screen.findByText('Feed Content')).toBeInTheDocument();
 

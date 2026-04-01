@@ -37,6 +37,7 @@ const FriendsListPage = lazy(() =>
 const SettingsPage = lazy(() => import('../pages/app/settings/Page').then((mod) => ({ default: mod.SettingsPage })));
 const AdminPage = lazy(() => import('../pages/app/AdminPage').then((mod) => ({ default: mod.AdminPage })));
 const TenantAdminPage = lazy(() => import('../pages/app/TenantAdminPage').then((mod) => ({ default: mod.TenantAdminPage })));
+const FeatureFlagsPage = lazy(() => import('../pages/app/FeatureFlagsPage').then((mod) => ({ default: mod.FeatureFlagsPage })));
 const PlaceholderPage = lazy(() => import('../pages/app/PlaceholderPage').then((mod) => ({ default: mod.PlaceholderPage })));
 const PollCreatePage = lazy(() => import('../modules/voting/pages/PollCreatePage').then((mod) => ({ default: mod.PollCreatePage })));
 const PollManagePage = lazy(() => import('../modules/voting/pages/PollManagePage').then((mod) => ({ default: mod.PollManagePage })));
@@ -113,6 +114,7 @@ const routeConfig = [
               </RequireCapability>
             ),
           },
+          { path: '/app/feature-flags', element: <FeatureFlagsPage /> },
           { path: '/app/gamification', element: <GamificationDashboardPage /> },
           { path: '/app/gamification/achievements/new', element: <AchievementFormPage /> },
           { path: '/app/gamification/achievements/:id/edit', element: <AchievementFormPage /> },

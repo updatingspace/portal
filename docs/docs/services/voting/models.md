@@ -14,6 +14,12 @@ Multi-tenant голосования для платформы.
 ### voting (legacy)
 Оригинальный AEF-Vote, single-tenant.
 
+> Статус на март 2026: legacy Django-модели остаются только как
+> quarantined storage для отдельной миграции данных. Публичные
+> `/nominations` и `/votings` больше не читают их напрямую и работают
+> как compatibility-layer поверх `tenant_voting` с tenant context и
+> BFF/HMAC-проверкой.
+
 ---
 
 ## tenant_voting Models

@@ -16,14 +16,18 @@ const collectPaths = (routes: { path?: string; children?: unknown[] }[]): string
 };
 
 describe('Profile hub routes', () => {
+  const PROFILE_ROUTES = [
+    '/app/profile/following',
+    '/app/profile/followers',
+    '/app/profile/communities',
+    '/app/profile/achievements',
+    '/app/profile/friends',
+  ] as const;
+
   it('registers all show-all profile routes', () => {
     const router = createAppRouter();
     const paths = collectPaths(router.routes as { path?: string; children?: unknown[] }[]);
 
-    expect(paths).toContain('/app/profile/following');
-    expect(paths).toContain('/app/profile/followers');
-    expect(paths).toContain('/app/profile/communities');
-    expect(paths).toContain('/app/profile/achievements');
-    expect(paths).toContain('/app/profile/friends');
+    expect(paths).toEqual(expect.arrayContaining(PROFILE_ROUTES));
   });
 });

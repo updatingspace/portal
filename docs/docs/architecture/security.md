@@ -213,18 +213,17 @@ def login(request):
 
 Для API с cookie-based auth используется:
 1. **SameSite=Lax** — базовая защита
-2. **Double-submit cookie** (опционально)
-3. **Origin header validation**
+2. **Django `CsrfViewMiddleware` / `csrf_protect`** — стандартная проверка token + Origin/Referer
+3. **Host-only CSRF cookie** — CSRF-cookie не шарится на весь `*.updspace.com`
 
 ```python
-def validate_origin(request):
-    origin = request.headers.get("Origin")
-    allowed = [
-        "https://aef.updspace.com",
-        "https://id.updspace.com",
-    ]
-    if origin not in allowed:
-        raise CSRFError("Invalid origin")
+MIDDLEWARE = [
+    "django.middleware.csrf.CsrfViewMiddleware",
+]
+
+CSRF_COOKIE_NAME = "updspace_csrf"
+CSRF_COOKIE_DOMAIN = None  # host-only
+CSRF_HEADER_NAME = "HTTP_X_CSRF_TOKEN"
 ```
 
 ## Audit Logging

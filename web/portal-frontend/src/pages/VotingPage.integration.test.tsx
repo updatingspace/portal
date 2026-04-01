@@ -1,5 +1,4 @@
 import React from 'react';
-import { vi } from 'vitest';
 
 import { ApiError } from '../api/client';
 import { nominationsApiMock } from '../test/mocks/api';
@@ -7,55 +6,57 @@ import { Routes, Route } from 'react-router-dom';
 
 import { renderWithProviders, screen, userEvent } from '../test/test-utils';
 import { VotingPage } from './VotingPage';
+import { withMockedDate } from '../test/time';
 
-const fixedNow = new Date('2025-01-02T12:00:00Z').getTime();
-const mockNow = () => vi.spyOn(Date, 'now').mockReturnValue(fixedNow);
+const LOADER_TEXT = 'Загружаем номинации...';
+const NOMINATION_TITLE = 'Лучшая графика';
+const SECOND_NOMINATION_TITLE = 'Лучший геймплей';
+const ACTIVE_STATUS_LABEL = 'Активно';
+const RETRY_BUTTON_LABEL = 'Попробовать еще раз';
+const VOTING_ROUTE = '/votings/vote-active';
+const VOTING_ROUTE_PATH = '/votings/:votingId';
+const FIRST_NOMINATION_LINK = '/nominations/nom-1';
+
+function renderVotingPage() {
+  renderWithProviders(
+    <Routes>
+      <Route path={VOTING_ROUTE_PATH} element={<VotingPage />} />
+    </Routes>,
+    { route: VOTING_ROUTE },
+  );
+}
 
 describe('VotingPage integration', () => {
-  test('loads and renders nominations list', async () => {
-    const nowSpy = mockNow();
-    try {
-      renderWithProviders(
-        <Routes>
-          <Route path="/votings/:votingId" element={<VotingPage />} />
-        </Routes>,
-        { route: '/votings/vote-active' },
-      );
+  test('shows loading indicator before nominations are rendered', withMockedDate(async () => {
+    renderVotingPage();
 
-      expect(screen.getByText('Загружаем номинации...')).toBeInTheDocument();
+    expect(screen.getByText(LOADER_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+  }));
 
-      expect(await screen.findByText('Лучшая графика')).toBeInTheDocument();
-      expect(screen.getByText('Лучший геймплей')).toBeInTheDocument();
-      expect(screen.getByText('Активно')).toBeInTheDocument();
+  test('renders nominations and first nomination link after loading', withMockedDate(async () => {
+    renderVotingPage();
 
-      const firstLink = screen.getByRole('link', { name: 'Лучшая графика' });
-      expect(firstLink).toHaveAttribute('href', '/nominations/nom-1');
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
+    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(SECOND_NOMINATION_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(ACTIVE_STATUS_LABEL)).toBeInTheDocument();
 
-  test('shows error state and retries fetch', async () => {
-    const nowSpy = mockNow();
+    const firstLink = screen.getByRole('link', { name: NOMINATION_TITLE });
+    expect(firstLink).toHaveAttribute('href', FIRST_NOMINATION_LINK);
+  }));
+
+  test('retries nominations fetch when user clicks retry', withMockedDate(async () => {
     nominationsApiMock.fetchNominations.mockRejectedValueOnce(
       new ApiError('fail', { kind: 'server', status: 500 }),
     );
 
-    try {
-      renderWithProviders(
-        <Routes>
-          <Route path="/votings/:votingId" element={<VotingPage />} />
-        </Routes>,
-        { route: '/votings/vote-active' },
-      );
+    renderVotingPage();
 
-      const retryButton = await screen.findByRole('button', { name: 'Попробовать еще раз' });
-      await userEvent.click(retryButton);
+    const retryButton = await screen.findByRole('button', { name: RETRY_BUTTON_LABEL });
+    expect(retryButton).toBeEnabled();
+    await userEvent.click(retryButton);
 
-      expect(nominationsApiMock.fetchNominations).toHaveBeenCalledTimes(2);
-      expect(await screen.findByText('Лучшая графика')).toBeInTheDocument();
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
+    expect(nominationsApiMock.fetchNominations).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+  }));
 });

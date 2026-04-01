@@ -1,10 +1,9 @@
-import { ApiError, apiBaseUrl, extractApiErrorMessage, request, requestResult } from '../api/client';
-export { ApiError } from '../api/client';
 import {
-  clearSessionToken,
-  getSessionToken,
-  setSessionToken,
-} from '../api/sessionToken';
+  ApiError,
+  request,
+  requestResult,
+} from '../api/client';
+export { ApiError } from '../api/client';
 
 export type AccountProfile = {
   username: string;
@@ -42,6 +41,7 @@ export type UpdspaceIdMembership = {
 export type SessionMe = {
   user: { id: string; master_flags: Record<string, unknown> };
   tenant?: { id: string; slug: string } | null;
+  feature_flags?: Record<string, boolean>;
   portal_profile?: unknown;
   id_profile?: {
     user?: UpdspaceIdUser | null;
@@ -74,9 +74,6 @@ export type AvatarResponse = {
   avatar_gravatar_enabled?: boolean | null;
 };
 
-const toApiUrl = (path: string) =>
-  `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-
 const statusToKind = (status: number) => {
   if (status === 401) return 'unauthorized' as const;
   if (status === 403) return 'forbidden' as const;
@@ -85,25 +82,12 @@ const statusToKind = (status: number) => {
   return 'unknown' as const;
 };
 
-const parseErrorMessage = async (
-  response: Response,
-): Promise<{ message: string | null; details: unknown | null }> => {
-  try {
-    const data = await response.clone().json();
-    return { message: extractApiErrorMessage(data), details: data };
-  } catch {
-    /* ignore */
-  }
-  return { message: null, details: null };
-};
-
 type AuthResponseMeta = {
-  meta?: { session_token?: string | null } | null;
-  session_token?: string | null;
+  meta?: unknown | null;
 };
 
 export type HeadlessLoginResult =
-  | { ok: true; token: string; meta?: unknown; user?: AccountProfile | null }
+  | { ok: true; meta?: unknown; user?: AccountProfile | null }
   | { ok: false; code?: string; message?: string; retryAfterSeconds?: number };
 
 const extractRetryAfterSeconds = (details: unknown): number | undefined => {
@@ -150,18 +134,8 @@ export async function headlessLogin(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
   return {
     ok: true,
-    token,
     meta: res.data?.meta ?? res.data,
     user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
@@ -195,18 +169,8 @@ export async function headlessSignup(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
   return {
     ok: true,
-    token,
     meta: res.data?.meta ?? res.data,
     user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
@@ -218,7 +182,6 @@ export async function me(): Promise<AccountProfile | null> {
   });
   if (!res.ok) {
     if (res.status === 401 && res.error.code === 'INVALID_OR_EXPIRED_TOKEN') {
-      clearSessionToken();
       return null;
     }
     throw new ApiError(res.error.message ?? 'Не удалось получить профиль', {
@@ -244,48 +207,14 @@ export async function updateProfile(body: {
 export async function uploadAvatar(file: File): Promise<AvatarResponse> {
   const form = new FormData();
   form.append('avatar', file);
-  const headers: Record<string, string> = {};
-  const token = getSessionToken();
-  if (token) headers['X-Session-Token'] = token;
-  const response = await fetch(toApiUrl('/auth/avatar'), {
+  return request('/auth/avatar', {
     method: 'POST',
     body: form,
-    headers,
-    credentials: 'include',
   });
-  if (!response.ok) {
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message =
-      messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    throw new ApiError(message, {
-      status: response.status,
-      kind: statusToKind(response.status),
-      details,
-    });
-  }
-  return response.json();
 }
 
 export async function deleteAvatar(): Promise<AvatarResponse> {
-  const headers: Record<string, string> = {};
-  const token = getSessionToken();
-  if (token) headers['X-Session-Token'] = token;
-  const response = await fetch(toApiUrl('/auth/avatar'), {
-    method: 'DELETE',
-    headers,
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    const { message: messageFromBody, details } = await parseErrorMessage(response);
-    const message =
-      messageFromBody ?? `Запрос завершился с ошибкой (${response.status})`;
-    throw new ApiError(message, {
-      status: response.status,
-      kind: statusToKind(response.status),
-      details,
-    });
-  }
-  return response.json();
+  return request('/auth/avatar', { method: 'DELETE' });
 }
 
 export async function getEmailStatus(): Promise<{ email: string; verified: boolean }> {
@@ -370,7 +299,7 @@ export async function beginPasskeyLogin(): Promise<{ request_options: PublicKeyR
 }
 
 export async function completePasskeyLogin(credential: WebAuthnAssertion): Promise<void> {
-  const res = await requestResult<AuthResponseMeta & { access_token?: string }>(
+  const res = await requestResult<AuthResponseMeta>(
     '/auth/passkeys/login/complete',
     {
       method: 'POST',
@@ -386,20 +315,10 @@ export async function completePasskeyLogin(credential: WebAuthnAssertion): Promi
       code: res.error.code,
     });
   }
-  const token =
-    res.headers.get('X-Session-Token') ||
-    (res.data as { access_token?: string } | null)?.access_token ||
-    res.data?.meta?.session_token ||
-    res.data?.session_token ||
-    '';
-  if (token) {
-    setSessionToken(token);
-  }
 }
 
 export async function logout(): Promise<void> {
   await request('/auth/logout', { method: 'POST' });
-  clearSessionToken();
 }
 
 // ----- OAuth linking -----

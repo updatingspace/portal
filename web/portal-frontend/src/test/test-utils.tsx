@@ -19,7 +19,7 @@ type RenderOptions = {
   wrapRouter?: boolean;
 };
 
-const AuthInitializer: React.FC<{ user?: UserInfo | null }> = ({ user }) => {
+export const AuthInitializer: React.FC<{ user?: UserInfo | null }> = ({ user }) => {
   const { setUser } = useAuth();
 
   useEffect(() => {

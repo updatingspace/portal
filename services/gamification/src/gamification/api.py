@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import uuid
 from typing import Any, cast
+from uuid import UUID
+
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import NinjaAPI, Query, Router
@@ -10,6 +13,7 @@ from ninja.errors import HttpError
 from core.errors import error_payload
 
 from .context import InternalContext, require_internal_context
+from .dsar import erase_user_data, export_user_data
 from .models import Achievement, AchievementCategory, AchievementGrant, AchievementStatus, GrantVisibility
 from .permissions import has_permission
 from .schemas import (
@@ -109,6 +113,14 @@ def _has_perm_ctx(ctx: InternalContext, permission_key: str) -> bool:
     )
 
 
+def _ensure_dsar_subject(ctx: InternalContext, target_user_id: UUID) -> None:
+    if str(ctx.user_id) == str(target_user_id):
+        return
+    if bool(ctx.master_flags.get("system_admin")):
+        return
+    raise HttpError(403, cast(Any, error_payload("FORBIDDEN", "DSAR access denied")))
+
+
 def _achievement_to_out(
     achievement: Achievement,
     *,
@@ -157,6 +169,31 @@ def _grant_to_out(grant: AchievementGrant) -> GrantOut:
         created_at=grant.created_at,
         revoked_at=grant.revoked_at,
     )
+
+
+@router.get("/gamification/internal/dsar/users/{target_user_id}/export", response=dict)
+def dsar_export(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    return export_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
+
+
+@router.post("/gamification/internal/dsar/users/{target_user_id}/erase", response=dict)
+@transaction.atomic
+def dsar_erase(request, target_user_id: str):
+    ctx = require_internal_context(request)
+    parsed_user_id = _parse_uuid(
+        target_user_id,
+        code="INVALID_USER_ID",
+        message="Invalid user id",
+    )
+    _ensure_dsar_subject(ctx, parsed_user_id)
+    return erase_user_data(tenant_id=uuid.UUID(ctx.tenant_id), user_id=parsed_user_id)
 
 
 @router.get("/gamification/achievements", response=AchievementListOut)

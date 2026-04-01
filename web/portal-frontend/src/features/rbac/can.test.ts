@@ -16,18 +16,24 @@ const baseUser: UserInfo = {
 };
 
 describe('can()', () => {
-  it('accepts canonical permissions', () => {
-    const user: UserInfo = { ...baseUser, capabilities: ['activity.feed.read'] };
+  it.each([
+    ['canonical capability', ['activity.feed.read']],
+    ['legacy alias', ['feed:read']],
+  ])('allows access when user has %s', (_label, capabilities) => {
+    const user: UserInfo = { ...baseUser, capabilities };
     expect(can(user, 'activity.feed.read')).toBe(true);
   });
 
-  it('accepts legacy aliases for backward compatibility', () => {
-    const user: UserInfo = { ...baseUser, capabilities: ['feed:read'] };
-    expect(can(user, 'activity.feed.read')).toBe(true);
-  });
-
-  it('keeps superuser bypass', () => {
+  it('keeps superuser bypass for any permission', () => {
     const user: UserInfo = { ...baseUser, isSuperuser: true };
     expect(can(user, 'portal.roles.read')).toBe(true);
+  });
+
+  it.each([
+    ['missing capability', [], 'activity.feed.read'],
+    ['unknown capability', ['portal.roles.read'], 'activity.feed.read'],
+  ])('denies access for %s', (_label, capabilities, permission) => {
+    const user: UserInfo = { ...baseUser, capabilities };
+    expect(can(user, permission)).toBe(false);
   });
 });

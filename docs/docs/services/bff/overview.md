@@ -19,6 +19,7 @@ description: Backend For Frontend — API Gateway платформы
 3. **Proxy** — проксирование запросов в микросервисы
 4. **Context Injection** — добавление X-Headers с контекстом
 5. **HMAC Signing** — подпись запросов для service-to-service
+6. **Privacy Orchestration** — self-service DSAR export/erase aggregation
 
 ## Статус реализации
 
@@ -77,10 +78,10 @@ graph LR
 ```python
 MIDDLEWARE = [
     "core.middleware.RequestIdMiddleware",      # X-Request-Id
+    "django.middleware.csrf.CsrfViewMiddleware",
     "core.middleware.ErrorHandlerMiddleware",   # Unified errors
     "bff.middleware.TenantMiddleware",          # Tenant resolution
     "bff.middleware.SessionMiddleware",         # Session from cookie
-    "bff.middleware.CsrfMiddleware",            # CSRF protection
     "bff.middleware.RateLimitMiddleware",       # Rate limiting
 ]
 ```
@@ -96,8 +97,8 @@ MIDDLEWARE = [
    ↓ резолвит tenant из Host header
 4. SessionMiddleware
    ↓ загружает сессию из cookie
-5. CsrfMiddleware
-   ↓ проверяет CSRF для mutating requests
+5. Django CSRF
+    ↓ `CsrfViewMiddleware` + view-level `csrf_protect` для mutating requests
 6. RateLimitMiddleware
    ↓ применяет rate limits
 7. Handler
@@ -184,6 +185,8 @@ def sign_request(method, path, body, request_id, timestamp, secret):
 |-------------|----------------|
 | `/api/v1/session/*` | BFF (handled locally) |
 | `/api/v1/auth/*` | BFF (handled locally) |
+| `/api/v1/account/me/export` | BFF (aggregate DSAR export) |
+| `/api/v1/account/me` | BFF (self-service erase + account delete) |
 | `/api/v1/portal/*` | Portal `:8003` |
 | `/api/v1/voting/*` | Voting `:8004` |
 | `/api/v1/events/*` | Events `:8005` |
@@ -198,7 +201,17 @@ SESSION_COOKIE_SECURE = True  # False in dev
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_DOMAIN = ".updspace.com"  # ".localhost" in dev
 SESSION_COOKIE_MAX_AGE = 14 * 24 * 60 * 60  # 14 days
+
+CSRF_COOKIE_NAME = "updspace_csrf"
+CSRF_COOKIE_DOMAIN = None  # host-only, не шарим между subdomain'ами
+CSRF_HEADER_NAME = "HTTP_X_CSRF_TOKEN"
 ```
+
+## Privacy Lifecycle
+
+- `GET /api/v1/account/me/export` собирает DSAR export из `bff`, `portal`, `activity`, `access`, `events`, `gamification`, `voting`.
+- `DELETE /api/v1/account/me` оркестрирует erase во всех доменных сервисах, затем удаляет аккаунт в identity provider и отзывает BFF sessions.
+- Оба потока пишут PII-safe audit события `dsar.exported` / `dsar.erased`.
 
 ## CORS Configuration
 

@@ -49,7 +49,11 @@ def _check_access_service() -> dict[str, Any]:
     
     start = time.time()
     try:
-        response = httpx.get(health_url, timeout=3.0)
+        response = httpx.get(
+            health_url,
+            headers={"X-Forwarded-Proto": "https"},
+            timeout=3.0,
+        )
         duration_ms = (time.time() - start) * 1000
         
         if response.status_code == 200:
@@ -88,7 +92,11 @@ def _check_activity_service() -> dict[str, Any]:
     
     start = time.time()
     try:
-        response = httpx.get(health_url, timeout=3.0)
+        response = httpx.get(
+            health_url,
+            headers={"X-Forwarded-Proto": "https"},
+            timeout=3.0,
+        )
         duration_ms = (time.time() - start) * 1000
         
         if response.status_code == 200:

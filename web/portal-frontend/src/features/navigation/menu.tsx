@@ -95,6 +95,23 @@ export const buildAsideMenuItems = (params: {
         onNavigate('/app/admin');
       },
     });
+    items.push({
+      id: 'feature-flags',
+      title: 'Feature Flags',
+      link: '/app/feature-flags',
+      current: currentPath.startsWith('/app/feature-flags'),
+      icon: Gear,
+      iconSize: 18,
+      tooltipText: makeTooltip('Feature Flags', 'Network feature toggles'),
+      onItemClick: (_it, _collapsed, event) => {
+        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+        if (isModifiedClick(e)) {
+          return;
+        }
+        preventDefaultIfPossible(e);
+        onNavigate('/app/feature-flags');
+      },
+    });
   }
 
   return items;

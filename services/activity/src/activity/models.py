@@ -7,6 +7,7 @@ from django.db import models
 from django.utils import timezone
 
 from activity.enums import AccountLinkStatus, ScopeType, SourceType, Visibility
+from activity.fields import EncryptedJSONField, EncryptedTextField
 
 
 def sha256_hex(value: str) -> str:
@@ -34,7 +35,7 @@ class Source(models.Model):
     id = models.BigAutoField(primary_key=True)
     tenant_id = models.UUIDField()
     type = models.CharField(max_length=32, choices=SourceType.choices)
-    config_json = models.JSONField(default=dict)
+    config_json = EncryptedJSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -61,8 +62,8 @@ class AccountLink(models.Model):
         choices=AccountLinkStatus.choices,
         default=AccountLinkStatus.ACTIVE,
     )
-    settings_json = models.JSONField(default=dict)
-    external_identity_ref = models.CharField(
+    settings_json = EncryptedJSONField(default=dict)
+    external_identity_ref = EncryptedTextField(
         max_length=256,
         blank=True,
         null=True,
@@ -97,7 +98,7 @@ class RawEvent(models.Model):
         on_delete=models.CASCADE,
         related_name="raw_events",
     )
-    payload_json = models.JSONField(default=dict)
+    payload_json = EncryptedJSONField(default=dict)
     fetched_at = models.DateTimeField(default=timezone.now)
     dedupe_hash = models.CharField(max_length=64)
 
@@ -373,3 +374,7 @@ def make_dedupe_hash(*, source_type: str, key: str) -> str:
 
 def uuid_from_str(value: str) -> uuid.UUID:
     return uuid.UUID(str(value))
+
+
+# Audit model lives in activity.audit but must be discoverable by Django.
+from activity.audit import ActivityAuditEvent  # noqa: E402, F401

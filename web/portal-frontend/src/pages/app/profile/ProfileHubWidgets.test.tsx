@@ -9,25 +9,23 @@ import { FollowersWidget } from './components/widgets/FollowersWidget';
 import { FollowingWidget } from './components/widgets/FollowingWidget';
 import { FriendsWidget } from './components/widgets/FriendsWidget';
 
+const EMPTY_WIDGET_CASES = [
+  { title: 'achievements', component: AchievementsWidget, emptyText: 'Пока нет достижений' },
+  { title: 'following', component: FollowingWidget, emptyText: 'Пока нет подписок' },
+  { title: 'followers', component: FollowersWidget, emptyText: 'Пока нет подписчиков' },
+  { title: 'communities', component: CommunitiesWidget, emptyText: 'Пока нет сообществ' },
+  { title: 'friends', component: FriendsWidget, emptyText: 'Пока нет друзей' },
+] as const;
+
 describe('Profile hub widgets', () => {
-  it('renders empty texts for all list widgets', () => {
+  it.each(EMPTY_WIDGET_CASES)('renders empty text for $title widget', ({ component: Widget, emptyText }) => {
     render(
       <MemoryRouter>
-        <div>
-          <AchievementsWidget items={[]} />
-          <FollowingWidget items={[]} />
-          <FollowersWidget items={[]} />
-          <CommunitiesWidget items={[]} />
-          <FriendsWidget items={[]} />
-        </div>
+        <Widget items={[]} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Пока нет достижений')).toBeInTheDocument();
-    expect(screen.getByText('Пока нет подписок')).toBeInTheDocument();
-    expect(screen.getByText('Пока нет подписчиков')).toBeInTheDocument();
-    expect(screen.getByText('Пока нет сообществ')).toBeInTheDocument();
-    expect(screen.getByText('Пока нет друзей')).toBeInTheDocument();
+    expect(screen.getByText(emptyText)).toBeInTheDocument();
   });
 
   it('navigates to expected route from CTA', async () => {

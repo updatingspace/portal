@@ -22,10 +22,16 @@ export type UserInfo = {
   displayName: string;
   masterFlags?: Record<string, unknown> | null;
   tenant?: { id: string; slug: string };
+  availableTenants?: Array<{ id: string; slug: string }>;
   capabilities?: string[];
   roles?: string[];
   featureFlags?: Record<string, boolean>;
   language?: string | null;
+};
+
+export type SessionIssue = {
+  code: string;
+  message: string;
 };
 
 const boolFromUnknown = (value: unknown): boolean => value === true || value === 'true' || value === 1;
@@ -37,6 +43,7 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
   const data = payload as {
     user?: { id?: unknown; master_flags?: unknown };
     tenant?: { id?: unknown; slug?: unknown };
+    available_tenants?: unknown;
     portal_profile?: Record<string, unknown> | null;
     id_profile?: { user?: Record<string, unknown> | null } | null;
     capabilities?: unknown;
@@ -95,6 +102,19 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
   const tenantId = safeString(data.tenant?.id);
   const tenantSlug = safeString(data.tenant?.slug);
 
+  const availableTenants = Array.isArray(data.available_tenants)
+    ? data.available_tenants
+        .filter(
+          (item): item is { id: string; slug: string } =>
+            Boolean(item) &&
+            typeof item === 'object' &&
+            typeof (item as { id?: unknown }).id === 'string' &&
+            typeof (item as { slug?: unknown }).slug === 'string',
+        )
+        .map((item) => ({ id: item.id.trim(), slug: item.slug.trim() }))
+        .filter((item) => item.id.length > 0 && item.slug.length > 0)
+    : undefined;
+
   const capabilities = Array.isArray(data.capabilities)
     ? data.capabilities
         .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
@@ -126,6 +146,7 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     displayName,
     masterFlags,
     tenant: tenantId && tenantSlug ? { id: tenantId, slug: tenantSlug } : undefined,
+    availableTenants,
     capabilities,
     roles,
     featureFlags,
@@ -137,6 +158,7 @@ type AuthContextValue = {
   user: UserInfo | null;
   isLoading: boolean;
   isInitialized: boolean;
+  sessionIssue: SessionIssue | null;
   refreshProfile: () => Promise<UserInfo | null>;
   setUser: (nextUser: UserInfo | null) => void;
 };
@@ -148,6 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
   bootstrap = true,
 }) => {
   const [user, setUserState] = useState<UserInfo | null>(null);
+  const [sessionIssue, setSessionIssue] = useState<SessionIssue | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   // Start as not initialized in all modes; tests and runtime will
   // explicitly mark initialization complete via setUser/refreshProfile.
@@ -155,8 +178,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
 
   const setUser = useCallback((nextUser: UserInfo | null) => {
     setUserState(nextUser);
+    setSessionIssue(null);
     setIsInitialized(true);
   }, []);
+
+  const getCurrentSubdomain = (): string | null => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const hostParts = window.location.host.split('.');
+    if (hostParts.length < 3) {
+      return null;
+    }
+    const subdomain = hostParts[0]?.trim();
+    return subdomain && subdomain.length > 0 ? subdomain : null;
+  };
+
+  const extractAvailableTenantsFromDetails = (
+    details: unknown,
+  ): Array<{ id: string; slug: string }> => {
+    if (!details || typeof details !== 'object') {
+      return [];
+    }
+    const raw = (details as { available_tenants?: unknown }).available_tenants;
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw
+      .filter(
+        (item): item is { id: string; slug: string } =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          typeof (item as { id?: unknown }).id === 'string' &&
+          typeof (item as { slug?: unknown }).slug === 'string',
+      )
+      .map((item) => ({ id: item.id.trim(), slug: item.slug.trim() }))
+      .filter((item) => item.id.length > 0 && item.slug.length > 0);
+  };
+
+  const tryRedirectToAvailableTenant = (
+    tenants: Array<{ id: string; slug: string }>,
+  ): boolean => {
+    if (typeof window === 'undefined' || tenants.length === 0) {
+      return false;
+    }
+
+    const currentSubdomain = getCurrentSubdomain();
+    const candidate = tenants.find(
+      (tenant) => tenant.slug !== currentSubdomain,
+    );
+    if (!candidate) {
+      return false;
+    }
+
+    const hostParts = window.location.host.split('.');
+    if (hostParts.length < 3) {
+      return false;
+    }
+    hostParts[0] = candidate.slug;
+
+    const nextHost = hostParts.join('.');
+    const nextUrl = `${window.location.protocol}//${nextHost}/app`;
+    window.location.assign(nextUrl);
+    return true;
+  };
 
   const refreshProfile = useCallback(async () => {
     setIsLoading(true);
@@ -168,6 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
     try {
       const session = await fetchSessionMe();
       if (session) {
+        setSessionIssue(null);
         const mapped = deriveUserFromSessionMe(session);
         setUser(mapped);
         logger.info('Profile refreshed', {
@@ -193,18 +279,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
         const isTenantNotFound =
           error.code === 'TENANT_NOT_FOUND' ||
           (error.message && error.message.toLowerCase().includes('unknown tenant'));
+        const isNoActiveMembership = error.code === 'NO_ACTIVE_MEMBERSHIP';
         if (error.kind === 'unauthorized' || isTenantNotFound) {
           setUser(null);
+          setSessionIssue(null);
           logger.warn('Profile refresh guest state', {
             area: 'auth',
             event: 'refresh_profile',
             data: { reason: error.kind === 'unauthorized' ? 'unauthorized' : 'tenant_not_found' },
             error,
           });
+        } else if (isNoActiveMembership) {
+          const availableTenants = extractAvailableTenantsFromDetails(error.details);
+          const redirected = tryRedirectToAvailableTenant(availableTenants);
+          setUserState(null);
+          setSessionIssue({
+            code: 'NO_ACTIVE_MEMBERSHIP',
+            message:
+              error.message ||
+              'В текущем tenant нет активного membership. Выберите другой tenant или обратитесь к администратору.',
+          });
+          logger.warn('Profile refresh blocked: no active membership', {
+            area: 'auth',
+            event: 'refresh_profile',
+            data: {
+              reason: 'no_active_membership',
+              redirected,
+              availableTenantsCount: availableTenants.length,
+            },
+            error,
+          });
         } else {
+          setSessionIssue(null);
           notifyApiError(error, 'Не получилось обновить профиль');
         }
       } else {
+        setSessionIssue(null);
         notifyApiError(error, 'Не получилось обновить профиль');
       }
       return null;
@@ -225,10 +335,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
       user,
       isLoading,
       isInitialized,
+      sessionIssue,
       refreshProfile,
       setUser,
     }),
-    [isInitialized, isLoading, refreshProfile, setUser, user],
+    [isInitialized, isLoading, refreshProfile, sessionIssue, setUser, user],
   );
 
   return (

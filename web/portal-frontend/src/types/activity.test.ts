@@ -16,7 +16,7 @@ import {
 
 describe('Activity Types', () => {
   describe('isActivityEvent', () => {
-    it('returns true for valid ActivityEvent', () => {
+    it('should return true when value is a valid ActivityEvent', () => {
       const event: ActivityEvent = {
         id: 1,
         tenantId: 'tenant-uuid',
@@ -35,28 +35,23 @@ describe('Activity Types', () => {
       expect(isActivityEvent(event)).toBe(true);
     });
 
-    it('returns false for null', () => {
-      expect(isActivityEvent(null)).toBe(false);
+    it.each([null, undefined, 'string', 123, true])(
+      'should return false when value is %p',
+      (value) => {
+        expect(isActivityEvent(value)).toBe(false);
+      },
+    );
+
+    it.each([
+      {},
+      { id: 1 },
+      { id: 1, type: 'vote.cast' },
+      { id: 1, type: 'vote.cast', title: 'Test' },
+    ])('should return false when required fields are missing: %p', (value) => {
+      expect(isActivityEvent(value)).toBe(false);
     });
 
-    it('returns false for undefined', () => {
-      expect(isActivityEvent(undefined)).toBe(false);
-    });
-
-    it('returns false for primitive values', () => {
-      expect(isActivityEvent('string')).toBe(false);
-      expect(isActivityEvent(123)).toBe(false);
-      expect(isActivityEvent(true)).toBe(false);
-    });
-
-    it('returns false for object missing required fields', () => {
-      expect(isActivityEvent({})).toBe(false);
-      expect(isActivityEvent({ id: 1 })).toBe(false);
-      expect(isActivityEvent({ id: 1, type: 'vote.cast' })).toBe(false);
-      expect(isActivityEvent({ id: 1, type: 'vote.cast', title: 'Test' })).toBe(false);
-    });
-
-    it('returns true for minimal valid object', () => {
+    it('should return true when minimal required fields are present', () => {
       const minimal = {
         id: 1,
         type: 'vote.cast',
@@ -68,7 +63,7 @@ describe('Activity Types', () => {
   });
 
   describe('isErrorResponse', () => {
-    it('returns true for valid ErrorResponse', () => {
+    it('should return true when value is a valid ErrorResponse', () => {
       const errorResponse: ErrorResponse = {
         error: {
           code: 'VALIDATION_ERROR',
@@ -81,7 +76,7 @@ describe('Activity Types', () => {
       expect(isErrorResponse(errorResponse)).toBe(true);
     });
 
-    it('returns true for minimal ErrorResponse', () => {
+    it('should return true when minimal ErrorResponse fields are present', () => {
       const minimal = {
         error: {
           code: 'ERROR',
@@ -91,23 +86,16 @@ describe('Activity Types', () => {
       expect(isErrorResponse(minimal)).toBe(true);
     });
 
-    it('returns false for null', () => {
-      expect(isErrorResponse(null)).toBe(false);
-    });
-
-    it('returns false for object without error field', () => {
-      expect(isErrorResponse({})).toBe(false);
-      expect(isErrorResponse({ message: 'error' })).toBe(false);
-    });
-
-    it('returns false if error is not an object', () => {
-      expect(isErrorResponse({ error: 'string error' })).toBe(false);
-      expect(isErrorResponse({ error: null })).toBe(false);
-    });
+    it.each([null, {}, { message: 'error' }, { error: 'string error' }, { error: null }])(
+      'should return false for invalid error response: %p',
+      (value) => {
+        expect(isErrorResponse(value)).toBe(false);
+      },
+    );
   });
 
   describe('isFeedResponseV2', () => {
-    it('returns true for valid FeedResponseV2', () => {
+    it('should return true when value is a valid FeedResponseV2', () => {
       const response: FeedResponseV2 = {
         items: [
           {
@@ -132,7 +120,7 @@ describe('Activity Types', () => {
       expect(isFeedResponseV2(response)).toBe(true);
     });
 
-    it('returns true for empty items array', () => {
+    it('should return true when items is an empty array and hasMore is provided', () => {
       const response: FeedResponseV2 = {
         items: [],
         nextCursor: null,
@@ -142,56 +130,43 @@ describe('Activity Types', () => {
       expect(isFeedResponseV2(response)).toBe(true);
     });
 
-    it('returns false for null', () => {
-      expect(isFeedResponseV2(null)).toBe(false);
-    });
-
-    it('returns false for object without items array', () => {
-      expect(isFeedResponseV2({})).toBe(false);
-      expect(isFeedResponseV2({ items: 'not-array' })).toBe(false);
-    });
-
-    it('returns false for object without hasMore', () => {
-      expect(isFeedResponseV2({ items: [] })).toBe(false);
-    });
+    it.each([null, {}, { items: 'not-array' }, { items: [] }])(
+      'should return false for invalid feed response: %p',
+      (value) => {
+        expect(isFeedResponseV2(value)).toBe(false);
+      },
+    );
   });
 });
 
 describe('Type Enums', () => {
-  it('SourceType values are correct', () => {
-    const types = ['steam', 'minecraft', 'discord', 'custom'];
-    types.forEach((type) => {
-      expect(type).toBeDefined();
-    });
+  const sourceTypes = ['steam', 'minecraft', 'discord', 'custom'] as const;
+  const accountLinkStatuses = ['active', 'pending', 'disabled', 'error'] as const;
+  const activityEventTypes = [
+    'vote.cast',
+    'event.created',
+    'event.rsvp.changed',
+    'post.created',
+    'game.achievement',
+    'game.playtime',
+    'steam.private',
+    'minecraft.session',
+  ] as const;
+  const healthStatuses = ['ok', 'degraded', 'error'] as const;
+
+  it.each(sourceTypes)('should include SourceType value %s', (value) => {
+    expect(sourceTypes).toContain(value);
   });
 
-  it('AccountLinkStatus values are correct', () => {
-    const statuses = ['active', 'pending', 'disabled', 'error'];
-    statuses.forEach((status) => {
-      expect(status).toBeDefined();
-    });
+  it.each(accountLinkStatuses)('should include AccountLinkStatus value %s', (value) => {
+    expect(accountLinkStatuses).toContain(value);
   });
 
-  it('ActivityEventType values are correct', () => {
-    const eventTypes = [
-      'vote.cast',
-      'event.created',
-      'event.rsvp.changed',
-      'post.created',
-      'game.achievement',
-      'game.playtime',
-      'steam.private',
-      'minecraft.session',
-    ];
-    eventTypes.forEach((type) => {
-      expect(type).toBeDefined();
-    });
+  it.each(activityEventTypes)('should include ActivityEventType value %s', (value) => {
+    expect(activityEventTypes).toContain(value);
   });
 
-  it('HealthStatus values are correct', () => {
-    const statuses = ['ok', 'degraded', 'error'];
-    statuses.forEach((status) => {
-      expect(status).toBeDefined();
-    });
+  it.each(healthStatuses)('should include HealthStatus value %s', (value) => {
+    expect(healthStatuses).toContain(value);
   });
 });

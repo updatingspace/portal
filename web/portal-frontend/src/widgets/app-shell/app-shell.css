@@ -21,6 +21,16 @@
   cursor: pointer;
 }
 
+.app-shell__brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-shell__tenant-switch {
+  min-width: 130px;
+}
+
 .app-shell__header {
   height: var(--gn-aside-header-height, 64px);
   min-height: var(--gn-aside-header-height, 64px);

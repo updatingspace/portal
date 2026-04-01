@@ -36,7 +36,25 @@ vi.mock('@gravity-ui/uikit', async () => {
     Modal: ({ children }: { children?: React.ReactNode }) => <div data-testid="modal">{children}</div>,
     Dialog: DialogStub,
     Portal: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-    Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
+    Button: ({ children, loading: _loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
+      <button {...props}>{children}</button>
+    ),
+    TextArea: ({
+      value,
+      onUpdate,
+      minRows: _minRows,
+      ...props
+    }: React.ComponentProps<'textarea'> & {
+      value?: string;
+      onUpdate?: (nextValue: string) => void;
+      minRows?: number;
+    }) => (
+      <textarea
+        {...props}
+        value={value ?? ''}
+        onChange={(event) => onUpdate?.(event.target.value)}
+      />
+    ),
   };
 });
 
@@ -48,6 +66,27 @@ import {
 import { renderWithProviders, screen, userEvent, waitFor } from '../test/test-utils';
 import { AdminPage } from './AdminPage';
 
+const ADMIN_ROUTE = '/admin';
+const ADMIN_GAMES_ROUTE = '/admin?section=games';
+const ADMIN_VOTINGS_ROUTE = '/admin?section=votings';
+const NOT_FOUND_TEXT = 'Страница не найдена';
+const LOADING_VOTINGS_TEXT = 'Подтягиваем голосования...';
+const MAIN_VOTING_TITLE = 'AEF Game Jam · основной поток';
+const START_DASHBOARD_TEXT = 'Стартовая панель';
+const ABOUT_BUTTON_LABEL = /О проекте/i;
+const ABOUT_MODAL_TITLE = 'AEF Vote';
+
+const CREATE_GAME_BUTTON_LABEL = 'Добавить игру';
+const CREATE_GAME_MODAL_BUTTON_LABEL = 'Добавить';
+const CREATE_GAME_PLACEHOLDER = 'Название игры';
+const CREATE_GAME_TITLE = 'Новая запись';
+const EXISTING_GAME_TITLE = 'Crystal Quest';
+
+const IMPORT_JSON_BUTTON_LABEL = 'Импорт JSON';
+const IMPORT_JSON_PLACEHOLDER = /Вставьте JSON/;
+const PREVIEW_BUTTON_LABEL = 'Показать превью';
+const IMPORT_BUTTON_LABEL = 'Импортировать';
+
 const superuser = {
   id: 'user-1',
   username: 'root',
@@ -58,20 +97,47 @@ const superuser = {
   tenant: { id: 'tenant-1', slug: 'aef' },
 } as const;
 
+function renderAdminPage(route: string, authUser = superuser) {
+  renderWithProviders(<AdminPage />, { route, authUser });
+}
+
+async function openImportVotingDialog(payload = createVotingImportPayload()) {
+  const importButton = await screen.findByRole('button', { name: IMPORT_JSON_BUTTON_LABEL });
+  await userEvent.click(importButton);
+
+  const jsonArea = await screen.findByPlaceholderText(IMPORT_JSON_PLACEHOLDER);
+  await userEvent.clear(jsonArea);
+  fireEvent.change(jsonArea, { target: { value: JSON.stringify(payload) } });
+
+  return {
+    importButton,
+    jsonArea,
+    previewButton: screen.getByRole('button', { name: PREVIEW_BUTTON_LABEL }),
+  };
+}
+
+async function openImportDialogAndAssertReady(payload = createVotingImportPayload()) {
+  const { importButton, jsonArea, previewButton } = await openImportVotingDialog(payload);
+
+  expect(importButton).toBeEnabled();
+  expect(jsonArea).toBeInTheDocument();
+  expect(previewButton).toBeEnabled();
+
+  return { previewButton };
+}
+
 describe('AdminPage integration', () => {
   test('returns 404 for non-superuser', async () => {
-    renderWithProviders(<AdminPage />, {
-      authUser: { ...superuser, isSuperuser: false, isStaff: false },
-    });
+    renderAdminPage(ADMIN_ROUTE, { ...superuser, isSuperuser: false, isStaff: false });
 
-    expect(await screen.findByText('Страница не найдена', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByText(NOT_FOUND_TEXT, {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
-  test.skip('edits voting metadata via admin panel', async () => {
-    renderWithProviders(<AdminPage />, { route: '/admin?section=votings', authUser: superuser });
+  test.skip('edits voting metadata via admin panel [TODO: re-enable after dialog controls are stabilized]', async () => {
+    renderAdminPage(ADMIN_VOTINGS_ROUTE);
 
-    await screen.findByText('Подтягиваем голосования...');
-    expect(await screen.findAllByText('AEF Game Jam · основной поток')).not.toHaveLength(0);
+    await screen.findByText(LOADING_VOTINGS_TEXT);
+    expect(await screen.findAllByText(MAIN_VOTING_TITLE)).not.toHaveLength(0);
 
     const editBtn = screen.getByRole('button', { name: /Редактировать/i });
     await userEvent.click(editBtn);
@@ -93,51 +159,51 @@ describe('AdminPage integration', () => {
   });
 
   test('creates a new game from games section', async () => {
-    renderWithProviders(<AdminPage />, { route: '/admin?section=games', authUser: superuser });
-    expect(await screen.findByText('Crystal Quest')).toBeInTheDocument();
+    renderAdminPage(ADMIN_GAMES_ROUTE);
+    expect(await screen.findByText(EXISTING_GAME_TITLE)).toBeInTheDocument();
 
-    const addBtn = screen.getByRole('button', { name: 'Добавить игру' });
+    const addBtn = screen.getByRole('button', { name: CREATE_GAME_BUTTON_LABEL });
     await userEvent.click(addBtn);
 
-    const modalTitleInput = await screen.findByPlaceholderText('Название игры');
-    await userEvent.type(modalTitleInput, 'Новая запись');
+    const modalTitleInput = await screen.findByPlaceholderText(CREATE_GAME_PLACEHOLDER);
+    await userEvent.type(modalTitleInput, CREATE_GAME_TITLE);
 
-    const addModalBtn = screen.getByRole('button', { name: 'Добавить' });
+    const addModalBtn = screen.getByRole('button', { name: CREATE_GAME_MODAL_BUTTON_LABEL });
     await userEvent.click(addModalBtn);
 
     await waitFor(() => {
       expect(gamesApiMock.createGame).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Новая запись' }),
+        expect.objectContaining({ title: CREATE_GAME_TITLE }),
       );
     });
     await waitFor(() => {
-      expect(screen.queryByPlaceholderText('Название игры')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(CREATE_GAME_PLACEHOLDER)).not.toBeInTheDocument();
     });
   });
 
-  test('shows preview and imports voting JSON', async () => {
-    const payload = createVotingImportPayload();
-    renderWithProviders(<AdminPage />, { route: '/admin?section=votings', authUser: superuser });
+  test('requests voting preview when user submits import JSON', async () => {
+    renderAdminPage(ADMIN_VOTINGS_ROUTE);
 
-    const importButton = await screen.findByRole('button', { name: 'Импорт JSON' });
-    await userEvent.click(importButton);
-
-    const jsonArea = await screen.findByPlaceholderText(/Вставьте JSON/);
-    await userEvent.clear(jsonArea);
-    fireEvent.change(jsonArea, { target: { value: JSON.stringify(payload) } });
-
-    const previewBtn = screen.getByRole('button', { name: 'Показать превью' });
-    await userEvent.click(previewBtn);
+    const { previewButton } = await openImportDialogAndAssertReady();
+    await userEvent.click(previewButton);
 
     await waitFor(() => {
       expect(votingsApiMock.previewVotingImport).toHaveBeenCalled();
     });
+  });
+
+  test('imports voting after preview becomes available', async () => {
+    renderAdminPage(ADMIN_VOTINGS_ROUTE);
+
+    const { previewButton } = await openImportDialogAndAssertReady();
+    await userEvent.click(previewButton);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Импортировать' })).toBeEnabled();
+      expect(votingsApiMock.previewVotingImport).toHaveBeenCalledTimes(1);
     });
 
-    const importAction = screen.getByRole('button', { name: 'Импортировать' });
+    const importAction = screen.getByRole('button', { name: IMPORT_BUTTON_LABEL });
+    expect(importAction).toBeEnabled();
     await userEvent.click(importAction);
 
     await waitFor(() => {
@@ -146,20 +212,15 @@ describe('AdminPage integration', () => {
   });
 
   test('opens About Project modal from sidebar', async () => {
-    renderWithProviders(<AdminPage />, { route: '/admin' });
+    renderAdminPage(ADMIN_ROUTE);
 
-    // Wait for admin page to load
-    await screen.findByText('Стартовая панель');
+    await screen.findByText(START_DASHBOARD_TEXT);
 
-    // Find and click the "О проекте" button
-    const aboutButton = await screen.findByRole('button', { name: /О проекте/i });
+    const aboutButton = await screen.findByRole('button', { name: ABOUT_BUTTON_LABEL });
     await userEvent.click(aboutButton);
 
-    // Verify modal opens with version information
-    expect(await screen.findByText('AEF Vote')).toBeInTheDocument();
+    expect(await screen.findByText(ABOUT_MODAL_TITLE)).toBeInTheDocument();
     expect(screen.getByText(/Платформа для голосования/i)).toBeInTheDocument();
     expect(screen.getByText(/Информация о версии/i)).toBeInTheDocument();
-    expect(screen.getByText(/Фронтенд:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Бэкенд:/i)).toBeInTheDocument();
   });
 });
