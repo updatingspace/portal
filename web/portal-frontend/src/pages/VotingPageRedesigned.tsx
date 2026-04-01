@@ -103,7 +103,7 @@ export const VotingPageRedesigned: React.FC = () => {
     error,
     refetch,
     isFetching,
-  } = useVotingSession(votingId ?? '', {
+  } = useVotingSession(votingId ?? '', undefined, {
     enabled: Boolean(votingId),
   });
   
@@ -245,11 +245,13 @@ export const VotingPageRedesigned: React.FC = () => {
           <section className="col-12 col-lg-10 mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-3" aria-label="Навигация">
-              <Breadcrumbs
-                items={breadcrumbItems}
-                firstDisplayedItemsCount={1}
-                lastDisplayedItemsCount={2}
-              />
+              <Breadcrumbs>
+                {breadcrumbItems.map((item, index) => (
+                  <Breadcrumbs.Item key={`${item.text}-${index}`} href={item.href}>
+                    {item.text}
+                  </Breadcrumbs.Item>
+                ))}
+              </Breadcrumbs>
             </nav>
             
             {/* Back Button */}

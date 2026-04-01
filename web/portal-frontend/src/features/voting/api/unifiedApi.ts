@@ -15,10 +15,8 @@
  * ```
  */
 
-import { request } from '../../../api/client';
 import {
   fetchPolls as fetchPollsModern,
-  fetchPoll as fetchPollModern,
   fetchPollInfo as fetchPollInfoModern,
   castVote as castVoteModern,
   revokeVote as revokeVoteModern,
@@ -50,7 +48,6 @@ import type {
 import {
   adaptLegacyVotingToPoll,
   adaptLegacyNominationToModern,
-  isLegacyPoll,
 } from '../types/unified';
 
 // Import legacy API functions
@@ -60,32 +57,6 @@ import {
   voteForOption as voteForOptionLegacy,
 } from '../../../api/nominations';
 
-import type {
-  VotingCatalogItem,
-} from '../../../api/votings';
-
-import type {
-  Nomination as LegacyNomination,
-} from '../../../data/nominations';
-
-// ============================================================================
-// API Endpoints Constants
-// ============================================================================
-
-const API_ENDPOINTS = {
-  LEGACY: {
-    VOTING_CATALOG: '/voting/votings/feed',
-    NOMINATIONS: '/voting/nominations',
-    VOTE: (nominationId: string) => `/voting/nominations/${nominationId}/vote`,
-  },
-  MODERN: {
-    POLLS: '/voting/polls',
-    POLL_INFO: (pollId: string) => `/voting/polls/${pollId}/info`,
-    VOTES: '/voting/votes',
-    MY_VOTES: (pollId: string) => `/voting/polls/${pollId}/votes/me`,
-    RESULTS: (pollId: string) => `/voting/polls/${pollId}/results`,
-  },
-} as const;
 
 // ============================================================================
 // Voting Sessions (Polls/Votings List)
@@ -114,10 +85,6 @@ export async function fetchVotingSessions(
  */
 async function fetchVotingSessionsLegacy(): Promise<LegacyVotingSession[]> {
   const catalog = await fetchVotingCatalog();
-  
-  // Import adapter function (circular dependency fix)
-  const { adaptLegacyVotingToPoll } = await import('../types/unified');
-  
   return catalog.map(adaptLegacyVotingToPoll);
 }
 
@@ -161,7 +128,7 @@ export async function fetchVotingSessionDetail(
  * For now, return minimal data. Component should use fetchNominationLegacy directly.
  */
 async function fetchVotingSessionDetailLegacy(
-  votingId: string
+  _votingId: string
 ): Promise<LegacyVotingSessionWithQuestions> {
   // Legacy API doesn't have voting detail endpoint
   // This is a limitation - components using legacy should fetch nominations directly
@@ -204,8 +171,6 @@ async function fetchVotingSessionDetailModern(
  */
 export async function fetchNomination(nominationId: string): Promise<LegacyVotingQuestion> {
   const nomination = await fetchNominationLegacy(nominationId);
-  
-  const { adaptLegacyNominationToModern } = await import('../types/unified');
   return adaptLegacyNominationToModern(nomination);
 }
 
@@ -249,7 +214,7 @@ export async function submitVote(
  * @returns Vote record (adapted from legacy response)
  */
 async function submitVoteLegacy(nominationId: string, optionId: string): Promise<Vote> {
-  const response = await voteForOptionLegacy({ nominationId, optionId });
+  await voteForOptionLegacy({ nominationId, optionId });
   
   // Legacy API returns VoteResult { nominationId, optionId, message }
   // We need to adapt it to Vote interface
@@ -269,7 +234,15 @@ async function submitVoteLegacy(nominationId: string, optionId: string): Promise
  * @returns Vote record
  */
 async function submitVoteModern(payload: VoteCastPayload): Promise<Vote> {
-  return castVoteModern(payload);
+  await castVoteModern(payload);
+  return {
+    id: `modern-${payload.nomination_id}-${payload.option_id}`,
+    nomination_id: payload.nomination_id,
+    option_id: payload.option_id,
+    poll_id: payload.poll_id,
+    user_id: '',
+    created_at: new Date().toISOString(),
+  };
 }
 
 /**
@@ -286,7 +259,8 @@ export async function revokeVote(
     throw new Error('Legacy API does not support vote revocation');
   }
   
-  return revokeVoteModern(voteId);
+  await revokeVoteModern(voteId);
+  return { ok: true };
 }
 
 // ============================================================================
