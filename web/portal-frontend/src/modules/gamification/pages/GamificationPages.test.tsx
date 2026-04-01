@@ -15,6 +15,8 @@ const mockRevokeGrant = vi.fn(async () => ({}));
 
 let mockUser: Record<string, unknown> | null = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
 let mockParams: { id?: string } = {};
+let mockAchievementById = true;
+let mockProfiles: Array<{ userId: string; firstName: string; lastName: string; displayName?: string | null; username?: string | null }> = [];
 const permissionMap = new Map<string, boolean>();
 
 vi.mock('react-router-dom', () => ({
@@ -39,7 +41,7 @@ vi.mock('../../../features/access-denied', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: [], isLoading: false }),
+  useQuery: () => ({ data: mockProfiles, isLoading: false }),
 }));
 
 vi.mock('../../portal/api', () => ({
@@ -85,7 +87,8 @@ vi.mock('../../../hooks/useGamification', () => ({
   useUpdateAchievement: () => ({ mutateAsync: mockUpdateAchievement, isPending: false }),
   useAchievement: (id?: string) => ({
     data: id
-      ? {
+      ? (mockAchievementById
+        ? {
           id,
           nameI18n: { ru: 'Тестовая ачивка' },
           description: 'Описание',
@@ -95,6 +98,7 @@ vi.mock('../../../hooks/useGamification', () => ({
           updatedAt: '2026-01-01T00:00:00Z',
           canEdit: true,
         }
+        : undefined)
       : undefined,
     isLoading: false,
   }),
@@ -173,8 +177,11 @@ describe('Gamification pages edge cases', () => {
     mockCreateAchievement.mockClear();
     mockCreateCategory.mockClear();
     mockCreateGrant.mockClear();
+    mockRevokeGrant.mockClear();
     mockUser = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
     mockParams = {};
+    mockAchievementById = true;
+    mockProfiles = [];
     permissionMap.clear();
   });
 
@@ -204,6 +211,41 @@ describe('Gamification pages edge cases', () => {
     expect(await screen.findByText('Заполните хотя бы одно название.')).toBeInTheDocument();
   });
 
+  it('requires category before submit and image for published status', async () => {
+    render(<AchievementFormPage />);
+
+    const localeInput = screen.getAllByPlaceholderText('ru')[0] as HTMLInputElement;
+    const nameInput = screen.getByPlaceholderText('Название');
+    fireEvent.change(localeInput, { target: { value: 'ru' } });
+    fireEvent.change(nameInput, { target: { value: 'Новая ачивка' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    expect(await screen.findByText('Выберите категорию.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'cat' } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'published' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    expect(await screen.findByText('Для публикации нужно добавить хотя бы одно изображение.')).toBeInTheDocument();
+  });
+
+  it('creates category from dialog and selects it', async () => {
+    render(<AchievementFormPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить категорию' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Создать' })[1] as HTMLButtonElement);
+    expect(await screen.findByText('Заполните slug и название категории.')).toBeInTheDocument();
+
+    const slugInput = screen.getByPlaceholderText('event');
+    const titleInput = screen.getByPlaceholderText('События');
+    fireEvent.change(slugInput, { target: { value: 'news' } });
+    fireEvent.change(titleInput, { target: { value: 'Новости' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Создать' })[1] as HTMLButtonElement);
+
+    await vi.waitFor(() => {
+      expect(mockCreateCategory).toHaveBeenCalledWith({ id: 'news', nameI18n: { ru: 'Новости' } });
+    });
+  });
+
   it('creates achievement when minimal data is provided', async () => {
     render(<AchievementFormPage />);
 
@@ -227,5 +269,30 @@ describe('Gamification pages edge cases', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Выдать' }));
     expect(await screen.findByText('Укажите user_id получателя.')).toBeInTheDocument();
     expect(mockCreateGrant).not.toHaveBeenCalled();
+  });
+
+  it('shows missing achievement state in detail page', () => {
+    mockAchievementById = false;
+    mockParams = { id: 'a404' };
+    render(<AchievementDetailPage />);
+    expect(screen.getByText('Ачивка не найдена.')).toBeInTheDocument();
+  });
+
+  it('selects recipient from search and grants achievement', async () => {
+    mockParams = { id: 'a1' };
+    mockProfiles = [{ userId: 'u77', firstName: 'Ivan', lastName: 'Petrov', username: 'ivan' }];
+    render(<AchievementDetailPage />);
+
+    fireEvent.change(screen.getByPlaceholderText('Введите имя или username'), { target: { value: 'Iv' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ivan Petrov @ivan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать' }));
+
+    await vi.waitFor(() => {
+      expect(mockCreateGrant).toHaveBeenCalledWith({
+        achievementId: 'a1',
+        payload: { recipientId: 'u77', reason: undefined, visibility: 'public' },
+      });
+    });
+    expect(mockRevokeGrant).not.toHaveBeenCalled();
   });
 });

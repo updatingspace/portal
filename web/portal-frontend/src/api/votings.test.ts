@@ -61,4 +61,88 @@ describe('votings api mapping', () => {
     expect(imported).toMatchObject({ replacedExisting: true, createdGames: 2, updatedGames: 3 });
     expect(request).toHaveBeenNthCalledWith(2, '/voting/votings/import/preview?force=true', expect.anything());
   });
+
+  it('normalizes preview defaults from legacy/minimal payload', async () => {
+    const { previewVotingImport } = await vi.importActual<typeof import('./votings')>('./votings');
+
+    vi.mocked(request).mockResolvedValueOnce({
+      voting: {
+        code: 'legacy',
+        title: 'Legacy Vote',
+        nominations: [
+          {
+            id: 'n-1',
+            title: 'Nom',
+            options: [
+              {
+                id: 'o-1',
+                title: 'Opt',
+                payload: 'invalid',
+                game: { id: 'g1', title: 'Game', release_year: 2001, image_url: '/img' },
+              },
+            ],
+          },
+        ],
+      },
+      totals: {},
+    });
+
+    const preview = await previewVotingImport({ code: 'legacy', title: 'Legacy', nominations: [] });
+
+    expect(preview.willReplace).toBe(false);
+    expect(preview.totals).toEqual({ nominations: 0, options: 0, games: 0 });
+    expect(preview.voting.nominations[0]?.kind).toBe('game');
+    expect(preview.voting.nominations[0]?.options[0]?.payload).toBeNull();
+    expect(preview.voting.nominations[0]?.options[0]?.game).toMatchObject({ releaseYear: 2001, imageUrl: '/img' });
+  });
+
+  it('maps import payload to api body with defaults and parsed years', async () => {
+    const { importVoting } = await vi.importActual<typeof import('./votings')>('./votings');
+
+    vi.mocked(request).mockResolvedValueOnce({
+      voting: { code: 'v-code', title: 'Vote', nominations: [] },
+      totals: { nominations: 0, options: 0, games: 0 },
+      replacedExisting: false,
+      createdGames: 0,
+      updatedGames: 0,
+    });
+
+    await importVoting({
+      code: 'v-code',
+      title: 'Vote',
+      nominations: [
+        {
+          id: 'n1',
+          title: 'Nom',
+          options: [
+            { id: 'o1', title: 'First' },
+            {
+              id: 'o2',
+              title: 'Second',
+              order: 9,
+              imageUrl: '/x',
+              game: { title: 'G', releaseYear: '2024' as unknown as number },
+            },
+          ],
+        },
+      ],
+    });
+
+    const [, requestOptions] = vi.mocked(request).mock.calls[0] ?? [];
+    const body = (requestOptions as { body?: Record<string, unknown> })?.body as Record<string, unknown>;
+
+    expect(body.order).toBe(0);
+    expect(body.is_active).toBe(true);
+    expect(body.show_vote_counts).toBe(false);
+    expect(body.rules).toEqual({});
+    expect(body.nominations).toMatchObject([
+      {
+        order: 0,
+        options: [
+          { order: 0, game: null },
+          { order: 9, image_url: '/x', game: { releaseYear: 2024, release_year: 2024 } },
+        ],
+      },
+    ]);
+  });
 });

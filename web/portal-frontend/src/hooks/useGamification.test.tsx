@@ -6,10 +6,14 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import {
   useAchievement,
   useAchievementsList,
+  useCategories,
   useCreateAchievement,
+  useCreateCategory,
   useUpdateAchievement,
+  useUpdateCategory,
   useCreateGrant,
   useRevokeGrant,
+  useGrantsList,
   gamificationKeys,
 } from './useGamification';
 import * as gamificationApi from '../api/gamification';
@@ -45,6 +49,10 @@ const createWrapper = () => {
 describe('useGamification hooks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(gamificationApi.listCategories).mockResolvedValue({
+      items: [{ id: 'cat-default', nameI18n: { ru: 'Категория' } }],
+      nextCursor: null,
+    } as never);
   });
 
   it('loads achievements list with infinite query', async () => {
@@ -124,6 +132,63 @@ describe('useGamification hooks', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gamificationKeys.achievement('a1') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gamificationKeys.grants('a1') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gamificationKeys.all });
+  });
+
+  it('loads categories and invalidates after category mutations', async () => {
+    const { wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    vi.mocked(gamificationApi.listCategories).mockResolvedValueOnce({
+      items: [{ id: 'cat-1', nameI18n: { ru: 'Категория' } }],
+      nextCursor: null,
+    } as never);
+    vi.mocked(gamificationApi.createCategory).mockResolvedValueOnce({ id: 'cat-2' } as never);
+    vi.mocked(gamificationApi.updateCategory).mockResolvedValueOnce({ id: 'cat-1' } as never);
+
+    const categoriesHook = renderHook(() => useCategories(), { wrapper });
+    await waitFor(() => expect(categoriesHook.result.current.isSuccess).toBe(true));
+    expect(gamificationApi.listCategories).toHaveBeenCalled();
+
+    const createCategoryHook = renderHook(() => useCreateCategory(), { wrapper });
+    const updateCategoryHook = renderHook(() => useUpdateCategory(), { wrapper });
+
+    await act(async () => {
+      await createCategoryHook.result.current.mutateAsync({ id: 'cat-2', nameI18n: { ru: 'Новая' } });
+      await updateCategoryHook.result.current.mutateAsync({
+        id: 'cat-1',
+        payload: { nameI18n: { ru: 'Обновлённая' } },
+      });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gamificationKeys.categories() });
+  });
+
+  it('handles grants pagination and does not fetch without achievement id', async () => {
+    vi.mocked(gamificationApi.listGrants)
+      .mockResolvedValueOnce({
+        items: [{ id: 'g1', recipientId: 'u1', visibility: 'public' }],
+        nextCursor: 'next',
+      } as never)
+      .mockResolvedValueOnce({
+        items: [{ id: 'g2', recipientId: 'u2', visibility: 'private' }],
+        nextCursor: null,
+      } as never);
+
+    const { wrapper } = createWrapper();
+    const disabled = renderHook(() => useGrantsList('', { visibility: 'public' }), { wrapper });
+    expect(disabled.result.current.isFetching).toBe(false);
+    expect(gamificationApi.listGrants).not.toHaveBeenCalled();
+
+    const enabled = renderHook(() => useGrantsList('a1', { visibility: 'public', limit: 1 }), { wrapper });
+    await waitFor(() => expect(enabled.result.current.isSuccess).toBe(true));
+    expect(enabled.result.current.data?.pages[0]?.items[0]?.id).toBe('g1');
+
+    await act(async () => {
+      await enabled.result.current.fetchNextPage();
+    });
+
+    await waitFor(() => expect(enabled.result.current.data?.pages).toHaveLength(2));
+    expect(enabled.result.current.data?.pages[1]?.items[0]?.id).toBe('g2');
   });
 
   it('exposes stable key factories for deterministic caching', () => {
