@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import ContentWidget, HomePageModal, ModalAnalytics, UserPreference
+from .models import (
+    ContentWidget,
+    DashboardLayout,
+    HomePageModal,
+    ModalAnalytics,
+    UserPreference,
+)
 
 
 @admin.register(UserPreference)
@@ -215,3 +221,20 @@ class ModalAnalyticsAdmin(admin.ModelAdmin):
     readonly_fields = ["id", "modal", "tenant_id", "user_id", "session_id", "event_type", "timestamp", "metadata"]
     ordering = ["-timestamp"]
     date_hierarchy = "timestamp"
+
+
+@admin.register(DashboardLayout)
+class DashboardLayoutAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "layout_name",
+        "tenant_id",
+        "user_id",
+        "is_default",
+        "deleted_at",
+        "updated_at",
+    ]
+    list_filter = ["is_default", "tenant_id"]
+    search_fields = ["layout_name", "user_id", "tenant_id"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    ordering = ["-is_default", "-updated_at"]

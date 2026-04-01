@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from core.models import ContentWidget, HomePageModal, ModalAnalytics
+from core.models import ContentWidget, DashboardLayout, HomePageModal, ModalAnalytics
 
 User = get_user_model()
 
@@ -168,3 +168,23 @@ class ExtendedContentModelsTests(TestCase):
         self.assertEqual(event.modal_id, modal.id)
         self.assertEqual(event.event_type, ModalAnalytics.EventType.VIEW)
         self.assertEqual(event.metadata["source"], "test")
+
+    def test_dashboard_layout_create_and_soft_delete(self):
+        layout = DashboardLayout.objects.create(
+            user_id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            layout_name="main",
+            layout_config={
+                "widgets": [{"id": "events", "x": 0, "y": 0, "w": 6, "h": 4}],
+                "breakpoints": {"lg": [12, 8]},
+            },
+            is_default=True,
+        )
+
+        self.assertEqual(layout.layout_name, "main")
+        self.assertTrue(layout.is_default)
+        self.assertIsNone(layout.deleted_at)
+
+        layout.soft_delete()
+        layout.refresh_from_db()
+        self.assertIsNotNone(layout.deleted_at)

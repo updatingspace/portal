@@ -285,6 +285,45 @@ class ContentWidget(models.Model):
         self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
 
 
+class DashboardLayout(models.Model):
+    """Saved dashboard layout per user within a tenant."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id = models.UUIDField("User ID", db_index=True)
+    tenant_id = models.UUIDField("Tenant ID", db_index=True)
+
+    layout_name = models.CharField("Название layout", max_length=100, default="default")
+    layout_config = models.JSONField(
+        "Конфигурация layout",
+        default=dict,
+        help_text='{"widgets": [{"id": "w1", "x": 0, "y": 0, "w": 6, "h": 4}], "breakpoints": {...}}',
+    )
+    is_default = models.BooleanField("Layout по умолчанию", default=False)
+
+    deleted_at = models.DateTimeField("Удален", null=True, blank=True)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлен", auto_now=True)
+
+    class Meta:
+        verbose_name = "Dashboard layout"
+        verbose_name_plural = "Dashboard layouts"
+        ordering = ["-is_default", "-updated_at"]
+        unique_together = ["user_id", "tenant_id", "layout_name"]
+        indexes = [
+            models.Index(fields=["tenant_id", "user_id"]),
+            models.Index(fields=["tenant_id", "is_default"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.layout_name} ({self.user_id})"
+
+    def soft_delete(self) -> None:
+        from django.utils import timezone
+
+        self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at", "updated_at"])
+
+
 class ModalAnalytics(models.Model):
     """Analytics tracking for modal views and interactions"""
 
