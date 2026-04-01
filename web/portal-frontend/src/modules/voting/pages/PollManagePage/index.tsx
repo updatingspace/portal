@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Icon,
   Label,
   Loader,
   Modal,
@@ -13,6 +14,7 @@ import {
   TextArea,
   TextInput,
 } from '@gravity-ui/uikit';
+import { ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { NominationForm } from '../../../../features/voting/components/NominationForm';
 import { OptionForm } from '../../../../features/voting/components/OptionForm';
@@ -74,9 +76,28 @@ export const PollManagePage: React.FC = () => {
   const { user } = useAuth();
   const pollId = id ?? '';
   const locale = user?.language ?? getLocale();
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
 
-  const { data: pollInfo, isLoading, isError, error, refetch } = usePollInfo(pollId);
-  const { data: participants = [] } = usePollParticipants(pollId);
+  const {
+    data: pollInfo,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching: isFetchingPollInfo,
+  } = usePollInfo(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
+  const {
+    data: participants = [],
+    refetch: refetchParticipants,
+    isFetching: isFetchingParticipants,
+  } = usePollParticipants(pollId, {
+    refetchInterval: liveUpdates ? 20_000 : false,
+    refetchIntervalInBackground: true,
+  });
 
   const updatePollMutation = useUpdatePoll();
   const deletePollMutation = useDeletePoll();
@@ -149,6 +170,12 @@ export const PollManagePage: React.FC = () => {
       ends_at: poll.ends_at ?? null,
     });
   }, [pollInfo?.poll.id, pollInfo?.poll.updated_at, settingsDirty]);
+
+  const handleRefresh = () => {
+    Promise.all([refetch(), refetchParticipants()]).finally(() => {
+      setLastRefreshAt(new Date());
+    });
+  };
 
   if (isLoading) {
     return (
@@ -538,6 +565,15 @@ export const PollManagePage: React.FC = () => {
               <Button view="outlined" onClick={() => navigate('/app/voting')}>
                 К списку
               </Button>
+              <Button
+                view="flat-secondary"
+                onClick={handleRefresh}
+                loading={isFetchingPollInfo || isFetchingParticipants}
+                disabled={isFetchingPollInfo || isFetchingParticipants}
+              >
+                <Icon data={ArrowRotateRight} size={16} />
+                <span className="ms-1">Обновить</span>
+              </Button>
               <Button view="outlined" href={`/app/voting/${pollId}`}>
                 Просмотр
               </Button>
@@ -570,6 +606,23 @@ export const PollManagePage: React.FC = () => {
       </div>
 
       <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <Card className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">Live-обновление:</span>{' '}
+              {liveUpdates ? 'включено (15-20с)' : 'выключено'}
+              {' · '}
+              <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
+              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+            </div>
+            <Checkbox
+              checked={liveUpdates}
+              onUpdate={setLiveUpdates}
+              content="Автообновление dashboard"
+            />
+          </div>
+        </Card>
+
         {isDraft && publishIssues.length > 0 && (
           <Alert
             theme="warning"
@@ -879,7 +932,7 @@ export const PollManagePage: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'participants' && (
+              {activeTab === 'participants' && (
           <div className="space-y-6">
             <Card className="p-6">
               <Text variant="subheader-2">Участники и роли</Text>
@@ -903,6 +956,25 @@ export const PollManagePage: React.FC = () => {
                 </Button>
               </div>
             </Card>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">Всего участников</Text>
+                <Text variant="header-2">{participants.length}</Text>
+              </Card>
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">Приняли участие</Text>
+                <Text variant="header-2">
+                  {participants.filter((p) => p.status === 'accepted').length}
+                </Text>
+              </Card>
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">В ожидании</Text>
+                <Text variant="header-2">
+                  {participants.filter((p) => p.status === 'pending').length}
+                </Text>
+              </Card>
+            </div>
 
             <Card className="p-6">
               <Text variant="subheader-2" className="mb-4">Текущие участники</Text>

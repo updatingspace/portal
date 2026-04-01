@@ -287,7 +287,16 @@ export function adaptLegacyOptionToModern(
     
     // Legacy-specific fields
     imageUrl: option.imageUrl,
-    game: option.game,
+    game: option.game
+      ? {
+          id: option.game.id,
+          title: option.game.title,
+          genre: option.game.genre ?? undefined,
+          studio: option.game.studio ?? undefined,
+          releaseYear: option.game.releaseYear ?? undefined,
+          imageUrl: option.game.imageUrl ?? undefined,
+        }
+      : null,
     payload: option.payload,
     counts: option.counts,
   };

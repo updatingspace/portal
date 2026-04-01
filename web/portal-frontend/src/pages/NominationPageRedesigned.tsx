@@ -54,7 +54,7 @@ export const NominationPageRedesigned: React.FC = () => {
     error,
     refetch,
     isFetching,
-  } = useNominationDetail(id ?? '', {
+  } = useNomination(id ?? '', {
     enabled: Boolean(id),
   });
   
@@ -149,9 +149,9 @@ export const NominationPageRedesigned: React.FC = () => {
     
     try {
       await castVoteMutation.mutateAsync({
-        sessionId: (nomination as any)?.voting?.id ?? '',
-        questionId: id,
-        nominationId: selectedOptionId,
+        pollId: (nomination as any)?.voting?.id ?? '',
+        nominationId: id,
+        optionId: selectedOptionId,
       });
       
       // Success feedback
@@ -282,11 +282,13 @@ export const NominationPageRedesigned: React.FC = () => {
           <section className="col-12 col-lg-10 mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-3" aria-label="Навигация">
-              <Breadcrumbs
-                items={breadcrumbItems}
-                firstDisplayedItemsCount={1}
-                lastDisplayedItemsCount={2}
-              />
+              <Breadcrumbs>
+                {breadcrumbItems.map((item, index) => (
+                  <Breadcrumbs.Item key={`${item.text}-${index}`} href={item.href}>
+                    {item.text}
+                  </Breadcrumbs.Item>
+                ))}
+              </Breadcrumbs>
             </nav>
             
             {/* Back Button */}
@@ -365,8 +367,14 @@ export const NominationPageRedesigned: React.FC = () => {
                       key={option.id}
                       nomination={{
                         id: option.id,
+                        poll_id: (nomination as any)?.voting?.id ?? '',
                         title: option.title,
-                        description: option.description,
+                        description: option.description ?? null,
+                        kind: 'custom',
+                        sort_order: 0,
+                        max_votes: 1,
+                        is_required: false,
+                        config: {},
                         image_url: option.image_url,
                         vote_count: voteCounts[option.id],
                       }}

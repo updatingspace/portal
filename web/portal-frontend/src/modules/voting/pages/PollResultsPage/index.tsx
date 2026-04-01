@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Button, Card, Loader, Text } from '@gravity-ui/uikit';
+import { Alert, Button, Card, Checkbox, Icon, Loader, Text } from '@gravity-ui/uikit';
+import { ArrowDownToLine, ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { ResultsChart } from '../../../../features/voting/components/ResultsChart';
 import { usePollInfo, usePollResults } from '../../../../features/voting';
@@ -8,14 +9,31 @@ import { usePollInfo, usePollResults } from '../../../../features/voting';
 export const PollResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const pollId = id ?? '';
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
 
-  const { data: pollInfo, isLoading: isPollLoading, isError: isPollError, error: pollError } = usePollInfo(pollId);
+  const {
+    data: pollInfo,
+    isLoading: isPollLoading,
+    isError: isPollError,
+    error: pollError,
+    refetch: refetchPollInfo,
+    isFetching: isFetchingPollInfo,
+  } = usePollInfo(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
   const {
     data: results,
     isLoading: isResultsLoading,
     isError: isResultsError,
     error: resultsError,
-  } = usePollResults(pollId);
+    refetch: refetchResults,
+    isFetching: isFetchingResults,
+  } = usePollResults(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
 
   const nominationsWithTotals = useMemo(() => {
     if (!results) return [];
@@ -25,6 +43,38 @@ export const PollResultsPage: React.FC = () => {
       return { ...nomination, totalVotes, topOption };
     });
   }, [results]);
+
+  const handleRefresh = () => {
+    Promise.all([refetchPollInfo(), refetchResults()]).finally(() => {
+      setLastRefreshAt(new Date());
+    });
+  };
+
+  const exportCsv = () => {
+    if (!results) return;
+    const rows = [
+      ['nomination_id', 'nomination_title', 'option_id', 'option_text', 'votes'],
+      ...results.nominations.flatMap((nomination) =>
+        nomination.options.map((option) => [
+          nomination.nomination_id,
+          nomination.title,
+          option.option_id,
+          option.text,
+          String(option.votes),
+        ]),
+      ),
+    ];
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `poll-results-${pollId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isPollLoading || isResultsLoading) {
     return (
@@ -102,6 +152,15 @@ export const PollResultsPage: React.FC = () => {
   }
 
   const totalVotes = nominationsWithTotals.reduce((sum, nomination) => sum + nomination.totalVotes, 0);
+  const leader = nominationsWithTotals
+    .flatMap((nomination) =>
+      nomination.options.map((option) => ({
+        nominationTitle: nomination.title,
+        optionText: option.text,
+        votes: option.votes,
+      })),
+    )
+    .sort((a, b) => b.votes - a.votes)[0];
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-slate-50">
@@ -114,6 +173,19 @@ export const PollResultsPage: React.FC = () => {
             </Text>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              view="flat-secondary"
+              onClick={handleRefresh}
+              loading={isFetchingPollInfo || isFetchingResults}
+              disabled={isFetchingPollInfo || isFetchingResults}
+            >
+              <Icon data={ArrowRotateRight} size={16} />
+              <span className="ms-1">Обновить</span>
+            </Button>
+            <Button view="outlined" onClick={exportCsv} disabled={!results}>
+              <Icon data={ArrowDownToLine} size={16} />
+              <span className="ms-1">CSV</span>
+            </Button>
             <Link to={`/app/voting/${pollId}`}>
               <Button view="outlined">К опросу</Button>
             </Link>
@@ -125,11 +197,46 @@ export const PollResultsPage: React.FC = () => {
       </div>
 
       <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <Card className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">Live-обновление:</span>{' '}
+              {liveUpdates ? 'включено (15с)' : 'выключено'}
+              {' · '}
+              <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
+              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+            </div>
+            <Checkbox checked={liveUpdates} onUpdate={setLiveUpdates} content="Автообновление результатов" />
+          </div>
+        </Card>
+
         <Alert
           theme="normal"
           title="Сводка"
           message={`Всего голосов: ${totalVotes}. Вопросов: ${nominationsWithTotals.length}.`}
         />
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Всего голосов</Text>
+            <Text variant="header-2">{totalVotes}</Text>
+          </Card>
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Вопросов в опросе</Text>
+            <Text variant="header-2">{nominationsWithTotals.length}</Text>
+          </Card>
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Топ-кандидат</Text>
+            <Text variant="body-2" className="font-medium">
+              {leader ? `${leader.optionText} (${leader.votes})` : '—'}
+            </Text>
+            {leader && (
+              <Text variant="caption-2" color="secondary">
+                {leader.nominationTitle}
+              </Text>
+            )}
+          </Card>
+        </div>
 
         {poll.description && (
           <Card className="p-4">
