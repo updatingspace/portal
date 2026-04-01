@@ -324,6 +324,49 @@ class DashboardLayout(models.Model):
         self.save(update_fields=["deleted_at", "updated_at"])
 
 
+class DashboardWidget(models.Model):
+    """Widget placement within a dashboard layout."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    layout = models.ForeignKey(
+        DashboardLayout,
+        on_delete=models.CASCADE,
+        related_name="widgets",
+    )
+    tenant_id = models.UUIDField("Tenant ID", db_index=True)
+
+    widget_key = models.CharField("Ключ виджета", max_length=100)
+    position_x = models.PositiveIntegerField("X", default=0)
+    position_y = models.PositiveIntegerField("Y", default=0)
+    width = models.PositiveIntegerField("Ширина", default=4)
+    height = models.PositiveIntegerField("Высота", default=3)
+    settings = models.JSONField("Настройки", default=dict, blank=True)
+    is_visible = models.BooleanField("Виден", default=True)
+
+    deleted_at = models.DateTimeField("Удален", null=True, blank=True)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлен", auto_now=True)
+
+    class Meta:
+        verbose_name = "Dashboard widget"
+        verbose_name_plural = "Dashboard widgets"
+        ordering = ["position_y", "position_x", "created_at"]
+        unique_together = ["layout", "widget_key"]
+        indexes = [
+            models.Index(fields=["tenant_id", "is_visible"]),
+            models.Index(fields=["layout", "position_y", "position_x"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.widget_key} on {self.layout_id}"
+
+    def soft_delete(self) -> None:
+        from django.utils import timezone
+
+        self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at", "updated_at"])
+
+
 class ModalAnalytics(models.Model):
     """Analytics tracking for modal views and interactions"""
 

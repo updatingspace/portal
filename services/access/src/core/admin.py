@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ContentWidget,
     DashboardLayout,
+    DashboardWidget,
     HomePageModal,
     ModalAnalytics,
     UserPreference,
@@ -238,3 +239,23 @@ class DashboardLayoutAdmin(admin.ModelAdmin):
     search_fields = ["layout_name", "user_id", "tenant_id"]
     readonly_fields = ["id", "created_at", "updated_at"]
     ordering = ["-is_default", "-updated_at"]
+
+
+@admin.register(DashboardWidget)
+class DashboardWidgetAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "layout",
+        "tenant_id",
+        "widget_key",
+        "position_x",
+        "position_y",
+        "width",
+        "height",
+        "is_visible",
+        "deleted_at",
+    ]
+    list_filter = ["is_visible", "tenant_id"]
+    search_fields = ["widget_key", "layout__layout_name", "layout__user_id"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    ordering = ["position_y", "position_x", "-created_at"]

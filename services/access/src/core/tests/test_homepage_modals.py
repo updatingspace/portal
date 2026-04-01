@@ -4,11 +4,18 @@ import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from core.models import ContentWidget, DashboardLayout, HomePageModal, ModalAnalytics
+from core.models import (
+    ContentWidget,
+    DashboardLayout,
+    DashboardWidget,
+    HomePageModal,
+    ModalAnalytics,
+)
 
 User = get_user_model()
 
@@ -188,3 +195,47 @@ class ExtendedContentModelsTests(TestCase):
         layout.soft_delete()
         layout.refresh_from_db()
         self.assertIsNotNone(layout.deleted_at)
+
+    def test_dashboard_layout_unique_name_per_user_and_tenant(self):
+        user_id = uuid.uuid4()
+        tenant_id = uuid.uuid4()
+        DashboardLayout.objects.create(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            layout_name="main",
+            layout_config={},
+        )
+
+        with self.assertRaises(IntegrityError):
+            DashboardLayout.objects.create(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                layout_name="main",
+                layout_config={},
+            )
+
+    def test_dashboard_widget_create_and_soft_delete(self):
+        layout = DashboardLayout.objects.create(
+            user_id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            layout_name="main",
+            layout_config={},
+        )
+        widget = DashboardWidget.objects.create(
+            layout=layout,
+            tenant_id=layout.tenant_id,
+            widget_key="events",
+            position_x=0,
+            position_y=1,
+            width=6,
+            height=4,
+            settings={"compact": True},
+            is_visible=True,
+        )
+
+        self.assertEqual(widget.widget_key, "events")
+        self.assertIsNone(widget.deleted_at)
+
+        widget.soft_delete()
+        widget.refresh_from_db()
+        self.assertIsNotNone(widget.deleted_at)
