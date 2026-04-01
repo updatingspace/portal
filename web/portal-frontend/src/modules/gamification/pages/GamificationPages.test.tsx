@@ -13,10 +13,21 @@ const mockCreateCategory = vi.fn(async () => ({ id: 'new-category' }));
 const mockCreateGrant = vi.fn(async () => ({}));
 const mockRevokeGrant = vi.fn(async () => ({}));
 const mockFetchNextPage = vi.fn(async () => ({}));
+const mockGrantsFetchNextPage = vi.fn(async () => ({}));
 
 let mockUser: Record<string, unknown> | null = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
 let mockParams: { id?: string } = {};
 let mockAchievementById = true;
+let mockAchievementData: Record<string, unknown> = {
+  id: 'a1',
+  nameI18n: { ru: 'Тестовая ачивка' },
+  description: 'Описание',
+  category: 'cat',
+  status: 'published',
+  images: null,
+  updatedAt: '2026-01-01T00:00:00Z',
+  canEdit: true,
+};
 let mockProfiles: Array<{ userId: string; firstName: string; lastName: string; displayName?: string | null; username?: string | null }> = [];
 let mockAchievementsPages: Array<{ items: Array<Record<string, unknown>> }> = [{
   items: [
@@ -45,6 +56,12 @@ let mockAchievementsPages: Array<{ items: Array<Record<string, unknown>> }> = [{
 let mockDashboardIsLoading = false;
 let mockDashboardHasNextPage = false;
 let mockDashboardIsFetchingNextPage = false;
+let mockGrantsPages: Array<{ items: Array<Record<string, unknown>> }> = [
+  { items: [{ id: 'g1', recipientId: 'u2', reason: null, visibility: 'public', createdAt: '2026-01-01T00:00:00Z' }] },
+];
+let mockGrantsIsLoading = false;
+let mockGrantsHasNextPage = false;
+let mockGrantsIsFetchingNextPage = false;
 const permissionMap = new Map<string, boolean>();
 
 vi.mock('react-router-dom', () => ({
@@ -93,16 +110,7 @@ vi.mock('../../../hooks/useGamification', () => ({
   useAchievement: (id?: string) => ({
     data: id
       ? (mockAchievementById
-        ? {
-          id,
-          nameI18n: { ru: 'Тестовая ачивка' },
-          description: 'Описание',
-          category: 'cat',
-          status: 'published',
-          images: null,
-          updatedAt: '2026-01-01T00:00:00Z',
-          canEdit: true,
-        }
+        ? { ...mockAchievementData, id }
         : undefined)
       : undefined,
     isLoading: false,
@@ -113,12 +121,12 @@ vi.mock('../../../hooks/useGamification', () => ({
   useRevokeGrant: () => ({ mutateAsync: mockRevokeGrant, isPending: false }),
   useGrantsList: () => ({
     data: {
-      pages: [{ items: [{ id: 'g1', recipientId: 'u2', reason: null, visibility: 'public', createdAt: '2026-01-01T00:00:00Z' }] }],
+      pages: mockGrantsPages,
     },
-    isLoading: false,
-    hasNextPage: false,
-    isFetchingNextPage: false,
-    fetchNextPage: vi.fn(),
+    isLoading: mockGrantsIsLoading,
+    hasNextPage: mockGrantsHasNextPage,
+    isFetchingNextPage: mockGrantsIsFetchingNextPage,
+    fetchNextPage: mockGrantsFetchNextPage,
   }),
 }));
 
@@ -214,13 +222,28 @@ describe('Gamification pages edge cases', () => {
     mockCreateGrant.mockClear();
     mockRevokeGrant.mockClear();
     mockFetchNextPage.mockClear();
+    mockGrantsFetchNextPage.mockClear();
     mockUser = { id: 'u1', language: 'ru', tenant: { id: 't1' } };
     mockParams = {};
     mockAchievementById = true;
+    mockAchievementData = {
+      id: 'a1',
+      nameI18n: { ru: 'Тестовая ачивка' },
+      description: 'Описание',
+      category: 'cat',
+      status: 'published',
+      images: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+      canEdit: true,
+    };
     mockProfiles = [];
     mockDashboardIsLoading = false;
     mockDashboardHasNextPage = false;
     mockDashboardIsFetchingNextPage = false;
+    mockGrantsPages = [{ items: [{ id: 'g1', recipientId: 'u2', reason: null, visibility: 'public', createdAt: '2026-01-01T00:00:00Z' }] }];
+    mockGrantsIsLoading = false;
+    mockGrantsHasNextPage = false;
+    mockGrantsIsFetchingNextPage = false;
     mockAchievementsPages = [{
       items: [
         {
@@ -362,6 +385,37 @@ describe('Gamification pages edge cases', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/app/gamification/achievements/created-id');
   });
 
+  it('supports edit-mode save path and back navigation on form', async () => {
+    mockParams = { id: 'a1' };
+    mockAchievementData = { ...mockAchievementData, status: 'draft' };
+    render(<AchievementFormPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/app/gamification');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await vi.waitFor(() => {
+      expect(mockUpdateAchievement).toHaveBeenCalledWith({
+        id: 'a1',
+        payload: expect.objectContaining({
+          category: 'cat',
+          status: 'draft',
+        }),
+      });
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/app/gamification/achievements/a1');
+  });
+
+  it('edits locale rows and image fields in form', () => {
+    render(<AchievementFormPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить язык' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить' })[0] as HTMLButtonElement);
+    fireEvent.change(screen.getByPlaceholderText('URL small'), { target: { value: '/s.png' } });
+    fireEvent.change(screen.getByPlaceholderText('URL medium'), { target: { value: '/m.png' } });
+    fireEvent.change(screen.getByPlaceholderText('URL large'), { target: { value: '/l.png' } });
+    expect((screen.getByPlaceholderText('URL small') as HTMLInputElement).value).toBe('/s.png');
+  });
+
   it('validates grant recipient in detail flow', async () => {
     mockParams = { id: 'a1' };
     render(<AchievementDetailPage />);
@@ -376,6 +430,29 @@ describe('Gamification pages edge cases', () => {
     mockParams = { id: 'a404' };
     render(<AchievementDetailPage />);
     expect(screen.getByText('Ачивка не найдена.')).toBeInTheDocument();
+  });
+
+  it('renders detail media/status variants and history pagination', () => {
+    mockParams = { id: 'a1' };
+    mockAchievementData = {
+      ...mockAchievementData,
+      status: 'active',
+      images: { small: '/s.png', medium: '/m.png', large: '/l.png' },
+      canEdit: false,
+    };
+    mockGrantsPages = [{ items: [] }];
+    mockGrantsHasNextPage = true;
+    mockGrantsIsLoading = true;
+    render(<AchievementDetailPage />);
+
+    expect(screen.getByAltText('small')).toBeInTheDocument();
+    expect(screen.getByAltText('medium')).toBeInTheDocument();
+    expect(screen.getByAltText('large')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
+    expect(screen.getByText('Загрузка...')).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'private' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }));
+    expect(mockGrantsFetchNextPage).toHaveBeenCalled();
   });
 
   it('selects recipient from search, grants and revokes achievement', async () => {
@@ -395,5 +472,14 @@ describe('Gamification pages edge cases', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }));
     await vi.waitFor(() => expect(mockRevokeGrant).toHaveBeenCalledWith({ grantId: 'g1' }));
+  });
+
+  it('hides grant form when assign permission is missing and supports detail back button', () => {
+    mockParams = { id: 'a1' };
+    permissionMap.set('gamification.achievements.assign', false);
+    render(<AchievementDetailPage />);
+    expect(screen.queryByText('Выдать ачивку')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/app/gamification');
   });
 });
