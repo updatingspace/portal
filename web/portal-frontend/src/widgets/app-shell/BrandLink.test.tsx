@@ -15,6 +15,19 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
 }));
 
+type Tenant = { id: string; slug: string };
+
+const BASE_TENANT: Tenant = { id: 'tenant-1', slug: 'aef' };
+
+function mockAuthUser(availableTenants: Tenant[]) {
+  useAuthMock.mockReturnValue({
+    user: {
+      tenant: BASE_TENANT,
+      availableTenants,
+    },
+  });
+}
+
 describe('BrandLink', () => {
   beforeEach(() => {
     navigateMock.mockReset();
@@ -22,12 +35,7 @@ describe('BrandLink', () => {
   });
 
   test('renders tenant label and no switcher for single-tenant user', () => {
-    useAuthMock.mockReturnValue({
-      user: {
-        tenant: { id: 'tenant-1', slug: 'aef' },
-        availableTenants: [{ id: 'tenant-1', slug: 'aef' }],
-      },
-    });
+    mockAuthUser([BASE_TENANT]);
     render(<BrandLink />);
 
     expect(screen.getByRole('button', { name: 'AEF · aef' })).toBeTruthy();
@@ -35,15 +43,10 @@ describe('BrandLink', () => {
   });
 
   test('renders tenant switcher for multi-tenant user', () => {
-    useAuthMock.mockReturnValue({
-      user: {
-        tenant: { id: 'tenant-1', slug: 'aef' },
-        availableTenants: [
-          { id: 'tenant-1', slug: 'aef' },
-          { id: 'tenant-2', slug: 'wolves' },
-        ],
-      },
-    });
+    mockAuthUser([
+      BASE_TENANT,
+      { id: 'tenant-2', slug: 'wolves' },
+    ]);
     render(<BrandLink />);
 
     expect(screen.getByTestId('brand-tenant-switch')).toBeTruthy();

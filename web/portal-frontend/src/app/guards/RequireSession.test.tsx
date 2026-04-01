@@ -34,14 +34,26 @@ function renderGuard(initialPath = '/app/feed') {
   );
 }
 
+type AuthState = {
+  user: unknown;
+  isInitialized: boolean;
+  isLoading: boolean;
+  sessionIssue: { code: string; message: string } | null;
+};
+
+function mockAuthState(overrides: Partial<AuthState> = {}) {
+  useAuthMock.mockReturnValue({
+    user: null,
+    isInitialized: true,
+    isLoading: false,
+    sessionIssue: null,
+    ...overrides,
+  });
+}
+
 describe('RequireSession', () => {
   it('redirects guest user to login by default', async () => {
-    useAuthMock.mockReturnValue({
-      user: null,
-      isInitialized: true,
-      isLoading: false,
-      sessionIssue: null,
-    });
+    mockAuthState();
 
     renderGuard('/app/feed?from=test');
 
@@ -49,10 +61,7 @@ describe('RequireSession', () => {
   });
 
   it('shows no-access status when session issue is NO_ACTIVE_MEMBERSHIP', async () => {
-    useAuthMock.mockReturnValue({
-      user: null,
-      isInitialized: true,
-      isLoading: false,
+    mockAuthState({
       sessionIssue: {
         code: 'NO_ACTIVE_MEMBERSHIP',
         message: 'No active membership for tenant',
