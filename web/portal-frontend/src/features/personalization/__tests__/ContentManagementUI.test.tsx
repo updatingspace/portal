@@ -11,6 +11,10 @@ vi.mock('@gravity-ui/uikit', async () => {
   return {
     ...actual,
     useToaster: () => ({ add: vi.fn() }),
+    RadioGroup: Object.assign(
+      ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      { Option: ({ children }: { children: React.ReactNode }) => <label>{children}</label> }
+    ),
   };
 });
 

@@ -5,7 +5,7 @@ import {
   Button,
   Icon,
   Modal,
-  SegmentedRadioGroup,
+  RadioGroup,
   Text,
   useToaster,
 } from '@gravity-ui/uikit';
@@ -221,16 +221,16 @@ export function ContentManagement() {
 
       {/* View Switcher */}
       <div className="content-management__toolbar">
-        <SegmentedRadioGroup value={viewMode} onUpdate={(v) => setViewMode(v as ViewMode)}>
-          <SegmentedRadioGroup.Option value="table">
+        <RadioGroup value={viewMode} onUpdate={(v) => setViewMode(v as ViewMode)} direction="horizontal">
+          <RadioGroup.Option value="table">
             <Icon data={LayoutList} size={14} />
             Table
-          </SegmentedRadioGroup.Option>
-          <SegmentedRadioGroup.Option value="calendar">
+          </RadioGroup.Option>
+          <RadioGroup.Option value="calendar">
             <Icon data={Calendar} size={14} />
             Calendar
-          </SegmentedRadioGroup.Option>
-        </SegmentedRadioGroup>
+          </RadioGroup.Option>
+        </RadioGroup>
       </div>
 
       {/* Content - Table or Calendar */}
