@@ -6,13 +6,22 @@
  * - Localization (language, timezone)
  * - Notifications (email, in-app, push)
  * - Privacy (profile visibility, activity sharing)
+ *
+ * And content management:
+ * - Homepage modals (CRUD, bulk actions, preview)
+ * - Content widgets (banners, announcements)
+ * - Analytics (views, clicks, CTR)
  */
 
 // Types
 export * from './types';
 
+// Utils
+export * from './utils';
+
 // API
 export * from './api/personalizationApi';
+export * from './api/contentApi';
 
 // Hooks
 export * from './hooks';
@@ -25,6 +34,7 @@ export * from './validation';
 
 // Components - explicit exports to avoid naming conflicts with types
 export {
+  // Settings components
   SettingsSection,
   ThemeSelector,
   LanguageSelector,
@@ -37,6 +47,16 @@ export {
   NotificationsSettings as NotificationsSettingsPanel,
   PrivacySettings as PrivacySettingsPanel,
   UserSettingsPanel,
+  // Content management components
+  ContentManagement,
+  ModalTable,
+  ModalEditor,
+  ModalPreview,
+  RichTextEditor,
+  CalendarView,
+  PreviewModeToggle,
+  PreviewOverlay,
+  usePreviewMode,
 } from './components';
 
 export type {

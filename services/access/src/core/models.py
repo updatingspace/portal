@@ -99,14 +99,21 @@ class UserPreference(models.Model):
 
 
 class HomePageModal(models.Model):
+    """Homepage modal with multi-tenant support, soft delete, and versioning"""
+
     class ModalType(models.TextChoices):
         INFO = "info", "Информация"
         WARNING = "warning", "Предупреждение"
         SUCCESS = "success", "Успех"
         PROMO = "promo", "Промо"
 
+    # Multi-tenant support
+    tenant_id = models.UUIDField("Tenant ID", db_index=True, null=True, blank=True)
+
+    # Content fields
     title = models.CharField("Заголовок", max_length=255)
     content = models.TextField("Содержание")
+    content_html = models.TextField("HTML содержание", blank=True, help_text="Rich text HTML content")
     button_text = models.CharField("Текст кнопки", max_length=100, default="OK")
     button_url = models.CharField("Ссылка кнопки", max_length=500, blank=True)
     modal_type = models.CharField(
@@ -115,11 +122,31 @@ class HomePageModal(models.Model):
         choices=ModalType.choices,
         default=ModalType.INFO,
     )
+
+    # Display settings
     is_active = models.BooleanField("Активна", default=True)
     display_once = models.BooleanField("Показать один раз", default=False)
     start_date = models.DateTimeField("Дата начала показа", null=True, blank=True)
     end_date = models.DateTimeField("Дата окончания показа", null=True, blank=True)
     order = models.IntegerField("Порядок показа", default=0)
+
+    # Localization support
+    translations = models.JSONField(
+        "Переводы",
+        default=dict,
+        blank=True,
+        help_text='{"ru": {"title": "...", "content": "..."}}',
+    )
+
+    # Soft delete
+    deleted_at = models.DateTimeField("Удалена", null=True, blank=True)
+
+    # Versioning
+    version = models.PositiveIntegerField("Версия", default=1)
+
+    # Audit fields
+    created_by = models.UUIDField("Создал", null=True, blank=True)
+    updated_by = models.UUIDField("Обновил", null=True, blank=True)
     created_at = models.DateTimeField("Создана", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлена", auto_now=True)
 
@@ -127,3 +154,172 @@ class HomePageModal(models.Model):
         ordering = ["order", "-created_at"]
         verbose_name = "Модальное окно главной страницы"
         verbose_name_plural = "Модальные окна главной страницы"
+        indexes = [
+            models.Index(fields=["tenant_id", "is_active"]),
+            models.Index(fields=["start_date", "end_date"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.modal_type})"
+
+    def soft_delete(self, user_id: uuid.UUID | None = None) -> None:
+        """Soft delete the modal"""
+        from django.utils import timezone
+
+        self.deleted_at = timezone.now()
+        if user_id:
+            self.updated_by = user_id
+        self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
+
+    def restore(self, user_id: uuid.UUID | None = None) -> None:
+        """Restore a soft-deleted modal"""
+        self.deleted_at = None
+        if user_id:
+            self.updated_by = user_id
+        self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
+
+    def get_translated_content(self, language: str) -> dict:
+        """Get content in specified language with fallback to default"""
+        if language in self.translations:
+            trans = self.translations[language]
+            return {
+                "title": trans.get("title", self.title),
+                "content": trans.get("content", self.content),
+                "button_text": trans.get("button_text", self.button_text),
+            }
+        return {
+            "title": self.title,
+            "content": self.content,
+            "button_text": self.button_text,
+        }
+
+
+class ContentWidget(models.Model):
+    """Content widget for banners, announcements, and promotions"""
+
+    class WidgetType(models.TextChoices):
+        BANNER = "banner", "Баннер"
+        ANNOUNCEMENT = "announcement", "Объявление"
+        PROMOTION = "promotion", "Промо-акция"
+        NOTIFICATION = "notification", "Уведомление"
+
+    class Placement(models.TextChoices):
+        TOP = "top", "Сверху страницы"
+        BOTTOM = "bottom", "Снизу страницы"
+        SIDEBAR = "sidebar", "Боковая панель"
+        INLINE = "inline", "Внутри контента"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField("Tenant ID", db_index=True)
+
+    # Widget configuration
+    name = models.CharField("Название", max_length=255)
+    widget_type = models.CharField(
+        "Тип виджета",
+        max_length=50,
+        choices=WidgetType.choices,
+        default=WidgetType.BANNER,
+    )
+    placement = models.CharField(
+        "Размещение",
+        max_length=50,
+        choices=Placement.choices,
+        default=Placement.TOP,
+    )
+
+    # Content (flexible JSON structure)
+    content = models.JSONField(
+        "Контент",
+        default=dict,
+        help_text='{"title": "...", "body": "...", "image_url": "...", "cta_text": "...", "cta_url": "..."}',
+    )
+
+    # Display settings
+    is_active = models.BooleanField("Активен", default=True)
+    start_date = models.DateTimeField("Дата начала", null=True, blank=True)
+    end_date = models.DateTimeField("Дата окончания", null=True, blank=True)
+    priority = models.IntegerField("Приоритет", default=0, help_text="Higher = more important")
+
+    # Targeting
+    target_pages = models.JSONField(
+        "Целевые страницы",
+        default=list,
+        blank=True,
+        help_text='["home", "voting", "events"]',
+    )
+    target_roles = models.JSONField(
+        "Целевые роли",
+        default=list,
+        blank=True,
+        help_text='["admin", "member"]',
+    )
+
+    # Soft delete
+    deleted_at = models.DateTimeField("Удален", null=True, blank=True)
+
+    # Audit fields
+    created_by = models.UUIDField("Создал", null=True, blank=True)
+    updated_by = models.UUIDField("Обновил", null=True, blank=True)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлен", auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "-created_at"]
+        verbose_name = "Контент-виджет"
+        verbose_name_plural = "Контент-виджеты"
+        indexes = [
+            models.Index(fields=["tenant_id", "widget_type", "is_active"]),
+            models.Index(fields=["placement", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.widget_type})"
+
+    def soft_delete(self, user_id: uuid.UUID | None = None) -> None:
+        """Soft delete the widget"""
+        from django.utils import timezone
+
+        self.deleted_at = timezone.now()
+        if user_id:
+            self.updated_by = user_id
+        self.save(update_fields=["deleted_at", "updated_by", "updated_at"])
+
+
+class ModalAnalytics(models.Model):
+    """Analytics tracking for modal views and interactions"""
+
+    class EventType(models.TextChoices):
+        VIEW = "view", "Просмотр"
+        CLICK = "click", "Клик"
+        DISMISS = "dismiss", "Закрытие"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    modal = models.ForeignKey(
+        HomePageModal,
+        on_delete=models.CASCADE,
+        related_name="analytics",
+    )
+    tenant_id = models.UUIDField("Tenant ID", db_index=True)
+    user_id = models.UUIDField("User ID", null=True, blank=True)
+    session_id = models.CharField("Session ID", max_length=100, blank=True)
+
+    event_type = models.CharField(
+        "Тип события",
+        max_length=20,
+        choices=EventType.choices,
+    )
+    timestamp = models.DateTimeField("Время", auto_now_add=True)
+
+    # Additional context
+    metadata = models.JSONField("Метаданные", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Аналитика модалки"
+        verbose_name_plural = "Аналитика модалок"
+        indexes = [
+            models.Index(fields=["modal", "event_type"]),
+            models.Index(fields=["tenant_id", "timestamp"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_type} on modal {self.modal_id} at {self.timestamp}"

@@ -1,0 +1,135 @@
+/**
+ * Styles for ModalTable component
+ */
+
+.modal-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-4);
+}
+
+/* Toolbar */
+.modal-table__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--g-spacing-4);
+  flex-wrap: wrap;
+}
+
+.modal-table__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-3);
+}
+
+.modal-table__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-3);
+}
+
+.modal-table__search {
+  width: 280px;
+}
+
+/* Bulk actions */
+.modal-table__bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-2);
+  padding: var(--g-spacing-2) var(--g-spacing-3);
+  background: var(--g-color-base-selection);
+  border-radius: var(--g-border-radius-m);
+}
+
+.modal-table__selected-count {
+  font-size: var(--g-text-body-1-font-size);
+  color: var(--g-color-text-secondary);
+  padding-right: var(--g-spacing-3);
+  border-right: 1px solid var(--g-color-line-generic);
+  margin-right: var(--g-spacing-1);
+}
+
+/* Filters panel */
+.modal-table__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-4);
+  padding: var(--g-spacing-4);
+  background: var(--g-color-base-float);
+  border-radius: var(--g-border-radius-m);
+  border: 1px solid var(--g-color-line-generic);
+}
+
+/* Title cell */
+.modal-table__title-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-2);
+}
+
+.modal-table__title {
+  font-weight: var(--g-text-body-font-weight);
+}
+
+.modal-table__title--deleted {
+  text-decoration: line-through;
+  color: var(--g-color-text-secondary);
+}
+
+/* Row states */
+.modal-table__row--deleted {
+  opacity: 0.6;
+  background: var(--g-color-base-generic);
+}
+
+/* Loading state */
+.modal-table__loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+/* Empty state */
+.modal-table__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--g-spacing-4);
+  min-height: 200px;
+  color: var(--g-color-text-secondary);
+}
+
+.modal-table__empty p {
+  margin: 0;
+  font-size: var(--g-text-body-2-font-size);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .modal-table__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal-table__toolbar-left,
+  .modal-table__toolbar-right {
+    justify-content: space-between;
+  }
+
+  .modal-table__search {
+    width: 100%;
+  }
+
+  .modal-table__filters {
+    flex-wrap: wrap;
+  }
+
+  .modal-table__bulk-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

@@ -1,0 +1,207 @@
+/**
+ * Styles for ModalEditor component
+ */
+
+.modal-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--g-color-base-background);
+}
+
+/* Header */
+.modal-editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--g-spacing-4) var(--g-spacing-6);
+  border-bottom: 1px solid var(--g-color-line-generic);
+}
+
+/* Body - Split view */
+.modal-editor__body {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Form section */
+.modal-editor__form {
+  display: flex;
+  flex-direction: column;
+  padding: var(--g-spacing-6);
+  overflow-y: auto;
+  border-right: 1px solid var(--g-color-line-generic);
+}
+
+.modal-editor__tab-content {
+  flex: 1;
+  padding-top: var(--g-spacing-4);
+}
+
+.modal-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-4);
+}
+
+.modal-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-1);
+}
+
+.modal-editor__field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--g-spacing-4);
+}
+
+.modal-editor__label {
+  font-weight: 500;
+  color: var(--g-color-text-primary);
+}
+
+.modal-editor__error {
+  font-size: var(--g-text-body-short-font-size);
+}
+
+.modal-editor__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-4);
+  padding: var(--g-spacing-4);
+}
+
+.modal-editor__checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-3);
+}
+
+.modal-editor__datetime {
+  width: 100%;
+  padding: var(--g-spacing-2) var(--g-spacing-3);
+  font-size: var(--g-text-body-1-font-size);
+  border: 1px solid var(--g-color-line-generic);
+  border-radius: var(--g-border-radius-s);
+  background: var(--g-color-base-background);
+  color: var(--g-color-text-primary);
+}
+
+.modal-editor__datetime:focus {
+  outline: none;
+  border-color: var(--g-color-line-brand);
+  box-shadow: 0 0 0 2px var(--g-color-base-selection);
+}
+
+/* Preview section */
+.modal-editor__preview {
+  display: flex;
+  flex-direction: column;
+  background: var(--g-color-base-generic);
+  overflow: hidden;
+}
+
+.modal-editor__preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--g-spacing-4);
+  border-bottom: 1px solid var(--g-color-line-generic);
+  background: var(--g-color-base-background);
+}
+
+.modal-editor__preview-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-2);
+}
+
+.modal-editor__preview-frame {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--g-spacing-6);
+  overflow: auto;
+}
+
+/* Footer */
+.modal-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--g-spacing-3);
+  padding: var(--g-spacing-4) var(--g-spacing-6);
+  border-top: 1px solid var(--g-color-line-generic);
+}
+
+/* Fullscreen preview overlay */
+.modal-editor__fullscreen-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+
+/* Translations editor */
+.translations-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-4);
+}
+
+.translations-editor__note {
+  margin-bottom: var(--g-spacing-2);
+}
+
+.translations-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-4);
+  margin-top: var(--g-spacing-4);
+}
+
+/* Native textarea styling */
+.modal-editor__textarea {
+  width: 100%;
+  padding: var(--g-spacing-2) var(--g-spacing-3);
+  font-family: inherit;
+  font-size: var(--g-text-body-1-font-size);
+  line-height: 1.5;
+  border: 1px solid var(--g-color-line-generic);
+  border-radius: var(--g-border-radius-s);
+  background: var(--g-color-base-background);
+  color: var(--g-color-text-primary);
+  resize: vertical;
+}
+
+.modal-editor__textarea:focus {
+  outline: none;
+  border-color: var(--g-color-line-brand);
+  box-shadow: 0 0 0 2px var(--g-color-base-selection);
+}
+
+.modal-editor__textarea::placeholder {
+  color: var(--g-color-text-hint);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .modal-editor__body {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-editor__preview {
+    display: none;
+  }
+
+  .modal-editor__field-row {
+    grid-template-columns: 1fr;
+  }
+}
