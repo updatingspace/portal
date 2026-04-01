@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -17,6 +18,8 @@ from core.schemas import (
     DashboardWidgetIn,
     DashboardWidgetOut,
 )
+from access_control.models import ScopeType
+from access_control.services import compute_effective_access, master_flags_from_dict
 from .models import UserPreference
 from .schemas import (
     UserPreferenceDefaultsSchema,
@@ -56,6 +59,27 @@ def get_user_and_tenant(request: HttpRequest) -> tuple[uuid.UUID, uuid.UUID]:
         raise HttpError(400, "Invalid user or tenant ID format")
     
     return user_id, tenant_id
+
+
+def _ensure_dashboard_customize_permission(request: HttpRequest, user_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+    master_flags_raw = request.headers.get("X-Master-Flags") or "{}"
+    try:
+        master_flags_data = json.loads(master_flags_raw)
+    except json.JSONDecodeError:
+        master_flags_data = {}
+    if not isinstance(master_flags_data, dict):
+        master_flags_data = {}
+
+    decision = compute_effective_access(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        permission_key="personalization.dashboards.customize",
+        scope_type=ScopeType.TENANT,
+        scope_id=str(tenant_id),
+        master_flags=master_flags_from_dict(master_flags_data),
+    )
+    if not decision.allowed:
+        raise HttpError(403, "Dashboard customization forbidden")
 
 
 @router.get("/preferences", response=UserPreferenceSchema)
@@ -171,6 +195,7 @@ def admin_list_homepage_modals(request: HttpRequest):
 @router.get("/admin/dashboards/layouts", response=list[DashboardLayoutOut])
 def list_dashboard_layouts(request: HttpRequest, include_deleted: bool = False):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     query = DashboardLayout.objects.filter(user_id=user_id, tenant_id=tenant_id)
     if not include_deleted:
         query = query.filter(deleted_at__isnull=True)
@@ -180,6 +205,7 @@ def list_dashboard_layouts(request: HttpRequest, include_deleted: bool = False):
 @router.post("/admin/dashboards/layouts", response=DashboardLayoutOut)
 def create_dashboard_layout(request: HttpRequest, payload: DashboardLayoutIn):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     data = payload.model_dump()
 
     if data.get("is_default"):
@@ -202,6 +228,7 @@ def create_dashboard_layout(request: HttpRequest, payload: DashboardLayoutIn):
 @router.put("/admin/dashboards/layouts/{layout_id}", response=DashboardLayoutOut)
 def update_dashboard_layout(request: HttpRequest, layout_id: str, payload: DashboardLayoutIn):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     layout = get_object_or_404(
         DashboardLayout,
         id=layout_id,
@@ -229,6 +256,7 @@ def update_dashboard_layout(request: HttpRequest, layout_id: str, payload: Dashb
 @router.delete("/admin/dashboards/layouts/{layout_id}")
 def delete_dashboard_layout(request: HttpRequest, layout_id: str, hard: bool = False):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     layout = get_object_or_404(
         DashboardLayout,
         id=layout_id,
@@ -245,6 +273,7 @@ def delete_dashboard_layout(request: HttpRequest, layout_id: str, hard: bool = F
 @router.get("/admin/dashboards/layouts/{layout_id}/widgets", response=list[DashboardWidgetOut])
 def list_dashboard_widgets(request: HttpRequest, layout_id: str, include_deleted: bool = False):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     layout = get_object_or_404(
         DashboardLayout,
         id=layout_id,
@@ -260,6 +289,7 @@ def list_dashboard_widgets(request: HttpRequest, layout_id: str, include_deleted
 @router.post("/admin/dashboards/layouts/{layout_id}/widgets", response=DashboardWidgetOut)
 def create_dashboard_widget(request: HttpRequest, layout_id: str, payload: DashboardWidgetIn):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     layout = get_object_or_404(
         DashboardLayout,
         id=layout_id,
@@ -284,6 +314,7 @@ def create_dashboard_widget(request: HttpRequest, layout_id: str, payload: Dashb
 @router.put("/admin/dashboards/widgets/{widget_id}", response=DashboardWidgetOut)
 def update_dashboard_widget(request: HttpRequest, widget_id: str, payload: DashboardWidgetIn):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     widget = get_object_or_404(
         DashboardWidget,
         id=widget_id,
@@ -306,6 +337,7 @@ def update_dashboard_widget(request: HttpRequest, widget_id: str, payload: Dashb
 @router.delete("/admin/dashboards/widgets/{widget_id}")
 def delete_dashboard_widget(request: HttpRequest, widget_id: str, hard: bool = False):
     user_id, tenant_id = get_user_and_tenant(request)
+    _ensure_dashboard_customize_permission(request, user_id, tenant_id)
     widget = get_object_or_404(
         DashboardWidget,
         id=widget_id,

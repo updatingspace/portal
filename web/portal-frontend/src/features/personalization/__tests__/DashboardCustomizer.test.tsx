@@ -40,7 +40,23 @@ vi.mock('../api/contentApi', () => ({
   })),
   updateDashboardLayout: vi.fn().mockResolvedValue({}),
   deleteDashboardLayout: vi.fn().mockResolvedValue({ success: true }),
-  fetchDashboardWidgets: vi.fn().mockResolvedValue([]),
+  fetchDashboardWidgets: vi.fn().mockResolvedValue([
+    {
+      id: 'widget-1',
+      layout_id: 'layout-1',
+      tenant_id: 'tenant-1',
+      widget_key: 'activity-feed',
+      position_x: 0,
+      position_y: 0,
+      width: 6,
+      height: 3,
+      settings: { limit: 10 },
+      is_visible: true,
+      deleted_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ]),
   createDashboardWidget: vi.fn().mockResolvedValue({}),
   updateDashboardWidget: vi.fn().mockResolvedValue({}),
   deleteDashboardWidget: vi.fn().mockResolvedValue({ success: true }),
@@ -70,6 +86,7 @@ describe('DashboardCustomizer', () => {
     expect(await screen.findByText('Dashboard Customizer')).toBeInTheDocument();
     expect(screen.getByText('Widget library')).toBeInTheDocument();
     expect(screen.getByText('Widgets in layout')).toBeInTheDocument();
+    expect(screen.getByText('Select or create a layout to manage widgets.')).toBeInTheDocument();
   });
 
   it('creates a layout from the input', async () => {

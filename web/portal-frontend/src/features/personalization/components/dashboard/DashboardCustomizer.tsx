@@ -14,6 +14,40 @@ const WIDGET_LIBRARY: Array<{ key: string; title: string }> = [
   { key: 'quick-links', title: 'Quick Links' },
 ];
 
+type BaseWidgetConfig = {
+  title: string;
+  description: string;
+  defaultSettings: Record<string, unknown>;
+};
+
+const BASE_WIDGETS: Record<string, BaseWidgetConfig> = {
+  'activity-feed': {
+    title: 'Activity Feed',
+    description: 'Latest community activity stream',
+    defaultSettings: { limit: 10, showAvatars: true },
+  },
+  'upcoming-events': {
+    title: 'Upcoming Events',
+    description: 'Nearest events with RSVP progress',
+    defaultSettings: { daysAhead: 14, showRsvp: true },
+  },
+  'active-polls': {
+    title: 'Active Polls',
+    description: 'Open votings requiring attention',
+    defaultSettings: { limit: 5, showDeadline: true },
+  },
+  'team-stats': {
+    title: 'Team Stats',
+    description: 'Weekly community metrics summary',
+    defaultSettings: { period: 'week', showTrend: true },
+  },
+  'quick-links': {
+    title: 'Quick Links',
+    description: 'Pinned shortcuts for frequent actions',
+    defaultSettings: { maxLinks: 8, editable: true },
+  },
+};
+
 export function DashboardCustomizer() {
   const { add: addToast } = useToaster();
   const { layouts, isLoading, createLayout, updateLayout, deleteLayout } = useDashboards();
@@ -61,7 +95,7 @@ export function DashboardCustomizer() {
       width: 6,
       height: 3,
       is_visible: true,
-      settings: {},
+      settings: BASE_WIDGETS[widgetKey]?.defaultSettings ?? {},
     });
     addToast({ name: 'widget-added', title: 'Widget added', theme: 'success' });
   }
@@ -153,7 +187,10 @@ export function DashboardCustomizer() {
               {widgets.map((widget) => (
                 <div key={widget.id} className="dashboard-customizer__widget-item">
                   <div>
-                    <Text variant="body-2">{widget.widget_key}</Text>
+                    <Text variant="body-2">{BASE_WIDGETS[widget.widget_key]?.title ?? widget.widget_key}</Text>
+                    <Text variant="caption-2" color="secondary">
+                      {BASE_WIDGETS[widget.widget_key]?.description ?? 'Custom widget'}
+                    </Text>
                     <Text variant="caption-2" color="secondary">
                       Position ({widget.position_x}, {widget.position_y}), size {widget.width}x{widget.height}
                     </Text>
