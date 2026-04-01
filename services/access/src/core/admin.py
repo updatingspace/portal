@@ -1,6 +1,57 @@
 from django.contrib import admin
 
-from .models import HomePageModal
+from .models import HomePageModal, UserPreference
+
+
+@admin.register(UserPreference)
+class UserPreferenceAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "user_id",
+        "tenant_id",
+        "theme",
+        "language",
+        "profile_visibility",
+        "created_at",
+        "updated_at",
+    ]
+    list_filter = ["theme", "language", "profile_visibility", "tenant_id"]
+    search_fields = ["user_id", "tenant_id"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    ordering = ["-updated_at"]
+
+    fieldsets = (
+        (None, {"fields": ("id", "user_id", "tenant_id")}),
+        (
+            "Appearance",
+            {
+                "fields": (
+                    "theme",
+                    "accent_color",
+                    "font_size",
+                    "high_contrast",
+                    "reduce_motion",
+                )
+            },
+        ),
+        ("Localization", {"fields": ("language", "timezone")}),
+        ("Notifications", {"fields": ("notification_settings",)}),
+        (
+            "Privacy",
+            {
+                "fields": (
+                    "profile_visibility",
+                    "show_online_status",
+                    "show_vote_history",
+                    "share_activity",
+                    "allow_mentions",
+                    "analytics_enabled",
+                    "recommendations_enabled",
+                )
+            },
+        ),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(HomePageModal)

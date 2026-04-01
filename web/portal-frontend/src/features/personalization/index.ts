@@ -17,6 +17,12 @@ export * from './api/personalizationApi';
 // Hooks
 export * from './hooks';
 
+// Contexts
+export * from './contexts';
+
+// Validation
+export * from './validation';
+
 // Components - explicit exports to avoid naming conflicts with types
 export {
   SettingsSection,
@@ -30,6 +36,7 @@ export {
   AppearanceSettings as AppearanceSettingsPanel,
   NotificationsSettings as NotificationsSettingsPanel,
   PrivacySettings as PrivacySettingsPanel,
+  UserSettingsPanel,
 } from './components';
 
 export type {

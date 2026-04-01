@@ -257,6 +257,87 @@
   border-width: 3px;
 }
 
+/* User Settings Panel */
+.user-settings-panel {
+  margin-bottom: var(--g-spacing-6);
+}
+
+.user-settings-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--g-spacing-5) var(--g-spacing-5) var(--g-spacing-4) var(--g-spacing-5);
+  border-bottom: 1px solid var(--g-color-line-generic);
+  gap: var(--g-spacing-4);
+}
+
+.user-settings-panel__title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-spacing-1);
+}
+
+.user-settings-panel__status {
+  display: flex;
+  align-items: center;
+  gap: var(--g-spacing-2);
+}
+
+.user-settings-panel__actions {
+  display: flex;
+  gap: var(--g-spacing-2);
+}
+
+.user-settings-panel__tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--g-color-line-generic);
+  background: var(--g-color-base-background);
+}
+
+.settings-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--g-spacing-4) var(--g-spacing-5);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 3px solid transparent;
+  min-width: 140px;
+}
+
+.settings-tab:hover {
+  background: var(--g-color-base-generic);
+}
+
+.settings-tab--active {
+  background: var(--g-color-base-generic);
+  border-bottom-color: var(--g-color-line-brand);
+}
+
+.user-settings-panel__content {
+  padding: var(--g-spacing-5);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.user-settings-panel__loading,
+.user-settings-panel__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--g-spacing-3);
+  padding: var(--g-spacing-6);
+  text-align: center;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .theme-selector {
@@ -275,5 +356,31 @@
   
   .settings-row__control {
     width: 100%;
+  }
+
+  .user-settings-panel__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--g-spacing-3);
+  }
+
+  .user-settings-panel__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .settings-tabs {
+    flex-direction: column;
+  }
+
+  .settings-tab {
+    min-width: auto;
+    border-bottom: 1px solid var(--g-color-line-generic);
+    border-right: none;
+  }
+
+  .settings-tab--active {
+    border-right: 3px solid var(--g-color-line-brand);
+    border-bottom: 1px solid var(--g-color-line-generic);
   }
 }
