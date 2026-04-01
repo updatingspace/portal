@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 
 import { useAutoSave } from '../hooks/useAutoSave';
 import { usePreferences } from '../hooks/usePreferences';
+import { usePersonalizationI18n } from '../i18n';
 import type { PreferencesUpdatePayload } from '../types';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { NotificationsSettings } from './settings/NotificationsSettings';
@@ -17,16 +18,28 @@ interface UserSettingsPanelProps {
   className?: string;
 }
 
-const TABS = [
-  { id: 'appearance', title: 'Appearance', description: 'Theme, colors and display' },
-  { id: 'notifications', title: 'Notifications', description: 'Email and in-app alerts' },
-  { id: 'privacy', title: 'Privacy', description: 'Visibility and sharing' },
-] as const;
-
-type TabId = typeof TABS[number]['id'];
+type TabId = 'appearance' | 'notifications' | 'privacy';
 
 export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('appearance');
+  const { t } = usePersonalizationI18n();
+  const tabs: Array<{ id: TabId; title: string; description: string }> = [
+    {
+      id: 'appearance',
+      title: t('userSettings.tabs.appearance.title'),
+      description: t('userSettings.tabs.appearance.description'),
+    },
+    {
+      id: 'notifications',
+      title: t('userSettings.tabs.notifications.title'),
+      description: t('userSettings.tabs.notifications.description'),
+    },
+    {
+      id: 'privacy',
+      title: t('userSettings.tabs.privacy.title'),
+      description: t('userSettings.tabs.privacy.description'),
+    },
+  ];
   
   const {
     preferences,
@@ -100,9 +113,9 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
     return (
       <Card className={`user-settings-panel ${className || ''}`}>
         <div className="user-settings-panel__loading">
-          <Text variant="body-2" color="secondary">
-            Loading preferences...
-          </Text>
+            <Text variant="body-2" color="secondary">
+              {t('userSettings.state.loading')}
+            </Text>
         </div>
       </Card>
     );
@@ -112,10 +125,10 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
     return (
       <Card className={`user-settings-panel ${className || ''}`}>
         <div className="user-settings-panel__error">
-          <Text variant="body-2" color="danger">
-            Failed to load preferences: {error?.message || 'Unknown error'}
-          </Text>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Text variant="body-2" color="danger">
+              {t('userSettings.state.failed')}: {error?.message || t('userSettings.state.unknownError')}
+            </Text>
+            <Button onClick={() => window.location.reload()}>{t('userSettings.state.retry')}</Button>
         </div>
       </Card>
     );
@@ -135,33 +148,33 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
       {/* Header with save status */}
       <div className="user-settings-panel__header">
         <div className="user-settings-panel__title">
-          <Text variant="header-1">Personalization</Text>
+          <Text variant="header-1">{t('userSettings.header.title')}</Text>
           <Text variant="body-2" color="secondary">
-            Customize your experience
+            {t('userSettings.header.subtitle')}
           </Text>
         </div>
         
         <div className="user-settings-panel__status">
           {autoSave.isSaving && (
-            <Text variant="caption-2" color="info">
-              Saving...
-            </Text>
-          )}
-          {autoSave.lastSaved && !hasUnsavedChanges && (
-            <Text variant="caption-2" color="positive">
-              Saved {autoSave.lastSaved.toLocaleTimeString()}
-            </Text>
-          )}
-          {hasUnsavedChanges && !autoSave.isSaving && (
-            <Text variant="caption-2" color="warning">
-              Unsaved changes
-            </Text>
-          )}
-          {autoSave.error && (
-            <Text variant="caption-2" color="danger">
-              Save failed
-            </Text>
-          )}
+              <Text variant="caption-2" color="info">
+                {t('userSettings.state.saving')}
+              </Text>
+            )}
+            {autoSave.lastSaved && !hasUnsavedChanges && (
+              <Text variant="caption-2" color="positive">
+                {t('userSettings.state.saved')} {autoSave.lastSaved.toLocaleTimeString()}
+              </Text>
+            )}
+            {hasUnsavedChanges && !autoSave.isSaving && (
+              <Text variant="caption-2" color="warning">
+                {t('userSettings.state.unsaved')}
+              </Text>
+            )}
+            {autoSave.error && (
+              <Text variant="caption-2" color="danger">
+                {t('userSettings.state.saveFailed')}
+              </Text>
+            )}
         </div>
         
         <div className="user-settings-panel__actions">
@@ -172,7 +185,7 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
               size="s"
               variant="action"
             >
-              Save Now
+              {t('userSettings.actions.saveNow')}
             </Button>
           )}
           <Button
@@ -181,7 +194,7 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
             size="s"
             variant="outlined-danger"
           >
-            Reset to Defaults
+            {t('userSettings.actions.resetDefaults')}
           </Button>
         </div>
       </div>
@@ -189,7 +202,7 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
       {/* Tabs Navigation */}
       <div className="user-settings-panel__tabs">
         <div className="settings-tabs">
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.id}
               className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}`}

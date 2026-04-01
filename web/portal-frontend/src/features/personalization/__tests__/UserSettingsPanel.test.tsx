@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { I18nProvider } from '@/app/providers/I18nProvider';
 import { UserSettingsPanel } from '../components/UserSettingsPanel';
 
 // Mock the personalization API
@@ -62,7 +63,7 @@ const createWrapper = () => {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        {children}
+        <I18nProvider>{children}</I18nProvider>
       </QueryClientProvider>
     );
   };
@@ -72,6 +73,7 @@ describe('UserSettingsPanel', () => {
   let wrapper: ReturnType<typeof createWrapper>;
 
   beforeEach(() => {
+    window.localStorage.setItem('portal_locale_v1', 'en');
     wrapper = createWrapper();
     vi.clearAllMocks();
   });
@@ -131,5 +133,16 @@ describe('UserSettingsPanel', () => {
     
     // Check reset button is present
     expect(screen.getByText('Reset to Defaults')).toBeInTheDocument();
+  });
+
+  it('renders russian translations when locale is ru', async () => {
+    window.localStorage.setItem('portal_locale_v1', 'ru');
+    const ruWrapper = createWrapper();
+    render(<UserSettingsPanel />, { wrapper: ruWrapper });
+
+    await screen.findByText('Персонализация');
+    expect(screen.getByText('Внешний вид')).toBeInTheDocument();
+    expect(screen.getByText('Уведомления')).toBeInTheDocument();
+    expect(screen.getByText('Приватность')).toBeInTheDocument();
   });
 });

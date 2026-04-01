@@ -4,6 +4,7 @@
 import { RadioGroup } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import type { PrivacySettings as PrivacyData, ProfileVisibility } from '../../types';
 import { SettingsSection } from './SettingsSection';
 import { PrivacyToggle } from './PrivacyToggle';
@@ -15,17 +16,17 @@ export interface PrivacySettingsProps {
   disabled?: boolean;
 }
 
-const VISIBILITY_OPTIONS: Array<{ value: ProfileVisibility; content: string }> = [
-  { value: 'public', content: 'Public — visible to everyone' },
-  { value: 'members', content: 'Members — community members only' },
-  { value: 'private', content: 'Private — only you' },
-];
-
 export function PrivacySettings({
   privacy,
   onChange,
   disabled,
 }: PrivacySettingsProps) {
+  const { t } = usePersonalizationI18n();
+  const VISIBILITY_OPTIONS: Array<{ value: ProfileVisibility; content: string }> = [
+    { value: 'public', content: t('privacy.visibility.public') },
+    { value: 'members', content: t('privacy.visibility.members') },
+    { value: 'private', content: t('privacy.visibility.private') },
+  ];
   const handleVisibilityChange = useCallback(
     (value: string) => {
       onChange({ profile_visibility: value as ProfileVisibility });
@@ -79,8 +80,8 @@ export function PrivacySettings({
     <div data-testid="privacy-settings">
       {/* Profile Visibility */}
       <SettingsSection
-        title="Profile Visibility"
-        description="Control who can see your profile information"
+        title={t('privacy.sections.visibility.title')}
+        description={t('privacy.sections.visibility.description')}
         testId="section-visibility"
       >
         <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -98,29 +99,29 @@ export function PrivacySettings({
 
       {/* Online Status */}
       <SettingsSection
-        title="Activity & Presence"
-        description="Control how your activity is displayed to others"
+        title={t('privacy.sections.activity.title')}
+        description={t('privacy.sections.activity.description')}
         testId="section-activity"
       >
         <PrivacyToggle
-          label="Show online status"
-          description="Let others see when you're online"
+          label={t('privacy.toggles.onlineStatus.label')}
+          description={t('privacy.toggles.onlineStatus.description')}
           value={privacy.show_online_status}
           onChange={handleShowOnlineStatusChange}
           disabled={disabled}
           testId="toggle-online-status"
         />
         <PrivacyToggle
-          label="Show voting history"
-          description="Display your past votes on your profile"
+          label={t('privacy.toggles.voteHistory.label')}
+          description={t('privacy.toggles.voteHistory.description')}
           value={privacy.show_vote_history}
           onChange={handleShowVoteHistoryChange}
           disabled={disabled}
           testId="toggle-vote-history"
         />
         <PrivacyToggle
-          label="Share activity in feed"
-          description="Your actions appear in the community activity feed"
+          label={t('privacy.toggles.shareActivity.label')}
+          description={t('privacy.toggles.shareActivity.description')}
           value={privacy.share_activity}
           onChange={handleShareActivityChange}
           disabled={disabled}
@@ -130,13 +131,13 @@ export function PrivacySettings({
 
       {/* Interactions */}
       <SettingsSection
-        title="Interactions"
-        description="Control how others can interact with you"
+        title={t('privacy.sections.interactions.title')}
+        description={t('privacy.sections.interactions.description')}
         testId="section-interactions"
       >
         <PrivacyToggle
-          label="Allow @mentions"
-          description="Let other users mention you in posts and comments"
+          label={t('privacy.toggles.mentions.label')}
+          description={t('privacy.toggles.mentions.description')}
           value={privacy.allow_mentions}
           onChange={handleAllowMentionsChange}
           disabled={disabled}
@@ -146,21 +147,21 @@ export function PrivacySettings({
 
       {/* Data & Personalization */}
       <SettingsSection
-        title="Data & Personalization"
-        description="Control how your data is used"
+        title={t('privacy.sections.data.title')}
+        description={t('privacy.sections.data.description')}
         testId="section-data"
       >
         <PrivacyToggle
-          label="Usage analytics"
-          description="Help improve the platform by sharing anonymous usage data"
+          label={t('privacy.toggles.analytics.label')}
+          description={t('privacy.toggles.analytics.description')}
           value={privacy.analytics_enabled}
           onChange={handleAnalyticsEnabledChange}
           disabled={disabled}
           testId="toggle-analytics"
         />
         <PrivacyToggle
-          label="Personalized recommendations"
-          description="Get recommendations based on your activity and preferences"
+          label={t('privacy.toggles.recommendations.label')}
+          description={t('privacy.toggles.recommendations.description')}
           value={privacy.recommendations_enabled}
           onChange={handleRecommendationsEnabledChange}
           disabled={disabled}

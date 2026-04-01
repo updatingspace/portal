@@ -4,6 +4,7 @@
 import { Text } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import type { AppearanceSettings as AppearanceData, LocalizationSettings } from '../../types';
 import { SettingsSection } from './SettingsSection';
 import { ThemeSelector } from './ThemeSelector';
@@ -29,6 +30,7 @@ export function AppearanceSettings({
   onLocalizationChange,
   disabled,
 }: AppearanceSettingsProps) {
+  const { t } = usePersonalizationI18n();
   const handleThemeChange = useCallback(
     (theme: AppearanceData['theme']) => {
       onAppearanceChange({ theme });
@@ -82,17 +84,17 @@ export function AppearanceSettings({
     <div data-testid="appearance-settings">
       {/* Theme Section */}
       <SettingsSection
-        title="Theme"
-        description="Choose how the interface looks"
+        title={t('appearance.sections.theme.title')}
+        description={t('appearance.sections.theme.description')}
         testId="section-theme"
       >
         <div className="settings-row">
           <div className="settings-row__info">
             <Text variant="body-1" className="settings-row__label">
-              Color scheme
+              {t('appearance.labels.colorScheme')}
             </Text>
             <Text variant="caption-1" color="secondary" className="settings-row__description">
-              Select light, dark, or follow your system settings
+              {t('appearance.labels.colorSchemeDescription')}
             </Text>
           </div>
         </div>
@@ -105,8 +107,8 @@ export function AppearanceSettings({
 
       {/* Accent Color Section */}
       <SettingsSection
-        title="Accent Color"
-        description="Personalize the interface highlight color"
+        title={t('appearance.sections.accent.title')}
+        description={t('appearance.sections.accent.description')}
         testId="section-accent"
       >
         <ColorPicker
@@ -118,14 +120,14 @@ export function AppearanceSettings({
 
       {/* Typography Section */}
       <SettingsSection
-        title="Typography"
-        description="Adjust text display settings"
+        title={t('appearance.sections.typography.title')}
+        description={t('appearance.sections.typography.description')}
         testId="section-typography"
       >
         <div className="settings-row">
           <div className="settings-row__info">
             <Text variant="body-1" className="settings-row__label">
-              Font size
+              {t('appearance.labels.fontSize')}
             </Text>
           </div>
         </div>
@@ -138,21 +140,21 @@ export function AppearanceSettings({
 
       {/* Accessibility Section */}
       <SettingsSection
-        title="Accessibility"
-        description="Settings for visual accessibility"
+        title={t('appearance.sections.accessibility.title')}
+        description={t('appearance.sections.accessibility.description')}
         testId="section-accessibility"
       >
         <PrivacyToggle
-          label="High contrast"
-          description="Increase contrast for better visibility"
+          label={t('appearance.labels.highContrast')}
+          description={t('appearance.labels.highContrastDescription')}
           value={appearance.high_contrast}
           onChange={handleHighContrastChange}
           disabled={disabled}
           testId="toggle-high-contrast"
         />
         <PrivacyToggle
-          label="Reduce motion"
-          description="Minimize animations and transitions"
+          label={t('appearance.labels.reduceMotion')}
+          description={t('appearance.labels.reduceMotionDescription')}
           value={appearance.reduce_motion}
           onChange={handleReduceMotionChange}
           disabled={disabled}
@@ -162,14 +164,14 @@ export function AppearanceSettings({
 
       {/* Localization Section */}
       <SettingsSection
-        title="Language & Region"
-        description="Set your language and timezone preferences"
+        title={t('appearance.sections.localization.title')}
+        description={t('appearance.sections.localization.description')}
         testId="section-localization"
       >
         <div className="settings-row">
           <div className="settings-row__info">
             <Text variant="body-1" className="settings-row__label">
-              Interface language
+              {t('appearance.labels.interfaceLanguage')}
             </Text>
           </div>
           <div className="settings-row__control">
@@ -183,10 +185,10 @@ export function AppearanceSettings({
         <div className="settings-row">
           <div className="settings-row__info">
             <Text variant="body-1" className="settings-row__label">
-              Timezone
+              {t('appearance.labels.timezone')}
             </Text>
             <Text variant="caption-1" color="secondary" className="settings-row__description">
-              Used for displaying dates and event times
+              {t('appearance.labels.timezoneDescription')}
             </Text>
           </div>
           <div className="settings-row__control">

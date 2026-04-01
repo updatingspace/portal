@@ -32,6 +32,9 @@ export * from './contexts';
 // Validation
 export * from './validation';
 
+// i18n
+export * from './i18n';
+
 // Components - explicit exports to avoid naming conflicts with types
 export {
   // Settings components

@@ -4,6 +4,7 @@
 import { Select, Switch, Text, TextInput } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import type { EmailDigest, NotificationChannelConfig, NotificationSettings } from '../../types';
 import { SettingsSection } from './SettingsSection';
 import { NotificationToggle } from './NotificationToggle';
@@ -16,18 +17,18 @@ export interface NotificationsSettingsProps {
   disabled?: boolean;
 }
 
-const DIGEST_OPTIONS = [
-  { value: 'instant', content: 'Instant — as they happen' },
-  { value: 'hourly', content: 'Hourly digest' },
-  { value: 'daily', content: 'Daily digest' },
-  { value: 'weekly', content: 'Weekly digest' },
-];
-
 export function NotificationsSettings({
   notifications,
   onChange,
   disabled,
 }: NotificationsSettingsProps) {
+  const { t } = usePersonalizationI18n();
+  const DIGEST_OPTIONS = [
+    { value: 'instant', content: t('notifications.digest.instant') },
+    { value: 'hourly', content: t('notifications.digest.hourly') },
+    { value: 'daily', content: t('notifications.digest.daily') },
+    { value: 'weekly', content: t('notifications.digest.weekly') },
+  ];
   // Channel toggles
   const handleEmailEnabledChange = useCallback(
     (enabled: boolean) => {
@@ -119,17 +120,17 @@ export function NotificationsSettings({
     <div data-testid="notifications-settings">
       {/* Delivery Channels */}
       <SettingsSection
-        title="Delivery Channels"
-        description="Choose how you want to receive notifications"
+        title={t('notifications.sections.channels.title')}
+        description={t('notifications.sections.channels.description')}
         testId="section-channels"
       >
         <div className="settings-row">
           <div className="settings-row__info">
             <Text variant="body-1" className="settings-row__label">
-              Email notifications
-            </Text>
-            <Text variant="caption-1" color="secondary" className="settings-row__description">
-              Receive notifications via email
+               {t('notifications.labels.emailNotifications')}
+             </Text>
+             <Text variant="caption-1" color="secondary" className="settings-row__description">
+               {t('notifications.labels.emailDescription')}
             </Text>
             {notifications.email.enabled && (
               <div style={{ marginTop: 8 }}>
@@ -156,8 +157,8 @@ export function NotificationsSettings({
         </div>
 
         <PrivacyToggle
-          label="In-app notifications"
-          description="Show notifications within the app"
+          label={t('notifications.labels.inAppNotifications')}
+          description={t('notifications.labels.inAppDescription')}
           value={notifications.in_app.enabled}
           onChange={handleInAppEnabledChange}
           disabled={disabled}
@@ -167,27 +168,27 @@ export function NotificationsSettings({
 
       {/* Polls Notifications */}
       <SettingsSection
-        title="Polls & Voting"
-        description="Notifications about voting activities"
+        title={t('notifications.sections.polls.title')}
+        description={t('notifications.sections.polls.description')}
         testId="section-polls"
       >
         <NotificationToggle
-          label="New polls"
-          description="When a new poll opens for voting"
+          label={t('notifications.toggles.pollsNew.label')}
+          description={t('notifications.toggles.pollsNew.description')}
           value={getTypeConfig('polls', 'new_vote')}
           onChange={(config) => handleNotificationTypeChange('polls', 'new_vote', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="Closing soon"
-          description="Reminder before a poll closes"
+          label={t('notifications.toggles.pollsClosing.label')}
+          description={t('notifications.toggles.pollsClosing.description')}
           value={getTypeConfig('polls', 'closing_soon')}
           onChange={(config) => handleNotificationTypeChange('polls', 'closing_soon', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="Results published"
-          description="When poll results are announced"
+          label={t('notifications.toggles.pollsResults.label')}
+          description={t('notifications.toggles.pollsResults.description')}
           value={getTypeConfig('polls', 'results_published')}
           onChange={(config) => handleNotificationTypeChange('polls', 'results_published', config)}
           disabled={disabled}
@@ -196,27 +197,27 @@ export function NotificationsSettings({
 
       {/* Events Notifications */}
       <SettingsSection
-        title="Events"
-        description="Notifications about community events"
+        title={t('notifications.sections.events.title')}
+        description={t('notifications.sections.events.description')}
         testId="section-events"
       >
         <NotificationToggle
-          label="New events"
-          description="When new events are scheduled"
+          label={t('notifications.toggles.eventsNew.label')}
+          description={t('notifications.toggles.eventsNew.description')}
           value={getTypeConfig('events', 'new_event')}
           onChange={(config) => handleNotificationTypeChange('events', 'new_event', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="RSVP reminders"
-          description="Reminder to RSVP for upcoming events"
+          label={t('notifications.toggles.eventsRsvp.label')}
+          description={t('notifications.toggles.eventsRsvp.description')}
           value={getTypeConfig('events', 'rsvp_reminder')}
           onChange={(config) => handleNotificationTypeChange('events', 'rsvp_reminder', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="Event starting"
-          description="Notification when an event is about to start"
+          label={t('notifications.toggles.eventsStarting.label')}
+          description={t('notifications.toggles.eventsStarting.description')}
           value={getTypeConfig('events', 'event_starting')}
           onChange={(config) => handleNotificationTypeChange('events', 'event_starting', config)}
           disabled={disabled}
@@ -225,20 +226,20 @@ export function NotificationsSettings({
 
       {/* Community Notifications */}
       <SettingsSection
-        title="Community"
-        description="Social and community updates"
+        title={t('notifications.sections.community.title')}
+        description={t('notifications.sections.community.description')}
         testId="section-community"
       >
         <NotificationToggle
-          label="Mentions"
-          description="When someone @mentions you"
+          label={t('notifications.toggles.communityMentions.label')}
+          description={t('notifications.toggles.communityMentions.description')}
           value={getTypeConfig('community', 'mention')}
           onChange={(config) => handleNotificationTypeChange('community', 'mention', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="New members"
-          description="When new members join the community"
+          label={t('notifications.toggles.communityNewMembers.label')}
+          description={t('notifications.toggles.communityNewMembers.description')}
           value={getTypeConfig('community', 'new_member')}
           onChange={(config) => handleNotificationTypeChange('community', 'new_member', config)}
           disabled={disabled}
@@ -247,20 +248,20 @@ export function NotificationsSettings({
 
       {/* System Notifications */}
       <SettingsSection
-        title="System"
-        description="Important system and security notifications"
+        title={t('notifications.sections.system.title')}
+        description={t('notifications.sections.system.description')}
         testId="section-system"
       >
         <NotificationToggle
-          label="Security alerts"
-          description="Important security notifications (recommended)"
+          label={t('notifications.toggles.systemSecurity.label')}
+          description={t('notifications.toggles.systemSecurity.description')}
           value={getTypeConfig('system', 'security_alert')}
           onChange={(config) => handleNotificationTypeChange('system', 'security_alert', config)}
           disabled={disabled}
         />
         <NotificationToggle
-          label="Product updates"
-          description="New features and platform updates"
+          label={t('notifications.toggles.systemUpdates.label')}
+          description={t('notifications.toggles.systemUpdates.description')}
           value={getTypeConfig('system', 'product_update')}
           onChange={(config) => handleNotificationTypeChange('system', 'product_update', config)}
           disabled={disabled}
@@ -269,13 +270,13 @@ export function NotificationsSettings({
 
       {/* Quiet Hours */}
       <SettingsSection
-        title="Quiet Hours"
-        description="Pause notifications during specific times"
+        title={t('notifications.sections.quietHours.title')}
+        description={t('notifications.sections.quietHours.description')}
         testId="section-quiet-hours"
       >
         <PrivacyToggle
-          label="Enable quiet hours"
-          description="Notifications will be held until quiet hours end"
+          label={t('notifications.labels.quietHoursEnable')}
+          description={t('notifications.labels.quietHoursEnableDescription')}
           value={notifications.quiet_hours.enabled}
           onChange={handleQuietHoursEnabledChange}
           disabled={disabled}
@@ -290,18 +291,18 @@ export function NotificationsSettings({
                 onChange={handleQuietHoursStartChange}
                 disabled={disabled}
                 size="m"
-                placeholder="22:00"
-                aria-label="Quiet hours start time"
+                placeholder={t('notifications.quietHours.startPlaceholder')}
+                aria-label={t('notifications.quietHours.startAria')}
                 data-testid="quiet-hours-start"
               />
-              <span className="quiet-hours__separator">to</span>
+              <span className="quiet-hours__separator">{t('notifications.quietHours.separator')}</span>
               <TextInput
                 value={notifications.quiet_hours.end}
                 onChange={handleQuietHoursEndChange}
                 disabled={disabled}
                 size="m"
-                placeholder="08:00"
-                aria-label="Quiet hours end time"
+                placeholder={t('notifications.quietHours.endPlaceholder')}
+                aria-label={t('notifications.quietHours.endAria')}
                 data-testid="quiet-hours-end"
               />
             </div>

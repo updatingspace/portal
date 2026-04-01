@@ -19,6 +19,11 @@ export type ApiHomePageModal = {
   end_date?: string | null;
   endDate?: string | null;
   order: number;
+  translations?: Record<string, {
+    title?: string;
+    content?: string;
+    button_text?: string;
+  }>;
 };
 
 export interface HomePageModal {
@@ -33,6 +38,11 @@ export interface HomePageModal {
   startDate: string | null;
   endDate: string | null;
   order: number;
+  translations?: Record<string, {
+    title?: string;
+    content?: string;
+    button_text?: string;
+  }>;
 }
 
 export interface HomePageModalInput {
@@ -60,6 +70,7 @@ const mapHomePageModal = (modal: ApiHomePageModal): HomePageModal => ({
   startDate: modal.startDate ?? modal.start_date ?? null,
   endDate: modal.endDate ?? modal.end_date ?? null,
   order: modal.order ?? 0,
+  translations: modal.translations ?? {},
 });
 
 const buildHomePageModalPayload = (
