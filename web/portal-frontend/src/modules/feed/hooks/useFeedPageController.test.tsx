@@ -181,4 +181,35 @@ describe('useFeedPageController', () => {
     expect(result.current.selectedModerationIds).toHaveLength(0);
     expect(result.current.moderationReason).toBe('');
   });
+
+  it('ignores Alt+M when typing in input', () => {
+    const { result } = renderHook(() => useFeedPageController());
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true, bubbles: true }));
+    });
+
+    expect(result.current.moderationMode).toBe(false);
+    input.remove();
+  });
+
+  it('does not exit moderation on Escape while typing in textarea', () => {
+    const { result } = renderHook(() => useFeedPageController());
+    const textarea = document.createElement('textarea');
+    document.body.appendChild(textarea);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
+    });
+    expect(result.current.moderationMode).toBe(true);
+
+    act(() => {
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    expect(result.current.moderationMode).toBe(true);
+    textarea.remove();
+  });
 });
