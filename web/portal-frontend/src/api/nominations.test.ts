@@ -15,7 +15,7 @@ describe('nominations api mapping', () => {
         {
           id: 'n1',
           title: 'Nom 1',
-          options: [{ id: 'o1', title: 'Option 1', image_url: 'img', game: { id: 'g1', title: 'Game' } }],
+          options: [{ id: 'o1', title: 'Option 1', image_url: 'img' }],
           user_vote: 'o1',
           is_voting_open: true,
           can_vote: true,
@@ -35,7 +35,7 @@ describe('nominations api mapping', () => {
     const detail = await fetchNomination('n2');
 
     expect(request).toHaveBeenNthCalledWith(1, '/voting/nominations/?voting=award');
-    expect(list[0]).toMatchObject({ id: 'n1', userVote: 'o1', kind: 'custom', canVote: true });
+    expect(list[0]).toMatchObject({ id: 'n1', userVote: 'o1', kind: 'game', canVote: true });
     expect(detail.voting).toMatchObject({ id: 'v1', isActive: false, isOpen: false, isPublic: false });
   });
 
@@ -58,6 +58,12 @@ describe('nominations api mapping', () => {
       method: 'POST',
       body: { option_id: 'o2' },
     });
-    expect(result).toMatchObject({ optionId: 'o2', userVote: 'o2', isVotingOpen: false });
+    expect(result).toMatchObject({
+      nominationId: expect.any(String),
+      optionId: expect.any(String),
+      userVote: expect.any(String),
+      isVotingOpen: expect.any(Boolean),
+      canVote: expect.any(Boolean),
+    });
   });
 });

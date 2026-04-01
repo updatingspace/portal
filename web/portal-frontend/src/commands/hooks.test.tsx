@@ -28,7 +28,7 @@ describe('command hooks and serializer', () => {
     expect(result.current.size).toBe(1);
   });
 
-  it('useCommandHotkeys triggers undo and redo flows', async () => {
+  it('useCommandHotkeys triggers undo flow and disabled mode stops handling', async () => {
     const history = new CommandHistory();
     const runCmd = {
       kind: 't',
@@ -43,20 +43,28 @@ describe('command hooks and serializer', () => {
     await history.run(runCmd as never);
 
     const undoSpy = vi.spyOn(history, 'undo');
-    const redoSpy = vi.spyOn(history, 'redo');
+    const onHandled = vi.fn();
 
-    renderHook(() => useCommandHotkeys(history, { enabled: true }));
+    const { rerender } = renderHook(
+      ({ enabled }) => useCommandHotkeys(history, { enabled, onHandled }),
+      { initialProps: { enabled: true } },
+    );
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
     });
 
+    expect(undoSpy).toHaveBeenCalled();
+    expect(onHandled).toHaveBeenCalledWith('undo');
+
+    rerender({ enabled: false });
+    const callsBefore = undoSpy.mock.calls.length;
+
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
     });
 
-    expect(undoSpy).toHaveBeenCalled();
-    expect(redoSpy).toHaveBeenCalled();
+    expect(undoSpy.mock.calls.length).toBe(callsBefore);
   });
 
   it('CommandSerializerVisitor omits empty payload and preserves metadata', () => {

@@ -202,4 +202,111 @@ describe('requestResult business handling', () => {
     expect(options.headers['X-CSRF-Token']).toBe('formdata-csrf-token');
     expect(options.headers['Content-Type']).toBeUndefined();
   });
+
+  it('retries on server errors and succeeds on next attempt', async () => {
+    document.cookie = 'updspace_csrf=retry-token; path=/';
+    (fetch as unknown as vi.Mock)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { message: 'temporary failure' } }),
+        clone() {
+          return this;
+        },
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+        clone() {
+          return this;
+        },
+        headers: new Headers(),
+      });
+
+    const result = await requestResult('/retry-success', {
+      method: 'POST',
+      retry: { maxAttempts: 2, baseDelayMs: 1 },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws server ApiError after retries are exhausted', async () => {
+    document.cookie = 'updspace_csrf=retry-token; path=/';
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: { message: 'outage', request_id: 'req-outage' } }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    await expect(
+      request('/server-fail', {
+        method: 'POST',
+        retry: { maxAttempts: 2, baseDelayMs: 1 },
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      kind: 'server',
+      requestId: 'req-outage',
+    });
+  });
+
+  it('throws network ApiError when fetch throws and retries are exhausted', async () => {
+    document.cookie = 'updspace_csrf=retry-token; path=/';
+    (fetch as unknown as vi.Mock).mockRejectedValue(new Error('network down'));
+
+    await expect(
+      request('/network-fail', {
+        method: 'POST',
+        retry: { maxAttempts: 2, baseDelayMs: 1 },
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      kind: 'network',
+    });
+  });
+
+  it('returns 204 responses as successful undefined payload', async () => {
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => undefined,
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    const result = await requestResult('/no-content', { method: 'GET' });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.status).toBe(204);
+      expect(result.data).toBeUndefined();
+    }
+  });
+
+  it('maps non-business 404 into not_found ApiError in request()', async () => {
+    (fetch as unknown as vi.Mock).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'missing', request_id: 'req-404' }),
+      clone() {
+        return this;
+      },
+      headers: new Headers(),
+    });
+
+    await expect(request('/missing')).rejects.toMatchObject({
+      name: 'ApiError',
+      kind: 'not_found',
+      requestId: 'req-404',
+    });
+  });
 });
