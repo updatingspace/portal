@@ -67,6 +67,244 @@ def _resolve_access_check_path(upstream: str) -> str:
     return "access/check"
 
 
+def _resolve_access_admin_path(upstream: str, subpath: str) -> str:
+    base = upstream.rstrip("/")
+    if base.endswith("/access"):
+        return f"admin/{subpath}".strip("/")
+    return f"access/admin/{subpath}".strip("/")
+
+
+def _extract_user_id_from_approve_payload(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+
+    direct_user_id = payload.get("user_id")
+    if isinstance(direct_user_id, str) and direct_user_id.strip():
+        return direct_user_id.strip()
+
+    nested_user = payload.get("user")
+    if isinstance(nested_user, dict):
+        nested_user_id = nested_user.get("id")
+        if isinstance(nested_user_id, str) and nested_user_id.strip():
+            return nested_user_id.strip()
+
+    return None
+
+
+def _provision_default_tenant_member_binding(
+    request: HttpRequest,
+    ctx,
+    approved_user_id: str,
+) -> None:
+    access_upstream = str(
+        getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or ""
+    ).strip()
+    if not access_upstream:
+        logger.warning(
+            "Skipped default member provisioning: access upstream is not configured",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    context_headers = {
+        "X-Request-Id": request.request_id,
+        "X-Tenant-Id": ctx.tenant_id,
+        "X-Tenant-Slug": ctx.tenant_slug,
+        "X-User-Id": ctx.user_id,
+        "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+        "Content-Type": "application/json",
+    }
+
+    roles_path = _resolve_access_admin_path(access_upstream, "roles")
+    roles_query = urlencode(
+        {"service": "portal", "query": "member", "limit": 200}
+    )
+    roles_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=roles_path,
+        method="GET",
+        query_string=roles_query,
+        body=b"",
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if roles_resp.status_code != 200:
+        logger.warning(
+            "Default member provisioning: unable to load roles",
+            extra={
+                "request_id": request.request_id,
+                "status_code": roles_resp.status_code,
+                "user_id": approved_user_id,
+            },
+        )
+        return
+
+    try:
+        roles_payload = roles_resp.json()
+    except Exception:
+        logger.warning(
+            "Default member provisioning: invalid roles payload",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    role_id: int | None = None
+    if isinstance(roles_payload, list):
+        for role in roles_payload:
+            if not isinstance(role, dict):
+                continue
+            if role.get("service") != "portal" or role.get("name") != "member":
+                continue
+            raw_role_id = role.get("id")
+            if isinstance(raw_role_id, int):
+                role_id = raw_role_id
+                break
+
+    if role_id is None:
+        logger.warning(
+            "Default member provisioning: portal/member role not found",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    bindings_path = _resolve_access_admin_path(
+        access_upstream,
+        "role-bindings",
+    )
+    bindings_query = urlencode(
+        {
+            "user_id": approved_user_id,
+            "scope_type": "TENANT",
+            "scope_id": ctx.tenant_id,
+            "limit": 200,
+        }
+    )
+    bindings_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=bindings_path,
+        method="GET",
+        query_string=bindings_query,
+        body=b"",
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if bindings_resp.status_code != 200:
+        logger.warning(
+            "Default member provisioning: unable to load bindings",
+            extra={
+                "request_id": request.request_id,
+                "status_code": bindings_resp.status_code,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+        return
+
+    try:
+        bindings_payload = bindings_resp.json()
+    except Exception:
+        logger.warning(
+            "Default member provisioning: invalid bindings payload",
+            extra={
+                "request_id": request.request_id,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+        return
+
+    existing_binding = False
+    if isinstance(bindings_payload, list):
+        for binding in bindings_payload:
+            if not isinstance(binding, dict):
+                continue
+            if (
+                binding.get("user_id") == approved_user_id
+                and binding.get("scope_type") == "TENANT"
+                and binding.get("scope_id") == ctx.tenant_id
+                and binding.get("role_id") == role_id
+            ):
+                existing_binding = True
+                break
+
+    if existing_binding:
+        return
+
+    create_payload = {
+        "tenant_id": ctx.tenant_id,
+        "user_id": approved_user_id,
+        "scope_type": "TENANT",
+        "scope_id": ctx.tenant_id,
+        "role_id": role_id,
+    }
+    create_body = json.dumps(
+        create_payload,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    create_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=bindings_path,
+        method="POST",
+        query_string="",
+        body=create_body,
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if create_resp.status_code not in {200, 201}:
+        logger.warning(
+            "Default member provisioning: unable to create binding",
+            extra={
+                "request_id": request.request_id,
+                "status_code": create_resp.status_code,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+
+
+def _maybe_provision_after_application_approve(
+    request: HttpRequest,
+    response: HttpResponse,
+) -> None:
+    if response.status_code >= 400:
+        return
+
+    ctx = getattr(request, "auth_ctx", None)
+    if not ctx:
+        return
+
+    try:
+        payload = (
+            json.loads(response.content.decode("utf-8"))
+            if response.content
+            else {}
+        )
+    except Exception:
+        logger.warning(
+            "Skip post-approve provisioning: invalid approve payload",
+            extra={"request_id": request.request_id},
+        )
+        return
+
+    approved_user_id = _extract_user_id_from_approve_payload(payload)
+    if not approved_user_id:
+        return
+
+    try:
+        _provision_default_tenant_member_binding(request, ctx, approved_user_id)
+    except Exception:
+        logger.exception(
+            "Post-approve provisioning failed",
+            extra={
+                "request_id": request.request_id,
+                "approved_user_id": approved_user_id,
+            },
+        )
+
+
 def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str]]:
     access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
     if not access_upstream:
@@ -1162,7 +1400,14 @@ def proxy_portal_applications_list(request: HttpRequest):
 )
 def proxy_portal_applications_approve(request: HttpRequest, application_id: int):
     """Approve an application (in ID service)."""
-    return _proxy_group(request, "id", "BFF_UPSTREAM_ID_URL", f"applications/{application_id}/approve")
+    response = _proxy_group(
+        request,
+        "id",
+        "BFF_UPSTREAM_ID_URL",
+        f"applications/{application_id}/approve",
+    )
+    _maybe_provision_after_application_approve(request, response)
+    return response
 
 
 @router.api_operation(

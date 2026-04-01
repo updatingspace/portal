@@ -165,6 +165,198 @@ class BffProxyRoutingTests(TestCase):
         self.assertEqual(captured["upstream_path"], "flags")
 
 
+class BffApplicationApproveProvisioningTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(slug="aef")
+        self.user_id = str(uuid.uuid4())
+        self.session = SessionStore().create(
+            tenant_id=str(self.tenant.id),
+            user_id=self.user_id,
+            master_flags={"email_verified": True, "system_admin": True},
+            ttl=timedelta(minutes=10),
+        )
+        self.cookie_name = "updspace_session"
+        self.host = "aef.updspace.com"
+
+    def test_approve_provisions_default_member_role_binding(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        calls: list[tuple[str, str, str]] = []
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+            timeout=None,
+        ):
+            calls.append((method, upstream_path, query_string))
+
+            if upstream_base_url.endswith(":8001/api/v1"):
+                if upstream_path == "applications/42/approve" and method == "POST":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "user_id": "11111111-1111-1111-1111-111111111111",
+                            "activation_link_sent": True,
+                        },
+                    )
+
+            if upstream_base_url.endswith(":8002/api/v1"):
+                if upstream_path == "access/admin/roles" and method == "GET":
+                    return httpx.Response(
+                        200,
+                        json=[
+                            {
+                                "id": 77,
+                                "tenant_id": None,
+                                "service": "portal",
+                                "name": "member",
+                                "permission_keys": ["portal.profile.read_self"],
+                            }
+                        ],
+                    )
+                if upstream_path == "access/admin/role-bindings" and method == "GET":
+                    return httpx.Response(200, json=[])
+                if upstream_path == "access/admin/role-bindings" and method == "POST":
+                    payload = json.loads(body.decode("utf-8"))
+                    self.assertEqual(payload["role_id"], 77)
+                    self.assertEqual(payload["scope_type"], "TENANT")
+                    self.assertEqual(payload["scope_id"], str(self.tenant.id))
+                    self.assertEqual(payload["tenant_id"], str(self.tenant.id))
+                    self.assertEqual(
+                        payload["user_id"],
+                        "11111111-1111-1111-1111-111111111111",
+                    )
+                    return httpx.Response(
+                        201,
+                        json={
+                            "id": 501,
+                            "tenant_id": str(self.tenant.id),
+                            "user_id": "11111111-1111-1111-1111-111111111111",
+                            "scope_type": "TENANT",
+                            "scope_id": str(self.tenant.id),
+                            "role_id": 77,
+                            "role_name": "member",
+                            "role_service": "portal",
+                            "created_at": timezone.now().isoformat(),
+                        },
+                    )
+
+            return httpx.Response(200, json={"ok": True})
+
+        with self.settings(
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self.client.post(
+                    "/api/v1/portal/applications/42/approve",
+                    data=b"{}",
+                    content_type="application/json",
+                    HTTP_HOST=self.host,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            any(
+                method == "POST" and path == "access/admin/role-bindings"
+                for method, path, _ in calls
+            )
+        )
+
+    def test_approve_skips_create_when_binding_already_exists(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        calls: list[tuple[str, str, str]] = []
+
+        def _mocked_proxy(
+            *,
+            upstream_base_url,
+            upstream_path,
+            method,
+            query_string,
+            body,
+            incoming_headers,
+            context_headers,
+            request_id,
+            stream=False,
+            timeout=None,
+        ):
+            calls.append((method, upstream_path, query_string))
+
+            if upstream_base_url.endswith(":8001/api/v1"):
+                if upstream_path == "applications/42/approve" and method == "POST":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "user_id": "11111111-1111-1111-1111-111111111111",
+                            "activation_link_sent": True,
+                        },
+                    )
+
+            if upstream_base_url.endswith(":8002/api/v1"):
+                if upstream_path == "access/admin/roles" and method == "GET":
+                    return httpx.Response(
+                        200,
+                        json=[
+                            {
+                                "id": 77,
+                                "tenant_id": None,
+                                "service": "portal",
+                                "name": "member",
+                                "permission_keys": ["portal.profile.read_self"],
+                            }
+                        ],
+                    )
+                if upstream_path == "access/admin/role-bindings" and method == "GET":
+                    return httpx.Response(
+                        200,
+                        json=[
+                            {
+                                "id": 501,
+                                "tenant_id": str(self.tenant.id),
+                                "user_id": "11111111-1111-1111-1111-111111111111",
+                                "scope_type": "TENANT",
+                                "scope_id": str(self.tenant.id),
+                                "role_id": 77,
+                                "role_name": "member",
+                                "role_service": "portal",
+                                "created_at": timezone.now().isoformat(),
+                            }
+                        ],
+                    )
+
+            return httpx.Response(200, json={"ok": True})
+
+        with self.settings(
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self.client.post(
+                    "/api/v1/portal/applications/42/approve",
+                    data=b"{}",
+                    content_type="application/json",
+                    HTTP_HOST=self.host,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            any(
+                method == "POST" and path == "access/admin/role-bindings"
+                for method, path, _ in calls
+            )
+        )
+
+
 class BffAccountDeletionTests(TestCase):
     def setUp(self):
         self.client = Client()
