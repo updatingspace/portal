@@ -90,6 +90,7 @@ export const FeedPage: React.FC = () => {
             composerHasText={controller.composerHasText}
             composerHasMedia={controller.composerHasMedia}
             handlePublishNews={controller.handlePublishNews}
+            handleComposerKeyDown={controller.handleComposerKeyDown}
             newsMedia={controller.newsMedia}
             handleRemoveMedia={controller.handleRemoveMedia}
           />

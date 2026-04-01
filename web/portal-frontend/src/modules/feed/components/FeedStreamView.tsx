@@ -76,7 +76,12 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
           </Button>
         )}
         {canModerateNews && (
-          <Button view={moderationMode ? 'outlined-danger' : 'outlined'} size="m" onClick={toggleModerationMode}>
+          <Button
+            view={moderationMode ? 'outlined-danger' : 'outlined'}
+            size="m"
+            onClick={toggleModerationMode}
+            aria-label="Переключить режим модерации"
+          >
             {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
           </Button>
         )}
@@ -84,8 +89,11 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
     </div>
 
     {moderationMode && (
-      <Card view="filled" className="feed-moderation-panel">
+      <Card view="filled" className="feed-moderation-panel" aria-live="polite">
         <Text variant="subheader-2">Панель модерации</Text>
+        <Text variant="caption-2" color="secondary">
+          Горячая клавиша: Alt + M
+        </Text>
         <Text variant="body-2" color="secondary">
           Выбрано: {selectedModerationCount} (максимум 20)
         </Text>
@@ -113,10 +121,10 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
     )}
 
     {unreadCount > 0 && (
-      <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner">
-        <Text variant="subheader-2">ОГО, новых новостей: {unreadCount}</Text>
+      <Card view="filled" className="feed-unread-banner" data-qa="feed-unread-banner" aria-live="polite">
+        <Text variant="subheader-2">Новых событий: {unreadCount}</Text>
         <Text variant="body-2" color="secondary">
-          Вы ещё не прочитали их. Пролистайте ленту ниже.
+          Обновите ленту или отметьте события прочитанными.
         </Text>
       </Card>
     )}
@@ -142,7 +150,7 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
           {source !== 'all' ? 'Нет событий под выбранные фильтры.' : 'Пока нет новых событий.'}
         </Text>
         <Text variant="body-2" color="secondary">
-          Добавьте интеграции или вернитесь позже.
+          Попробуйте сменить фильтры или зайдите позже.
         </Text>
       </Card>
     ) : (

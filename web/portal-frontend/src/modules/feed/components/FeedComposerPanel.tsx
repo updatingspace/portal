@@ -22,6 +22,7 @@ type FeedComposerPanelProps = {
   composerHasText: boolean;
   composerHasMedia: boolean;
   handlePublishNews: () => void;
+  handleComposerKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
   newsMedia: NewsMediaItem[];
   handleRemoveMedia: (index: number) => void;
 };
@@ -43,6 +44,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
   composerHasText,
   composerHasMedia,
   handlePublishNews,
+  handleComposerKeyDown,
   newsMedia,
   handleRemoveMedia,
 }) => {
@@ -62,9 +64,14 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
       view="filled"
       className={['feed-composer', composerOpen ? 'feed-composer--expanded' : ''].filter(Boolean).join(' ')}
       data-qa="feed-composer"
+      aria-label="Композер новостей"
+      onKeyDown={handleComposerKeyDown}
     >
       <div className="feed-composer__header">
         <Text variant="subheader-2">Что происходит?</Text>
+        <Text variant="caption-2" color="secondary">
+          Быстрая отправка: Ctrl/Cmd + Enter
+        </Text>
       </div>
 
       <div className="feed-composer__editor" onClick={() => setComposerOpen(true)}>
@@ -78,7 +85,12 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
 
       <div className="feed-composer__footer">
         <div className="feed-composer__media-bar">
-          <button type="button" className="feed-composer__media-button" onClick={() => fileInputRef.current?.click()}>
+          <button
+            type="button"
+            className="feed-composer__media-button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Добавить изображения"
+          >
             <Icon data={Plus} />
           </button>
           <Text variant="caption-2" color="secondary">
@@ -90,6 +102,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
             accept="image/*"
             multiple
             onChange={(event) => handleImageUpload(event.target.files)}
+            aria-label="Загрузка изображений"
           />
         </div>
         {detectedTags.length > 0 && (
@@ -124,6 +137,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
             loading={isCreatingNews || uploading}
             disabled={!composerHasText || !composerHasMedia}
             onClick={handlePublishNews}
+            aria-label="Опубликовать новость"
           >
             Опубликовать
           </Button>

@@ -151,4 +151,14 @@ describe('useFeedPageController', () => {
     unmount();
     authState.user.featureFlags = {};
   });
+
+  it('toggles moderation mode with Alt+M hotkey', () => {
+    const { result } = renderHook(() => useFeedPageController());
+    expect(result.current.moderationMode).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
+    });
+    expect(result.current.moderationMode).toBe(true);
+  });
 });
