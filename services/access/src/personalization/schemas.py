@@ -7,7 +7,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ninja import Schema
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 
 
 class ThemeEnum(str, Enum):

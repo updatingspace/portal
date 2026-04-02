@@ -1,27 +1,16 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ThemeProvider } from '@gravity-ui/uikit';
-
-type ThemeMode = 'light' | 'dark';
-
-type ThemeModeContextValue = {
-  mode: ThemeMode;
-  setMode: (next: ThemeMode) => void;
-};
-
-const KEY = 'portal_theme_preference';
-
-const ThemeModeContext = createContext<ThemeModeContextValue | undefined>(undefined);
+import { KEY, type ThemeMode } from './themeMode.types';
+import { ThemeModeContext } from './themeModeContext';
 
 export const ThemeModeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setModeState] = useState<ThemeMode>('light');
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(KEY);
-    if (stored === 'light' || stored === 'dark') {
-      setModeState(stored);
+  const [mode, setModeState] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') {
+      return 'light';
     }
-  }, []);
+    const stored = window.localStorage.getItem(KEY);
+    return stored === 'light' || stored === 'dark' ? stored : 'light';
+  });
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
@@ -37,12 +26,4 @@ export const ThemeModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       <ThemeProvider theme={mode}>{children}</ThemeProvider>
     </ThemeModeContext.Provider>
   );
-};
-
-export const useThemeMode = (): ThemeModeContextValue => {
-  const ctx = useContext(ThemeModeContext);
-  if (!ctx) {
-    throw new Error('useThemeMode must be used within ThemeModeProvider');
-  }
-  return ctx;
 };

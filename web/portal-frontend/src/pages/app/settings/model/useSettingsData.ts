@@ -105,7 +105,7 @@ export const useSettingsData = (): UseSettingsDataResult => {
         logger.warn('Session revoke failed', {
           area: 'settings',
           event: 'session_revoke',
-          sessionId,
+          data: { sessionId },
           error,
         });
       } finally {

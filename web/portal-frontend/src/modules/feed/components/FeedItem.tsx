@@ -429,16 +429,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </div>
         </Dialog.Body>
         <Dialog.Footer
-          actions={
-            <>
-              <Button view="flat" onClick={() => setEditOpen(false)}>
-                Отмена
-              </Button>
-              <Button view="action" loading={editSaving} onClick={handleEditSave}>
-                Сохранить
-              </Button>
-            </>
-          }
+          textButtonCancel="Отмена"
+          textButtonApply="Сохранить"
+          onClickButtonCancel={() => setEditOpen(false)}
+          onClickButtonApply={handleEditSave}
+          propsButtonApply={{ view: 'action', loading: editSaving }}
         />
       </Dialog>
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} aria-label="Удалить новость">
@@ -449,16 +444,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </Text>
         </Dialog.Body>
         <Dialog.Footer
-          actions={
-            <>
-              <Button view="flat" onClick={() => setDeleteOpen(false)}>
-                Отмена
-              </Button>
-              <Button view="flat-danger" loading={deleteSaving} onClick={handleDelete}>
-                Удалить
-              </Button>
-            </>
-          }
+          textButtonCancel="Отмена"
+          textButtonApply="Удалить"
+          onClickButtonCancel={() => setDeleteOpen(false)}
+          onClickButtonApply={handleDelete}
+          propsButtonApply={{ view: 'flat-danger', loading: deleteSaving }}
         />
       </Dialog>
     </>

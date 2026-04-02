@@ -113,7 +113,13 @@ function formatDuration(startsAt?: string | null, endsAt?: string | null) {
   return parts.join(' ');
 }
 
-const IconAction: React.FC<{icon: any; tooltip: string; onClick?: () => void}> = ({icon, tooltip, onClick}) => (
+type IconActionProps = {
+  icon: React.ComponentProps<typeof Icon>['data'];
+  tooltip: string;
+  onClick?: () => void;
+};
+
+const IconAction: React.FC<IconActionProps> = ({icon, tooltip, onClick}) => (
   <Tooltip content={tooltip} placement="bottom">
     <Button
       view="flat"

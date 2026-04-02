@@ -2,7 +2,7 @@ import React from 'react';
 import { Skeleton } from '@gravity-ui/uikit';
 
 type SkeletonBlockProps = {
-  width?: string;
+  width?: number | string;
   height?: number | string;
   radius?: number;
   className?: string;

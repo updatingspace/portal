@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { useI18n } from '@/app/providers/I18nProvider';
+import { useI18n } from '@/app/providers/i18nContext';
 import type { Locale } from '@/shared/lib/locale';
 
 import { personalizationMessages } from './messages';

@@ -2,7 +2,7 @@ import React from 'react';
 import { Avatar, Button, Card, Icon, Text } from '@gravity-ui/uikit';
 import { ArrowUpRightFromSquare, Person } from '@gravity-ui/icons';
 
-import type { UserInfo } from '../../../contexts/AuthContext';
+import type { UserInfo } from '../../../../contexts/AuthContext';
 
 type ProfileSectionProps = {
   user: UserInfo;

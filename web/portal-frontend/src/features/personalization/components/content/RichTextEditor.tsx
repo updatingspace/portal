@@ -22,13 +22,6 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
 
-  // Execute formatting command
-  const execCommand = useCallback((command: string, value?: string) => {
-    document.execCommand(command, false, value);
-    editorRef.current?.focus();
-    handleChange();
-  }, []);
-
   // Handle content change
   const handleChange = useCallback(() => {
     if (editorRef.current) {
@@ -37,6 +30,13 @@ export function RichTextEditor({
       onChange(html, plainText);
     }
   }, [onChange]);
+
+  // Execute formatting command
+  const execCommand = useCallback((command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+    handleChange();
+  }, [handleChange]);
 
   // Format as bold
   const handleBold = useCallback(() => {

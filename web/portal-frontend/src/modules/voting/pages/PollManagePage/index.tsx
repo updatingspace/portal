@@ -138,6 +138,7 @@ export const PollManagePage: React.FC = () => {
     if (!pollInfo) return;
     if (settingsDirty) return;
     const { poll } = pollInfo;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSettingsDraft({
       title: poll.title,
       description: poll.description ?? '',
@@ -148,7 +149,35 @@ export const PollManagePage: React.FC = () => {
       starts_at: poll.starts_at ?? null,
       ends_at: poll.ends_at ?? null,
     });
-  }, [pollInfo?.poll.id, pollInfo?.poll.updated_at, settingsDirty]);
+  }, [pollInfo, settingsDirty]);
+
+  const sortedNominations = useMemo(() => {
+    return [...(pollInfo?.nominations ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  }, [pollInfo?.nominations]);
+
+  const poll = pollInfo?.poll;
+  const statusMeta = poll ? POLL_STATUS_META[poll.status] : null;
+  const visibilityMeta = poll ? VISIBILITY_META[poll.visibility] : null;
+  const resultsMeta = poll ? RESULTS_VISIBILITY_META[poll.results_visibility] : null;
+
+  const isDraft = poll?.status === 'draft';
+  const isActive = poll?.status === 'active';
+
+  const publishIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (!poll) return issues;
+    if (sortedNominations.length === 0) {
+      issues.push('Добавьте хотя бы один вопрос.');
+    }
+    for (const nomination of sortedNominations) {
+      if (!nomination.options || nomination.options.length === 0) {
+        issues.push(`Вопрос «${nomination.title}» должен иметь хотя бы один вариант.`);
+      }
+    }
+    return issues;
+  }, [poll, sortedNominations]);
+
+  const canPublish = Boolean(isDraft && publishIssues.length === 0);
 
   if (isLoading) {
     return (
@@ -174,32 +203,9 @@ export const PollManagePage: React.FC = () => {
     );
   }
 
-  const { poll, nominations } = pollInfo;
-  const statusMeta = POLL_STATUS_META[poll.status];
-  const visibilityMeta = VISIBILITY_META[poll.visibility];
-  const resultsMeta = RESULTS_VISIBILITY_META[poll.results_visibility];
-
-  const sortedNominations = useMemo(() => {
-    return [...nominations].sort((a, b) => a.sort_order - b.sort_order);
-  }, [nominations]);
-
-  const isDraft = poll.status === 'draft';
-  const isActive = poll.status === 'active';
-
-  const publishIssues = useMemo(() => {
-    const issues: string[] = [];
-    if (sortedNominations.length === 0) {
-      issues.push('Добавьте хотя бы один вопрос.');
-    }
-    for (const nomination of sortedNominations) {
-      if (!nomination.options || nomination.options.length === 0) {
-        issues.push(`Вопрос «${nomination.title}» должен иметь хотя бы один вариант.`);
-      }
-    }
-    return issues;
-  }, [sortedNominations]);
-
-  const canPublish = isDraft && publishIssues.length === 0;
+  if (!poll || !statusMeta || !visibilityMeta || !resultsMeta) {
+    return null;
+  }
 
   const saveSettings = () => {
     if (!settingsDraft) return;

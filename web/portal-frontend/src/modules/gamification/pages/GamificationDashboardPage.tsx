@@ -56,34 +56,21 @@ export const GamificationDashboardPage: React.FC = () => {
   const canHide = can(user, 'gamification.achievements.hide');
   const hasAccess = Boolean(user);
 
-  if (!hasAccess) {
-    return (
-      <AccessDeniedScreen
-        error={createClientAccessDeniedError({
-          requiredPermission: 'gamification.achievements.*',
-          tenant: user?.tenant,
-          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав на раздел геймификации.',
-        })}
-      />
-    );
-  }
-
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [ownership, setOwnership] = useState<'all' | 'me'>('all');
 
   const { data: categoriesData } = useCategories();
-  const categories = categoriesData?.items ?? [];
   const categoryOptions = useMemo(
     () => [
       { value: 'all', content: 'Все категории' },
-      ...categories.map((cat) => ({
+      ...(categoriesData?.items ?? []).map((cat) => ({
         value: cat.id,
         content: cat.nameI18n.ru ?? cat.nameI18n.en ?? cat.id,
       })),
     ],
-    [categories],
+    [categoriesData?.items],
   );
 
   const statusParam = statusFilter === 'all' ? undefined : [statusFilter];
@@ -101,14 +88,14 @@ export const GamificationDashboardPage: React.FC = () => {
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
-  const handleStatusChange = async (achievement: Achievement, nextStatus: AchievementStatus) => {
+  const handleStatusChange = React.useCallback(async (achievement: Achievement, nextStatus: AchievementStatus) => {
     await updateAchievement({
       id: achievement.id,
       payload: {
         status: nextStatus,
       },
     });
-  };
+  }, [updateAchievement]);
 
   const columns = useMemo<TableColumnConfig<Achievement>[]>(
     () => [
@@ -173,8 +160,20 @@ export const GamificationDashboardPage: React.FC = () => {
         },
       },
     ],
-    [canEdit, canHide, canPublish, navigate, updateAchievement],
+    [canEdit, canHide, canPublish, navigate, handleStatusChange],
   );
+
+  if (!hasAccess) {
+    return (
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: 'gamification.achievements.*',
+          tenant: user?.tenant,
+          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав на раздел геймификации.',
+        })}
+      />
+    );
+  }
 
   return (
     <div className="gamification-page" data-qa="gamification-page">

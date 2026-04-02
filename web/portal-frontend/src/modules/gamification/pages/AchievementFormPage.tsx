@@ -52,18 +52,6 @@ export const AchievementFormPage: React.FC = () => {
   const canPublish = can(user, 'gamification.achievements.publish');
   const canEditAchievement = isEdit ? canEdit : canCreate;
 
-  if (!canEditAchievement) {
-    return (
-      <AccessDeniedScreen
-        error={createClientAccessDeniedError({
-          requiredPermission: isEdit ? 'gamification.achievements.edit' : 'gamification.achievements.create',
-          tenant: user?.tenant,
-          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для редактирования ачивок.',
-        })}
-      />
-    );
-  }
-
   const { data: achievement, isLoading } = useAchievement(id);
   const { data: categoriesData } = useCategories();
   const { mutateAsync: createAchievement, isPending: isCreating } = useCreateAchievement();
@@ -97,13 +85,13 @@ export const AchievementFormPage: React.FC = () => {
       locale,
       value,
     }));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNameEntries(entries.length > 0 ? entries : [{ locale: 'ru', value: '' }]);
     setDescription(achievement.description ?? '');
     setCategory(achievement.category);
     setStatus(achievement.status);
     setImages(achievement.images ?? {});
   }, [achievement]);
-
 
   const previewTitle =
     nameEntries.find((entry) => entry.locale === 'ru')?.value ||
@@ -183,6 +171,18 @@ export const AchievementFormPage: React.FC = () => {
   };
 
   const submitLabel = isEdit ? 'Сохранить' : 'Создать';
+
+  if (!canEditAchievement) {
+    return (
+      <AccessDeniedScreen
+        error={createClientAccessDeniedError({
+          requiredPermission: isEdit ? 'gamification.achievements.edit' : 'gamification.achievements.create',
+          tenant: user?.tenant,
+          reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав для редактирования ачивок.',
+        })}
+      />
+    );
+  }
 
   return (
     <div className="gamification-page" data-qa="achievement-form-page">

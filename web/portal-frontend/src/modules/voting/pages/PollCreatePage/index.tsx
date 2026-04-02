@@ -55,6 +55,7 @@ export const PollCreatePage: React.FC = () => {
     const template = templates.find((item) => item.slug === templateSlug) ?? null;
     if (!template) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedTemplate(template);
     setShowForm(true);
   }, [location.state, templates]);

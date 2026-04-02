@@ -2,11 +2,12 @@
  * PreferencesProvider - Global context for user preferences
  * Provides preferences access throughout the app
  */
-import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import React, { useEffect, useMemo, type ReactNode } from 'react';
 
 import { usePreferences } from '../hooks/usePreferences';
 import { useTheme } from '../hooks/useTheme';
 import type { UserPreferences, Theme, Language, FontSize, ProfileVisibility } from '../types';
+import { PreferencesContext } from './preferencesStoreContext';
 
 export interface PreferencesContextValue {
   // Data
@@ -39,8 +40,6 @@ export interface PreferencesContextValue {
   isSaving: boolean;
   isResetting: boolean;
 }
-
-const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
 interface PreferencesProviderProps {
   children: ReactNode;
@@ -183,24 +182,4 @@ export function PreferencesProvider({
       {children}
     </PreferencesContext.Provider>
   );
-}
-
-/**
- * Hook to access preferences context
- * Throws error if used outside PreferencesProvider
- */
-export function usePreferencesContext(): PreferencesContextValue {
-  const context = useContext(PreferencesContext);
-  if (!context) {
-    throw new Error('usePreferencesContext must be used within a PreferencesProvider');
-  }
-  return context;
-}
-
-/**
- * Hook to access preferences context safely
- * Returns null if used outside PreferencesProvider
- */
-export function usePreferencesContextSafe(): PreferencesContextValue | null {
-  return useContext(PreferencesContext);
 }

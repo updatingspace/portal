@@ -15,7 +15,7 @@ import {
   TextInput,
 } from '@gravity-ui/uikit';
 import { Eye, Xmark } from '@gravity-ui/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type {
   HomePageModal,
   HomePageModalInput,
@@ -102,22 +102,15 @@ export function ModalEditor({
   onCancel,
   isSaving,
 }: ModalEditorProps) {
-  const [formState, setFormState] = useState<ModalFormState>(INITIAL_FORM_STATE);
+  const [formState, setFormState] = useState<ModalFormState>(() =>
+    modal ? modalToFormState(modal) : INITIAL_FORM_STATE
+  );
   const [activeTab, setActiveTab] = useState('content');
   const [previewLanguage, setPreviewLanguage] = useState('en');
   const [showFullPreview, setShowFullPreview] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEditing = !!modal;
-
-  // Initialize form state when modal changes
-  useEffect(() => {
-    if (modal) {
-      setFormState(modalToFormState(modal));
-    } else {
-      setFormState(INITIAL_FORM_STATE);
-    }
-  }, [modal]);
 
   // Update field
   const updateField = useCallback(

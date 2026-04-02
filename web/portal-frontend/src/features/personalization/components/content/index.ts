@@ -7,4 +7,5 @@ export { ModalEditor } from './ModalEditor';
 export { ModalPreview } from './ModalPreview';
 export { RichTextEditor } from './RichTextEditor';
 export { CalendarView } from './CalendarView';
-export { PreviewModeToggle, PreviewOverlay, usePreviewMode } from './PreviewMode';
+export { PreviewModeToggle, PreviewOverlay } from './PreviewMode';
+export { usePreviewMode } from './usePreviewMode';

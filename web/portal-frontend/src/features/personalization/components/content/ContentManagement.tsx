@@ -15,7 +15,8 @@ import { ModalTable } from './ModalTable';
 import { ModalEditor } from './ModalEditor';
 import { ModalPreview } from './ModalPreview';
 import { CalendarView } from './CalendarView';
-import { PreviewModeToggle, PreviewOverlay, usePreviewMode } from './PreviewMode';
+import { PreviewModeToggle, PreviewOverlay } from './PreviewMode';
+import { usePreviewMode } from './usePreviewMode';
 import { useModals, useModalSelection } from '../../hooks/useModals';
 import type { HomePageModal, HomePageModalInput } from '../../types';
 import './ContentManagement.css';
@@ -108,7 +109,7 @@ export function ContentManagement() {
           });
         }
         handleCloseEditor();
-      } catch {
+      } catch (error) {
         addToast({
           name: 'modal-error',
           title: 'Error saving modal',
@@ -267,6 +268,7 @@ export function ContentManagement() {
         className="content-management__editor-modal"
       >
         <ModalEditor
+          key={editingModal?.id ?? 'new-modal'}
           modal={editingModal}
           onSave={handleSave}
           onCancel={handleCloseEditor}

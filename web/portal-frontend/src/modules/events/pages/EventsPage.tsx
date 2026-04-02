@@ -158,7 +158,7 @@ export const EventsPage: React.FC = () => {
             return { scopeType: 'TENANT' as const, scopeId: user.tenant.id };
         }
         return {};
-    }, [user?.tenant?.id]);
+    }, [user]);
 
     const { data, isLoading, isError, refetch } = useEventsList({
         limit: PAGE_SIZE,
@@ -202,7 +202,7 @@ export const EventsPage: React.FC = () => {
                 if (!aDate || !bDate) return 0;
                 return aDate.getTime() - bDate.getTime();
             });
-    }, [events, ownershipFilter, query, rsvpFilter, user?.id, visibilityFilter]);
+    }, [events, ownershipFilter, query, rsvpFilter, user, visibilityFilter]);
 
     const filteredEvents = useMemo(() => {
         if (selectedDate) {

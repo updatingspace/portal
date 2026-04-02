@@ -4,7 +4,7 @@ import { Card } from '@gravity-ui/uikit';
 import type { LandingBlock } from '../model/content';
 
 type BlocksSectionProps = {
-  blocks: LandingBlock[];
+  blocks: ReadonlyArray<LandingBlock>;
 };
 
 export const BlocksSection: React.FC<BlocksSectionProps> = ({ blocks }) => (

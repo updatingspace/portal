@@ -4,7 +4,7 @@
 import { Select, type SelectOption } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
-import { useI18n } from '@/app/providers/I18nProvider';
+import { useI18n } from '@/app/providers/i18nContext';
 import { usePersonalizationI18n } from '../../i18n';
 import type { Language } from '../../types';
 import './settings.css';

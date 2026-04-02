@@ -10,10 +10,8 @@ Test coverage includes:
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
 
-from django.test import Client, TestCase, override_settings
-from pydantic import ValidationError
+from django.test import Client, TestCase
 
 from personalization.models import (
     FontSizeChoice,

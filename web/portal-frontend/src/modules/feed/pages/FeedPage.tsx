@@ -138,8 +138,8 @@ export const FeedPage: React.FC = () => {
   const { mutateAsync: updateSubscriptions, isPending: isUpdatingSubscriptions } = useUpdateSubscriptions();
   const autoSubscribedRef = useRef(false);
 
-  const items = data?.pages.flatMap((page) => page.items) ?? [];
   const sortedItems = useMemo(() => {
+    const items = data?.pages.flatMap((page) => page.items) ?? [];
     const base = [...items];
     if (sortFilter === 'best') {
       return base.sort((a, b) => {
@@ -152,7 +152,7 @@ export const FeedPage: React.FC = () => {
       });
     }
     return base;
-  }, [items, sortFilter]);
+  }, [data?.pages, sortFilter]);
 
   useEffect(() => {
     if (!canReadFeed) return;
@@ -170,7 +170,7 @@ export const FeedPage: React.FC = () => {
     }
 
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [canReadFeed, fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   useEffect(() => {
     if (!canReadFeed) return;
@@ -190,11 +190,11 @@ export const FeedPage: React.FC = () => {
     }
 
     autoSubscribedRef.current = true;
-    updateSubscriptions({ scopes: [{ scopeType: 'TENANT', scopeId: tenantId }] }).catch((err) => {
+    updateSubscriptions({ scopes: [{ scopeType: 'tenant', scopeId: tenantId }] }).catch((err) => {
       autoSubscribedRef.current = false;
       notifyApiError(err, 'Не удалось настроить подписку на ленту');
     });
-  }, [isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
+  }, [canReadFeed, isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
 
   useEffect(() => {
     if (!canCreateNews) return;
@@ -307,9 +307,7 @@ export const FeedPage: React.FC = () => {
           };
         }),
       });
-      if ((editor as { setValue?: (value: string) => void }).setValue) {
-        (editor as { setValue: (value: string) => void }).setValue('');
-      }
+      setComposerValue('');
       setNewsMedia([]);
       setComposerOpen(false);
       setComposerError(null);
@@ -318,6 +316,17 @@ export const FeedPage: React.FC = () => {
       notifyApiError(err, 'Не удалось опубликовать новость');
     }
   }, [createNews, editor, newsMedia, newsVisibility, refetch]);
+
+  const composerHasText = Boolean(composerValue.trim());
+  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
+  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
+  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
+
+  useEffect(() => {
+    if (composerError && composerHasMedia) {
+      setComposerError(null);
+    }
+  }, [composerError, composerHasMedia]);
 
   if (!canReadFeed) {
     return (
@@ -354,16 +363,6 @@ export const FeedPage: React.FC = () => {
   }
 
   const hasContent = sortedItems.length > 0;
-  const detectedYoutube = useMemo(() => extractYoutubeIds(composerValue), [composerValue]);
-  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
-  const composerHasText = Boolean(composerValue.trim());
-  const composerHasMedia = newsMedia.length > 0 || detectedYoutube.length > 0;
-
-  useEffect(() => {
-    if (composerError && composerHasMedia) {
-      setComposerError(null);
-    }
-  }, [composerError, composerHasMedia]);
 
   return (
     <div className="feed-page" data-qa="feed-page">

@@ -4,7 +4,7 @@ import { Card } from '@gravity-ui/uikit';
 import type { LandingFeature } from '../model/content';
 
 type FeaturesSectionProps = {
-  features: LandingFeature[];
+  features: ReadonlyArray<LandingFeature>;
 };
 
 export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ features }) => (
