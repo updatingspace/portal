@@ -112,7 +112,7 @@ export const buildAsideMenuItems = (params: {
       iconSize: 18,
       tooltipText: makeTooltip('Feature Flags', 'Network feature toggles'),
       onItemClick: (_it, _collapsed, event) => {
-        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+        const e = event as unknown as NavigationClickEvent;
         if (isModifiedClick(e)) {
           return;
         }

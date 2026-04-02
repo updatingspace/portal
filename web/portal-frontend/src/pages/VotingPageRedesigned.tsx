@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Breadcrumbs, Button, Card, Icon, Label, Progress, Skeleton } from '@gravity-ui/uikit';
 import { ArrowLeft, ArrowRotateRight, Clock } from '@gravity-ui/icons';
 
@@ -112,7 +112,7 @@ export const VotingPageRedesigned: React.FC = () => {
     if (!votingSession) return 'active';
     
     const deadline = votingSession.ends_at ? new Date(votingSession.ends_at) : null;
-    if (deadline && deadline.getTime() < Date.now()) {
+    if (deadline && deadline.getTime() < new Date().getTime()) {
       return 'expired';
     }
     
@@ -125,8 +125,8 @@ export const VotingPageRedesigned: React.FC = () => {
     
     // For legacy votings, nominations might be in a different structure
     // This adapts to both legacy and modern API responses
-    if ('nominations' in votingSession && Array.isArray((votingSession as any).nominations)) {
-      return (votingSession as any).nominations;
+    if ('nominations' in votingSession && Array.isArray(votingSession.nominations)) {
+      return votingSession.nominations;
     }
     
     // For modern polls, use questions
@@ -325,7 +325,7 @@ export const VotingPageRedesigned: React.FC = () => {
             {/* Nominations Grid */}
             {nominations.length > 0 ? (
               <div className="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 g-3">
-                {nominations.map((nomination: any) => (
+                {nominations.map((nomination) => (
                   <div className="col" key={nomination.id}>
                     <button
                       type="button"

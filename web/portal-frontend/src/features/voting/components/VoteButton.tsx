@@ -11,7 +11,7 @@
  * - Error state handling
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button, Loader, Icon, Tooltip } from '@gravity-ui/uikit';
 import { Check, Xmark } from '@gravity-ui/icons';
 import type { VoteAction } from '../types';
@@ -51,16 +51,7 @@ export const VoteButton: React.FC<VoteButtonProps> = ({
   size = 'm',
   className = '',
 }) => {
-  const [showSuccess, setShowSuccess] = useState(false);
-  
-  // Show success animation briefly
-  useEffect(() => {
-    if (isSuccess) {
-      setShowSuccess(true);
-      const timer = setTimeout(() => setShowSuccess(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [isSuccess]);
+  const showSuccess = isSuccess;
   
   const handleClick = () => {
     if (isSelected && existingVoteId) {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Card, Icon, Select, Text } from '@gravity-ui/uikit';
 import { MarkdownEditorView } from '@gravity-ui/markdown-editor';
 import { Plus } from '@gravity-ui/icons';
+import type { ToolbarsPreset } from '@gravity-ui/markdown-editor';
 
 import type { NewsMediaItem } from '../../../types/activity';
 
@@ -9,7 +10,7 @@ type FeedComposerPanelProps = {
   canCreateNews: boolean;
   composerOpen: boolean;
   setComposerOpen: (open: boolean) => void;
-  emptyToolbarsPreset: { items: Record<string, unknown>; orders: Record<string, unknown> };
+  emptyToolbarsPreset: ToolbarsPreset;
   editor: unknown;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleImageUpload: (files: FileList | null) => void;
@@ -22,7 +23,7 @@ type FeedComposerPanelProps = {
   composerHasText: boolean;
   composerHasMedia: boolean;
   handlePublishNews: () => void;
-  handleComposerKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+  handleComposerKeyDown: React.KeyboardEventHandler<'div'>;
   newsMedia: NewsMediaItem[];
   handleRemoveMedia: (index: number) => void;
 };

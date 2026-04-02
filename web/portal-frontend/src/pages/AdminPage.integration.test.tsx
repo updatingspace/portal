@@ -36,9 +36,10 @@ vi.mock('@gravity-ui/uikit', async () => {
     Modal: ({ children }: { children?: React.ReactNode }) => <div data-testid="modal">{children}</div>,
     Dialog: DialogStub,
     Portal: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-    Button: ({ children, loading: _loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
-      <button {...props}>{children}</button>
-    ),
+    Button: ({ children, loading: _loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => {
+      void _loading;
+      return <button {...props}>{children}</button>;
+    },
     TextArea: ({
       value,
       onUpdate,
@@ -48,13 +49,16 @@ vi.mock('@gravity-ui/uikit', async () => {
       value?: string;
       onUpdate?: (nextValue: string) => void;
       minRows?: number;
-    }) => (
-      <textarea
-        {...props}
-        value={value ?? ''}
-        onChange={(event) => onUpdate?.(event.target.value)}
-      />
-    ),
+    }) => {
+      void _minRows;
+      return (
+        <textarea
+          {...props}
+          value={value ?? ''}
+          onChange={(event) => onUpdate?.(event.target.value)}
+        />
+      );
+    },
   };
 });
 

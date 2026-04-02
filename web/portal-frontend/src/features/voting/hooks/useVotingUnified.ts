@@ -31,17 +31,14 @@ import {
   fetchMyVotes,
   fetchVotingResults,
   detectApi,
-  isRateLimitError,
 } from '../api/unifiedApi';
 
 import type {
-  VotingSession,
   VotingListResponse,
   VotingDetailResponse,
   LegacyVotingQuestion,
   ApiConfig,
   VotingQueryParams,
-  Poll,
   Vote,
   PollResults,
 } from '../types/unified';
@@ -281,17 +278,18 @@ export function useCastVoteUnified(config?: ApiConfig) {
     },
     
     // Rollback on error
-    onError: (error, payload, context: any) => {
-      if (payload.pollId && !config?.useLegacy && context?.previousVotes) {
+    onError: (_error, payload, context) => {
+      const previousVotes = (context as { previousVotes?: Vote[] } | undefined)?.previousVotes;
+      if (payload.pollId && !config?.useLegacy && previousVotes) {
         queryClient.setQueryData(
           votingKeysUnified.myVotes(payload.pollId, config),
-          context.previousVotes
+          previousVotes
         );
       }
     },
     
     // Refresh on success
-    onSuccess: (vote, payload) => {
+    onSuccess: (_vote, payload) => {
       if (payload.pollId) {
         // Invalidate my votes
         queryClient.invalidateQueries({
@@ -355,11 +353,12 @@ export function useRevokeVoteUnified(config?: ApiConfig) {
       return { previousVotes };
     },
     
-    onError: (error, { pollId }, context: any) => {
-      if (context?.previousVotes) {
+    onError: (_error, { pollId }, context) => {
+      const previousVotes = (context as { previousVotes?: Vote[] } | undefined)?.previousVotes;
+      if (previousVotes) {
         queryClient.setQueryData(
           votingKeysUnified.myVotes(pollId, config),
-          context.previousVotes
+          previousVotes
         );
       }
     },

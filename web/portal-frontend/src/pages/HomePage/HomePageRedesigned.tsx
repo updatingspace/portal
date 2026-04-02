@@ -43,7 +43,10 @@ export const HomePageRedesigned: React.FC = () => {
   
   // Convert to VotingSession format for VotingList
   const votings: VotingSession[] = useMemo(() => {
-    return votingSessions;
+    if (Array.isArray(votingSessions)) {
+      return votingSessions;
+    }
+    return votingSessions?.items ?? [];
   }, [votingSessions]);
   
   // Separate active and archived votings for summary
@@ -101,11 +104,13 @@ export const HomePageRedesigned: React.FC = () => {
       <div className="container">
         {/* Breadcrumbs */}
         <nav className="mb-3" aria-label="Навигация">
-          <Breadcrumbs
-            items={breadcrumbItems}
-            firstDisplayedItemsCount={1}
-            lastDisplayedItemsCount={1}
-          />
+          <Breadcrumbs>
+            {breadcrumbItems.map((item, index) => (
+              <Breadcrumbs.Item key={`${item.text}-${index}`} href={item.href}>
+                {item.text}
+              </Breadcrumbs.Item>
+            ))}
+          </Breadcrumbs>
         </nav>
         
         {/* Hero Section */}

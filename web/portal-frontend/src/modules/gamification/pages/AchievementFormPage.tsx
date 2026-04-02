@@ -415,7 +415,7 @@ export const AchievementFormPage: React.FC = () => {
         isCreatingCategory={isCreatingCategory}
         categoryOptions={categoryOptions}
         achievement={achievement}
-        defaultLanguage={user?.language}
+        defaultLanguage={user?.language ?? undefined}
         onBack={() => navigate('/app/gamification')}
         onSubmit={handleSubmit}
         onCreateCategory={handleCreateCategory}

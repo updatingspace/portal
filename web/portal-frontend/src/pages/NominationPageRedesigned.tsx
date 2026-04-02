@@ -18,7 +18,6 @@ import { ArrowLeft, ArrowRotateRight, Check, Eye, EyeSlash } from '@gravity-ui/i
 
 import { useNomination, useCastVoteUnified } from '@/features/voting/hooks/useVotingUnified';
 import { NominationCard, type VotingMode } from '@/features/voting/components/NominationCard';
-import { VoteButton } from '@/features/voting/components/VoteButton';
 import { VotingAlerts, createVotingAlerts, type VotingAlert } from '@/features/voting/components/VotingAlerts';
 import { toaster } from '@/toaster';
 
@@ -32,6 +31,17 @@ interface Option {
   description?: string;
   image_url?: string;
 }
+
+type LegacyNominationData = {
+  options?: Option[];
+  counts?: Record<string, number>;
+  userVote?: string | null;
+  isVotingOpen?: boolean;
+  requiresTelegramLink?: boolean;
+  canVote?: boolean;
+  votingDeadline?: string | null;
+  voting?: { id?: string; title?: string } | null;
+};
 
 // ============================================================================
 // NominationPage Component
@@ -57,21 +67,22 @@ export const NominationPageRedesigned: React.FC = () => {
   } = useNomination(id ?? '', {
     enabled: Boolean(id),
   });
+  const nominationData = nomination as LegacyNominationData | undefined;
   
   // Cast vote mutation with optimistic updates
   const castVoteMutation = useCastVoteUnified();
   
   // Extract options from nomination
   const options: Option[] = useMemo(() => {
-    if (!nomination) return [];
-    return (nomination as any).options ?? [];
-  }, [nomination]);
+    if (!nominationData) return [];
+    return nominationData.options ?? [];
+  }, [nominationData]);
   
   // Vote counts
   const voteCounts: Record<string, number> = useMemo(() => {
-    if (!nomination) return {};
-    return (nomination as any).counts ?? {};
-  }, [nomination]);
+    if (!nominationData) return {};
+    return nominationData.counts ?? {};
+  }, [nominationData]);
   
   // Total votes
   const totalVotes = useMemo(() => {
@@ -79,12 +90,12 @@ export const NominationPageRedesigned: React.FC = () => {
   }, [voteCounts]);
   
   // User's current vote
-  const userVote = (nomination as any)?.userVote ?? null;
+  const userVote = nominationData?.userVote ?? null;
   
   // Voting state
-  const isVotingClosed = (nomination as any)?.isVotingOpen === false;
-  const needsTelegramLink = (nomination as any)?.requiresTelegramLink ?? false;
-  const canVoteNow = ((nomination as any)?.canVote ?? false) && !needsTelegramLink;
+  const isVotingClosed = nominationData?.isVotingOpen === false;
+  const needsTelegramLink = nominationData?.requiresTelegramLink ?? false;
+  const canVoteNow = (nominationData?.canVote ?? false) && !needsTelegramLink;
   const disableVoting = isVotingClosed || !canVoteNow;
   
   // Voting mode (single choice for legacy nominations)
@@ -92,7 +103,7 @@ export const NominationPageRedesigned: React.FC = () => {
   
   // Deadline
   const deadlineLabel = useMemo(() => {
-    const deadline = (nomination as any)?.votingDeadline;
+    const deadline = nominationData?.votingDeadline;
     if (!deadline) return null;
     
     const parsed = new Date(deadline);
@@ -102,7 +113,7 @@ export const NominationPageRedesigned: React.FC = () => {
       dateStyle: 'medium',
       timeStyle: 'short',
     });
-  }, [nomination]);
+  }, [nominationData]);
   
   // Initialize selected option from user vote
   useEffect(() => {
@@ -149,7 +160,7 @@ export const NominationPageRedesigned: React.FC = () => {
     
     try {
       await castVoteMutation.mutateAsync({
-        pollId: (nomination as any)?.voting?.id ?? '',
+        pollId: nominationData?.voting?.id ?? '',
         nominationId: id,
         optionId: selectedOptionId,
       });
@@ -177,7 +188,7 @@ export const NominationPageRedesigned: React.FC = () => {
         ),
       ]);
     }
-  }, [id, selectedOptionId, disableVoting, castVoteMutation, nomination]);
+  }, [id, selectedOptionId, disableVoting, castVoteMutation, nominationData]);
   
   // Handle alert dismiss
   const handleAlertDismiss = useCallback((alertId: string) => {
@@ -186,13 +197,13 @@ export const NominationPageRedesigned: React.FC = () => {
   
   // Handle back navigation
   const handleBack = useCallback(() => {
-    const votingId = (nomination as any)?.voting?.id;
+    const votingId = nominationData?.voting?.id;
     if (votingId) {
       navigate(`/votings/${votingId}`);
     } else {
       navigate('/');
     }
-  }, [navigate, nomination]);
+  }, [navigate, nominationData]);
   
   // Handle refresh
   const handleRefresh = useCallback(() => {
@@ -201,15 +212,15 @@ export const NominationPageRedesigned: React.FC = () => {
   
   // Breadcrumbs
   const breadcrumbItems = useMemo(() => {
-    const votingTitle = (nomination as any)?.voting?.title ?? 'Голосование';
+    const votingTitle = nominationData?.voting?.title ?? 'Голосование';
     const nominationTitle = nomination?.title ?? 'Номинация';
     
     return [
       { text: 'Главная', href: '/' },
-      { text: votingTitle, href: `/votings/${(nomination as any)?.voting?.id ?? ''}` },
+      { text: votingTitle, href: `/votings/${nominationData?.voting?.id ?? ''}` },
       { text: nominationTitle, href: '#' },
     ];
-  }, [nomination]);
+  }, [nomination, nominationData]);
   
   // Loading state
   if (isLoading) {
@@ -367,7 +378,7 @@ export const NominationPageRedesigned: React.FC = () => {
                       key={option.id}
                       nomination={{
                         id: option.id,
-                        poll_id: (nomination as any)?.voting?.id ?? '',
+                        poll_id: nominationData?.voting?.id ?? '',
                         title: option.title,
                         description: option.description ?? null,
                         kind: 'custom',

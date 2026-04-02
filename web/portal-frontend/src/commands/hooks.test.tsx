@@ -37,7 +37,7 @@ describe('command hooks and serializer', () => {
       undo: vi.fn(async () => undefined),
       redo: vi.fn(async () => undefined),
       serialize: () => ({}),
-      accept: (visitor: { visit: (value: { kind: string; name: string; payload: {}; timestamp: number }) => unknown }) =>
+      accept: (visitor: { visit: (value: { kind: string; name: string; payload: Record<string, never>; timestamp: number }) => unknown }) =>
         visitor.visit({ kind: 't', name: 'c1', payload: {}, timestamp: Date.now() }),
     };
     await history.run(runCmd as never);

@@ -55,6 +55,29 @@ interface ChartDataPoint {
   isWinner: boolean;
 }
 
+interface RechartsTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: ChartDataPoint }>;
+}
+
+function CustomTooltip({ active, payload }: RechartsTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <Card className="results-tooltip">
+      <div className="results-tooltip__title">{data.title}</div>
+      <div className="results-tooltip__votes">
+        <strong>{data.votes}</strong> {getVoteLabel(data.votes)}
+      </div>
+      <div className="results-tooltip__percentage">
+        {data.percentage.toFixed(2)}%
+      </div>
+    </Card>
+  );
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -115,25 +138,6 @@ export const ResultsVisualization: React.FC<ResultsVisualizationProps> = ({
     link.href = URL.createObjectURL(blob);
     link.download = `voting-results-${Date.now()}.csv`;
     link.click();
-  };
-  
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || payload.length === 0) return null;
-    
-    const data = payload[0].payload as ChartDataPoint;
-    
-    return (
-      <Card className="results-tooltip">
-        <div className="results-tooltip__title">{data.title}</div>
-        <div className="results-tooltip__votes">
-          <strong>{data.votes}</strong> {getVoteLabel(data.votes)}
-        </div>
-        <div className="results-tooltip__percentage">
-          {data.percentage.toFixed(2)}%
-        </div>
-      </Card>
-    );
   };
   
   // Empty state

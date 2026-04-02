@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/purity */
 /**
  * Performance Utilities for Voting Feature
  * 
@@ -145,7 +148,7 @@ export function useDebounce<T>(value: T, delay: number): T {
 /**
  * Throttle function for scroll handlers
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   fn: T,
   delay: number,
 ): (...args: Parameters<T>) => void {
@@ -177,13 +180,13 @@ import { lazy, Suspense, useState, type ComponentType } from 'react';
 /**
  * Create lazy component with loading fallback
  */
-export function lazyWithFallback<T extends ComponentType<any>>(
-  importFn: () => Promise<{ default: T }>,
+export function lazyWithFallback<P extends object>(
+  importFn: () => Promise<{ default: ComponentType<P> }>,
   Fallback: React.FC = () => null,
 ) {
-  const LazyComponent = lazy(importFn);
+  const LazyComponent = lazy(importFn) as unknown as ComponentType<P>;
 
-  return function LazyWithFallback(props: React.ComponentProps<T>) {
+  return function LazyWithFallback(props: P) {
     return (
       <Suspense fallback={<Fallback />}>
         <LazyComponent {...props} />

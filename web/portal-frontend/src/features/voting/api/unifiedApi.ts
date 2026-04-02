@@ -28,16 +28,13 @@ import type {
   Poll,
   Vote,
   PaginatedResponse,
-  PollDetailedInfo,
   PollResults,
   VoteCastPayload,
 } from '../types';
 
 import type {
-  VotingSession,
   LegacyVotingSession,
   VotingSessionWithQuestions,
-  LegacyVotingSessionWithQuestions,
   LegacyVotingQuestion,
   ApiConfig,
   VotingQueryParams,
@@ -114,27 +111,12 @@ export async function fetchVotingSessionDetail(
   config?: ApiConfig
 ): Promise<VotingDetailResponse> {
   if (config?.useLegacy) {
-    return fetchVotingSessionDetailLegacy(id);
+    throw new Error(
+      'Legacy API does not support voting detail. Use fetchNomination for individual nominations.'
+    );
   }
   
   return fetchVotingSessionDetailModern(id);
-}
-
-/**
- * Fetch voting session detail from legacy API
- * 
- * NOTE: Legacy API doesn't have a /votings/{id} endpoint that returns full data
- * with nominations. We need to fetch nominations separately.
- * For now, return minimal data. Component should use fetchNominationLegacy directly.
- */
-async function fetchVotingSessionDetailLegacy(
-  _votingId: string
-): Promise<LegacyVotingSessionWithQuestions> {
-  // Legacy API doesn't have voting detail endpoint
-  // This is a limitation - components using legacy should fetch nominations directly
-  throw new Error(
-    'Legacy API does not support voting detail. Use fetchNomination for individual nominations.'
-  );
 }
 
 /**

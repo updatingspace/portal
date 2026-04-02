@@ -277,7 +277,7 @@ export const ResultsSkeleton: React.FC<ResultsSkeletonProps> = ({
         {Array.from({ length: barCount }).map((_, i) => (
           <div key={i} className="results-skeleton__bar">
             <Skeleton width={120} height={16} />
-            <Skeleton width={`${Math.random() * 60 + 20}%`} height={24} borderRadius={4} />
+            <Skeleton width={`${20 + (i % 5) * 15}%`} height={24} borderRadius={4} />
           </div>
         ))}
       </div>

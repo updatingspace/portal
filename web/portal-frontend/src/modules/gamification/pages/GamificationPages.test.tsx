@@ -134,26 +134,22 @@ vi.mock('@gravity-ui/uikit', () => {
   const Button = ({
     children,
     onClick,
-    loading: _loading,
-    view: _view,
-    size: _size,
+    loading,
+    view,
+    size,
     ...props
-  }: React.ComponentProps<'button'> & { loading?: boolean; view?: string; size?: string }) => (
-    <button type="button" onClick={onClick} {...props}>{children}</button>
-  );
+  }: React.ComponentProps<'button'> & { loading?: boolean; view?: string; size?: string }) => {
+    void loading;
+    void view;
+    void size;
+    return <button type="button" onClick={onClick} {...props}>{children}</button>;
+  };
   const Select = ({ options = [], value = [], onUpdate }: { options?: Array<{ value: string; content: string }>; value?: string[]; onUpdate?: (v: string[]) => void }) => (
     <select value={value[0] ?? ''} onChange={(e) => onUpdate?.([e.target.value])}>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>{opt.content}</option>
       ))}
     </select>
-  );
-  const Table = ({ data, emptyMessage }: { data: unknown[]; emptyMessage: string }) => (
-    !data.length ? (
-      <div>{emptyMessage}</div>
-    ) : (
-      <div>{`rows:${data.length}`}</div>
-    )
   );
   const RichTable = ({
     data,

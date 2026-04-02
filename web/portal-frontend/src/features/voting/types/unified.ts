@@ -18,8 +18,6 @@ import type {
   Vote,
   PollStatus,
   PollScopeType,
-  PollVisibility,
-  ResultsVisibility,
   NominationKind,
 } from './index';
 

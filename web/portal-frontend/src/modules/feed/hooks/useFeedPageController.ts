@@ -224,7 +224,7 @@ export function useFeedPageController() {
         body,
         tags,
         visibility: newsVisibility,
-        scopeType: 'tenant',
+        scopeType: 'TENANT',
         scopeId: null,
         media: mergedMedia.map((item) => {
           if (item.type === 'image') {
@@ -308,7 +308,7 @@ export function useFeedPageController() {
   }, []);
 
   const handleComposerKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLElement>) => {
+    (event: ReactKeyboardEvent<'div'>) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
         if (!isCreatingNews && !uploading && composerHasText && composerHasMedia) {
