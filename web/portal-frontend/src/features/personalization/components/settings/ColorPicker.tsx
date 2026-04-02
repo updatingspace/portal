@@ -4,6 +4,7 @@
 import { TextInput } from '@gravity-ui/uikit';
 import { useCallback, useState } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import './settings.css';
 
 export interface ColorPickerProps {
@@ -13,19 +14,20 @@ export interface ColorPickerProps {
 }
 
 const COLOR_PRESETS = [
-  { value: '#8B5CF6', name: 'Purple' },
-  { value: '#3B82F6', name: 'Blue' },
-  { value: '#10B981', name: 'Green' },
-  { value: '#F59E0B', name: 'Amber' },
-  { value: '#EF4444', name: 'Red' },
-  { value: '#EC4899', name: 'Pink' },
-  { value: '#6366F1', name: 'Indigo' },
-  { value: '#14B8A6', name: 'Teal' },
+  { value: '#8B5CF6', nameKey: 'colors.purple' },
+  { value: '#3B82F6', nameKey: 'colors.blue' },
+  { value: '#10B981', nameKey: 'colors.green' },
+  { value: '#F59E0B', nameKey: 'colors.amber' },
+  { value: '#EF4444', nameKey: 'colors.red' },
+  { value: '#EC4899', nameKey: 'colors.pink' },
+  { value: '#6366F1', nameKey: 'colors.indigo' },
+  { value: '#14B8A6', nameKey: 'colors.teal' },
 ];
 
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 
 export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
+  const { t } = usePersonalizationI18n();
   const [inputValue, setInputValue] = useState(value);
 
   const handleInputChange = useCallback(
@@ -63,7 +65,7 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
       <div
         className="color-picker__swatch"
         style={{ backgroundColor: value }}
-        aria-label={`Current color: ${value}`}
+        aria-label={`${t('colors.aria.current')}: ${value}`}
       />
       
       <TextInput
@@ -72,12 +74,12 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
         disabled={disabled}
         size="m"
         placeholder="#8B5CF6"
-        aria-label="Hex color value"
+        aria-label={t('colors.aria.input')}
         data-testid="color-input"
         style={{ width: 100 }}
       />
 
-      <div className="color-picker__presets" role="listbox" aria-label="Color presets">
+      <div className="color-picker__presets" role="listbox" aria-label={t('colors.aria.presets')}>
         {COLOR_PRESETS.map((preset) => (
           <button
             key={preset.value}
@@ -93,8 +95,8 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
             disabled={disabled}
             role="option"
             aria-selected={value.toUpperCase() === preset.value.toUpperCase()}
-            aria-label={`${preset.name} (${preset.value})`}
-            data-testid={`color-preset-${preset.name.toLowerCase()}`}
+            aria-label={`${t(preset.nameKey)} (${preset.value})`}
+            data-testid={`color-preset-${preset.value.slice(1).toLowerCase()}`}
           />
         ))}
       </div>

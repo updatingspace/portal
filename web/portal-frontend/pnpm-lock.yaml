@@ -29,6 +29,9 @@ importers:
       '@gravity-ui/uikit':
         specifier: ^7.29.0
         version: 7.29.0(@babel/runtime@7.28.6)(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@hookform/resolvers':
+        specifier: ^5.2.2
+        version: 5.2.2(react-hook-form@7.72.0(react@18.3.1))
       '@tanstack/react-query':
         specifier: ^5.90.18
         version: 5.90.19(react@18.3.1)
@@ -44,6 +47,9 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+      react-hook-form:
+        specifier: ^7.72.0
+        version: 7.72.0(react@18.3.1)
       react-router-dom:
         specifier: ^7.9.6
         version: 7.12.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -639,6 +645,11 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
+  '@hookform/resolvers@5.2.2':
+    resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
+    peerDependencies:
+      react-hook-form: ^7.55.0
+
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
     engines: {node: '>=18.18.0'}
@@ -841,6 +852,9 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@standard-schema/utils@0.3.0':
+    resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
   '@tanstack/query-core@5.90.19':
     resolution: {integrity: sha512-GLW5sjPVIvH491VV1ufddnfldyVB+teCnpPIvweEfkpRx7CfUmUGhoh9cdcUKBh/KwVxk22aNEDxeTsvmyB/WA==}
@@ -2162,6 +2176,12 @@ packages:
     peerDependencies:
       react: '>=16.13.1'
 
+  react-hook-form@7.72.0:
+    resolution: {integrity: sha512-V4v6jubaf6JAurEaVnT9aUPKFbNtDgohj5CIgVGyPHvT9wRx5OZHVjz31GsxnPNI278XMu+ruFz+wGOscHaLKw==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^16.8.0 || ^17 || ^18 || ^19
+
   react-hotkeys-hook@4.6.2:
     resolution: {integrity: sha512-FmP+ZriY3EG59Ug/lxNfrObCnW9xQShgk7Nb83+CkpfkcCpfS95ydv+E9JuXA5cp8KtskU7LGlIARpkc92X22Q==}
     peerDependencies:
@@ -3101,7 +3121,7 @@ snapshots:
       '@gravity-ui/date-utils': 2.6.0
       '@gravity-ui/icons': 2.17.0(react@18.3.1)
       '@gravity-ui/uikit': 7.29.0(@babel/runtime@7.28.6)(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      lodash: 4.17.23
+      lodash: 4.17.21
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       universal-cookie: 7.2.2
@@ -3243,6 +3263,11 @@ snapshots:
       redux: 5.0.1
     transitivePeerDependencies:
       - '@types/react'
+
+  '@hookform/resolvers@5.2.2(react-hook-form@7.72.0(react@18.3.1))':
+    dependencies:
+      '@standard-schema/utils': 0.3.0
+      react-hook-form: 7.72.0(react@18.3.1)
 
   '@humanfs/core@0.19.1': {}
 
@@ -3389,6 +3414,8 @@ snapshots:
     optional: true
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@standard-schema/utils@0.3.0': {}
 
   '@tanstack/query-core@5.90.19': {}
 
@@ -4850,6 +4877,10 @@ snapshots:
   react-error-boundary@3.1.4(react@18.3.1):
     dependencies:
       '@babel/runtime': 7.28.6
+      react: 18.3.1
+
+  react-hook-form@7.72.0(react@18.3.1):
+    dependencies:
       react: 18.3.1
 
   react-hotkeys-hook@4.6.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1):

@@ -16,7 +16,7 @@ const getVoteCount = (settings: Record<string, unknown>) => {
 export const AnalyticsDashboardPage: React.FC = () => {
   const { data: pollsData, isLoading, isError, error } = usePolls({ status: 'closed' });
 
-  const polls = pollsData?.items || [];
+  const polls = useMemo(() => pollsData?.items ?? [], [pollsData?.items]);
 
   const pollStats = useMemo(() => {
     const totalPolls = polls.length;

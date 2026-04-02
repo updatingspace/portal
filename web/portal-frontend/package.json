@@ -23,11 +23,13 @@
     "@gravity-ui/markdown-editor": "^15.29.0",
     "@gravity-ui/navigation": "^3.10.1",
     "@gravity-ui/uikit": "^7.29.0",
+    "@hookform/resolvers": "^5.2.2",
     "@tanstack/react-query": "^5.90.18",
     "bootstrap": "^5.3.8",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-hook-form": "^7.72.0",
     "react-router-dom": "^7.9.6",
     "recharts": "^3.8.1",
     "zod": "^3.25.76"

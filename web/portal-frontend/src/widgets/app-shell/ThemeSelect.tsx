@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@gravity-ui/uikit';
 
-import { useThemeMode } from '../../app/providers/ThemeModeProvider';
+import { useThemeMode } from '../../app/providers/themeModeContext';
 
 export const ThemeSelect: React.FC = () => {
   const { mode, setMode } = useThemeMode();

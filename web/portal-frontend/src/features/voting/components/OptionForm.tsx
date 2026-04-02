@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { TextArea, TextInput } from '@gravity-ui/uikit';
 import type { OptionCreatePayload } from '../types';
 
@@ -16,7 +16,7 @@ export const OptionForm: React.FC<OptionFormProps> = ({
   const [mediaUrl, setMediaUrl] = useState(initialData.media_url || '');
   const [gameId, setGameId] = useState(initialData.game_id || '');
 
-  const handleChange = () => {
+  const handleChange = useCallback(() => {
     const data: OptionCreatePayload = {
       title,
       description: description || undefined,
@@ -27,12 +27,12 @@ export const OptionForm: React.FC<OptionFormProps> = ({
     if (onChange) {
       onChange(data);
     }
-  };
+  }, [description, gameId, mediaUrl, onChange, title]);
 
   // Call onChange when any field changes
-  React.useEffect(() => {
+  useEffect(() => {
     handleChange();
-  }, [title, description, mediaUrl, gameId, onChange]);
+  }, [handleChange]);
 
   return (
     <div className="space-y-4">

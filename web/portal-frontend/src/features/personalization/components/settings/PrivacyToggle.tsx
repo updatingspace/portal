@@ -4,6 +4,7 @@
 import { Switch, Text } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import './settings.css';
 
 export interface PrivacyToggleProps {
@@ -23,6 +24,8 @@ export function PrivacyToggle({
   disabled,
   testId,
 }: PrivacyToggleProps) {
+  const { t } = usePersonalizationI18n();
+
   const handleChange = useCallback(
     (checked: boolean) => {
       onChange(checked);
@@ -49,7 +52,7 @@ export function PrivacyToggle({
           onUpdate={handleChange}
           disabled={disabled}
           size="m"
-          aria-label={`${label}: ${value ? 'enabled' : 'disabled'}`}
+          aria-label={`${label}: ${value ? t('userSettings.common.enabled') : t('userSettings.common.disabled')}`}
           data-testid={testId ?? `privacy-toggle-${label.toLowerCase().replace(/\s+/g, '-')}`}
         />
       </div>

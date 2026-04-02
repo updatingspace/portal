@@ -2,7 +2,7 @@
  * usePreferences - Hook for managing user preferences
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import {
   fetchPreferences,
@@ -21,6 +21,19 @@ import type {
 
 const PREFERENCES_KEY = ['preferences'];
 const DEFAULTS_KEY = ['preferences', 'defaults'];
+const CACHE_KEY = 'personalization-preferences-cache-v1';
+
+function getCachedPreferences(): UserPreferences | undefined {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) {
+      return undefined;
+    }
+    return JSON.parse(raw) as UserPreferences;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface UsePreferencesOptions {
   enabled?: boolean;
@@ -60,9 +73,18 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     queryKey: PREFERENCES_KEY,
     queryFn: fetchPreferences,
     enabled,
+    initialData: getCachedPreferences,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30, // 30 minutes
   });
+
+  const cachePreferences = useCallback((data: UserPreferences) => {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
 
   // Fetch defaults (for reset functionality)
   const { data: defaultsData } = useQuery({
@@ -113,6 +135,9 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
       // Refetch to ensure we have the latest
       queryClient.invalidateQueries({ queryKey: PREFERENCES_KEY });
     },
+    onSuccess: (data) => {
+      cachePreferences(data);
+    },
   });
 
   // Reset mutation
@@ -120,8 +145,15 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     mutationFn: resetPreferences,
     onSuccess: (data) => {
       queryClient.setQueryData(PREFERENCES_KEY, data);
+      cachePreferences(data);
     },
   });
+
+  useEffect(() => {
+    if (preferences) {
+      cachePreferences(preferences);
+    }
+  }, [preferences, cachePreferences]);
 
   // Convenience methods
   const updateAppearance = useCallback(

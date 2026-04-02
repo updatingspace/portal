@@ -1,12 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from '@gravity-ui/uikit';
-import { fetchHomePageModals, type HomePageModal } from '../api/personalization';
+
+import {
+  fetchHomePageModals,
+  trackModalAnalyticsEvent,
+  type HomePageModal,
+} from '../api/personalization';
+import { getLocale } from '../shared/lib/locale';
 import { notifyApiError } from '../utils/apiErrorHandling';
 
 const STORAGE_KEY = 'aef-homepage-modals-shown';
+const SESSION_KEY = 'updspace-personalization-session';
 
 interface ShownModalsRecord {
-  [modalId: number]: number; // timestamp when shown
+  [modalId: number]: number;
 }
 
 const getShownModals = (): ShownModalsRecord => {
@@ -24,12 +31,25 @@ const markModalAsShown = (modalId: number): void => {
     shown[modalId] = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(shown));
   } catch {
-    // Ignore storage errors
+    // Ignore storage errors.
+  }
+};
+
+const getTrackingSessionId = (): string => {
+  try {
+    const fromStorage = sessionStorage.getItem(SESSION_KEY);
+    if (fromStorage) {
+      return fromStorage;
+    }
+    const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem(SESSION_KEY, sessionId);
+    return sessionId;
+  } catch {
+    return `${Date.now()}-fallback`;
   }
 };
 
 const shouldShowModal = (modal: HomePageModal, shownModals: ShownModalsRecord): boolean => {
-  // Check if modal should only be shown once and was already shown
   if (modal.displayOnce && shownModals[modal.id]) {
     return false;
   }
@@ -47,8 +67,6 @@ export const HomePageModalDisplay: React.FC = () => {
       try {
         const allModals = await fetchHomePageModals();
         const shownModals = getShownModals();
-
-        // Filter modals based on display_once and other criteria
         const modalsToShow = allModals.filter((modal) => shouldShowModal(modal, shownModals));
 
         if (modalsToShow.length > 0) {
@@ -56,26 +74,50 @@ export const HomePageModalDisplay: React.FC = () => {
           setIsOpen(true);
         }
       } catch (error) {
-        notifyApiError(error, 'Не удалось загрузить уведомления');
+        notifyApiError(
+          error,
+          getLocale() === 'ru' ? 'Не удалось загрузить уведомления' : 'Failed to load notifications',
+        );
       }
     };
 
-    // Load modals after a small delay to not interrupt page load
     const timer = setTimeout(loadModals, 1000);
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const modal = modals[currentModalIndex];
+    if (!isOpen || !modal) {
+      return;
+    }
+    void trackModalAnalyticsEvent({
+      modalId: modal.id,
+      eventType: 'view',
+      sessionId: getTrackingSessionId(),
+    });
+  }, [isOpen, modals, currentModalIndex]);
+
   const currentModal = modals[currentModalIndex];
+  const locale = getLocale();
+  const translated = currentModal?.translations?.[locale];
+  const title = translated?.title || currentModal?.title || '';
+  const content = translated?.content || currentModal?.content || '';
+  const buttonText = translated?.button_text || currentModal?.buttonText || 'OK';
 
   const handleClose = useCallback(() => {
     if (!currentModal) return;
 
-    // Mark current modal as shown
+    void trackModalAnalyticsEvent({
+      modalId: currentModal.id,
+      eventType: 'dismiss',
+      sessionId: getTrackingSessionId(),
+      metadata: { index: currentModalIndex, total: modals.length },
+    });
+
     if (currentModal.displayOnce) {
       markModalAsShown(currentModal.id);
     }
 
-    // Show next modal if available
     if (currentModalIndex < modals.length - 1) {
       setCurrentModalIndex(currentModalIndex + 1);
     } else {
@@ -84,6 +126,15 @@ export const HomePageModalDisplay: React.FC = () => {
   }, [currentModal, currentModalIndex, modals.length]);
 
   const handleButtonClick = useCallback(() => {
+    if (!currentModal) {
+      return;
+    }
+    void trackModalAnalyticsEvent({
+      modalId: currentModal.id,
+      eventType: 'click',
+      sessionId: getTrackingSessionId(),
+      metadata: { hasUrl: !!currentModal.buttonUrl },
+    });
     if (currentModal?.buttonUrl) {
       window.open(currentModal.buttonUrl, '_blank', 'noopener,noreferrer');
     }
@@ -97,23 +148,21 @@ export const HomePageModalDisplay: React.FC = () => {
   return (
     <Modal open={isOpen} onClose={handleClose}>
       <div className="homepage-modal-content" style={{ padding: '24px', minWidth: '400px', maxWidth: '600px' }}>
-        <h2 style={{ marginTop: 0, marginBottom: '16px' }}>{currentModal.title}</h2>
-        <div style={{ marginBottom: '24px', whiteSpace: 'pre-wrap' }}>
-          {currentModal.content}
-        </div>
+        <h2 style={{ marginTop: 0, marginBottom: '16px' }}>{title}</h2>
+        <div style={{ marginBottom: '24px', whiteSpace: 'pre-wrap' }}>{content}</div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           {currentModal.buttonUrl ? (
             <>
               <Button view="flat" size="l" onClick={handleClose}>
-                Закрыть
+                {locale === 'ru' ? 'Закрыть' : 'Close'}
               </Button>
               <Button view="action" size="l" onClick={handleButtonClick}>
-                {currentModal.buttonText}
+                {buttonText}
               </Button>
             </>
           ) : (
             <Button view="action" size="l" onClick={handleClose}>
-              {currentModal.buttonText}
+              {buttonText}
             </Button>
           )}
         </div>

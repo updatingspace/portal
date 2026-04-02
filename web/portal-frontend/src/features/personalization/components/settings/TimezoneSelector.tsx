@@ -4,6 +4,7 @@
 import { Select, type SelectOption } from '@gravity-ui/uikit';
 import { useCallback, useMemo } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import './settings.css';
 
 export interface TimezoneSelectorProps {
@@ -44,6 +45,8 @@ const TIMEZONE_OPTIONS: TimezoneConfig[] = [
 ];
 
 export function TimezoneSelector({ value, onChange, disabled }: TimezoneSelectorProps) {
+  const { t } = usePersonalizationI18n();
+
   const selectOptions: SelectOption[] = useMemo(() => {
     const grouped: Record<string, TimezoneConfig[]> = {};
     
@@ -57,9 +60,17 @@ export function TimezoneSelector({ value, onChange, disabled }: TimezoneSelector
     const options: SelectOption[] = [];
     
     Object.entries(grouped).forEach(([region, timezones]) => {
+      const regionLabelMap: Record<string, string> = {
+        Universal: t('timezone.regions.universal'),
+        Europe: t('timezone.regions.europe'),
+        Americas: t('timezone.regions.americas'),
+        Asia: t('timezone.regions.asia'),
+        Pacific: t('timezone.regions.pacific'),
+      };
+
       options.push({
         value: `__group_${region}`,
-        content: region,
+        content: regionLabelMap[region] ?? region,
         disabled: true,
       });
       
@@ -72,7 +83,7 @@ export function TimezoneSelector({ value, onChange, disabled }: TimezoneSelector
     });
 
     return options;
-  }, []);
+  }, [t]);
 
   const handleChange = useCallback(
     (values: string[]) => {
@@ -92,9 +103,9 @@ export function TimezoneSelector({ value, onChange, disabled }: TimezoneSelector
       disabled={disabled}
       width="max"
       size="m"
-      placeholder="Select timezone"
+      placeholder={t('timezone.placeholder')}
       filterable
-      aria-label="Select timezone"
+      aria-label={t('timezone.aria')}
       data-testid="timezone-selector"
     />
   );

@@ -4,6 +4,7 @@
 import { Switch, Text, Checkbox } from '@gravity-ui/uikit';
 import { useCallback } from 'react';
 
+import { usePersonalizationI18n } from '../../i18n';
 import type { NotificationChannel, NotificationChannelConfig } from '../../types';
 import './settings.css';
 
@@ -16,12 +17,6 @@ export interface NotificationToggleProps {
   disabled?: boolean;
 }
 
-const CHANNEL_LABELS: Record<NotificationChannel, string> = {
-  email: 'Email',
-  in_app: 'In-app',
-  push: 'Push',
-};
-
 export function NotificationToggle({
   label,
   description,
@@ -30,6 +25,7 @@ export function NotificationToggle({
   availableChannels = ['email', 'in_app'],
   disabled,
 }: NotificationToggleProps) {
+  const { t } = usePersonalizationI18n();
   const handleEnabledChange = useCallback(
     (checked: boolean) => {
       onChange({
@@ -73,9 +69,9 @@ export function NotificationToggle({
         {value.enabled && (
           <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
             {availableChannels.map((channel) => (
-              <Checkbox
-                key={channel}
-                content={CHANNEL_LABELS[channel]}
+                <Checkbox
+                  key={channel}
+                  content={t(`notifications.channels.${channel}`)}
                 checked={value.channels.includes(channel)}
                 onUpdate={(checked) => handleChannelChange(channel, checked)}
                 disabled={disabled}

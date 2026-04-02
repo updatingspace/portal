@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Button, Card, Select, Text, TextArea, TextInput } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
@@ -381,11 +381,6 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
   const createEventMutation = useCreateEvent();
   const updateEventMutation = useUpdateEvent(event?.id ?? '');
 
-  useEffect(() => {
-    setFormState(buildInitialFormState(event));
-    setFormError(null);
-  }, [event?.id]);
-
   const startDate = parseControlDatetime(formState.startsAt);
   const endDate = parseControlDatetime(formState.endsAt);
   const startTime = formatTimeValue(startDate);
@@ -650,17 +645,17 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
                   {copy.labels.startsAt}
                 </Text>
                 <div className="mt-2 grid gap-3">
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="date"
                     value={toDateInputValue(startDate)}
-                    onUpdate={handleStartDateUpdate}
+                    onChange={(event) => handleStartDateUpdate(event.target.value)}
                   />
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="time"
                     value={startTime}
-                    onUpdate={handleStartTimeUpdate}
+                    onChange={(event) => handleStartTimeUpdate(event.target.value)}
                     placeholder={copy.placeholders.time}
                   />
                 </div>
@@ -671,17 +666,17 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
                   {copy.labels.endsAt}
                 </Text>
                 <div className="mt-2 grid gap-3">
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="date"
                     value={toDateInputValue(endDate)}
-                    onUpdate={handleEndDateUpdate}
+                    onChange={(event) => handleEndDateUpdate(event.target.value)}
                   />
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="time"
                     value={endTime}
-                    onUpdate={handleEndTimeUpdate}
+                    onChange={(event) => handleEndTimeUpdate(event.target.value)}
                     placeholder={copy.placeholders.time}
                   />
                 </div>

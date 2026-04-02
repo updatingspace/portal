@@ -33,10 +33,18 @@ function makeTooltip(title: string, description?: string) {
   return description ? `${title}\n${description}` : title;
 }
 
-const isModifiedClick = (event: Partial<MouseEvent>): boolean =>
+type NavigationClickEvent = {
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  button?: number;
+  preventDefault?: () => void;
+};
+
+const isModifiedClick = (event: NavigationClickEvent): boolean =>
   Boolean(event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1);
 
-const preventDefaultIfPossible = (event: { preventDefault?: () => void }) => {
+const preventDefaultIfPossible = (event: NavigationClickEvent) => {
   if (typeof event.preventDefault === 'function') {
     event.preventDefault();
   }
@@ -66,7 +74,7 @@ export const buildAsideMenuItems = (params: {
     rightAdornment: item.badge ? item.badge : undefined,
     tooltipText: makeTooltip(item.title, item.description),
     onItemClick: (_it, _collapsed, event) => {
-      const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+      const e = event as unknown as NavigationClickEvent;
       if (isModifiedClick(e)) {
         return;
       }
@@ -87,7 +95,7 @@ export const buildAsideMenuItems = (params: {
       iconSize: 18,
       tooltipText: makeTooltip('Admin', 'Admin tools'),
       onItemClick: (_it, _collapsed, event) => {
-        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+        const e = event as unknown as NavigationClickEvent;
         if (isModifiedClick(e)) {
           return;
         }

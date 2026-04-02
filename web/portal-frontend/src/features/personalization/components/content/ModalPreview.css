@@ -1,0 +1,135 @@
+/**
+ * Styles for ModalPreview component
+ */
+
+.modal-preview {
+  width: 100%;
+  max-width: 480px;
+  border-radius: var(--g-border-radius-xl);
+  overflow: hidden;
+  box-shadow: var(--g-shadow-modal);
+}
+
+.modal-preview--fullscreen {
+  max-width: 560px;
+  transform: scale(1.1);
+}
+
+/* Header */
+.modal-preview__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--g-spacing-6);
+}
+
+.modal-preview__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--g-color-base-background);
+}
+
+.modal-preview__close {
+  position: absolute;
+  top: var(--g-spacing-3);
+  right: var(--g-spacing-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--g-border-radius-s);
+  background: transparent;
+  color: var(--g-color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.modal-preview__close:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.modal-preview__close:focus-visible {
+  outline: 2px solid var(--g-color-line-brand);
+  outline-offset: 2px;
+}
+
+/* Body */
+.modal-preview__body {
+  padding: var(--g-spacing-5) var(--g-spacing-6);
+  text-align: center;
+}
+
+.modal-preview__title {
+  margin-bottom: var(--g-spacing-3);
+}
+
+.modal-preview__content {
+  line-height: 1.5;
+}
+
+.modal-preview__content--html {
+  text-align: left;
+}
+
+.modal-preview__content--html p {
+  margin: 0 0 var(--g-spacing-3);
+}
+
+.modal-preview__content--html p:last-child {
+  margin-bottom: 0;
+}
+
+.modal-preview__content--html strong,
+.modal-preview__content--html b {
+  font-weight: 600;
+}
+
+.modal-preview__content--html em,
+.modal-preview__content--html i {
+  font-style: italic;
+}
+
+.modal-preview__content--html a {
+  color: var(--g-color-text-link);
+  text-decoration: none;
+}
+
+.modal-preview__content--html a:hover {
+  text-decoration: underline;
+}
+
+.modal-preview__content--html ul,
+.modal-preview__content--html ol {
+  margin: 0 0 var(--g-spacing-3);
+  padding-left: var(--g-spacing-5);
+}
+
+.modal-preview__content--html li {
+  margin-bottom: var(--g-spacing-1);
+}
+
+/* Footer */
+.modal-preview__footer {
+  padding: var(--g-spacing-4) var(--g-spacing-6) var(--g-spacing-6);
+}
+
+/* Responsive */
+@media (max-width: 520px) {
+  .modal-preview {
+    max-width: 100%;
+    border-radius: 0;
+  }
+
+  .modal-preview--fullscreen {
+    transform: none;
+    max-width: 100%;
+  }
+}

@@ -186,3 +186,296 @@ export interface FontSizeOption {
   label: string;
   preview: string;
 }
+
+// =============================================================================
+// Content Management Types
+// =============================================================================
+
+/**
+ * Modal type options
+ */
+export type ModalType = 'info' | 'warning' | 'success' | 'promo';
+
+/**
+ * Widget type options
+ */
+export type WidgetType = 'banner' | 'announcement' | 'promotion' | 'notification';
+
+/**
+ * Widget placement options
+ */
+export type WidgetPlacement = 'top' | 'bottom' | 'sidebar' | 'inline';
+
+/**
+ * Analytics event types
+ */
+export type AnalyticsEventType = 'view' | 'click' | 'dismiss';
+
+/**
+ * Bulk action types
+ */
+export type BulkAction = 'activate' | 'deactivate' | 'delete' | 'restore';
+
+/**
+ * Modal translations
+ */
+export interface ModalTranslations {
+  [language: string]: {
+    title?: string;
+    content?: string;
+    button_text?: string;
+  };
+}
+
+/**
+ * Homepage modal (full)
+ */
+export interface HomePageModal {
+  id: number;
+  title: string;
+  content: string;
+  content_html: string;
+  button_text: string;
+  button_url: string;
+  modal_type: ModalType;
+  is_active: boolean;
+  display_once: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  order: number;
+  translations: ModalTranslations;
+  version: number;
+  deleted_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Homepage modal input (for create/update)
+ */
+export interface HomePageModalInput {
+  title: string;
+  content: string;
+  content_html?: string;
+  button_text?: string;
+  button_url?: string;
+  modal_type?: ModalType;
+  is_active?: boolean;
+  display_once?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+  order?: number;
+  translations?: ModalTranslations;
+}
+
+/**
+ * Modal list filters
+ */
+export interface ModalListFilters {
+  includeDeleted?: boolean;
+  isActive?: boolean;
+  modalType?: ModalType;
+  search?: string;
+  startDateFrom?: Date;
+  startDateTo?: Date;
+}
+
+/**
+ * Bulk action payload
+ */
+export interface BulkActionPayload {
+  modalIds: number[];
+  action: BulkAction;
+}
+
+/**
+ * Bulk action result
+ */
+export interface BulkActionResult {
+  success: boolean;
+  affected: number;
+}
+
+/**
+ * Content widget content structure
+ */
+export interface WidgetContent {
+  title?: string;
+  body?: string;
+  image_url?: string;
+  cta_text?: string;
+  cta_url?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Content widget
+ */
+export interface ContentWidget {
+  id: string;
+  tenant_id: string;
+  name: string;
+  widget_type: WidgetType;
+  placement: WidgetPlacement;
+  content: WidgetContent;
+  is_active: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  priority: number;
+  target_pages: string[];
+  target_roles: string[];
+  deleted_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Content widget input
+ */
+export interface ContentWidgetInput {
+  name: string;
+  widget_type?: WidgetType;
+  placement?: WidgetPlacement;
+  content?: WidgetContent;
+  is_active?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+  priority?: number;
+  target_pages?: string[];
+  target_roles?: string[];
+}
+
+/**
+ * Analytics event payload
+ */
+export interface AnalyticsEventPayload {
+  modalId: number;
+  eventType: AnalyticsEventType;
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Modal analytics summary
+ */
+export interface ModalAnalytics {
+  modal_id: number;
+  modal_title: string;
+  total_views: number;
+  total_clicks: number;
+  total_dismissals: number;
+  click_through_rate: number;
+}
+
+/**
+ * Analytics report
+ */
+export interface AnalyticsReport {
+  period_start: string;
+  period_end: string;
+  total_modals: number;
+  total_views: number;
+  total_clicks: number;
+  total_dismissals: number;
+  average_ctr: number;
+  modals: ModalAnalytics[];
+}
+
+/**
+ * Modal form state (for editor)
+ */
+export interface ModalFormState {
+  title: string;
+  content: string;
+  contentHtml: string;
+  buttonText: string;
+  buttonUrl: string;
+  modalType: ModalType;
+  isActive: boolean;
+  displayOnce: boolean;
+  startDate: Date | null;
+  endDate: Date | null;
+  order: number;
+  translations: ModalTranslations;
+}
+
+/**
+ * Modal type option for selector
+ */
+export interface ModalTypeOption {
+  value: ModalType;
+  label: string;
+  description: string;
+  color: string;
+}
+
+/**
+ * Table column definition
+ */
+export interface TableColumn<T> {
+  id: keyof T | string;
+  label: string;
+  sortable?: boolean;
+  width?: number | string;
+  render?: (item: T) => React.ReactNode;
+}
+
+/**
+ * Sort state
+ */
+export interface SortState {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
+// =============================================================================
+// Dashboard Customization Types
+// =============================================================================
+
+export interface DashboardLayout {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  layout_name: string;
+  layout_config: Record<string, unknown>;
+  is_default: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DashboardLayoutInput {
+  layout_name: string;
+  layout_config: Record<string, unknown>;
+  is_default?: boolean;
+}
+
+export interface DashboardWidget {
+  id: string;
+  layout_id: string;
+  tenant_id: string;
+  widget_key: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  settings: Record<string, unknown>;
+  is_visible: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DashboardWidgetInput {
+  widget_key: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  settings?: Record<string, unknown>;
+  is_visible?: boolean;
+}

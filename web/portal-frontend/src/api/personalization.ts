@@ -19,6 +19,11 @@ export type ApiHomePageModal = {
   end_date?: string | null;
   endDate?: string | null;
   order: number;
+  translations?: Record<string, {
+    title?: string;
+    content?: string;
+    button_text?: string;
+  }>;
 };
 
 export interface HomePageModal {
@@ -33,6 +38,11 @@ export interface HomePageModal {
   startDate: string | null;
   endDate: string | null;
   order: number;
+  translations?: Record<string, {
+    title?: string;
+    content?: string;
+    button_text?: string;
+  }>;
 }
 
 export interface HomePageModalInput {
@@ -48,6 +58,13 @@ export interface HomePageModalInput {
   order?: number;
 }
 
+export interface ModalAnalyticsTrackInput {
+  modalId: number;
+  eventType: 'view' | 'click' | 'dismiss';
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 const mapHomePageModal = (modal: ApiHomePageModal): HomePageModal => ({
   id: modal.id,
   title: modal.title,
@@ -60,6 +77,7 @@ const mapHomePageModal = (modal: ApiHomePageModal): HomePageModal => ({
   startDate: modal.startDate ?? modal.start_date ?? null,
   endDate: modal.endDate ?? modal.end_date ?? null,
   order: modal.order ?? 0,
+  translations: modal.translations ?? {},
 });
 
 const buildHomePageModalPayload = (
@@ -130,5 +148,19 @@ export const updateHomePageModal = async (
 export const deleteHomePageModal = async (modalId: number): Promise<void> => {
   await request<void>(`/personalization/admin/homepage-modals/${modalId}`, {
     method: 'DELETE',
+  });
+};
+
+export const trackModalAnalyticsEvent = async (
+  payload: ModalAnalyticsTrackInput,
+): Promise<void> => {
+  await request<void>('/personalization/analytics/track', {
+    method: 'POST',
+    body: {
+      modal_id: payload.modalId,
+      event_type: payload.eventType,
+      session_id: payload.sessionId ?? '',
+      metadata: payload.metadata ?? {},
+    },
   });
 };
