@@ -21,22 +21,30 @@ export type NavItemConfig = {
 };
 
 const BASE_ITEMS: NavItemConfig[] = [
-  {id: 'dashboard', title: 'Dashboard', description: 'Overview', route: '', icon: House},
-  {id: 'feed', title: 'Activity Feed', description: 'Updates and logs', route: '/feed', icon: Pulse, required: 'activity.feed.read'},
-  {id: 'events', title: 'Events', description: 'Community events', route: '/events', icon: Calendar, required: 'events.event.read'},
-  {id: 'voting', title: 'Voting', description: 'Campaigns and nominations', route: '/voting', icon: ListCheck, required: 'voting.poll.read'},
-  {id: 'gamification', title: 'Gamification', description: 'Achievements and grants', route: '/gamification', icon: ListCheck, required: 'gamification.achievements.read'},
-  {id: 'tenant-admin', title: 'Tenant Admin', description: 'Roles, rights, access', route: '/tenant-admin', icon: Shield, required: 'portal.roles.read'},
+  {id: 'dashboard', title: 'Dashboard', description: 'Overview', route: '/app', icon: House},
+  {id: 'feed', title: 'Activity Feed', description: 'Updates and logs', route: '/app/feed', icon: Pulse, required: 'activity.feed.read'},
+  {id: 'events', title: 'Events', description: 'Community events', route: '/app/events', icon: Calendar, required: 'events.event.read'},
+  {id: 'voting', title: 'Voting', description: 'Campaigns and nominations', route: '/app/voting', icon: ListCheck, required: 'voting.poll.read'},
+  {id: 'gamification', title: 'Gamification', description: 'Achievements and grants', route: '/app/gamification', icon: ListCheck, required: 'gamification.achievements.read'},
+  {id: 'tenant-admin', title: 'Tenant Admin', description: 'Roles, rights, access', route: '/app/tenant-admin', icon: Shield, required: 'portal.roles.read'},
 ];
 
 function makeTooltip(title: string, description?: string) {
   return description ? `${title}\n${description}` : title;
 }
 
-const isModifiedClick = (event: Partial<MouseEvent>): boolean =>
+type NavigationClickEvent = {
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  button?: number;
+  preventDefault?: () => void;
+};
+
+const isModifiedClick = (event: NavigationClickEvent): boolean =>
   Boolean(event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1);
 
-const preventDefaultIfPossible = (event: { preventDefault?: () => void }) => {
+const preventDefaultIfPossible = (event: NavigationClickEvent) => {
   if (typeof event.preventDefault === 'function') {
     event.preventDefault();
   }
@@ -46,10 +54,8 @@ export const buildAsideMenuItems = (params: {
   user: UserInfo | null;
   currentPath: string;
   onNavigate: (to: string) => void;
-  /** Route prefix: '/t/aef' or '/app' (legacy). Defaults to '/app'. */
-  routeBase?: string;
 }): MenuItem[] => {
-  const {user, currentPath, onNavigate, routeBase = '/app'} = params;
+  const {user, currentPath, onNavigate} = params;
 
   const visible = (item: NavItemConfig) => {
     if (!user?.capabilities?.length && !user?.roles?.length) {
@@ -58,47 +64,60 @@ export const buildAsideMenuItems = (params: {
     return can(user, item.required);
   };
 
-  const toMenuItem = (item: NavItemConfig): MenuItem => {
-    const fullRoute = `${routeBase}${item.route}`;
-    return {
-      id: item.id,
-      title: item.title,
-      link: fullRoute,
-      current: currentPath === fullRoute || (item.route !== '' && currentPath.startsWith(fullRoute)),
-      icon: item.icon,
-      iconSize: 18,
-      rightAdornment: item.badge ? item.badge : undefined,
-      tooltipText: makeTooltip(item.title, item.description),
-      onItemClick: (_it, _collapsed, event) => {
-        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
-        if (isModifiedClick(e)) {
-          return;
-        }
-        preventDefaultIfPossible(e);
-        onNavigate(fullRoute);
-      },
-    };
-  };
+  const toMenuItem = (item: NavItemConfig): MenuItem => ({
+    id: item.id,
+    title: item.title,
+    link: item.route,
+    current: currentPath === item.route || (item.route !== '/app' && currentPath.startsWith(item.route)),
+    icon: item.icon,
+    iconSize: 18,
+    rightAdornment: item.badge ? item.badge : undefined,
+    tooltipText: makeTooltip(item.title, item.description),
+    onItemClick: (_it, _collapsed, event) => {
+      const e = event as unknown as NavigationClickEvent;
+      if (isModifiedClick(e)) {
+        return;
+      }
+      preventDefaultIfPossible(e);
+      onNavigate(item.route);
+    },
+  });
 
   const items: MenuItem[] = BASE_ITEMS.filter(visible).map(toMenuItem);
 
   if (user?.isSuperuser) {
-    const adminRoute = `${routeBase}/admin`;
     items.push({
       id: 'admin',
       title: 'Admin',
-      link: adminRoute,
-      current: currentPath.startsWith(adminRoute),
+      link: '/app/admin',
+      current: currentPath.startsWith('/app/admin'),
       icon: Gear,
       iconSize: 18,
       tooltipText: makeTooltip('Admin', 'Admin tools'),
       onItemClick: (_it, _collapsed, event) => {
-        const e = event as Partial<MouseEvent> & { preventDefault?: () => void };
+        const e = event as unknown as NavigationClickEvent;
         if (isModifiedClick(e)) {
           return;
         }
         preventDefaultIfPossible(e);
-        onNavigate(adminRoute);
+        onNavigate('/app/admin');
+      },
+    });
+    items.push({
+      id: 'feature-flags',
+      title: 'Feature Flags',
+      link: '/app/feature-flags',
+      current: currentPath.startsWith('/app/feature-flags'),
+      icon: Gear,
+      iconSize: 18,
+      tooltipText: makeTooltip('Feature Flags', 'Network feature toggles'),
+      onItemClick: (_it, _collapsed, event) => {
+        const e = event as unknown as NavigationClickEvent;
+        if (isModifiedClick(e)) {
+          return;
+        }
+        preventDefaultIfPossible(e);
+        onNavigate('/app/feature-flags');
       },
     });
   }

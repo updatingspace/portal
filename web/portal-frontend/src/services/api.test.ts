@@ -1,108 +1,113 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client');
   return {
     ...actual,
-    apiBaseUrl: '/api/v1',
     request: vi.fn(),
     requestResult: vi.fn(),
   };
 });
 
-vi.unmock('./api');
-
 import { request, requestResult } from '../api/client';
-const { headlessLogin, logout, me, uploadAvatar } = await import('./api');
 
-describe('services/api cookie-auth contract', () => {
+const requestMock = request as unknown as Mock;
+const requestResultMock = requestResult as unknown as Mock;
+
+const mockSuccessfulLoginResponse = () => {
+  requestResultMock.mockResolvedValue({
+    ok: true,
+    status: 200,
+    data: {
+      access_token: 'secret-access-token',
+      session_token: 'legacy-session-token',
+      meta: { session_token: 'meta-session-token' },
+      user: {
+        username: 'alice',
+        email: 'alice@example.com',
+        has_2fa: false,
+        oauth_providers: [],
+        email_verified: true,
+        is_staff: false,
+        is_superuser: false,
+      },
+    },
+    headers: new Headers({ 'X-Session-Token': 'header-session-token' }),
+    durationMs: 1,
+  });
+};
+
+const performLogin = async (api: typeof import('./api')) =>
+  api.doLogin({
+    email: 'alice@example.com',
+    password: 'super-secret',
+  });
+
+describe('services/api cookie auth flow', () => {
+  let api: typeof import('./api');
+
+  beforeAll(async () => {
+    api = await vi.importActual<typeof import('./api')>('./api');
+  });
+
   beforeEach(() => {
-    document.cookie = 'updspace_csrf=test-csrf-token';
+    vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    window.localStorage.clear();
   });
 
-  it('uses account/me for authenticated profile reads', async () => {
-    vi.mocked(requestResult).mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        user: {
-          username: 'root',
-          email: 'root@example.com',
-          has_2fa: false,
-          oauth_providers: [],
-          email_verified: true,
-          is_staff: true,
-          is_superuser: true,
-        },
-      },
-      headers: new Headers(),
-      durationMs: 1,
-    });
+  it('does not expose token field in login result', async () => {
+    mockSuccessfulLoginResponse();
 
-    const profile = await me();
+    const result = await performLogin(api);
 
-    expect(profile?.username).toBe('root');
-    expect(requestResult).toHaveBeenCalledWith('/account/me', {
-      skipAuthClear: true,
-    });
+    expect(result).toMatchObject({ ok: true });
+    expect(result).not.toHaveProperty('token');
   });
 
-  it('does not expose legacy token from headless login responses', async () => {
-    vi.mocked(requestResult).mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        ok: true,
-        user: {
-          username: 'root',
-          email: 'root@example.com',
-          has_2fa: false,
-          oauth_providers: [],
-          email_verified: true,
-          is_staff: false,
-          is_superuser: false,
-        },
-        session_token: 'legacy-token',
-      },
-      headers: new Headers({ 'X-Session-Token': 'legacy-token' }),
-      durationMs: 1,
-    });
+  it('does not persist session token to localStorage after login', async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    mockSuccessfulLoginResponse();
 
-    const result = await headlessLogin('root@example.com', 'secret123');
+    await performLogin(api);
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result).not.toHaveProperty('token');
-      expect(result.meta).not.toHaveProperty('session_token');
-    }
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('aef_session_token')).toBeNull();
   });
 
-  it('uploads avatar through shared account request flow', async () => {
-    vi.mocked(request).mockResolvedValue({
+  it('uploads avatar via the shared cookie-auth request path', async () => {
+    requestMock.mockResolvedValue({
       ok: true,
-      avatar_url: '/media/avatar.png',
+      avatar_url: 'https://example.com/avatar.png',
+      avatar_source: 'upload',
+      avatar_gravatar_enabled: false,
     });
 
-    await uploadAvatar(new File(['avatar'], 'avatar.png', { type: 'image/png' }));
+    const file = new File(['avatar'], 'avatar.png', { type: 'image/png' });
 
-    expect(request).toHaveBeenCalledWith(
-      '/account/avatar',
+    await api.uploadAvatar(file);
+
+    expect(requestMock).toHaveBeenCalledWith(
+      '/auth/avatar',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(FormData),
       }),
     );
+
+    const [, options] = requestMock.mock.calls[0];
+    expect(options.headers).toBeUndefined();
+    expect((options.body as FormData).get('avatar')).toBe(file);
   });
 
-  it('logs out through BFF session endpoint', async () => {
-    vi.mocked(request).mockResolvedValue(undefined);
+  it('deletes avatar via the shared cookie-auth request path', async () => {
+    requestMock.mockResolvedValue({ ok: true });
 
-    await logout();
+    await api.deleteAvatar();
 
-    expect(request).toHaveBeenCalledWith('/logout', { method: 'POST' });
+    expect(requestMock).toHaveBeenCalledWith('/auth/avatar', { method: 'DELETE' });
   });
 });

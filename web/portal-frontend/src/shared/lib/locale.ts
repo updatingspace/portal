@@ -11,6 +11,4 @@ export const getLocale = (): Locale => {
 export const setLocale = (locale: Locale): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, locale);
-  // MVP stub: we don't have translations yet, but keep the toggle behavior deterministic.
-  window.location.reload();
 };

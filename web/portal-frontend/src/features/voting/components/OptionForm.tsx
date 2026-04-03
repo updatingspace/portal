@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { TextArea, TextInput } from '@gravity-ui/uikit';
 import type { OptionCreatePayload } from '../types';
 
@@ -11,18 +11,12 @@ export const OptionForm: React.FC<OptionFormProps> = ({
   initialData = {},
   onChange,
 }) => {
-  const uid = React.useId();
   const [title, setTitle] = useState(initialData.title || '');
   const [description, setDescription] = useState(initialData.description || '');
   const [mediaUrl, setMediaUrl] = useState(initialData.media_url || '');
   const [gameId, setGameId] = useState(initialData.game_id || '');
-  const onChangeRef = React.useRef(onChange);
 
-  React.useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  const handleChange = React.useCallback(() => {
+  const handleChange = useCallback(() => {
     const data: OptionCreatePayload = {
       title,
       description: description || undefined,
@@ -30,57 +24,61 @@ export const OptionForm: React.FC<OptionFormProps> = ({
       game_id: gameId || undefined,
     };
     
-    if (onChangeRef.current) {
-      onChangeRef.current(data);
+    if (onChange) {
+      onChange(data);
     }
-  }, [description, gameId, mediaUrl, title]);
+  }, [description, gameId, mediaUrl, onChange, title]);
 
   // Call onChange when any field changes
-  React.useEffect(() => {
+  useEffect(() => {
     handleChange();
   }, [handleChange]);
 
   return (
-    <div className="voting-form">
+    <div className="space-y-4">
       <div>
-        <label className="voting-form__label" htmlFor={`${uid}-option-title`}>Название варианта</label>
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-gray-700">Название варианта</div>
           <TextInput
-            id={`${uid}-option-title`}
             value={title}
             onUpdate={setTitle}
             placeholder="Например: Project Zeta"
           />
+        </div>
       </div>
 
       <div>
-        <label className="voting-form__label" htmlFor={`${uid}-option-description`}>Описание</label>
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-gray-700">Описание</div>
           <TextArea
-            id={`${uid}-option-description`}
             value={description}
             onUpdate={setDescription}
             rows={2}
             placeholder="Короткое пояснение"
           />
+        </div>
       </div>
 
       <div>
-        <label className="voting-form__label" htmlFor={`${uid}-option-media-url`}>Ссылка на медиа</label>
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-gray-700">Ссылка на медиа</div>
           <TextInput
-            id={`${uid}-option-media-url`}
             value={mediaUrl}
             onUpdate={setMediaUrl}
             placeholder="https://..."
           />
+        </div>
       </div>
 
       <div>
-        <label className="voting-form__label" htmlFor={`${uid}-option-game-id`}>Game ID</label>
+        <div className="space-y-1">
+          <div className="text-sm font-medium text-gray-700">Game ID</div>
           <TextInput
-            id={`${uid}-option-game-id`}
             value={gameId}
             onUpdate={setGameId}
             placeholder="ID игры или сущности"
           />
+        </div>
       </div>
     </div>
   );

@@ -47,19 +47,6 @@ class AccessSettingsSecurityTests(SimpleTestCase):
 
         self.assertIn("ALLOWED_HOSTS", str(ctx.exception))
 
-    def test_accepts_legacy_django_allowed_hosts_env(self):
-        settings_module = self._import_settings(
-            {
-                "DJANGO_DEBUG": "False",
-                "DJANGO_SECRET_KEY": "test-secret",
-                "DJANGO_ALLOWED_HOSTS": "localhost,access",
-                "DATABASE_URL": "postgres://user:pass@db:5432/access_db",
-                "BFF_INTERNAL_HMAC_SECRET": "test-hmac-secret",
-            }
-        )
-
-        self.assertEqual(settings_module.ALLOWED_HOSTS, ["localhost", "access"])
-
     def test_requires_internal_hmac_secret_in_strict_mode(self):
         with self.assertRaises(ImproperlyConfigured) as ctx:
             self._import_settings(
@@ -85,7 +72,6 @@ class AccessSettingsSecurityTests(SimpleTestCase):
         )
 
         self.assertTrue(settings_module.SECURE_SSL_REDIRECT)
-        self.assertIn(r"^api/v1/", settings_module.SECURE_REDIRECT_EXEMPT)
         self.assertEqual(settings_module.SECURE_HSTS_SECONDS, 31536000)
         self.assertTrue(settings_module.SESSION_COOKIE_SECURE)
         self.assertTrue(settings_module.CSRF_COOKIE_SECURE)

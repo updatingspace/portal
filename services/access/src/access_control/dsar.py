@@ -97,17 +97,7 @@ def erase_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
 
     tokens = {str(user_id)}
     audit_events_redacted = 0
-    audit_queryset = (
-        TenantAdminAuditEvent.objects.filter(tenant_id=tenant_id)
-        .filter(
-            Q(performed_by=user_id)
-            | Q(target_id=str(user_id))
-            | ~Q(metadata={})
-        )
-        .only("id", "action", "performed_by", "target_id", "metadata")
-        .order_by("id")
-    )
-    for item in audit_queryset.iterator(chunk_size=200):
+    for item in TenantAdminAuditEvent.objects.filter(tenant_id=tenant_id).order_by("id"):
         if str(item.action).startswith("dsar."):
             continue
         updates: list[str] = []

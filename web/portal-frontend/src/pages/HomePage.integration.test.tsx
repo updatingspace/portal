@@ -1,67 +1,66 @@
 import React from 'react';
-import { vi } from 'vitest';
 
 import { ApiError } from '../api/client';
 import { HomePage } from './HomePage';
 import { votingsApiMock } from '../test/mocks/api';
 import { renderWithProviders, screen, userEvent } from '../test/test-utils';
+import { withMockedDate } from '../test/time';
 
-const fixedNow = new Date('2025-01-02T12:00:00Z').getTime();
-const mockNow = () => vi.spyOn(Date, 'now').mockReturnValue(fixedNow);
+const LOADER_TEXT = 'Подтягиваем голосования...';
+const ACTIVE_SECTION_TEXT = 'Актуальные голосования';
+const MAIN_VOTING_TITLE = 'AEF Game Jam · основной поток';
+const EXPRESS_VOTING_TITLE = 'Экспресс-опрос';
+const ARCHIVED_VOTING_TITLE = 'Архив 2024';
+const RETRY_BUTTON_LABEL = 'Попробовать еще раз';
+const REFRESH_BUTTON_LABEL = 'Обновить список';
+
+function renderHomePage() {
+  renderWithProviders(<HomePage />);
+}
 
 describe('HomePage integration', () => {
-  test('shows loader and renders active + archived votings', async () => {
-    const nowSpy = mockNow();
-    try {
-      renderWithProviders(<HomePage />);
+  test('shows loading text before catalog data is rendered', withMockedDate(async () => {
+    renderHomePage();
 
-      expect(screen.getByText('Подтягиваем голосования...')).toBeInTheDocument();
+    expect(screen.getByText(LOADER_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(ACTIVE_SECTION_TEXT)).toBeInTheDocument();
+  }));
 
-      expect(await screen.findByText('Актуальные голосования')).toBeInTheDocument();
-      expect(screen.getAllByText('AEF Game Jam · основной поток').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('Экспресс-опрос').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('Архив 2024').length).toBeGreaterThan(0);
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
+  test('renders catalog sections after loading', withMockedDate(async () => {
+    renderHomePage();
 
-  test('renders error state and retries loading', async () => {
-    const nowSpy = mockNow();
+    expect(await screen.findByText(ACTIVE_SECTION_TEXT)).toBeInTheDocument();
+    expect(screen.getByText(MAIN_VOTING_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(EXPRESS_VOTING_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(ARCHIVED_VOTING_TITLE)).toBeInTheDocument();
+  }));
+
+  test('retries catalog load when user clicks retry after server error', withMockedDate(async () => {
     votingsApiMock.fetchVotingCatalog.mockRejectedValueOnce(
       new ApiError('fail', { kind: 'server', status: 500 }),
     );
 
-    try {
-      renderWithProviders(<HomePage />);
+    renderHomePage();
 
-      const errorTitles = await screen.findAllByText(/Сервис недоступен|Не удалось загрузить голосования/);
-      expect(errorTitles.length).toBeGreaterThan(0);
-      const retry = screen.getByRole('button', { name: 'Попробовать еще раз' });
-      await userEvent.click(retry);
+    expect(await screen.findByText(/Сервис недоступен|Не удалось загрузить голосования/)).toBeInTheDocument();
 
-      const mainVotingInstances = await screen.findAllByText('AEF Game Jam · основной поток');
-      expect(mainVotingInstances.length).toBeGreaterThan(0);
-      expect(votingsApiMock.fetchVotingCatalog).toHaveBeenCalledTimes(2);
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
+    const retry = screen.getByRole('button', { name: RETRY_BUTTON_LABEL });
+    expect(retry).toBeEnabled();
+    await userEvent.click(retry);
 
-  test('manual refresh re-requests catalog', async () => {
-    const nowSpy = mockNow();
-    try {
-      renderWithProviders(<HomePage />);
+    expect(await screen.findByText(MAIN_VOTING_TITLE)).toBeInTheDocument();
+    expect(votingsApiMock.fetchVotingCatalog).toHaveBeenCalledTimes(2);
+  }));
 
-      const mainVoting = await screen.findAllByText('AEF Game Jam · основной поток');
-      expect(mainVoting.length).toBeGreaterThan(0);
+  test('re-requests catalog when user clicks manual refresh', withMockedDate(async () => {
+    renderHomePage();
 
-      const refreshBtn = screen.getByRole('button', { name: 'Обновить список' });
-      await userEvent.click(refreshBtn);
+    expect(await screen.findByText(MAIN_VOTING_TITLE)).toBeInTheDocument();
 
-      expect(votingsApiMock.fetchVotingCatalog).toHaveBeenCalledTimes(2);
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
+    const refreshBtn = screen.getByRole('button', { name: REFRESH_BUTTON_LABEL });
+    expect(refreshBtn).toBeEnabled();
+    await userEvent.click(refreshBtn);
+
+    expect(votingsApiMock.fetchVotingCatalog).toHaveBeenCalledTimes(2);
+  }));
 });

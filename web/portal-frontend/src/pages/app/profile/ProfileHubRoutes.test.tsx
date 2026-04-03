@@ -16,15 +16,18 @@ const collectPaths = (routes: { path?: string; children?: unknown[] }[]): string
 };
 
 describe('Profile hub routes', () => {
-  it('registers all show-all profile routes under /t/:tenantSlug', () => {
+  const PROFILE_ROUTES = [
+    '/app/profile/following',
+    '/app/profile/followers',
+    '/app/profile/communities',
+    '/app/profile/achievements',
+    '/app/profile/friends',
+  ] as const;
+
+  it('registers all show-all profile routes', () => {
     const router = createAppRouter();
     const paths = collectPaths(router.routes as { path?: string; children?: unknown[] }[]);
 
-    // Path-based tenant routes: profile sub-routes are relative children of /t/:tenantSlug
-    expect(paths).toContain('profile/following');
-    expect(paths).toContain('profile/followers');
-    expect(paths).toContain('profile/communities');
-    expect(paths).toContain('profile/achievements');
-    expect(paths).toContain('profile/friends');
+    expect(paths).toEqual(expect.arrayContaining(PROFILE_ROUTES));
   });
 });

@@ -8,8 +8,9 @@ type ListPageLayoutProps = {
   isLoading?: boolean;
   isError?: boolean;
   emptyText: string;
-  items: { id: string; title: string; subtitle?: string }[];
+  items: { id: string; title: string; subtitle?: string; meta?: string }[];
   onRetry?: () => void;
+  leadSlot?: React.ReactNode;
 };
 
 export const ListPageLayout: React.FC<ListPageLayoutProps> = ({
@@ -19,12 +20,13 @@ export const ListPageLayout: React.FC<ListPageLayoutProps> = ({
   emptyText,
   items,
   onRetry,
+  leadSlot,
 }) => {
   return (
     <div className="profile-list-page">
       <h1 className="profile-list-page__title">{title}</h1>
       <Card view="filled" className="profile-list-page__search-slot">
-        <Text variant="body-2" color="secondary">{profileHubStrings.listPage.searchBacklogHint}</Text>
+        {leadSlot ?? <Text variant="body-2" color="secondary">{profileHubStrings.listPage.searchBacklogHint}</Text>}
       </Card>
 
       {isLoading ? (
@@ -44,6 +46,7 @@ export const ListPageLayout: React.FC<ListPageLayoutProps> = ({
             <Card key={item.id} view="filled" className="profile-list-page__item">
               <Text variant="body-1">{item.title}</Text>
               {item.subtitle && <Text variant="body-2" color="secondary">{item.subtitle}</Text>}
+              {item.meta && <Text variant="caption-2" color="secondary">{item.meta}</Text>}
             </Card>
           ))}
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Button,
@@ -12,7 +12,6 @@ import {
 } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
-import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { createClientAccessDeniedError } from '../../../api/accessDenied';
 import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
@@ -27,6 +26,14 @@ import type { Achievement, AchievementImageSet, AchievementStatus } from '../../
 import './gamification.css';
 
 type LocaleEntry = { locale: string; value: string };
+
+type SubmitPayload = {
+  nameI18n: Record<string, string>;
+  description: string;
+  category: string;
+  status?: AchievementStatus;
+  images: AchievementImageSet;
+};
 
 const STATUS_OPTIONS: { value: AchievementStatus; content: string }[] = [
   { value: 'draft', content: 'Черновик' },
@@ -43,25 +50,306 @@ const buildI18nMap = (entries: LocaleEntry[]) =>
     return acc;
   }, {});
 
-const buildInitialNameEntries = (
-  achievement: Achievement | null | undefined,
-  fallbackLocale: string,
-): LocaleEntry[] => {
-  if (achievement) {
-    const entries = Object.entries(achievement.nameI18n).map(([locale, value]) => ({
-      locale,
-      value,
-    }));
-    return entries.length > 0 ? entries : [{ locale: fallbackLocale, value: '' }];
-  }
-  return [{ locale: fallbackLocale, value: '' }];
+const buildInitialFormState = (params: { achievement?: Achievement; language?: string }) => {
+  const { achievement, language } = params;
+  const entries = achievement
+    ? Object.entries(achievement.nameI18n).map(([locale, value]) => ({ locale, value }))
+    : [{ locale: language ?? 'ru', value: '' }];
+
+  return {
+    nameEntries: entries.length > 0 ? entries : [{ locale: 'ru', value: '' }],
+    description: achievement?.description ?? '',
+    category: achievement?.category ?? '',
+    status: achievement?.status ?? 'draft',
+    images: achievement?.images ?? {},
+  };
+};
+
+type FormContentProps = {
+  formKey: string;
+  isEdit: boolean;
+  canPublish: boolean;
+  canEditAchievement: boolean;
+  isLoading: boolean;
+  isCreating: boolean;
+  isUpdating: boolean;
+  isCreatingCategory: boolean;
+  categoryOptions: { value: string; content: string }[];
+  achievement?: Achievement;
+  defaultLanguage?: string;
+  onBack: () => void;
+  onSubmit: (payload: SubmitPayload) => Promise<void>;
+  onCreateCategory: (params: { id: string; name: string }) => Promise<string>;
+};
+
+const AchievementFormContent: React.FC<FormContentProps> = ({
+  formKey,
+  isEdit,
+  canPublish,
+  canEditAchievement,
+  isLoading,
+  isCreating,
+  isUpdating,
+  isCreatingCategory,
+  categoryOptions,
+  achievement,
+  defaultLanguage,
+  onBack,
+  onSubmit,
+  onCreateCategory,
+}) => {
+  const initial = useMemo(
+    () => buildInitialFormState({ achievement, language: defaultLanguage }),
+    [achievement, defaultLanguage],
+  );
+
+  const [nameEntries, setNameEntries] = useState<LocaleEntry[]>(initial.nameEntries);
+  const [description, setDescription] = useState(initial.description);
+  const [category, setCategory] = useState<string>(initial.category);
+  const [status, setStatus] = useState<AchievementStatus>(initial.status);
+  const [images, setImages] = useState<AchievementImageSet>(initial.images);
+  const [error, setError] = useState<string | null>(null);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryId, setNewCategoryId] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  const previewTitle =
+    nameEntries.find((entry) => entry.locale === 'ru')?.value ||
+    nameEntries[0]?.value ||
+    'Achievement';
+  const previewImage = images?.medium ?? images?.small ?? images?.large ?? '';
+  const submitLabel = isEdit ? 'Сохранить' : 'Создать';
+
+  const handleSubmit = async () => {
+    setError(null);
+    const nameI18n = buildI18nMap(nameEntries);
+    if (!Object.keys(nameI18n).length) {
+      setError('Заполните хотя бы одно название.');
+      return;
+    }
+    if (!category) {
+      setError('Выберите категорию.');
+      return;
+    }
+
+    const statusForSubmit = canPublish ? status : undefined;
+    if (
+      (statusForSubmit === 'published' || statusForSubmit === 'active') &&
+      !images.small &&
+      !images.medium &&
+      !images.large
+    ) {
+      setError('Для публикации нужно добавить хотя бы одно изображение.');
+      return;
+    }
+
+    await onSubmit({
+      nameI18n,
+      description,
+      category,
+      status: statusForSubmit,
+      images,
+    });
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryId.trim() || !newCategoryName.trim()) {
+      setError('Заполните slug и название категории.');
+      return;
+    }
+
+    const createdId = await onCreateCategory({
+      id: newCategoryId.trim(),
+      name: newCategoryName.trim(),
+    });
+    setCategoryDialogOpen(false);
+    setNewCategoryId('');
+    setNewCategoryName('');
+    setCategory(createdId);
+  };
+
+  return (
+    <React.Fragment key={formKey}>
+      <div className="gamification-header">
+        <div className="gamification-header__text">
+          <Text variant="header-1">{isEdit ? 'Редактирование ачивки' : 'Новая ачивка'}</Text>
+          <Text variant="body-2" color="secondary">
+            Заполните содержание, медиа и статус. Минимальный сценарий: создать черновик → ревью → публикация.
+          </Text>
+        </div>
+        <div className="gamification-toolbar">
+          <Button view="flat" size="m" onClick={onBack}>
+            Назад
+          </Button>
+        </div>
+      </div>
+
+      <Card view="filled">
+        <div className="gamification-scenarios">
+          <Text variant="subheader-2">Чек-лист перед публикацией</Text>
+          <ul className="gamification-scenarios__list">
+            <li>Есть название минимум на одном языке.</li>
+            <li>Назначена корректная категория.</li>
+            <li>Загружено хотя бы одно изображение для карточки.</li>
+          </ul>
+        </div>
+      </Card>
+
+      <Card view="filled">
+        {isLoading ? (
+          <Text variant="body-2">Загрузка...</Text>
+        ) : (
+          <div className="gamification-form">
+            <div className="gamification-form__main">
+              <div className="gamification-field">
+                <Text variant="subheader-2">Название (i18n)</Text>
+                {nameEntries.map((entry, index) => (
+                  <div className="gamification-locale-row" key={`${entry.locale}-${index}`}>
+                    <TextInput
+                      placeholder="ru"
+                      value={entry.locale}
+                      onUpdate={(value) =>
+                        setNameEntries((prev) =>
+                          prev.map((item, idx) => (idx === index ? { ...item, locale: value } : item)),
+                        )
+                      }
+                    />
+                    <TextInput
+                      placeholder="Название"
+                      value={entry.value}
+                      onUpdate={(value) =>
+                        setNameEntries((prev) =>
+                          prev.map((item, idx) => (idx === index ? { ...item, value } : item)),
+                        )
+                      }
+                    />
+                    <Button view="flat" size="s" onClick={() => setNameEntries((prev) => prev.filter((_, idx) => idx !== index))}>
+                      Удалить
+                    </Button>
+                  </div>
+                ))}
+                <Button view="flat" size="s" onClick={() => setNameEntries((prev) => [...prev, { locale: '', value: '' }])}>
+                  Добавить язык
+                </Button>
+              </div>
+
+              <div className="gamification-field">
+                <Text variant="subheader-2">Описание</Text>
+                <TextArea rows={5} value={description} onUpdate={setDescription} />
+              </div>
+
+              <div className="gamification-field">
+                <Text variant="subheader-2">Изображения</Text>
+                <div className="gamification-media-grid">
+                  <TextInput
+                    placeholder="URL small"
+                    value={images.small ?? ''}
+                    onUpdate={(value) => setImages((prev) => ({ ...prev, small: value }))}
+                  />
+                  <TextInput
+                    placeholder="URL medium"
+                    value={images.medium ?? ''}
+                    onUpdate={(value) => setImages((prev) => ({ ...prev, medium: value }))}
+                  />
+                  <TextInput
+                    placeholder="URL large"
+                    value={images.large ?? ''}
+                    onUpdate={(value) => setImages((prev) => ({ ...prev, large: value }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="gamification-form__aside">
+              <div className="gamification-field">
+                <Text variant="subheader-2">Категория</Text>
+                <Select
+                  options={categoryOptions}
+                  value={category ? [category] : []}
+                  onUpdate={(values) => setCategory((values[0] as string) ?? '')}
+                  placeholder="Выберите категорию"
+                />
+                <Button view="flat" size="s" onClick={() => setCategoryDialogOpen(true)}>
+                  Добавить категорию
+                </Button>
+              </div>
+
+              <div className="gamification-field">
+                <Text variant="subheader-2">Статус</Text>
+                <Select
+                  options={STATUS_OPTIONS}
+                  value={[status]}
+                  onUpdate={(values) => setStatus((values[0] as AchievementStatus) ?? 'draft')}
+                  disabled={!canPublish}
+                />
+                {!canPublish && (
+                  <Text variant="caption-2" color="secondary">
+                    Публикация доступна только модераторам.
+                  </Text>
+                )}
+              </div>
+
+              <div className="gamification-field">
+                <Text variant="subheader-2">Превью карточки</Text>
+                <Card view="outlined" className="gamification-preview-card">
+                  {previewImage ? (
+                    <img className="gamification-media-preview" src={previewImage} alt="preview" />
+                  ) : (
+                    <div className="gamification-media-preview" />
+                  )}
+                  <Text variant="body-2">{previewTitle}</Text>
+                  <Label size="xs">{status}</Label>
+                </Card>
+              </div>
+
+              {error && (
+                <Text variant="caption-2" color="danger">
+                  {error}
+                </Text>
+              )}
+
+              <Button
+                view="action"
+                size="m"
+                loading={isCreating || isUpdating}
+                disabled={!canEditAchievement}
+                onClick={handleSubmit}
+              >
+                {submitLabel}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} size="s">
+        <Dialog.Header caption="Новая категория" />
+        <Dialog.Body>
+          <div className="gamification-field">
+            <Text variant="body-2">Slug</Text>
+            <TextInput value={newCategoryId} onUpdate={setNewCategoryId} placeholder="event" />
+          </div>
+          <div className="gamification-field">
+            <Text variant="body-2">Название</Text>
+            <TextInput value={newCategoryName} onUpdate={setNewCategoryName} placeholder="События" />
+          </div>
+        </Dialog.Body>
+        <Dialog.Footer
+          textButtonCancel="Отмена"
+          textButtonApply={isCreatingCategory ? 'Создаем...' : 'Создать'}
+          onClickButtonCancel={() => setCategoryDialogOpen(false)}
+          onClickButtonApply={handleCreateCategory}
+          loading={isCreatingCategory}
+        />
+      </Dialog>
+    </React.Fragment>
+  );
 };
 
 export const AchievementFormPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
-  const routeBase = useRouteBase();
   const { user } = useAuth();
   const canCreate = can(user, 'gamification.achievements.create');
   const canEdit = can(user, 'gamification.achievements.edit');
@@ -74,270 +362,32 @@ export const AchievementFormPage: React.FC = () => {
   const { mutateAsync: updateAchievement, isPending: isUpdating } = useUpdateAchievement();
   const { mutateAsync: createCategory, isPending: isCreatingCategory } = useCreateCategory();
 
-  const formKey = achievement?.updatedAt ?? id ?? 'new';
+  const categoryOptions = useMemo(
+    () =>
+      (categoriesData?.items ?? []).map((item) => ({
+        value: item.id,
+        content: item.nameI18n.ru ?? item.nameI18n.en ?? item.id,
+      })),
+    [categoriesData?.items],
+  );
 
-  const AchievementFormContent: React.FC = () => {
-    const [nameEntries, setNameEntries] = useState<LocaleEntry[]>(() =>
-      buildInitialNameEntries(achievement, user?.language ?? 'ru'),
-    );
-    const [description, setDescription] = useState(() => achievement?.description ?? '');
-    const [category, setCategory] = useState<string>(() => achievement?.category ?? '');
-    const [status, setStatus] = useState<AchievementStatus>(() => achievement?.status ?? 'draft');
-    const [images, setImages] = useState<AchievementImageSet>(() => achievement?.images ?? {});
-    const [error, setError] = useState<string | null>(null);
-    const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-    const [newCategoryId, setNewCategoryId] = useState('');
-    const [newCategoryName, setNewCategoryName] = useState('');
+  const handleSubmit = async (payload: SubmitPayload) => {
+    if (isEdit && id) {
+      await updateAchievement({ id, payload });
+      navigate(`/app/gamification/achievements/${id}`);
+      return;
+    }
 
-    const categoryOptions = (categoriesData?.items ?? []).map((item) => ({
-      value: item.id,
-      content: item.nameI18n.ru ?? item.nameI18n.en ?? item.id,
-    }));
+    const created = await createAchievement(payload);
+    navigate(`/app/gamification/achievements/${created.id}`);
+  };
 
-    const previewTitle =
-      nameEntries.find((entry) => entry.locale === 'ru')?.value ||
-      nameEntries[0]?.value ||
-      'Achievement';
-
-    const previewImage = images?.medium ?? images?.small ?? images?.large ?? '';
-
-    const handleAddLocale = () => {
-      setNameEntries((prev) => [...prev, { locale: '', value: '' }]);
-    };
-
-    const handleRemoveLocale = (index: number) => {
-      setNameEntries((prev) => prev.filter((_, idx) => idx !== index));
-    };
-
-    const handleSubmit = async () => {
-      setError(null);
-      const nameI18n = buildI18nMap(nameEntries);
-      if (!Object.keys(nameI18n).length) {
-        setError('Заполните хотя бы одно название.');
-        return;
-      }
-      if (!category) {
-        setError('Выберите категорию.');
-        return;
-      }
-      const statusForSubmit = canPublish ? status : undefined;
-      if (
-        (statusForSubmit === 'published' || statusForSubmit === 'active') &&
-        !images?.small &&
-        !images?.medium &&
-        !images?.large
-      ) {
-        setError('Для публикации нужно добавить хотя бы одно изображение.');
-        return;
-      }
-
-      if (isEdit && id) {
-        await updateAchievement({
-          id,
-          payload: {
-            nameI18n,
-            description,
-            category,
-            status: statusForSubmit,
-            images,
-          },
-        });
-        navigate(`${routeBase}/gamification/achievements/${id}`);
-        return;
-      }
-
-      const created = await createAchievement({
-        nameI18n,
-        description,
-        category,
-        status: statusForSubmit,
-        images,
-      });
-      navigate(`${routeBase}/gamification/achievements/${created.id}`);
-    };
-
-    const handleCreateCategory = async () => {
-      if (!newCategoryId.trim() || !newCategoryName.trim()) {
-        setError('Заполните slug и название категории.');
-        return;
-      }
-      const created = await createCategory({
-        id: newCategoryId.trim(),
-        nameI18n: { [user?.language ?? 'ru']: newCategoryName.trim() },
-      });
-      setCategoryDialogOpen(false);
-      setNewCategoryId('');
-      setNewCategoryName('');
-      setCategory(created.id);
-    };
-
-    const submitLabel = isEdit ? 'Сохранить' : 'Создать';
-
-    return (
-      <div className="gamification-page" data-qa="achievement-form-page">
-        <div className="gamification-header">
-          <div className="gamification-header__text">
-            <Text variant="header-1">{isEdit ? 'Редактирование ачивки' : 'Новая ачивка'}</Text>
-            <Text variant="body-2" color="secondary">
-              Заполните описание, категории и медиа.
-            </Text>
-          </div>
-          <div className="gamification-toolbar">
-            <Button view="flat" size="m" onClick={() => navigate(`${routeBase}/gamification`)}>
-              Назад
-            </Button>
-          </div>
-        </div>
-
-        <Card view="filled">
-          {isLoading ? (
-            <Text variant="body-2">Загрузка...</Text>
-          ) : (
-            <div className="gamification-form">
-              <div className="gamification-form__main">
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Название (i18n)</Text>
-                  {nameEntries.map((entry, index) => (
-                    <div className="gamification-locale-row" key={`${entry.locale}-${index}`}>
-                      <TextInput
-                        placeholder="ru"
-                        value={entry.locale}
-                        onUpdate={(value) =>
-                          setNameEntries((prev) =>
-                            prev.map((item, idx) => (idx === index ? { ...item, locale: value } : item)),
-                          )
-                        }
-                      />
-                      <TextInput
-                        placeholder="Название"
-                        value={entry.value}
-                        onUpdate={(value) =>
-                          setNameEntries((prev) =>
-                            prev.map((item, idx) => (idx === index ? { ...item, value } : item)),
-                          )
-                        }
-                      />
-                      <Button view="flat" size="s" onClick={() => handleRemoveLocale(index)}>
-                        Удалить
-                      </Button>
-                    </div>
-                  ))}
-                  <Button view="flat" size="s" onClick={handleAddLocale}>
-                    Добавить язык
-                  </Button>
-                </div>
-
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Описание</Text>
-                  <TextArea rows={5} value={description} onUpdate={setDescription} />
-                </div>
-
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Изображения</Text>
-                  <div className="gamification-media-grid">
-                    <TextInput
-                      placeholder="URL small"
-                      value={images.small ?? ''}
-                      onUpdate={(value) => setImages((prev) => ({ ...prev, small: value }))}
-                    />
-                    <TextInput
-                      placeholder="URL medium"
-                      value={images.medium ?? ''}
-                      onUpdate={(value) => setImages((prev) => ({ ...prev, medium: value }))}
-                    />
-                    <TextInput
-                      placeholder="URL large"
-                      value={images.large ?? ''}
-                      onUpdate={(value) => setImages((prev) => ({ ...prev, large: value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="gamification-form__aside">
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Категория</Text>
-                  <Select
-                    options={categoryOptions}
-                    value={category ? [category] : []}
-                    onUpdate={(values) => setCategory((values[0] as string) ?? '')}
-                    placeholder="Выберите категорию"
-                  />
-                  <Button view="flat" size="s" onClick={() => setCategoryDialogOpen(true)}>
-                    Добавить категорию
-                  </Button>
-                </div>
-
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Статус</Text>
-                  <Select
-                    options={STATUS_OPTIONS}
-                    value={[status]}
-                    onUpdate={(values) => setStatus((values[0] as AchievementStatus) ?? 'draft')}
-                    disabled={!canPublish}
-                  />
-                  {!canPublish && (
-                    <Text variant="caption-2" color="secondary">
-                      Публикация доступна только модераторам.
-                    </Text>
-                  )}
-                </div>
-
-                <div className="gamification-field">
-                  <Text variant="subheader-2">Превью</Text>
-                  <Card view="outlined">
-                    {previewImage ? (
-                      <img className="gamification-media-preview" src={previewImage} alt="preview" />
-                    ) : (
-                      <div className="gamification-media-preview" />
-                    )}
-                    <Text variant="body-2">{previewTitle}</Text>
-                    <Label size="xs">{status}</Label>
-                  </Card>
-                </div>
-
-                {error && (
-                  <Text variant="caption-2" color="danger">
-                    {error}
-                  </Text>
-                )}
-
-                <Button
-                  view="action"
-                  size="m"
-                  loading={isCreating || isUpdating}
-                  disabled={!canEditAchievement}
-                  onClick={handleSubmit}
-                >
-                  {submitLabel}
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} size="s">
-          <Dialog.Header caption="Новая категория" />
-          <Dialog.Body>
-            <div className="gamification-field">
-              <Text variant="body-2">Slug</Text>
-              <TextInput value={newCategoryId} onUpdate={setNewCategoryId} placeholder="event" />
-            </div>
-            <div className="gamification-field">
-              <Text variant="body-2">Название</Text>
-              <TextInput value={newCategoryName} onUpdate={setNewCategoryName} placeholder="События" />
-            </div>
-          </Dialog.Body>
-          <Dialog.Footer
-            textButtonCancel="Отмена"
-            textButtonApply={isCreatingCategory ? 'Создаем...' : 'Создать'}
-            onClickButtonCancel={() => setCategoryDialogOpen(false)}
-            onClickButtonApply={handleCreateCategory}
-            loading={isCreatingCategory}
-          />
-        </Dialog>
-      </div>
-    );
+  const handleCreateCategory = async (params: { id: string; name: string }) => {
+    const created = await createCategory({
+      id: params.id,
+      nameI18n: { [user?.language ?? 'ru']: params.name },
+    });
+    return created.id;
   };
 
   if (!canEditAchievement) {
@@ -352,7 +402,26 @@ export const AchievementFormPage: React.FC = () => {
     );
   }
 
-  return <AchievementFormContent key={formKey} />;
+  return (
+    <div className="gamification-page" data-qa="achievement-form-page">
+      <AchievementFormContent
+        formKey={achievement?.id ?? (isEdit ? `edit-${id}` : 'new')}
+        isEdit={isEdit}
+        canPublish={canPublish}
+        canEditAchievement={canEditAchievement}
+        isLoading={isLoading}
+        isCreating={isCreating}
+        isUpdating={isUpdating}
+        isCreatingCategory={isCreatingCategory}
+        categoryOptions={categoryOptions}
+        achievement={achievement}
+        defaultLanguage={user?.language ?? undefined}
+        onBack={() => navigate('/app/gamification')}
+        onSubmit={handleSubmit}
+        onCreateCategory={handleCreateCategory}
+      />
+    </div>
+  );
 };
 
 export default AchievementFormPage;

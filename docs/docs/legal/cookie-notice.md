@@ -1,32 +1,61 @@
 ---
 title: Cookie Notice
+description: Notice about cookies and similar technologies used by UpdSpace Portal
 ---
 
 # Cookie Notice
 
-## What cookies are used for
+## 1. Что это за документ
 
-UpdSpace uses cookies and similar browser storage primarily for:
+Этот документ объясняет, какие cookies и схожие технологии использует UpdSpace Portal и зачем они нужны.
 
-- maintaining authenticated session state through the BFF;
-- protecting requests against CSRF where applicable;
-- preserving essential product settings needed for safe operation.
+## 2. Какие cookies используются сейчас
 
-## Categories
+На текущей архитектуре сервис в первую очередь использует **необходимые** cookies:
 
-### Strictly necessary
+| Cookie | Назначение | Тип | Срок |
+|---|---|---|---|
+| `updspace_session` | поддержание аутентифицированной сессии через BFF | strictly necessary | до истечения сессии / logout / revoke |
+| `updspace_csrf` | защита от CSRF-атак для browser-origin запросов | strictly necessary | короткий security lifecycle |
 
-These cookies are required to authenticate the user, keep the session alive, route requests correctly, and protect the application.
+## 3. Для чего они нужны
 
-### Optional
+Эти cookies нужны для того, чтобы:
 
-Any optional analytics, experimentation, or convenience cookies should only be enabled once they are explicitly introduced in the product and documented here with a clear legal basis.
+- входить в аккаунт и оставаться авторизованным;
+- защищать mutating requests от CSRF;
+- безопасно проксировать запросы через BFF;
+- предотвращать несанкционированный доступ к tenant-scoped данным.
 
-## What UpdSpace does not do
+Без этих cookies основные функции сервиса работать не будут.
 
-- it does not rely on browser-stored bearer auth tokens as the canonical session mechanism;
-- it does not treat local storage as the primary secure auth container.
+## 4. Используем ли мы analytics / marketing cookies
 
-## How users can control cookies
+На дату этого драфта сервис **не должен полагаться на marketing cookies** и не должен вводить non-essential tracking без отдельного уведомления и согласия там, где это требуется законом.
 
-Users can manage browser cookies via browser settings, but disabling strictly necessary cookies may make the service unavailable.
+Если в будущем будут добавлены:
+
+- analytics;
+- A/B testing;
+- advertising identifiers;
+- third-party embeds, устанавливающие cookies,
+
+то до релиза нужно:
+
+1. обновить этот документ;
+2. внедрить consent UX;
+3. разделить strictly necessary и optional cookies.
+
+## 5. Управление cookies
+
+Пользователь может:
+
+- очистить cookies в браузере;
+- завершить сессию через logout;
+- ограничить cookies в настройках браузера.
+
+Обрати внимание: блокировка strictly necessary cookies может сделать сервис недоступным.
+
+## 6. Контакт
+
+По вопросам cookies и privacy можно писать на **privacy@updspace.com**.

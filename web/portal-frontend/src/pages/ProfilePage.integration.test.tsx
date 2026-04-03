@@ -6,11 +6,15 @@ import { serviceApiMock } from '../test/mocks/api';
 import { renderWithProviders, screen, waitFor } from '../test/test-utils';
 import ProfilePage from './ProfilePage';
 
+function renderProfilePage() {
+  return renderWithProviders(<ProfilePage />, { route: '/profile' });
+}
+
 describe('ProfilePage integration', () => {
   test('renders profile data and passkeys card for superuser', async () => {
     serviceApiMock.me.mockResolvedValue(createSuperuserProfile());
 
-    renderWithProviders(<ProfilePage />, { route: '/profile' });
+    renderProfilePage();
 
     expect(await screen.findByText(/root@example.com/i)).toBeInTheDocument();
     expect(screen.getByText(/Root User/i)).toBeInTheDocument();
@@ -27,7 +31,7 @@ describe('ProfilePage integration', () => {
   test('shows login button when profile load fails', async () => {
     serviceApiMock.me.mockRejectedValueOnce(new Error('fail'));
 
-    renderWithProviders(<ProfilePage />, { route: '/profile' });
+    renderProfilePage();
 
     await waitFor(() =>
       expect(serviceApiMock.me).toHaveBeenCalled(),

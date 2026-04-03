@@ -10,29 +10,40 @@ import {
 } from '../utils/pollMeta';
 
 describe('pollMeta helpers', () => {
+  const labelCases: Array<[string, () => string, string]> = [
+    ['draft status', () => POLL_STATUS_META.draft.label, 'Черновик'],
+    ['active status', () => POLL_STATUS_META.active.label, 'Активно'],
+    ['closed status', () => POLL_STATUS_META.closed.label, 'Завершено'],
+    ['public visibility', () => VISIBILITY_META.public.label, 'Публичный доступ'],
+    ['private visibility', () => VISIBILITY_META.private.label, 'Приватный'],
+    ['always results visibility', () => RESULTS_VISIBILITY_META.always.label, 'Результаты открыты'],
+    [
+      'after_closed results visibility',
+      () => RESULTS_VISIBILITY_META.after_closed.label,
+      'Результаты после закрытия',
+    ],
+    ['game nomination kind', () => NOMINATION_KIND_LABELS.game, 'Игра'],
+  ];
+
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('provides russian labels for status and visibility', () => {
-    expect(POLL_STATUS_META.draft.label).toBe('Черновик');
-    expect(POLL_STATUS_META.active.label).toBe('Активно');
-    expect(POLL_STATUS_META.closed.label).toBe('Завершено');
-
-    expect(VISIBILITY_META.public.label).toBe('Публичный доступ');
-    expect(VISIBILITY_META.private.label).toBe('Приватный');
-
-    expect(RESULTS_VISIBILITY_META.always.label).toBe('Результаты открыты');
-    expect(RESULTS_VISIBILITY_META.after_closed.label).toBe('Результаты после закрытия');
-    expect(NOMINATION_KIND_LABELS.game).toBe('Игра');
+  it.each(labelCases)('provides russian label for %s', (_name, getLabel, expected) => {
+    expect(getLabel()).toBe(expected);
   });
 
-  it('formats dates when input is valid', () => {
+  it('formats date when input is valid', () => {
     const value = '2024-03-12T10:30:00Z';
     const dateResult = formatDate(value, 'en');
-    const dateTimeResult = formatDateTime(value, 'en');
 
     expect(dateResult).toBeTypeOf('string');
+  });
+
+  it('formats date-time when input is valid', () => {
+    const value = '2024-03-12T10:30:00Z';
+    const dateTimeResult = formatDateTime(value, 'en');
+
     expect(dateTimeResult).toBeTypeOf('string');
   });
 
@@ -41,17 +52,15 @@ describe('pollMeta helpers', () => {
     expect(formatDateTime('invalid-date')).toBeNull();
   });
 
-  it('derives schedule meta based on current time', () => {
+  it.each([
+    ['upcoming poll', '2024-01-02T10:00:00Z', null, 'Старт'],
+    ['active poll', '2023-12-31T10:00:00Z', '2024-01-02T10:00:00Z', 'До'],
+    ['finished poll', '2023-12-30T10:00:00Z', '2023-12-31T10:00:00Z', 'Завершено'],
+  ])('derives schedule label for %s', (_name, startsAt, endsAt, expectedLabel) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-01-01T10:00:00Z'));
 
-    const upcoming = getScheduleMeta('2024-01-02T10:00:00Z', null);
-    expect(upcoming?.label).toBe('Старт');
-
-    const active = getScheduleMeta('2023-12-31T10:00:00Z', '2024-01-02T10:00:00Z');
-    expect(active?.label).toBe('До');
-
-    const finished = getScheduleMeta('2023-12-30T10:00:00Z', '2023-12-31T10:00:00Z');
-    expect(finished?.label).toBe('Завершено');
+    const scheduleMeta = getScheduleMeta(startsAt, endsAt);
+    expect(scheduleMeta?.label).toBe(expectedLabel);
   });
 });

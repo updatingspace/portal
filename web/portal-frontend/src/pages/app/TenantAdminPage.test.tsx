@@ -4,21 +4,34 @@ import { vi } from 'vitest';
 
 import { TenantAdminPage } from './TenantAdminPage';
 
+const TEST_USER_ID = 'test-user';
+const TEST_USER_DISPLAY_NAME = 'Test User';
+const TEST_TENANT_ID = 'tenant-123';
+const TEST_TENANT_SLUG = 'aef';
+const TEST_TENANT_ADMIN_ROLE = 'tenant-admin';
+const TEST_PERMISSION_KEY = 'portal.roles.read';
+const TEST_ROLE_SERVICE = 'portal';
+const TEST_MEMBER_USER_ID = 'user-1';
+const TEST_MEMBER_FIRST_NAME = 'Test';
+const TEST_MEMBER_LAST_NAME = 'User';
+const TEST_ISO_DATE = '2025-01-01T00:00:00Z';
+
 vi.mock('@gravity-ui/uikit', () => ({
   Avatar: (props: React.ComponentProps<'div'>) => <div {...props} />,
-  Button: (props: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
+  Button: ({ ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
+    <button {...props} />
+  ),
   Card: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
   Icon: () => <span />,
   Label: (props: React.ComponentProps<'span'>) => <span {...props} />,
   Loader: () => <div data-testid="loader" />,
-  Select: (props: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
+  Select: ({ ...props }: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
     <div data-testid="select" {...props} />
   ),
   Switch: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Table: (props: React.ComponentProps<'div'>) => <div {...props} />,
   TextInput: ({ onUpdate, ...props }: React.ComponentProps<'input'> & { onUpdate?: (value: string) => void }) => {
-    const { startContent, ...rest } = props as React.ComponentProps<'input'> & { startContent?: React.ReactNode };
-    void startContent;
+    const { ...rest } = props as React.ComponentProps<'input'> & { startContent?: React.ReactNode };
     return <input onChange={(event) => onUpdate?.(event.target.value)} {...rest} />;
   },
 }));
@@ -26,12 +39,12 @@ vi.mock('@gravity-ui/uikit', () => ({
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: {
-      id: 'test-user',
-      tenant: { id: 'tenant-123', slug: 'aef' },
+      id: TEST_USER_ID,
+      tenant: { id: TEST_TENANT_ID, slug: TEST_TENANT_SLUG },
       isSuperuser: false,
-      capabilities: ['portal.roles.read'],
+      capabilities: [TEST_PERMISSION_KEY],
       roles: [],
-      displayName: 'Test User',
+      displayName: TEST_USER_DISPLAY_NAME,
     },
     isInitialized: true,
     isLoading: false,
@@ -55,10 +68,10 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
     roles: [
       {
         id: 1,
-        tenant_id: 'tenant-123',
-        service: 'portal',
-        name: 'tenant-admin',
-        permission_keys: ['portal.roles.read'],
+        tenant_id: TEST_TENANT_ID,
+        service: TEST_ROLE_SERVICE,
+        name: TEST_TENANT_ADMIN_ROLE,
+        permission_keys: [TEST_PERMISSION_KEY],
       },
     ],
     loading: false,
@@ -68,13 +81,13 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
   useTenantMembers: () => ({
     members: [
       {
-        tenant_id: 'tenant-123',
-        user_id: 'user-1',
-        first_name: 'Test',
-        last_name: 'User',
+        tenant_id: TEST_TENANT_ID,
+        user_id: TEST_MEMBER_USER_ID,
+        first_name: TEST_MEMBER_FIRST_NAME,
+        last_name: TEST_MEMBER_LAST_NAME,
         bio: null,
-        created_at: '2025-01-01T00:00:00Z',
-        updated_at: '2025-01-01T00:00:00Z',
+        created_at: TEST_ISO_DATE,
+        updated_at: TEST_ISO_DATE,
       },
     ],
     loading: false,
@@ -83,7 +96,7 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
   useTenantAdminEvents: () => ({ events: [], loading: false, reload: mockReload }),
   usePermissionCatalog: () => ({
     permissions: [
-      { key: 'portal.roles.read', description: 'Read tenant roles', service: 'portal' },
+      { key: TEST_PERMISSION_KEY, description: 'Read tenant roles', service: TEST_ROLE_SERVICE },
     ],
     loading: false,
     reload: mockReload,
@@ -93,10 +106,10 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
 vi.mock('../../modules/tenantAdmin/api', () => ({
   SCOPE_TYPES: ['GLOBAL', 'TENANT', 'COMMUNITY', 'TEAM', 'SERVICE'],
   createTenantRole: vi.fn(() =>
-    Promise.resolve({ id: 2, tenant_id: 'tenant-123', service: 'portal', name: 'foo', permission_keys: [] }),
+    Promise.resolve({ id: 2, tenant_id: TEST_TENANT_ID, service: TEST_ROLE_SERVICE, name: 'foo', permission_keys: [] }),
   ),
   updateTenantRole: vi.fn(() =>
-    Promise.resolve({ id: 1, tenant_id: 'tenant-123', service: 'portal', name: 'tenant-admin', permission_keys: [] }),
+    Promise.resolve({ id: 1, tenant_id: TEST_TENANT_ID, service: TEST_ROLE_SERVICE, name: TEST_TENANT_ADMIN_ROLE, permission_keys: [] }),
   ),
   deleteTenantRole: vi.fn(() => Promise.resolve({ ok: true })),
   createRoleBinding: vi.fn(() => Promise.resolve({})),

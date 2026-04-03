@@ -3,6 +3,7 @@ services:
     image: traefik:v2.11
     command:
       - --api.insecure=true
+      - --ping=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
@@ -79,6 +80,17 @@ services:
     ports:
       - "5439:5432"
 
+  db_featureflags:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: featureflags_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data_featureflags:/var/lib/postgresql/data
+    ports:
+      - "5441:5432"
+
   db_bff:
     image: postgres:15-alpine
     environment:
@@ -118,6 +130,7 @@ services:
       - BFF_UPSTREAM_EVENTS_URL=http://events:8005/api/v1
       - BFF_UPSTREAM_FEED_URL=http://activity:8006/api/v1
       - BFF_UPSTREAM_GAMIFICATION_URL=http://gamification:8007/api/v1
+      - BFF_UPSTREAM_FEATUREFLAGS_URL=http://featureflags:8008/api/v1
       # Increase proxy timeout to avoid 502 on slower upstreams (activity feed)
       - BFF_PROXY_TIMEOUT_SECONDS=30
       # Local domains
@@ -126,6 +139,7 @@ services:
       - BFF_COOKIE_DOMAIN=.aef.localhost
       # Internal trust
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - BFF_UPDSPACEID_CALLBACK_SECRET=${BFF_UPDSPACEID_CALLBACK_SECRET:?BFF_UPDSPACEID_CALLBACK_SECRET is required}
       # Public IdP base URL used for OIDC login redirects
       - ID_PUBLIC_BASE_URL=${ID_PUBLIC_BASE_URL:-https://id.updspace.com}
       # OIDC client credentials (must be provided via env for split-repo setup)
@@ -140,6 +154,7 @@ services:
       - events
       - gamification
       - activity
+      - featureflags
     labels:
       - traefik.enable=true
       # Serve API from both api.<tenant>.localhost and <tenant>.localhost for same-origin dev
@@ -193,7 +208,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-voting-secret
       - DATABASE_URL=postgres://user:pass@db_voting:5432/voting_db
-      - ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,voting
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
     depends_on:
@@ -229,7 +244,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=dev-gamification-secret
       - DATABASE_URL=postgres://user:pass@db_gamification:5432/gamification_db
-      - ALLOWED_HOSTS=*
+      - ALLOWED_HOSTS=localhost,127.0.0.1,gamification
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - ACCESS_BASE_URL=http://access:8002/api/v1
       - ACTIVITY_SERVICE_URL=http://activity:8006/api/v1
@@ -250,8 +265,26 @@ services:
       - DATABASE_URL=postgres://user:pass@db_activity:5432/activity_db
       - ALLOWED_HOSTS=localhost,127.0.0.1,activity
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+      - ACTIVITY_DATA_ENCRYPTION_KEY=${ACTIVITY_DATA_ENCRYPTION_KEY:-dev-activity-data-key}
     depends_on:
       - db_activity
+
+  featureflags:
+    build:
+      context: ../../services/featureflags
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8008 --reload
+    volumes:
+      - ../../services/featureflags/src:/app/src
+    ports:
+      - "8008:8008"
+    environment:
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=dev-featureflags-secret
+      - DATABASE_URL=postgres://user:pass@db_featureflags:5432/featureflags_db
+      - ALLOWED_HOSTS=localhost,127.0.0.1,featureflags
+      - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
+    depends_on:
+      - db_featureflags
 
   frontend:
     build:
@@ -285,3 +318,4 @@ volumes:
   pg_data_events:
   pg_data_gamification:
   pg_data_activity:
+  pg_data_featureflags:

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import uuid
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.core.cache import cache
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -26,11 +23,9 @@ from ninja import NinjaAPI, Router
 from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
-from .middleware import AuthContext
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
-from .tenant import validate_tenant_slug, resolve_tenant_by_slug, get_or_create_global_tenant
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -45,21 +40,12 @@ SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
     ("activity", "activity.feed.read"),
     ("gamification", "gamification.achievements.read"),
 )
-HEADLESS_AUTH_SESSION_PATHS: frozenset[str] = frozenset(
-    {"login", "signup", "passkeys/login/complete"}
-)
 
 
 @dataclass(frozen=True)
 class _LoginPayload:
     email: str
     next: str | None
-
-
-@dataclass(frozen=True)
-class _SessionPrincipal:
-    user_id: str
-    master_flags: dict[str, Any]
 
 
 def _require_auth(request: HttpRequest):
@@ -74,688 +60,249 @@ def _require_auth(request: HttpRequest):
     return ctx, None
 
 
-def _require_auth_tenantless(request: HttpRequest):
-    """Require authentication but allow tenantless state (no active tenant)."""
-    ctx = getattr(request, "auth_ctx", None)
-    if not ctx:
-        return None, error_response(
-            code="UNAUTHENTICATED",
-            message="Authentication required",
-            request_id=getattr(request, "request_id", None),
-            status=401,
-        )
-    return ctx, None
-
-
-def _resolve_auth_tenant(request: HttpRequest):
-    """Resolve tenant for auth endpoints.
-
-    Tries host-based resolution first (legacy subdomain mode).
-    Falls back to the global portal tenant for path-based tenancy so that
-    login / callback can work from a non-tenant domain.
-    """
-    tenant = getattr(request, "tenant", None)
-    if tenant:
-        return tenant
-    return get_or_create_global_tenant()
-
-
-def _coerce_bool_flag(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int):
-        return bool(value)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes"}:
-            return True
-        if normalized in {"false", "0", "no"}:
-            return False
-    return None
-
-
-def _extract_master_flags(payload: dict[str, Any]) -> dict[str, Any]:
-    raw = payload.get("master_flags")
-    if isinstance(raw, dict):
-        return dict(raw)
-
-    user = payload.get("user")
-    if isinstance(user, dict):
-        nested = user.get("master_flags")
-        if isinstance(nested, dict):
-            return dict(nested)
-
-        derived: dict[str, Any] = {}
-        for source_key, target_key in (
-            ("system_admin", "system_admin"),
-            ("email_verified", "email_verified"),
-            ("suspended", "suspended"),
-            ("banned", "banned"),
-        ):
-            coerced = _coerce_bool_flag(user.get(source_key))
-            if coerced is not None:
-                derived[target_key] = coerced
-        if derived:
-            return derived
-
-    return {}
-
-
-def _extract_user_id(payload: dict[str, Any]) -> str:
-    direct = payload.get("user_id") or payload.get("id")
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
-
-    user = payload.get("user")
-    if isinstance(user, dict):
-        nested = user.get("user_id") or user.get("id")
-        if isinstance(nested, str) and nested.strip():
-            return nested.strip()
-    return ""
-
-
-def _extract_auth_session_secret(
-    *,
-    headers: Mapping[str, str],
-    payload: dict[str, Any] | None,
-) -> str:
-    header_token = headers.get("X-Session-Token") or headers.get("x-session-token")
-    if isinstance(header_token, str) and header_token.strip():
-        return header_token.strip()
-
-    if not payload:
-        return ""
-
-    for key in ("access_token", "session_token"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-
-    meta = payload.get("meta")
-    if isinstance(meta, dict):
-        nested = meta.get("session_token")
-        if isinstance(nested, str) and nested.strip():
-            return nested.strip()
-
-    return ""
-
-
-def _sanitize_auth_success_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    sanitized = dict(payload)
-    sanitized.pop("access_token", None)
-    sanitized.pop("session_token", None)
-    sanitized.pop("refresh_token", None)
-
-    meta = sanitized.get("meta")
-    if isinstance(meta, dict):
-        sanitized_meta = dict(meta)
-        sanitized_meta.pop("session_token", None)
-        sanitized_meta.pop("access_token", None)
-        sanitized_meta.pop("refresh_token", None)
-        sanitized["meta"] = sanitized_meta
-
-    return sanitized
-
-
-def _resolve_auth_principal_from_payload(payload: dict[str, Any]) -> _SessionPrincipal | None:
-    user_id = _extract_user_id(payload)
-    if not user_id:
-        return None
-    return _SessionPrincipal(
-        user_id=user_id,
-        master_flags=_extract_master_flags(payload),
-    )
-
-
-def _fetch_auth_principal_from_session_secret(
-    request: HttpRequest,
-    *,
-    upstream: str,
-    session_secret: str,
-) -> _SessionPrincipal | None:
-    if not session_secret:
-        return None
-
-    try:
-        resp = proxy_request(
-            upstream_base_url=upstream,
-            upstream_path="auth/me",
-            method="GET",
-            query_string="",
-            body=b"",
-            incoming_headers=request.headers,
-            context_headers={
-                "X-Request-Id": getattr(request, "request_id", ""),
-                "X-Session-Token": session_secret,
-            },
-            request_id=getattr(request, "request_id", ""),
-        )
-    except Exception:
-        logger.warning(
-            "Failed to resolve auth principal from session secret",
-            extra={"request_id": getattr(request, "request_id", None)},
-            exc_info=True,
-        )
-        return None
-
-    if resp.status_code != 200:
-        return None
-
-    try:
-        payload = resp.json()
-    except Exception:
-        return None
-
-    if not isinstance(payload, dict):
-        return None
-    return _resolve_auth_principal_from_payload(payload)
-
-
-def _resolve_auth_principal(
-    request: HttpRequest,
-    *,
-    upstream: str,
-    response_headers: Mapping[str, str],
-    payload: dict[str, Any] | None,
-) -> _SessionPrincipal | None:
-    direct = _resolve_auth_principal_from_payload(payload or {})
-    if direct:
-        return direct
-
-    session_secret = _extract_auth_session_secret(headers=response_headers, payload=payload)
-    if session_secret:
-        return _fetch_auth_principal_from_session_secret(
-            request,
-            upstream=upstream,
-            session_secret=session_secret,
-        )
-    return None
-
-
-def _resolve_auth_ttl(payload: dict[str, Any] | None) -> timedelta:
-    ttl_candidate: Any = None
-    if payload:
-        ttl_candidate = payload.get("ttl_seconds")
-        if ttl_candidate in (None, ""):
-            ttl_candidate = payload.get("expires_in")
-        meta = payload.get("meta")
-        if ttl_candidate in (None, "") and isinstance(meta, dict):
-            ttl_candidate = meta.get("ttl_seconds") or meta.get("expires_in")
-    try:
-        if ttl_candidate not in (None, ""):
-            return timedelta(seconds=max(int(ttl_candidate), 1))
-    except Exception:
-        pass
-    return timedelta(days=14)
-
-
-def _set_bff_session_cookie(
-    response: HttpResponse,
-    *,
-    session_id: str,
-    ttl: timedelta,
-) -> None:
-    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
-    response.set_cookie(
-        cookie_name,
-        session_id,
-        httponly=True,
-        secure=not getattr(settings, "DEBUG", False),
-        samesite=getattr(settings, "BFF_COOKIE_SAMESITE", "Lax"),
-        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
-        path="/",
-        max_age=int(ttl.total_seconds()),
-    )
-
-
-def _clear_bff_session_cookie(response: HttpResponse) -> None:
-    cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
-    response.delete_cookie(
-        cookie_name,
-        domain=getattr(settings, "BFF_COOKIE_DOMAIN", None),
-        path="/",
-    )
-
-
-def _fetch_user_memberships(request: HttpRequest, ctx, *, use_cache: bool = True) -> list[dict[str, Any]]:
-    """Fetch user's tenant memberships from ID service, with optional caching.
-
-    NOTE: This is used by tenantless endpoints (entry/me, session/tenants,
-    switch-tenant) where we need ALL memberships across ALL tenants.
-    We intentionally do NOT send X-Tenant-Id / X-Tenant-Slug headers
-    to the ID service so it returns the full membership list rather than
-    scoping to a single tenant.
-    """
-    store = SessionStore()
-
-    if use_cache:
-        cached = store.get_cached_user_tenants(ctx.user_id)
-        if cached is not None:
-            return cached
-
-    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
-    if not id_upstream:
-        return []
-
-    try:
-        resp = proxy_request(
-            upstream_base_url=id_upstream,
-            upstream_path="me",
-            method="GET",
-            query_string="",
-            body=b"",
-            incoming_headers=request.headers,
-            context_headers={
-                "X-Request-Id": getattr(request, "request_id", ""),
-                "X-User-Id": ctx.user_id,
-                # No X-Tenant-Id / X-Tenant-Slug here — we want ALL memberships.
-            },
-            request_id=getattr(request, "request_id", ""),
-        )
-    except Exception:
-        logger.warning("Failed to fetch memberships from ID", exc_info=True)
-        return []
-
-    if resp.status_code != 200:
-        return []
-
-    try:
-        data = resp.json()
-    except Exception:
-        return []
-
-    memberships = data.get("memberships") if isinstance(data, dict) else None
-    if not isinstance(memberships, list):
-        return []
-
-    # Normalize to list of dicts with required fields
-    result = []
-    for m in memberships:
-        if not isinstance(m, dict):
-            continue
-        result.append({
-            "tenant_id": str(m.get("tenant_id", "")),
-            "tenant_slug": str(m.get("tenant_slug", "")),
-            "display_name": str(m.get("display_name", m.get("tenant_slug", ""))),
-            "status": str(m.get("status", "active")),
-            "base_role": str(m.get("base_role", "member")),
-        })
-
-    # Cache the result
-    ttl = int(getattr(settings, "BFF_TENANTS_CACHE_TTL", 120))
-    store.cache_user_tenants(ctx.user_id, result, ttl=ttl)
-
-    return result
-
-
-def _hash_user_key(user_id: str) -> str:
-    """Create a hashed user key for AB bucketing (no raw user_id in logs)."""
-    secret = str(getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "") or "ab-salt")
-    return hashlib.sha256(f"{secret}:{user_id}".encode()).hexdigest()[:16]
-
-
-def _evaluate_rollout(request: HttpRequest, ctx, tenant_id: str) -> dict[str, Any]:
-    """Evaluate rollout/AB flags via Access service, with caching."""
-    access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
-    if not access_upstream:
-        return {"feature_flags": {}, "experiments": {}}
-
-    user_key_hashed = _hash_user_key(ctx.user_id)
-    cache_key = f"bff:rollout:{tenant_id}:{user_key_hashed}"
-
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    # Extract roles from master_flags if present
-    user_roles = []
-    if isinstance(ctx.master_flags, dict):
-        if ctx.master_flags.get("system_admin"):
-            user_roles.append("system_admin")
-
-    payload = {
-        "tenant_id": tenant_id,
-        "user_key_hashed": user_key_hashed,
-        "user_roles": user_roles,
-        "context": {"path": request.path},
-    }
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-
-    try:
-        resp = proxy_request(
-            upstream_base_url=access_upstream,
-            upstream_path="access/rollout/evaluate",
-            method="POST",
-            query_string="",
-            body=body,
-            incoming_headers=request.headers,
-            context_headers={
-                "Content-Type": "application/json",
-                "X-Request-Id": getattr(request, "request_id", ""),
-                "X-Tenant-Id": tenant_id,
-                "X-User-Id": ctx.user_id,
-            },
-            request_id=getattr(request, "request_id", ""),
-        )
-    except Exception:
-        logger.warning("Rollout evaluate failed", exc_info=True)
-        return {"feature_flags": {}, "experiments": {}}
-
-    if resp.status_code != 200:
-        return {"feature_flags": {}, "experiments": {}}
-
-    try:
-        result = resp.json()
-    except Exception:
-        return {"feature_flags": {}, "experiments": {}}
-
-    rollout_data = {
-        "feature_flags": result.get("feature_flags", {}),
-        "experiments": result.get("experiments", {}),
-    }
-
-    ttl = int(getattr(settings, "BFF_ROLLOUT_CACHE_TTL", 60))
-    cache.set(cache_key, rollout_data, timeout=ttl)
-
-    return rollout_data
-
-
-# -----------------------------------------------
-# Path-based multi-tenancy endpoints
-# -----------------------------------------------
-
-@router.post("/session/switch-tenant")
-def session_switch_tenant(request: HttpRequest):
-    """Switch active tenant in BFF session.
-
-    Validates membership, sets active_tenant_* in session.
-    Returns active tenant info + redirect path.
-    """
-    ctx, err = _require_auth_tenantless(request)
-    if err:
-        return err
-
-    try:
-        raw_body = (request.body or b"{}").decode("utf-8")
-        body = json.loads(raw_body)
-        if isinstance(body, str):
-            # Handle double-encoded JSON payloads (e.g. "{\"tenant_slug\":\"aef\"}")
-            body = json.loads(body)
-    except Exception:
-        return error_response(
-            code="BAD_REQUEST",
-            message="Invalid JSON",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-
-    tenant_slug = str(body.get("tenant_slug", "")).strip().lower()
-
-    if not validate_tenant_slug(tenant_slug):
-        return error_response(
-            code="INVALID_SLUG",
-            message="Invalid tenant slug format",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-
-    # Rate limit switch-tenant specifically
-    from django.core.cache import cache as rl_cache
-
-    limit = int(getattr(settings, "BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN", 15))
-    if limit > 0:
-        rl_key = f"bff:rl:switch:{ctx.user_id}"
-        current = rl_cache.get(rl_key)
-        if current is not None and int(current) >= limit:
-            return error_response(
-                code="RATE_LIMITED",
-                message="Too many tenant switch requests",
-                request_id=getattr(request, "request_id", None),
-                status=429,
-            )
-        if current is None:
-            rl_cache.set(rl_key, 1, timeout=60)
-        else:
-            rl_cache.incr(rl_key)
-
-    # Fetch memberships and check if user has access to requested tenant
-    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
-
-    target_membership = None
-    for m in memberships:
-        if m.get("tenant_slug") == tenant_slug:
-            target_membership = m
-            break
-
-    if not target_membership:
-        # Check if tenant exists at all (to distinguish 403 vs 404)
-        resolved = resolve_tenant_by_slug(tenant_slug)
-        if not resolved:
-            return error_response(
-                code="TENANT_NOT_FOUND",
-                message="Tenant not found",
-                request_id=getattr(request, "request_id", None),
-                status=404,
-            )
-        return error_response(
-            code="TENANT_FORBIDDEN",
-            message="You don't have access to this tenant",
-            request_id=getattr(request, "request_id", None),
-            status=403,
-        )
-
-    if target_membership.get("status") != "active":
-        return error_response(
-            code="TENANT_FORBIDDEN",
-            message="Your membership in this tenant is not active",
-            request_id=getattr(request, "request_id", None),
-            status=403,
-        )
-
-    # Set active tenant in session
-    store = SessionStore()
-    tenant_id = target_membership["tenant_id"]
-    updated = store.set_active_tenant(
-        ctx.session_id,
-        tenant_id=tenant_id,
-        tenant_slug=tenant_slug,
-    )
-    if not updated:
-        return error_response(
-            code="SESSION_ERROR",
-            message="Failed to update session",
-            request_id=getattr(request, "request_id", None),
-            status=500,
-        )
-
-    # Invalidate tenants cache to get fresh data on next request
-    store.invalidate_user_tenants_cache(ctx.user_id)
-
-    logger.info(
-        "Tenant switched",
-        extra={
-            "request_id": getattr(request, "request_id", None),
-            "user_id": ctx.user_id,
-            "tenant_id": tenant_id,
-            "tenant_slug": tenant_slug,
-        },
-    )
-
-    # Only return relative redirect paths (anti open-redirect)
-    redirect_to = f"/t/{tenant_slug}/"
-
-    return {
-        "active_tenant": {
-            "tenant_id": tenant_id,
-            "tenant_slug": tenant_slug,
-            "display_name": target_membership.get("display_name", tenant_slug),
-            "base_role": target_membership.get("base_role", "member"),
-        },
-        "redirect_to": redirect_to,
-    }
-
-
-@router.get("/session/tenants")
-def session_tenants(request: HttpRequest):
-    """Return list of tenants the user has membership in."""
-    ctx, err = _require_auth_tenantless(request)
-    if err:
-        return err
-
-    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
-
-    return [
-        {
-            "tenant_id": m.get("tenant_id", ""),
-            "tenant_slug": m.get("tenant_slug", ""),
-            "display_name": m.get("display_name", ""),
-            "status": m.get("status", ""),
-            "base_role": m.get("base_role", ""),
-        }
-        for m in memberships
-    ]
-
-
-@router.get("/entry/me")
-def entry_me(request: HttpRequest):
-    """Tenantless entry point: user info, memberships, last tenant.
-
-    Used by the tenant chooser / launchpad screen before a tenant is selected.
-    """
-    ctx, err = _require_auth_tenantless(request)
-    if err:
-        return err
-
-    memberships = _fetch_user_memberships(request, ctx, use_cache=True)
-
-    # Get last_tenant from session
-    session = SessionStore().get(ctx.session_id)
-    last_tenant_slug = session.last_tenant_slug if session else ""
-
-    last_tenant = None
-    if last_tenant_slug:
-        last_tenant = {"tenant_slug": last_tenant_slug}
-
-    # Fetch pending applications if ID service supports it
-    pending_applications: list[dict[str, Any]] = []
-    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
-    if id_upstream:
-        try:
-            resp = proxy_request(
-                upstream_base_url=id_upstream,
-                upstream_path="tenant-applications",
-                method="GET",
-                query_string=f"user_id={ctx.user_id}&status=pending",
-                body=b"",
-                incoming_headers=request.headers,
-                context_headers={
-                    "X-Request-Id": getattr(request, "request_id", ""),
-                    "X-User-Id": ctx.user_id,
-                },
-                request_id=getattr(request, "request_id", ""),
-            )
-            if resp.status_code == 200:
-                apps_data = resp.json()
-                if isinstance(apps_data, list):
-                    pending_applications = [
-                        {
-                            "id": str(a.get("id", "")),
-                            "slug": str(a.get("slug", "")),
-                            "status": str(a.get("status", "pending")),
-                        }
-                        for a in apps_data
-                        if isinstance(a, dict)
-                    ]
-        except Exception:
-            # Best effort — don't fail entry/me if applications endpoint doesn't exist
-            pass
-
-    return {
-        "user": {"id": ctx.user_id, "email": ""},
-        "memberships": memberships,
-        "last_tenant": last_tenant,
-        "pending_tenant_applications": pending_applications,
-    }
-
-
-@router.post("/entry/tenant-applications")
-def entry_tenant_applications(request: HttpRequest):
-    """Submit a new tenant application (proxy to ID service)."""
-    ctx, err = _require_auth_tenantless(request)
-    if err:
-        return err
-
-    try:
-        body = json.loads((request.body or b"{}").decode("utf-8"))
-    except Exception:
-        return error_response(
-            code="BAD_REQUEST",
-            message="Invalid JSON",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-
-    slug = str(body.get("slug", "")).strip().lower()
-    if not validate_tenant_slug(slug):
-        return error_response(
-            code="INVALID_SLUG",
-            message="Invalid tenant slug format",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-
-    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
-    if not id_upstream:
-        return error_response(
-            code="UPSTREAM_NOT_CONFIGURED",
-            message="ID service not configured",
-            request_id=getattr(request, "request_id", None),
-            status=502,
-        )
-
-    proxy_body = json.dumps({
-        "slug": slug,
-        "name": str(body.get("name", slug)),
-        "description": str(body.get("description", "")),
-        "user_id": ctx.user_id,
-    }, separators=(",", ":")).encode("utf-8")
-
-    try:
-        resp = proxy_request(
-            upstream_base_url=id_upstream,
-            upstream_path="tenant-applications",
-            method="POST",
-            query_string="",
-            body=proxy_body,
-            incoming_headers=request.headers,
-            context_headers={
-                "Content-Type": "application/json",
-                "X-Request-Id": getattr(request, "request_id", ""),
-                "X-User-Id": ctx.user_id,
-            },
-            request_id=getattr(request, "request_id", ""),
-        )
-    except Exception:
-        return error_response(
-            code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable",
-            request_id=getattr(request, "request_id", None),
-            status=502,
-        )
-
-    content_type = resp.headers.get("content-type", "application/json")
-    return HttpResponse(
-        resp.content,
-        status=resp.status_code,
-        content_type=content_type,
-    )
-
-
 def _resolve_access_check_path(upstream: str) -> str:
     base = upstream.rstrip("/")
     if base.endswith("/access"):
         return "check"
     return "access/check"
+
+
+def _resolve_access_admin_path(upstream: str, subpath: str) -> str:
+    base = upstream.rstrip("/")
+    if base.endswith("/access"):
+        return f"admin/{subpath}".strip("/")
+    return f"access/admin/{subpath}".strip("/")
+
+
+def _extract_user_id_from_approve_payload(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+
+    direct_user_id = payload.get("user_id")
+    if isinstance(direct_user_id, str) and direct_user_id.strip():
+        return direct_user_id.strip()
+
+    nested_user = payload.get("user")
+    if isinstance(nested_user, dict):
+        nested_user_id = nested_user.get("id")
+        if isinstance(nested_user_id, str) and nested_user_id.strip():
+            return nested_user_id.strip()
+
+    return None
+
+
+def _provision_default_tenant_member_binding(
+    request: HttpRequest,
+    ctx,
+    approved_user_id: str,
+) -> None:
+    access_upstream = str(
+        getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or ""
+    ).strip()
+    if not access_upstream:
+        logger.warning(
+            "Skipped default member provisioning: access upstream is not configured",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    context_headers = {
+        "X-Request-Id": request.request_id,
+        "X-Tenant-Id": ctx.tenant_id,
+        "X-Tenant-Slug": ctx.tenant_slug,
+        "X-User-Id": ctx.user_id,
+        "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+        "Content-Type": "application/json",
+    }
+
+    roles_path = _resolve_access_admin_path(access_upstream, "roles")
+    roles_query = urlencode(
+        {"service": "portal", "query": "member", "limit": 200}
+    )
+    roles_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=roles_path,
+        method="GET",
+        query_string=roles_query,
+        body=b"",
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if roles_resp.status_code != 200:
+        logger.warning(
+            "Default member provisioning: unable to load roles",
+            extra={
+                "request_id": request.request_id,
+                "status_code": roles_resp.status_code,
+                "user_id": approved_user_id,
+            },
+        )
+        return
+
+    try:
+        roles_payload = roles_resp.json()
+    except Exception:
+        logger.warning(
+            "Default member provisioning: invalid roles payload",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    role_id: int | None = None
+    if isinstance(roles_payload, list):
+        for role in roles_payload:
+            if not isinstance(role, dict):
+                continue
+            if role.get("service") != "portal" or role.get("name") != "member":
+                continue
+            raw_role_id = role.get("id")
+            if isinstance(raw_role_id, int):
+                role_id = raw_role_id
+                break
+
+    if role_id is None:
+        logger.warning(
+            "Default member provisioning: portal/member role not found",
+            extra={"request_id": request.request_id, "user_id": approved_user_id},
+        )
+        return
+
+    bindings_path = _resolve_access_admin_path(
+        access_upstream,
+        "role-bindings",
+    )
+    bindings_query = urlencode(
+        {
+            "user_id": approved_user_id,
+            "scope_type": "TENANT",
+            "scope_id": ctx.tenant_id,
+            "limit": 200,
+        }
+    )
+    bindings_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=bindings_path,
+        method="GET",
+        query_string=bindings_query,
+        body=b"",
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if bindings_resp.status_code != 200:
+        logger.warning(
+            "Default member provisioning: unable to load bindings",
+            extra={
+                "request_id": request.request_id,
+                "status_code": bindings_resp.status_code,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+        return
+
+    try:
+        bindings_payload = bindings_resp.json()
+    except Exception:
+        logger.warning(
+            "Default member provisioning: invalid bindings payload",
+            extra={
+                "request_id": request.request_id,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+        return
+
+    existing_binding = False
+    if isinstance(bindings_payload, list):
+        for binding in bindings_payload:
+            if not isinstance(binding, dict):
+                continue
+            if (
+                binding.get("user_id") == approved_user_id
+                and binding.get("scope_type") == "TENANT"
+                and binding.get("scope_id") == ctx.tenant_id
+                and binding.get("role_id") == role_id
+            ):
+                existing_binding = True
+                break
+
+    if existing_binding:
+        return
+
+    create_payload = {
+        "tenant_id": ctx.tenant_id,
+        "user_id": approved_user_id,
+        "scope_type": "TENANT",
+        "scope_id": ctx.tenant_id,
+        "role_id": role_id,
+    }
+    create_body = json.dumps(
+        create_payload,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    create_resp = proxy_request(
+        upstream_base_url=access_upstream,
+        upstream_path=bindings_path,
+        method="POST",
+        query_string="",
+        body=create_body,
+        incoming_headers=request.headers,
+        context_headers=context_headers,
+        request_id=request.request_id,
+    )
+    if create_resp.status_code not in {200, 201}:
+        logger.warning(
+            "Default member provisioning: unable to create binding",
+            extra={
+                "request_id": request.request_id,
+                "status_code": create_resp.status_code,
+                "user_id": approved_user_id,
+                "role_id": role_id,
+            },
+        )
+
+
+def _maybe_provision_after_application_approve(
+    request: HttpRequest,
+    response: HttpResponse,
+) -> None:
+    if response.status_code >= 400:
+        return
+
+    ctx = getattr(request, "auth_ctx", None)
+    if not ctx:
+        return
+
+    try:
+        payload = (
+            json.loads(response.content.decode("utf-8"))
+            if response.content
+            else {}
+        )
+    except Exception:
+        logger.warning(
+            "Skip post-approve provisioning: invalid approve payload",
+            extra={"request_id": request.request_id},
+        )
+        return
+
+    approved_user_id = _extract_user_id_from_approve_payload(payload)
+    if not approved_user_id:
+        return
+
+    try:
+        _provision_default_tenant_member_binding(request, ctx, approved_user_id)
+    except Exception:
+        logger.exception(
+            "Post-approve provisioning failed",
+            extra={
+                "request_id": request.request_id,
+                "approved_user_id": approved_user_id,
+            },
+        )
 
 
 def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str]]:
@@ -845,6 +392,60 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
     return sorted(effective_permissions), sorted(effective_roles)
 
 
+def _load_feature_flags_snapshot(request: HttpRequest, ctx) -> dict[str, bool]:
+    featureflags_upstream = str(
+        getattr(settings, "BFF_UPSTREAM_FEATUREFLAGS_URL", "") or ""
+    ).strip()
+    if not featureflags_upstream:
+        return {}
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=featureflags_upstream,
+            upstream_path="flags/evaluate",
+            method="GET",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers={
+                "X-Request-Id": request.request_id,
+                "X-Tenant-Id": ctx.tenant_id,
+                "X-Tenant-Slug": ctx.tenant_slug,
+                "X-User-Id": ctx.user_id,
+                "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+            },
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.warning(
+            "session/me feature flags probe failed",
+            extra={"request_id": request.request_id},
+            exc_info=True,
+        )
+        return {}
+
+    if resp.status_code != 200:
+        return {}
+
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    feature_flags = data.get("feature_flags")
+    if not isinstance(feature_flags, dict):
+        return {}
+
+    return {
+        str(key): bool(value)
+        for key, value in feature_flags.items()
+        if isinstance(key, str)
+    }
+
+
 @router.get("/session/me")
 def session_me(request: HttpRequest):
     ctx, err = _require_auth(request)
@@ -856,6 +457,7 @@ def session_me(request: HttpRequest):
     portal_profile: dict[str, Any] | None = None
     id_profile: dict[str, Any] | None = None
     tenant_membership: dict[str, Any] | None = None
+    available_tenants: list[dict[str, str]] = []
     if upstream:
         resp = proxy_request(
             upstream_base_url=upstream,
@@ -906,10 +508,23 @@ def session_me(request: HttpRequest):
                 memberships = id_profile.get("memberships") if isinstance(id_profile, dict) else None
                 if isinstance(memberships, list):
                     for m in memberships:
+                        if not isinstance(m, dict):
+                            continue
+                        membership_status = str(m.get("status") or "").strip().lower()
+                        tenant_id = str(m.get("tenant_id") or "").strip()
+                        tenant_slug = str(m.get("tenant_slug") or "").strip()
+                        if membership_status == "active" and tenant_id and tenant_slug:
+                            available_tenants.append({"id": tenant_id, "slug": tenant_slug})
                         try:
-                            if str(m.get("tenant_id")) == str(ctx.tenant_id) or str(m.get("tenant_slug")) == str(ctx.tenant_slug):
+                            if (
+                                tenant_membership is None
+                                and (
+                                    str(m.get("tenant_id")) == str(ctx.tenant_id)
+                                    or str(m.get("tenant_slug"))
+                                    == str(ctx.tenant_slug)
+                                )
+                            ):
                                 tenant_membership = m
-                                break
                         except Exception:
                             continue
         except Exception:
@@ -986,44 +601,33 @@ def session_me(request: HttpRequest):
         id_frontend_base_url = None
 
     capabilities, roles = _load_effective_access_snapshot(request, ctx)
+    feature_flags = _load_feature_flags_snapshot(request, ctx)
 
-    # Path-based tenancy: include active tenant and available tenants
-    active_tenant_info = None
-    if ctx.active_tenant_id and ctx.active_tenant_slug:
-        active_tenant_info = {
-            "tenant_id": ctx.active_tenant_id,
-            "tenant_slug": ctx.active_tenant_slug,
-            "display_name": ctx.active_tenant_slug,
-            "base_role": "member",
-        }
-        # Enrich from tenant_membership if available
-        if tenant_membership and isinstance(tenant_membership, dict):
-            active_tenant_info["display_name"] = str(
-                tenant_membership.get("display_name", ctx.active_tenant_slug)
-            )
-            active_tenant_info["base_role"] = str(
-                tenant_membership.get("base_role", "member")
-            )
-
-    # Fetch available tenants for the user
-    available_tenants = _fetch_user_memberships(request, ctx, use_cache=True)
-
-    # Evaluate rollout flags + experiments
-    active_tid = ctx.active_tenant_id or ctx.tenant_id
-    rollout = _evaluate_rollout(request, ctx, active_tid) if active_tid else {"feature_flags": {}, "experiments": {}}
+    # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
+    if (
+        getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
+        and isinstance(id_profile, dict)
+        and tenant_membership is None
+        and available_tenants
+    ):
+        return error_response(
+            code="NO_ACTIVE_MEMBERSHIP",
+            message="No active membership for current tenant",
+            request_id=getattr(request, "request_id", None),
+            status=403,
+            details={"tenant_slug": ctx.tenant_slug, "available_tenants": available_tenants},
+        )
 
     return {
         "user": {"id": ctx.user_id, "master_flags": ctx.master_flags},
         "tenant": {"id": ctx.tenant_id, "slug": ctx.tenant_slug},
-        "active_tenant": active_tenant_info,
-        "available_tenants": available_tenants,
         "portal_profile": portal_profile,
         "id_profile": id_profile,
         "tenant_membership": tenant_membership,
+        "available_tenants": available_tenants,
         "capabilities": capabilities,
         "roles": roles,
-        "feature_flags": rollout.get("feature_flags", {}),
-        "experiments": rollout.get("experiments", {}),
+        "feature_flags": feature_flags,
         "id_frontend_base_url": id_frontend_base_url,
         "request_id": request.request_id,
     }
@@ -1077,7 +681,14 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     Initiates OIDC login flow by redirecting to ID.UpdSpace.
     After user authenticates, they are redirected back to /auth/callback.
     """
-    tenant = _resolve_auth_tenant(request)
+    tenant = getattr(request, "tenant", None)
+    if not tenant:
+        return error_response(
+            code="TENANT_NOT_FOUND",
+            message="Unknown tenant",
+            request_id=getattr(request, "request_id", None),
+            status=404,
+        )
 
     # Get OIDC configuration
     id_public_url = getattr(settings, "ID_PUBLIC_BASE_URL", "") or getattr(
@@ -1164,25 +775,23 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             request_id=getattr(request, "request_id", None),
             status=400,
         )
-    tenant = _resolve_auth_tenant(request)
+    tenant = getattr(request, "tenant", None)
+    if not tenant:
+        return error_response(
+            code="TENANT_NOT_FOUND",
+            message="Unknown tenant",
+            request_id=getattr(request, "request_id", None),
+            status=404,
+        )
 
     state_tenant_id = str(state_data.get("tenant_id") or "").strip()
     if state_tenant_id and state_tenant_id != str(tenant.id):
-        # If state says different tenant AND host resolved a non-global tenant, mismatch
-        host_tenant = getattr(request, "tenant", None)
-        if host_tenant:
-            return error_response(
-                code="TENANT_MISMATCH",
-                message="OAuth state tenant does not match current tenant",
-                request_id=getattr(request, "request_id", None),
-                status=400,
-            )
-        # Path-based mode: trust the state tenant_id over global placeholder
-        from .tenant import ResolvedTenant
-        from .models import Tenant as TenantModel
-        state_t = TenantModel.objects.filter(id=state_tenant_id).first()
-        if state_t:
-            tenant = ResolvedTenant(id=str(state_t.id), slug=state_t.slug)
+        return error_response(
+            code="TENANT_MISMATCH",
+            message="OAuth state tenant does not match current tenant",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
 
     cache.delete(f"oauth_state:{state}")
     next_path = state_data.get("next", "/")
@@ -1315,7 +924,14 @@ def session_login(request: HttpRequest):
     Magic link login flow (POST with email).
     For redirect-based OIDC login, use GET /auth/login.
     """
-    tenant = _resolve_auth_tenant(request)
+    tenant = getattr(request, "tenant", None)
+    if not tenant:
+        return error_response(
+            code="TENANT_NOT_FOUND",
+            message="Unknown tenant",
+            request_id=getattr(request, "request_id", None),
+            status=404,
+        )
 
     try:
         payload = json.loads((request.body or b"{}").decode("utf-8"))
@@ -1413,7 +1029,14 @@ def session_login(request: HttpRequest):
 
 @router.get("/session/callback")
 def session_callback(request: HttpRequest, code: str, next: str | None = None):
-    tenant = _resolve_auth_tenant(request)
+    tenant = getattr(request, "tenant", None)
+    if not tenant:
+        return error_response(
+            code="TENANT_NOT_FOUND",
+            message="Unknown tenant",
+            request_id=getattr(request, "request_id", None),
+            status=404,
+        )
 
     upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "")
     if not upstream:
@@ -1623,16 +1246,11 @@ def _proxy_group(
 
     body = request.body or b""
     
-    # Use active tenant from session (path-based) preferring over legacy tenant
-    effective_tenant_id = ctx.active_tenant_id if ctx.active_tenant_id else ctx.tenant_id
-    effective_tenant_slug = ctx.active_tenant_slug if ctx.active_tenant_slug else ctx.tenant_slug
-
     # Debug log for master_flags being sent
     logger.debug(
-        "Proxying to %s with master_flags: %s, tenant: %s",
+        "Proxying to %s with master_flags: %s",
         group,
         ctx.master_flags,
-        effective_tenant_slug,
         extra={"request_id": request.request_id},
     )
     
@@ -1650,8 +1268,8 @@ def _proxy_group(
             incoming_headers=request.headers,
             context_headers={
                 "X-Request-Id": request.request_id,
-                "X-Tenant-Id": effective_tenant_id,
-                "X-Tenant-Slug": effective_tenant_slug,
+                "X-Tenant-Id": ctx.tenant_id,
+                "X-Tenant-Slug": ctx.tenant_slug,
                 "X-User-Id": ctx.user_id,
                 "X-Master-Flags": json.dumps(
                     ctx.master_flags,
@@ -1782,7 +1400,14 @@ def proxy_portal_applications_list(request: HttpRequest):
 )
 def proxy_portal_applications_approve(request: HttpRequest, application_id: int):
     """Approve an application (in ID service)."""
-    return _proxy_group(request, "id", "BFF_UPSTREAM_ID_URL", f"applications/{application_id}/approve")
+    response = _proxy_group(
+        request,
+        "id",
+        "BFF_UPSTREAM_ID_URL",
+        f"applications/{application_id}/approve",
+    )
+    _maybe_provision_after_application_approve(request, response)
+    return response
 
 
 @router.api_operation(
@@ -1861,14 +1486,6 @@ def proxy_events_root(request: HttpRequest):
 
 @router.api_operation(
     ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    "/events/",
-)
-def proxy_events_root_slash(request: HttpRequest):
-    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "")
-
-
-@router.api_operation(
-    ["GET", "POST", "PUT", "PATCH", "DELETE"],
     "/events/{path:path}",
 )
 def proxy_events(request: HttpRequest, path: str):
@@ -1934,99 +1551,13 @@ def _account_context_headers(request: HttpRequest, ctx) -> dict[str, str]:
         "X-Request-Id": request.request_id,
         "X-User-Id": ctx.user_id,
     }
-    tenant_id = str(
-        getattr(ctx, "active_tenant_id", "")
-        or getattr(ctx, "tenant_id", "")
-        or ""
-    ).strip()
-    tenant_slug = str(
-        getattr(ctx, "active_tenant_slug", "")
-        or getattr(ctx, "tenant_slug", "")
-        or ""
-    ).strip()
-    if tenant_id:
-        headers["X-Tenant-Id"] = tenant_id
-        headers["X-Tenant-Slug"] = tenant_slug
-    elif tenant:
+    if tenant:
         headers["X-Tenant-Id"] = str(tenant.id)
         headers["X-Tenant-Slug"] = str(tenant.slug)
+    else:
+        headers["X-Tenant-Id"] = ctx.tenant_id
+        headers["X-Tenant-Slug"] = ctx.tenant_slug
     return headers
-
-
-def _build_tenant_auth_context(
-    ctx,
-    *,
-    tenant_id: str,
-    tenant_slug: str,
-) -> AuthContext:
-    return AuthContext(
-        session_id=ctx.session_id,
-        tenant_id=str(tenant_id),
-        tenant_slug=str(tenant_slug),
-        user_id=str(ctx.user_id),
-        master_flags=dict(getattr(ctx, "master_flags", {}) or {}),
-        active_tenant_id=str(tenant_id),
-        active_tenant_slug=str(tenant_slug),
-    )
-
-
-def _dsar_tenant_contexts(request: HttpRequest, ctx) -> list[AuthContext]:
-    tenant_order: dict[str, str] = {}
-
-    def _remember(tenant_id: Any, tenant_slug: Any) -> None:
-        tid = str(tenant_id or "").strip()
-        if not tid:
-            return
-        slug = str(tenant_slug or "").strip()
-        if tid not in tenant_order or (not tenant_order[tid] and slug):
-            tenant_order[tid] = slug
-
-    _remember(
-        getattr(ctx, "active_tenant_id", "") or getattr(ctx, "tenant_id", ""),
-        getattr(ctx, "active_tenant_slug", "") or getattr(ctx, "tenant_slug", ""),
-    )
-
-    for membership in _fetch_user_memberships(request, ctx, use_cache=False):
-        if not isinstance(membership, dict):
-            continue
-        _remember(membership.get("tenant_id"), membership.get("tenant_slug"))
-
-    if not tenant_order:
-        _remember(getattr(ctx, "tenant_id", ""), getattr(ctx, "tenant_slug", ""))
-
-    return [
-        _build_tenant_auth_context(ctx, tenant_id=tenant_id, tenant_slug=tenant_slug)
-        for tenant_id, tenant_slug in tenant_order.items()
-    ]
-
-
-def _aggregate_dsar_export_bundle(
-    *,
-    service_name: str,
-    user_id: str,
-    tenant_bundles: list[dict[str, Any]],
-) -> dict[str, Any]:
-    aggregate: dict[str, Any] = {
-        "service": service_name,
-        "user_id": str(user_id),
-        "exported_at": timezone.now().isoformat(),
-        "tenants": [],
-    }
-
-    for bundle in tenant_bundles:
-        if bundle.get("skipped"):
-            if not aggregate["tenants"]:
-                aggregate.update(bundle)
-            continue
-        aggregate["tenants"].append(bundle)
-
-    aggregate["tenants"].sort(
-        key=lambda item: (
-            str(item.get("tenant_slug", "")),
-            str(item.get("tenant_id", "")),
-        )
-    )
-    return aggregate
 
 
 def _call_dsar_service(
@@ -2190,9 +1721,6 @@ def delete_account_me(request: HttpRequest):
     if err:
         return err
 
-    tenant_contexts = _dsar_tenant_contexts(request, ctx)
-    from .models import BffSession
-
     service_calls = (
         (
             "portal",
@@ -2227,41 +1755,21 @@ def delete_account_me(request: HttpRequest):
     )
 
     for service_name, setting_name, upstream_path in service_calls:
-        for tenant_ctx in tenant_contexts:
-            bundle, response = _call_dsar_erase_service(
-                request,
-                tenant_ctx,
-                service_name=service_name,
-                upstream_setting=setting_name,
-                upstream_path=upstream_path,
-            )
-            if response is not None:
-                return response
-            if bundle and bundle.get("skipped"):
-                break
+        _, response = _call_dsar_erase_service(
+            request,
+            ctx,
+            service_name=service_name,
+            upstream_setting=setting_name,
+            upstream_path=upstream_path,
+        )
+        if response is not None:
+            return response
 
     identity_error = _delete_identity_account(request, ctx)
     if identity_error is not None:
         return identity_error
 
-    bff_tenant_ids = {
-        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
-        for tenant_ctx in tenant_contexts
-        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
-    }
-    bff_tenant_ids.update(
-        str(tenant_id)
-        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
-            "tenant_id",
-            flat=True,
-        )
-        if str(tenant_id).strip()
-    )
-    if not bff_tenant_ids:
-        bff_tenant_ids.add(str(ctx.tenant_id))
-    for tenant_id in sorted(bff_tenant_ids):
-        erase_bff_user_data(tenant_id=tenant_id, user_id=ctx.user_id)
-
+    erase_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
     services_erased = [
         "portal",
         "activity",
@@ -2285,7 +1793,6 @@ def delete_account_me(request: HttpRequest):
             metadata={
                 "subject_scope": "self",
                 "services_erased": services_erased,
-                "tenant_ids_erased": sorted(bff_tenant_ids),
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2297,7 +1804,6 @@ def delete_account_me(request: HttpRequest):
             target_id=str(ctx.user_id),
             metadata={
                 "services_erased": services_erased,
-                "tenant_ids_erased": sorted(bff_tenant_ids),
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2320,34 +1826,8 @@ def export_account_me(request: HttpRequest):
     if err:
         return err
 
-    tenant_contexts = _dsar_tenant_contexts(request, ctx)
-    from .models import BffSession
-
-    bff_tenant_ids = {
-        str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
-        for tenant_ctx in tenant_contexts
-        if str(getattr(tenant_ctx, "tenant_id", "") or "").strip()
-    }
-    bff_tenant_ids.update(
-        str(tenant_id)
-        for tenant_id in BffSession.objects.filter(user_id=ctx.user_id).values_list(
-            "tenant_id",
-            flat=True,
-        )
-        if str(tenant_id).strip()
-    )
     bundles: dict[str, Any] = {
-        "bff": _aggregate_dsar_export_bundle(
-            service_name="bff",
-            user_id=ctx.user_id,
-            tenant_bundles=[
-                export_bff_user_data(
-                    tenant_id=tenant_id,
-                    user_id=ctx.user_id,
-                )
-                for tenant_id in sorted(bff_tenant_ids)
-            ],
-        ),
+        "bff": export_bff_user_data(tenant_id=ctx.tenant_id, user_id=ctx.user_id),
     }
     service_calls = (
         (
@@ -2383,26 +1863,17 @@ def export_account_me(request: HttpRequest):
     )
 
     for service_name, setting_name, upstream_path in service_calls:
-        tenant_bundles: list[dict[str, Any]] = []
-        for tenant_ctx in tenant_contexts:
-            bundle, response = _call_dsar_export_service(
-                request,
-                tenant_ctx,
-                service_name=service_name,
-                upstream_setting=setting_name,
-                upstream_path=upstream_path,
-            )
-            if response is not None:
-                return response
-            if bundle is not None:
-                tenant_bundles.append(bundle)
-                if bundle.get("skipped"):
-                    break
-        bundles[service_name] = _aggregate_dsar_export_bundle(
+        bundle, response = _call_dsar_export_service(
+            request,
+            ctx,
             service_name=service_name,
-            user_id=ctx.user_id,
-            tenant_bundles=tenant_bundles,
+            upstream_setting=setting_name,
+            upstream_path=upstream_path,
         )
+        if response is not None:
+            return response
+        if bundle is not None:
+            bundles[service_name] = bundle
 
     try:
         from .audit import log_audit_event as _log_audit
@@ -2416,9 +1887,6 @@ def export_account_me(request: HttpRequest):
             metadata={
                 "subject_scope": "self",
                 "services_exported": sorted(bundles.keys()),
-                "tenant_ids_exported": [
-                    tenant_ctx.tenant_id for tenant_ctx in tenant_contexts
-                ],
             },
             request_id=getattr(request, "request_id", ""),
         )
@@ -2427,11 +1895,207 @@ def export_account_me(request: HttpRequest):
 
     return {
         "service": "bff",
+        "tenant_id": ctx.tenant_id,
         "user_id": ctx.user_id,
         "exported_at": timezone.now().isoformat(),
-        "tenant_ids": [tenant_ctx.tenant_id for tenant_ctx in tenant_contexts],
         "bundles": bundles,
     }
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/feature-flags",
+)
+def proxy_feature_flags_root(request: HttpRequest):
+    return _proxy_group(
+        request,
+        "featureflags",
+        "BFF_UPSTREAM_FEATUREFLAGS_URL",
+        "",
+    )
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/feature-flags/{path:path}",
+)
+def proxy_feature_flags(request: HttpRequest, path: str):
+    return _proxy_group(
+        request,
+        "featureflags",
+        "BFF_UPSTREAM_FEATUREFLAGS_URL",
+        path,
+    )
+
+
+def _account_context_headers(request: HttpRequest, ctx) -> dict[str, str]:
+    tenant = getattr(request, "tenant", None)
+    headers = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+    }
+    if tenant:
+        headers["X-Tenant-Id"] = str(tenant.id)
+        headers["X-Tenant-Slug"] = str(tenant.slug)
+    else:
+        headers["X-Tenant-Id"] = ctx.tenant_id
+        headers["X-Tenant-Slug"] = ctx.tenant_slug
+    return headers
+
+
+def _call_dsar_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+    operation: str,
+    method: str,
+    failure_code: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    upstream = getattr(settings, upstream_setting, "")
+    if not upstream:
+        return {"skipped": True, "reason": "upstream_not_configured"}, None
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path=upstream_path,
+            method=method,
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception(
+            "DSAR upstream unavailable",
+            extra={"service": service_name, "operation": operation},
+        )
+        return None, error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message=f"{service_name} DSAR {operation} unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code != 200:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return None, error_response(
+            code=failure_code,
+            message=f"{service_name} DSAR {operation} failed",
+            request_id=request.request_id,
+            status=502,
+            details={"service": service_name, **details},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"ok": True}
+
+    return payload if isinstance(payload, dict) else {"ok": True}, None
+
+
+def _call_dsar_export_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="export",
+        method="GET",
+        failure_code="DSAR_EXPORT_FAILED",
+    )
+
+
+def _call_dsar_erase_service(
+    request: HttpRequest,
+    ctx,
+    *,
+    service_name: str,
+    upstream_setting: str,
+    upstream_path: str,
+) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+    return _call_dsar_service(
+        request,
+        ctx,
+        service_name=service_name,
+        upstream_setting=upstream_setting,
+        upstream_path=upstream_path,
+        operation="erase",
+        method="POST",
+        failure_code="DSAR_ERASE_FAILED",
+    )
+
+
+def _delete_identity_account(request: HttpRequest, ctx) -> HttpResponse | None:
+    upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(
+        settings,
+        "ID_BASE_URL",
+        "",
+    )
+    if not upstream:
+        return error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID upstream is not configured",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path="auth/me",
+            method="DELETE",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers=_account_context_headers(request, ctx),
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception("Identity account deletion failed")
+        return error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID service unavailable",
+            request_id=request.request_id,
+            status=502,
+        )
+
+    if resp.status_code not in {200, 204}:
+        details: dict[str, Any] = {}
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+        except Exception:
+            details = {}
+        return error_response(
+            code="ACCOUNT_DELETE_FAILED",
+            message="Identity account deletion failed",
+            request_id=request.request_id,
+            status=502,
+            details=details,
+        )
+
+    return None
 
 
 @router.api_operation(
@@ -2498,7 +2162,13 @@ def proxy_account(request: HttpRequest, path: str):
     )
 
 
-def _proxy_public_auth_path(request: HttpRequest, path: str):
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/auth/{path:path}",
+    auth=None,  # Auth endpoints are often public (login)
+)
+def proxy_auth(request: HttpRequest, path: str):
+    # We don't use _proxy_group because it requires auth
     upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(
         settings,
         "ID_BASE_URL",
@@ -2511,12 +2181,12 @@ def _proxy_public_auth_path(request: HttpRequest, path: str):
             request_id=getattr(request, "request_id", None),
             status=502,
         )
-
+    
     body = request.body or b""
     try:
         resp = proxy_request(
             upstream_base_url=upstream,
-            upstream_path=f"auth/{path}",
+            upstream_path=f"auth/{path}",  # ID service exposes /auth/
             method=request.method,
             query_string=request.META.get("QUERY_STRING", ""),
             body=body,
@@ -2534,123 +2204,11 @@ def _proxy_public_auth_path(request: HttpRequest, path: str):
             status=502,
         )
 
-    content_type = resp.headers.get("content-type", "application/json")
-    response = HttpResponse(
+    return HttpResponse(
         resp.content,
         status=resp.status_code,
-        content_type=content_type,
+        content_type=resp.headers.get("content-type", "application/json"),
     )
-
-    if resp.status_code >= 400:
-        if path == "logout":
-            auth_ctx = getattr(request, "auth_ctx", None)
-            if auth_ctx:
-                SessionStore().revoke(auth_ctx.session_id)
-            _clear_bff_session_cookie(response)
-        return response
-
-    if path == "logout":
-        auth_ctx = getattr(request, "auth_ctx", None)
-        if auth_ctx:
-            SessionStore().revoke(auth_ctx.session_id)
-        _clear_bff_session_cookie(response)
-        return response
-
-    if path not in HEADLESS_AUTH_SESSION_PATHS:
-        return response
-
-    tenant = _resolve_auth_tenant(request)
-
-    payload: dict[str, Any] | None = None
-    if "json" in content_type.lower():
-        try:
-            data = resp.json()
-        except Exception:
-            data = None
-        if isinstance(data, dict):
-            payload = data
-
-    principal = _resolve_auth_principal(
-        request,
-        upstream=upstream,
-        response_headers=resp.headers,
-        payload=payload,
-    )
-    if not principal:
-        logger.warning(
-            "Headless auth succeeded but BFF could not establish session",
-            extra={
-                "request_id": request.request_id,
-                "path": path,
-                "status_code": resp.status_code,
-            },
-        )
-        return response
-
-    try:
-        uuid.UUID(principal.user_id)
-    except (TypeError, ValueError, AttributeError):
-        logger.warning(
-            "Headless auth returned invalid principal user id",
-            extra={
-                "request_id": request.request_id,
-                "path": path,
-                "user_id": principal.user_id,
-            },
-        )
-        return error_response(
-            code="UPSTREAM_INVALID_PRINCIPAL",
-            message="Auth service returned an invalid session principal",
-            request_id=request.request_id,
-            status=502,
-        )
-
-    ttl = _resolve_auth_ttl(payload)
-    session = SessionStore().create(
-        tenant_id=str(tenant.id),
-        user_id=principal.user_id,
-        master_flags=principal.master_flags,
-        ttl=ttl,
-    )
-
-    if payload is not None:
-        sanitized_payload = _sanitize_auth_success_payload(payload)
-        response = HttpResponse(
-            json.dumps(sanitized_payload, separators=(",", ":")).encode("utf-8"),
-            status=resp.status_code,
-            content_type=content_type,
-        )
-
-    _set_bff_session_cookie(
-        response,
-        session_id=session.session_id,
-        ttl=ttl,
-    )
-    return response
-
-
-@router.post("/auth/login", auth=None)
-def proxy_auth_login_headless(request: HttpRequest):
-    return _proxy_public_auth_path(request, "login")
-
-
-@router.post("/auth/signup", auth=None)
-def proxy_auth_signup_headless(request: HttpRequest):
-    return _proxy_public_auth_path(request, "signup")
-
-
-@router.post("/auth/passkeys/login/complete", auth=None)
-def proxy_auth_passkey_login_complete(request: HttpRequest):
-    return _proxy_public_auth_path(request, "passkeys/login/complete")
-
-
-@router.api_operation(
-    ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    "/auth/{path:path}",
-    auth=None,
-)
-def proxy_auth(request: HttpRequest, path: str):
-    return _proxy_public_auth_path(request, path)
 
 
 ########################################

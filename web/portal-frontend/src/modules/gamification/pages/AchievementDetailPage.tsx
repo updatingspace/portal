@@ -54,6 +54,8 @@ export const AchievementDetailPage: React.FC = () => {
   });
 
   const grants = grantsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const publishedGrants = grants.filter((grant) => grant.visibility === 'public').length;
+  const privateGrants = grants.filter((grant) => grant.visibility === 'private').length;
 
   const { mutateAsync: createGrant, isPending: isGranting } = useCreateGrant();
   const { mutateAsync: revokeGrant, isPending: isRevoking } = useRevokeGrant();
@@ -72,6 +74,15 @@ export const AchievementDetailPage: React.FC = () => {
         template: (item) => <Text variant="body-2">{item.recipientId}</Text>,
       },
       {
+        id: 'reason',
+        name: 'Причина',
+        template: (item) => (
+          <Text variant="caption-2" color="secondary">
+            {item.reason?.trim() || 'Не указана'}
+          </Text>
+        ),
+      },
+      {
         id: 'issued',
         name: 'Выдано',
         template: (item) => <Text variant="caption-2">{formatDate(item.createdAt)}</Text>,
@@ -81,7 +92,7 @@ export const AchievementDetailPage: React.FC = () => {
         name: 'Видимость',
         template: (item) => (
           <Label size="xs" theme={item.visibility === 'public' ? 'success' : 'warning'}>
-            {item.visibility}
+            {item.visibility === 'public' ? 'Публично' : 'Приватно'}
           </Label>
         ),
       },
@@ -156,9 +167,9 @@ export const AchievementDetailPage: React.FC = () => {
         <>
           <div className="gamification-header">
             <div className="gamification-header__text">
-              <Text variant="header-1">Achievement</Text>
+              <Text variant="header-1">Карточка ачивки</Text>
               <Text variant="body-2" color="secondary">
-                Детальная карточка и выдачи.
+                Детальный контент, выдачи и контроль видимости.
               </Text>
             </div>
             <div className="gamification-toolbar">
@@ -202,12 +213,12 @@ export const AchievementDetailPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="gamification-form__aside">
-                  <Label size="s">{achievement.status}</Label>
+                  <Label size="s">{achievement.status === 'published' ? 'Опубликовано' : achievement.status}</Label>
                   <Text variant="caption-2" color="secondary">
-                    Category: {achievement.category}
+                    Категория: {achievement.category || 'Без категории'}
                   </Text>
                   <Text variant="caption-2" color="secondary">
-                    Updated: {formatDate(achievement.updatedAt)}
+                    Обновлено: {formatDate(achievement.updatedAt)}
                   </Text>
                 </div>
               </div>
@@ -215,6 +226,21 @@ export const AchievementDetailPage: React.FC = () => {
               <Text variant="body-2">Ачивка не найдена.</Text>
             )}
           </Card>
+
+          <div className="gamification-kpis">
+            <Card view="filled" className="gamification-kpi-card">
+              <Text variant="caption-2" color="secondary">Всего выдач в выборке</Text>
+              <Text variant="header-2">{grants.length}</Text>
+            </Card>
+            <Card view="filled" className="gamification-kpi-card">
+              <Text variant="caption-2" color="secondary">Публичные</Text>
+              <Text variant="header-2">{publishedGrants}</Text>
+            </Card>
+            <Card view="filled" className="gamification-kpi-card">
+              <Text variant="caption-2" color="secondary">Приватные</Text>
+              <Text variant="header-2">{privateGrants}</Text>
+            </Card>
+          </div>
 
           {canAssign && (
             <Card view="filled">
@@ -287,7 +313,7 @@ export const AchievementDetailPage: React.FC = () => {
 
           <Card view="filled">
             <div className="gamification-toolbar">
-              <Text variant="subheader-2">Grants</Text>
+              <Text variant="subheader-2">История выдач</Text>
               <Select
                 value={[visibilityFilter]}
                 options={VISIBILITY_OPTIONS}

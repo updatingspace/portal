@@ -31,6 +31,7 @@ ID_MODE="local"
 # OIDC client variables are environment-driven in both modes.
 BFF_OIDC_CLIENT_SECRET="${BFF_OIDC_CLIENT_SECRET:-}"
 BFF_OIDC_CLIENT_ID="${BFF_OIDC_CLIENT_ID:-}"
+BFF_UPDSPACEID_CALLBACK_SECRET="${BFF_UPDSPACEID_CALLBACK_SECRET:-}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -346,7 +347,8 @@ print_urls() {
         echo "    python src/manage.py issue_admin_magic_link --email dev@aef.local"
     else
         echo "Remote ID mode:"
-        echo "  configure BFF_OIDC_CLIENT_ID and BFF_OIDC_CLIENT_SECRET in .env"
+        echo "  configure BFF_OIDC_CLIENT_ID, BFF_OIDC_CLIENT_SECRET,"
+        echo "  and BFF_UPDSPACEID_CALLBACK_SECRET in .env"
         echo "  ensure redirect URI is registered in id.updspace.com:"
         echo "    http://portal.localhost/api/v1/auth/callback"
     fi
@@ -376,9 +378,14 @@ main() {
             export BFF_OIDC_CLIENT_SECRET
             log_warn "BFF_OIDC_CLIENT_SECRET is not set, using local default."
         fi
+        if [[ -z "$BFF_UPDSPACEID_CALLBACK_SECRET" ]]; then
+            BFF_UPDSPACEID_CALLBACK_SECRET="portal-dev-callback-secret"
+            export BFF_UPDSPACEID_CALLBACK_SECRET
+            log_warn "BFF_UPDSPACEID_CALLBACK_SECRET is not set, using local default."
+        fi
     else
-        if [[ -z "$BFF_OIDC_CLIENT_ID" || -z "$BFF_OIDC_CLIENT_SECRET" ]]; then
-            log_error "Remote mode requires BFF_OIDC_CLIENT_ID and BFF_OIDC_CLIENT_SECRET in environment."
+        if [[ -z "$BFF_OIDC_CLIENT_ID" || -z "$BFF_OIDC_CLIENT_SECRET" || -z "$BFF_UPDSPACEID_CALLBACK_SECRET" ]]; then
+            log_error "Remote mode requires BFF_OIDC_CLIENT_ID, BFF_OIDC_CLIENT_SECRET, and BFF_UPDSPACEID_CALLBACK_SECRET in environment."
             exit 1
         fi
     fi

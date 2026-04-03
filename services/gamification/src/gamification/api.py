@@ -113,21 +113,10 @@ def _has_perm_ctx(ctx: InternalContext, permission_key: str) -> bool:
     )
 
 
-def _has_system_admin_flag(master_flags: object) -> bool:
-    if isinstance(master_flags, dict):
-        return bool(
-            master_flags.get("system_admin") is True
-            or master_flags.get("is_system_admin") is True
-        )
-    if isinstance(master_flags, (set, frozenset, list, tuple)):
-        return "system_admin" in master_flags or "is_system_admin" in master_flags
-    return False
-
-
 def _ensure_dsar_subject(ctx: InternalContext, target_user_id: UUID) -> None:
     if str(ctx.user_id) == str(target_user_id):
         return
-    if _has_system_admin_flag(ctx.master_flags):
+    if bool(ctx.master_flags.get("system_admin")):
         return
     raise HttpError(403, cast(Any, error_payload("FORBIDDEN", "DSAR access denied")))
 

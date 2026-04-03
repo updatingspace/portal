@@ -3,6 +3,7 @@ import React, { useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSettingsData } from './model/useSettingsData';
 import { LinksSection } from './ui/LinksSection';
+import { PersonalizationSection } from './ui/PersonalizationSection';
 import { ProfileSection } from './ui/ProfileSection';
 import { SecuritySection } from './ui/SecuritySection';
 import { SecuritySectionSkeleton } from './ui/SecuritySectionSkeleton';
@@ -44,6 +45,8 @@ export const SettingsPage: React.FC = () => {
       <h1 className="h3 fw-semibold mb-4">Settings</h1>
 
       <ProfileSection user={user} idPortalUrl={ID_PORTAL_BASE_URL} />
+
+      <PersonalizationSection />
 
       {loadingMfa ? (
         <SecuritySectionSkeleton />

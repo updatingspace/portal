@@ -87,21 +87,10 @@ def _parse_iso_datetime(value: str, *, code: str, message: str) -> datetime:
         raise HttpError(400, cast(Any, {"code": code, "message": message})) from exc
 
 
-def _has_system_admin_flag(master_flags: object) -> bool:
-    if isinstance(master_flags, dict):
-        return bool(
-            master_flags.get("system_admin") is True
-            or master_flags.get("is_system_admin") is True
-        )
-    if isinstance(master_flags, (set, frozenset, list, tuple)):
-        return "system_admin" in master_flags or "is_system_admin" in master_flags
-    return False
-
-
 def _ensure_dsar_subject(ctx: InternalContext, target_user_id: UUID) -> None:
     if str(ctx.user_id) == str(target_user_id):
         return
-    if _has_system_admin_flag(ctx.master_flags):
+    if bool(ctx.master_flags.get("system_admin")):
         return
     raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "DSAR access denied"}))
 
@@ -598,17 +587,3 @@ def event_ics(request, event_id: str):
 
 
 api.add_router("/events", router)
-
-
-# Root endpoint for backward compatibility with BFF
-@api.get("/", response=EventListOut, tags=["events"])
-def list_events_root(
-    request,
-    from_: str | None = Query(None, alias="from"),
-    to: str | None = Query(None, alias="to"),
-    scope_type: str | None = Query(None, alias="scope_type"),
-    scope_id: str | None = Query(None, alias="scope_id"),
-    limit: int = Query(100, ge=1, le=250),
-    offset: int = Query(0, ge=0),
-):
-    return list_events(request, from_, to, scope_type, scope_id, limit, offset)

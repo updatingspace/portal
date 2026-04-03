@@ -393,6 +393,12 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
 
     let response: Response;
     try {
+      const serializedBody =
+        options.body === undefined
+          ? undefined
+          : isFormDataBody || typeof options.body === 'string'
+            ? (options.body as BodyInit)
+            : JSON.stringify(options.body);
       response = await fetch(url, {
         ...options,
         headers: {
@@ -402,12 +408,7 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
           ...(options.headers ?? {}),
         },
         credentials: 'include',
-        body:
-          options.body !== undefined
-            ? isFormDataBody
-              ? options.body
-              : JSON.stringify(options.body)
-            : undefined,
+        body: serializedBody,
       });
     } catch (error) {
       lastError = error as Error;

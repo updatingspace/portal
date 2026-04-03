@@ -6,41 +6,23 @@ export type SessionMe = {
   portal_profile?: Record<string, unknown> | null;
   id_profile?: Record<string, unknown> | null;
   tenant_membership?: Record<string, unknown> | null;
+  available_tenants?: Array<{ id: string; slug: string }>;
   id_frontend_base_url?: string | null;
   request_id?: string;
 };
 
-export type SessionMeResult = {
-  data: SessionMe | null;
-  unauthorized: boolean;
-  tenantNotSelected: boolean;
-};
-
-export async function fetchSessionMeResult(): Promise<SessionMeResult> {
-  const res = await requestResult<SessionMe>('/session/me', { method: 'GET' });
-  if (res.ok) {
-    return { data: res.data, unauthorized: false, tenantNotSelected: false };
-  }
-
-  if (res.status === 401) {
-    return { data: null, unauthorized: true, tenantNotSelected: false };
-  }
-
-  if (res.status === 403 && res.error.code === 'TENANT_NOT_SELECTED') {
-    return { data: null, unauthorized: false, tenantNotSelected: true };
-  }
-
-  throw new ApiError(res.error.message ?? 'Failed to load /session/me', {
-    status: res.status,
-    kind: res.status >= 500 ? 'server' : res.status === 404 ? 'not_found' : 'unknown',
-    details: res.error.details,
-    code: res.error.code,
-  });
-}
-
 export async function fetchSessionMe(): Promise<SessionMe | null> {
-  const result = await fetchSessionMeResult();
-  return result.data;
+  const res = await requestResult<SessionMe>('/session/me', { method: 'GET' });
+  if (!res.ok) {
+    if (res.status === 401) return null;
+    throw new ApiError(res.error.message ?? 'Failed to load /session/me', {
+      status: res.status,
+      kind: res.status === 403 ? 'forbidden' : res.status >= 500 ? 'server' : 'unknown',
+      details: res.error.details,
+      code: res.error.code,
+    });
+  }
+  return res.data;
 }
 
 export type PortalProfile = {
@@ -50,7 +32,6 @@ export type PortalProfile = {
   displayName?: string | null;
   firstName: string;
   lastName: string;
-  avatarUrl?: string | null;
   bio?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -85,8 +66,6 @@ type RawPortalProfile = {
   firstName?: string;
   last_name?: string;
   lastName?: string;
-  avatar_url?: string | null;
-  avatarUrl?: string | null;
   bio?: string | null;
   created_at?: string;
   createdAt?: string;
@@ -107,7 +86,6 @@ const mapPortalProfile = (raw: RawPortalProfile): PortalProfile => ({
   displayName: raw.displayName ?? raw.display_name ?? null,
   firstName: raw.firstName ?? raw.first_name ?? '',
   lastName: raw.lastName ?? raw.last_name ?? '',
-  avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
   bio: raw.bio ?? null,
   createdAt: raw.createdAt ?? raw.created_at ?? '',
   updatedAt: raw.updatedAt ?? raw.updated_at ?? '',

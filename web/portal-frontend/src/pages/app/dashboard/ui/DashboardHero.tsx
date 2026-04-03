@@ -15,7 +15,7 @@ export const DashboardHero: React.FC<DashboardHeroProps> = ({
   <Card view="filled" className="mb-4 p-4">
     <div className="d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3">
       <div>
-        <Text variant="kicker" className="text-uppercase mb-2 text-muted">
+        <Text variant="caption-2" className="text-uppercase mb-2 text-muted">
           Welcome back
         </Text>
         <Text variant="header-1" className="mb-2">

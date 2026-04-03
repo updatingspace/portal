@@ -108,6 +108,7 @@ def has_permission(
         "X-Tenant-Id": str(tenant_id),
         "X-Tenant-Slug": str(tenant_slug),
         "X-User-Id": str(user_id),
+        "X-Forwarded-Proto": "https",
         "X-Master-Flags": ",".join(sorted(master_flags)),
         "X-Updspace-Timestamp": ts,
         "X-Updspace-Signature": sig,

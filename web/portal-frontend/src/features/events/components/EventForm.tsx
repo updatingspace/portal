@@ -645,17 +645,17 @@ const EventFormInner: React.FC<EventFormProps> = ({ event, onCancel, onSuccess }
                   {copy.labels.startsAt}
                 </Text>
                 <div className="mt-2 grid gap-3">
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="date"
                     value={toDateInputValue(startDate)}
-                    onUpdate={handleStartDateUpdate}
+                    onChange={(event) => handleStartDateUpdate(event.target.value)}
                   />
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="time"
                     value={startTime}
-                    onUpdate={handleStartTimeUpdate}
+                    onChange={(event) => handleStartTimeUpdate(event.target.value)}
                     placeholder={copy.placeholders.time}
                   />
                 </div>
@@ -666,17 +666,17 @@ const EventFormInner: React.FC<EventFormProps> = ({ event, onCancel, onSuccess }
                   {copy.labels.endsAt}
                 </Text>
                 <div className="mt-2 grid gap-3">
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="date"
                     value={toDateInputValue(endDate)}
-                    onUpdate={handleEndDateUpdate}
+                    onChange={(event) => handleEndDateUpdate(event.target.value)}
                   />
-                  <TextInput
-                    size="l"
+                  <input
+                    className="g-text-input__control g-text-input__control_size_l"
                     type="time"
                     value={endTime}
-                    onUpdate={handleEndTimeUpdate}
+                    onChange={(event) => handleEndTimeUpdate(event.target.value)}
                     placeholder={copy.placeholders.time}
                   />
                 </div>

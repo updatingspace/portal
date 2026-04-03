@@ -1,31 +1,118 @@
 ---
-title: Incident and Breach Response
+title: Incident & Breach Response Policy
+description: Внутренний порядок реагирования на инциденты ИБ и нарушения персональных данных
 ---
 
-# Incident and Breach Response
+# Incident & Breach Response Policy
 
-## Objective
+## 1. Purpose
 
-To detect, contain, assess, document, and remediate security or privacy incidents affecting UpdSpace.
+Этот документ устанавливает порядок выявления, оценки, локализации, расследования и уведомления об инцидентах информационной безопасности и нарушениях, затрагивающих персональные данные.
 
-## High-level flow
+## 2. Roles
 
-1. detect the incident;
-2. triage severity and affected systems;
-3. contain active impact;
-4. preserve evidence and logs;
-5. assess scope of affected personal data;
-6. notify where legally required;
-7. remediate root cause;
-8. record lessons learned.
+Поскольку оператором проекта является физическое лицо, итоговая ответственность за принятие решений лежит на **Mihhail Matvejev**.
 
-## Systems that require extra attention
+Основной privacy/security contact:
 
-- BFF session and auth flows;
-- Access authorization and admin changes;
-- Activity connectors and external account links;
-- any dataset containing user participation history.
+- **privacy@updspace.com**
 
-## Notification note
+## 3. What counts as an incident
 
-Whether a notification is legally required depends on jurisdiction, materiality, affected data classes, and actual risk to individuals. This policy is a technical and operational baseline, not a final jurisdiction-specific legal determination.
+Инцидентом считается, в частности:
+
+- несанкционированный доступ к персональным данным;
+- утечка, изменение, удаление или блокирование данных;
+- компрометация session/cookie/security material;
+- взлом tenant boundary;
+- несанкционированная публикация private data;
+- компрометация внешней интеграции, затрагивающей user data.
+
+## 4. Initial response
+
+При обнаружении инцидента нужно:
+
+1. зафиксировать время обнаружения;
+2. присвоить incident ID;
+3. локализовать инцидент и остановить дальнейшее распространение;
+4. сохранить доказательства и логи;
+5. оценить, затрагиваются ли персональные данные;
+6. определить категории субъектов, объем и риск последствий.
+
+## 5. Severity triage
+
+### Low
+
+- инцидент не затронул personal data;
+- нет признаков external exposure.
+
+### Medium
+
+- затронут ограниченный набор personal data;
+- риск для субъектов умеренный и контролируемый.
+
+### High
+
+- затронуты credentials, security material, external identifiers или private user content;
+- вероятен существенный риск для прав и свобод субъектов;
+- есть признак массовой или межтенантной компрометации.
+
+## 6. Notification rules
+
+### GDPR track
+
+Если инцидент является personal data breach по GDPR, оператор:
+
+- оценивает необходимость уведомления supervisory authority;
+- при необходимости направляет уведомление **не позднее 72 часов** с момента осведомленности;
+- уведомляет affected individuals без неоправданной задержки, если breach likely results in a high risk to their rights and freedoms.
+
+### Russian track
+
+Если инцидент подпадает под российские обязательства по уведомлению, оператор должен:
+
+- проверить обязанность уведомления Роскомнадзора;
+- действовать по applicable statutory timeline для первичного уведомления и последующей информации по результатам расследования.
+
+Операционная цель для этого проекта:
+
+- первичный legal/privacy triage: в течение `24` часов;
+- предварительное решение об уведомлении: в течение `48` часов;
+- complete incident memo: не позднее `72` часов, если это требуется по применимому праву.
+
+## 7. Investigation checklist
+
+- какие системы затронуты;
+- какая категория данных затронута;
+- какие пользователи и юрисдикции затронуты;
+- root cause;
+- окно компрометации;
+- были ли данные фактически exfiltrated или лишь доступны;
+- какие немедленные меры приняты;
+- какие долгосрочные corrective actions нужны.
+
+## 8. Communication principles
+
+- не преуменьшать инцидент;
+- не обещать факты, которые еще не установлены;
+- не скрывать materially relevant risk;
+- все внешние уведомления выпускать в согласованной форме.
+
+## 9. Evidence and records
+
+Для каждого инцидента хранить:
+
+- incident log;
+- timeline;
+- copies of notifications;
+- technical evidence;
+- remediation record;
+- post-incident review.
+
+## 10. Post-incident review
+
+После закрытия инцидента оператор обязан:
+
+- определить corrective and preventive actions;
+- обновить threat model, privacy docs и retention controls при необходимости;
+- проверить, не требуется ли дополнительное уведомление или DSAR support.

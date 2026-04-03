@@ -19,6 +19,9 @@ describe('Auth module', () => {
   let originalLocation: Location;
   let mockAssign: ReturnType<typeof vi.fn>;
 
+  const loadAuthModule = () => import('./auth');
+  const getAssignedUrl = () => String(mockAssign.mock.calls[0][0]);
+
   beforeEach(() => {
     originalLocation = window.location;
     mockAssign = vi.fn();
@@ -45,43 +48,58 @@ describe('Auth module', () => {
   });
 
   describe('redirectToLogin', () => {
-    it('should redirect to /api/v1/auth/login with next param', async () => {
-      // Dynamic import to get fresh module with mocked env
-      const { redirectToLogin } = await import('./auth');
+    it('should call location.assign when redirecting to login', async () => {
+      const { redirectToLogin } = await loadAuthModule();
 
       redirectToLogin('/dashboard');
 
       expect(mockAssign).toHaveBeenCalledTimes(1);
-      const calledUrl = mockAssign.mock.calls[0][0];
+    });
+
+    it('should include login path in assigned URL', async () => {
+      const { redirectToLogin } = await loadAuthModule();
+
+      redirectToLogin('/dashboard');
+
+      expect(mockAssign).toHaveBeenCalledTimes(1);
+      const calledUrl = getAssignedUrl();
       expect(calledUrl).toContain('/api/v1/auth/login');
+    });
+
+    it('should include encoded explicit next path in assigned URL', async () => {
+      const { redirectToLogin } = await loadAuthModule();
+
+      redirectToLogin('/dashboard');
+
+      expect(mockAssign).toHaveBeenCalledTimes(1);
+      const calledUrl = getAssignedUrl();
       expect(calledUrl).toContain('next=%2Fdashboard');
     });
 
     it('should use current path as next when not specified', async () => {
-      const { redirectToLogin } = await import('./auth');
+      const { redirectToLogin } = await loadAuthModule();
 
       redirectToLogin();
 
       expect(mockAssign).toHaveBeenCalledTimes(1);
-      const calledUrl = mockAssign.mock.calls[0][0];
+      const calledUrl = getAssignedUrl();
       expect(calledUrl).toContain('next=%2Fcurrent-page%3Ffoo%3Dbar');
     });
 
-    it('should build correct URL for relative login path', async () => {
-      const { LOGIN_PATH } = await import('./auth');
-
-      // Default LOGIN_PATH should be /api/v1/auth/login
+    it('should expose default relative login path constant', async () => {
+      const { LOGIN_PATH } = await loadAuthModule();
       expect(LOGIN_PATH).toBe('/api/v1/auth/login');
     });
   });
 
   describe('buildLoginUrl', () => {
-    it('should construct URL with next parameter', async () => {
-      const { redirectToLogin } = await import('./auth');
+    it('should construct URL with provided next parameter', async () => {
+      const { redirectToLogin } = await loadAuthModule();
 
       redirectToLogin('/app');
 
-      const calledUrl = mockAssign.mock.calls[0][0];
+      expect(mockAssign).toHaveBeenCalledTimes(1);
+      const calledUrl = getAssignedUrl();
       const url = new URL(calledUrl);
 
       expect(url.pathname).toBe('/api/v1/auth/login');

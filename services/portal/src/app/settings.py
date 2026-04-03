@@ -25,18 +25,6 @@ def read_env(name: str, default: str | None = None) -> str | None:
     return value or default
 
 
-def read_env_alias(
-    primary: str,
-    *aliases: str,
-    default: str | None = None,
-) -> str | None:
-    for name in (primary, *aliases):
-        value = read_env(name)
-        if value is not None:
-            return value
-    return default
-
-
 def read_env_flag(name: str, default: bool = False) -> bool:
     value = read_env(name)
     if value is None:
@@ -44,8 +32,8 @@ def read_env_flag(name: str, default: bool = False) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
-def read_env_list(name: str, *aliases: str) -> list[str]:
-    value = read_env_alias(name, *aliases)
+def read_env_list(name: str) -> list[str]:
+    value = read_env(name)
     if value is None:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -68,7 +56,7 @@ def require_env(name: str, *, insecure_default: str | None = None) -> str:
 
 
 def read_allowed_hosts() -> list[str]:
-    hosts = read_env_list("ALLOWED_HOSTS", "DJANGO_ALLOWED_HOSTS")
+    hosts = read_env_list("ALLOWED_HOSTS")
     if not hosts:
         if ALLOW_INSECURE_DEFAULTS:
             return ["*"]
@@ -135,12 +123,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = read_env_flag("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
-SECURE_REDIRECT_EXEMPT = [
-    r"^api/v1/",
-    r"^health/?$",
-    r"^readiness/?$",
-    r"^metrics/?$",
-]
 SECURE_HSTS_SECONDS = int(
     read_env("DJANGO_SECURE_HSTS_SECONDS", "0" if DEBUG else "31536000") or "0"
 )

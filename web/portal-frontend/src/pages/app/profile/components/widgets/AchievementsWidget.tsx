@@ -25,7 +25,12 @@ export const AchievementsWidget: React.FC<AchievementsWidgetProps> = ({ items })
       ) : (
         <div className="profile-widget__list">
           {items.slice(0, 5).map((item) => (
-            <Text key={item.id} variant="body-2">{item.title}</Text>
+            <div key={item.id} className="profile-widget__achievement-item">
+              <Text variant="body-2">{item.title}</Text>
+              {item.subtitle && (
+                <Text variant="caption-2" color="secondary">{item.subtitle}</Text>
+              )}
+            </div>
           ))}
         </div>
       )}

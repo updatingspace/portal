@@ -41,6 +41,7 @@ export type UpdspaceIdMembership = {
 export type SessionMe = {
   user: { id: string; master_flags: Record<string, unknown> };
   tenant?: { id: string; slug: string } | null;
+  feature_flags?: Record<string, boolean>;
   portal_profile?: unknown;
   id_profile?: {
     user?: UpdspaceIdUser | null;
@@ -100,24 +101,6 @@ const extractRetryAfterSeconds = (details: unknown): number | undefined => {
   return undefined;
 };
 
-const stripLegacySessionArtifacts = <T extends Record<string, unknown> | null | undefined>(
-  payload: T,
-): T => {
-  if (!payload) return payload;
-  const sanitized = { ...payload } as Record<string, unknown>;
-  delete sanitized.access_token;
-  delete sanitized.session_token;
-  delete sanitized.refresh_token;
-  if (sanitized.meta && typeof sanitized.meta === 'object') {
-    const meta = { ...(sanitized.meta as Record<string, unknown>) };
-    delete meta.access_token;
-    delete meta.session_token;
-    delete meta.refresh_token;
-    sanitized.meta = meta;
-  }
-  return sanitized as T;
-};
-
 export async function fetchFormToken(
   purpose: 'login' | 'register',
 ): Promise<{ token: string; expiresIn: number }> {
@@ -134,7 +117,7 @@ export async function headlessLogin(
   recovery_code?: string,
   form_token?: string,
 ): Promise<HeadlessLoginResult> {
-  const res = await requestResult<Record<string, unknown> & { user?: AccountProfile | null }>(
+  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
     '/auth/login',
     {
       method: 'POST',
@@ -151,11 +134,10 @@ export async function headlessLogin(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const sanitized = stripLegacySessionArtifacts(res.data);
   return {
     ok: true,
-    meta: sanitized,
-    user: (sanitized as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+    meta: res.data?.meta ?? res.data,
+    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
 }
 
@@ -165,7 +147,7 @@ export async function headlessSignup(
   password: string,
   form_token?: string,
 ): Promise<HeadlessLoginResult> {
-  const res = await requestResult<Record<string, unknown> & { user?: AccountProfile | null }>(
+  const res = await requestResult<AuthResponseMeta & { user?: AccountProfile | null }>(
     '/auth/signup',
     {
       method: 'POST',
@@ -187,20 +169,19 @@ export async function headlessSignup(
       retryAfterSeconds: extractRetryAfterSeconds(res.error.details),
     };
   }
-  const sanitized = stripLegacySessionArtifacts(res.data);
   return {
     ok: true,
-    meta: sanitized,
-    user: (sanitized as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
+    meta: res.data?.meta ?? res.data,
+    user: (res.data as { user?: AccountProfile | null } | null | undefined)?.user ?? null,
   };
 }
 
 export async function me(): Promise<AccountProfile | null> {
-  const res = await requestResult<{ user: AccountProfile | null }>('/account/me', {
+  const res = await requestResult<{ user: AccountProfile | null }>('/auth/me', {
     skipAuthClear: true,
   });
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && res.error.code === 'INVALID_OR_EXPIRED_TOKEN') {
       return null;
     }
     throw new ApiError(res.error.message ?? 'Не удалось получить профиль', {
@@ -220,43 +201,46 @@ export async function updateProfile(body: {
   first_name?: string;
   last_name?: string;
 }): Promise<OkOut> {
-  return request('/account/profile', { method: 'PATCH', body });
+  return request('/auth/profile', { method: 'PATCH', body });
 }
 
 export async function uploadAvatar(file: File): Promise<AvatarResponse> {
   const form = new FormData();
   form.append('avatar', file);
-  return request('/account/avatar', { method: 'POST', body: form });
+  return request('/auth/avatar', {
+    method: 'POST',
+    body: form,
+  });
 }
 
 export async function deleteAvatar(): Promise<AvatarResponse> {
-  return request('/account/avatar', { method: 'DELETE' });
+  return request('/auth/avatar', { method: 'DELETE' });
 }
 
 export async function getEmailStatus(): Promise<{ email: string; verified: boolean }> {
-  return request('/account/email');
+  return request('/auth/email');
 }
 
 export async function changeEmail(newEmail: string): Promise<OkOut> {
-  return request('/account/email/change', {
+  return request('/auth/email/change', {
     method: 'POST',
     body: { new_email: newEmail },
   });
 }
 
 export async function resendEmailVerification(): Promise<OkOut> {
-  return request('/account/email/resend', { method: 'POST' });
+  return request('/auth/email/resend', { method: 'POST' });
 }
 
 export async function changePassword(payload: {
   current_password: string;
   new_password: string;
 }): Promise<OkOut> {
-  return request('/account/change_password', { method: 'POST', body: payload });
+  return request('/auth/change_password', { method: 'POST', body: payload });
 }
 
 export async function listSessionsHeadless(): Promise<SessionRow[]> {
-  const data = await request<{ sessions?: SessionRow[] | null }>('/account/sessions');
+  const data = await request<{ sessions?: SessionRow[] | null }>('/auth/sessions');
   return Array.isArray(data.sessions) ? data.sessions : [];
 }
 
@@ -265,7 +249,7 @@ export async function revokeSessionHeadless(
   reason: string | null = null,
 ): Promise<{ ok: boolean; id?: string; revoked_reason?: string | null }> {
   const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-  return request(`/account/sessions/${id}${qs}`, {
+  return request(`/auth/sessions/${id}${qs}`, {
     method: 'DELETE',
   });
 }
@@ -274,7 +258,7 @@ export async function bulkRevokeSessionsHeadless(): Promise<{
   ok: boolean;
   revoked_ids?: string[];
 }> {
-  return request('/account/sessions/bulk', {
+  return request('/auth/sessions/bulk', {
     method: 'POST',
     body: { all_except_current: true, reason: 'bulk_except_current' },
   });
@@ -315,7 +299,7 @@ export async function beginPasskeyLogin(): Promise<{ request_options: PublicKeyR
 }
 
 export async function completePasskeyLogin(credential: WebAuthnAssertion): Promise<void> {
-  const res = await requestResult<Record<string, unknown>>(
+  const res = await requestResult<AuthResponseMeta>(
     '/auth/passkeys/login/complete',
     {
       method: 'POST',
@@ -334,13 +318,13 @@ export async function completePasskeyLogin(credential: WebAuthnAssertion): Promi
 }
 
 export async function logout(): Promise<void> {
-  await request('/logout', { method: 'POST' });
+  await request('/auth/logout', { method: 'POST' });
 }
 
 // ----- OAuth linking -----
 export async function getOAuthProviders(): Promise<{ id: string; name: string }[]> {
   const data = await request<{ providers: { id: string; name: string }[] }>(
-    '/account/oauth/providers',
+    '/auth/oauth/providers',
   );
   return data.providers ?? [];
 }
@@ -350,7 +334,7 @@ export async function getOAuthLink(
   nextPath: string,
 ): Promise<{ url: string; method: string }> {
   const data = await request<{ authorize_url: string; method: string }>(
-    `/account/oauth/link/${providerId}?next=${encodeURIComponent(nextPath)}`,
+    `/auth/oauth/link/${providerId}?next=${encodeURIComponent(nextPath)}`,
   );
   return { url: data.authorize_url, method: data.method };
 }
@@ -364,7 +348,7 @@ export type MfaStatus = {
 };
 
 export async function fetchMfaStatus(): Promise<MfaStatus> {
-  return request('/account/mfa/status');
+  return request('/auth/mfa/status');
 }
 
 export type TotpBegin = {
@@ -375,19 +359,19 @@ export type TotpBegin = {
 };
 
 export async function beginTotp(): Promise<TotpBegin> {
-  return request('/account/mfa/totp/begin', { method: 'POST' });
+  return request('/auth/mfa/totp/begin', { method: 'POST' });
 }
 
 export async function confirmTotp(code: string): Promise<{ ok: boolean; recovery_codes?: string[] | null }> {
-  return request('/account/mfa/totp/confirm', { method: 'POST', body: { code } });
+  return request('/auth/mfa/totp/confirm', { method: 'POST', body: { code } });
 }
 
 export async function disableTotp(): Promise<void> {
-  await request('/account/mfa/totp/disable', { method: 'POST' });
+  await request('/auth/mfa/totp/disable', { method: 'POST' });
 }
 
 export async function regenerateRecoveryCodes(): Promise<string[]> {
-  const data = await request<{ recovery_codes: string[] }>('/account/mfa/recovery/regenerate', {
+  const data = await request<{ recovery_codes: string[] }>('/auth/mfa/recovery/regenerate', {
     method: 'POST',
   });
   return data.recovery_codes ?? [];
@@ -429,7 +413,7 @@ export type AuthenticatorSummary = {
 };
 
 export async function passkeysBegin(passwordless = false): Promise<{ creation_options: PublicKeyCreationOptions }> {
-  return request('/account/passkeys/begin', { method: 'POST', body: { passwordless } });
+  return request('/auth/passkeys/begin', { method: 'POST', body: { passwordless } });
 }
 
 export async function passkeysComplete(payload: {
@@ -437,7 +421,7 @@ export async function passkeysComplete(payload: {
   credential: WebAuthnAttestation;
   passwordless?: boolean;
 }): Promise<{ ok: boolean; authenticator?: AuthenticatorSummary; recovery_codes?: string[] | null }> {
-  return request('/account/passkeys/complete', {
+  return request('/auth/passkeys/complete', {
     method: 'POST',
     body: {
       name: payload.name,
@@ -448,16 +432,16 @@ export async function passkeysComplete(payload: {
 }
 
 export async function listAuthenticators(): Promise<AuthenticatorSummary[]> {
-  const data = await request<{ authenticators: AuthenticatorSummary[] }>('/account/passkeys');
+  const data = await request<{ authenticators: AuthenticatorSummary[] }>('/auth/passkeys');
   return data.authenticators ?? [];
 }
 
 export async function deleteWebAuthnAuthenticators(_ids: string[]): Promise<void> {
-  await request('/account/passkeys/delete', { method: 'POST', body: { ids: _ids } });
+  await request('/auth/passkeys/delete', { method: 'POST', body: { ids: _ids } });
 }
 
 export async function renameWebAuthnAuthenticator(_id: string, _name: string): Promise<void> {
-  await request('/account/passkeys/rename', {
+  await request('/auth/passkeys/rename', {
     method: 'POST',
     body: { authenticator_id: _id, new_name: _name },
   });

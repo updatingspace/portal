@@ -32,7 +32,16 @@ vi.mock('./components/CreatePostComposer', () => ({
   ),
 }));
 
-const baseVm: ProfileHubVM = {
+const TEST_AUTH_USER = {
+  id: 'u-1',
+  username: 'test',
+  email: null,
+  displayName: 'Test User',
+  isSuperuser: false,
+  isStaff: false,
+} as const;
+
+const BASE_VM: ProfileHubVM = {
   viewer: {
     id: 'u-1',
     isSelf: true,
@@ -80,138 +89,98 @@ const baseVm: ProfileHubVM = {
   },
 };
 
+function createProfileHubData(
+  overrides: Partial<{
+    vm: ProfileHubVM;
+    isLoading: boolean;
+    isFeedLoading: boolean;
+    feedError: Error | null;
+    hasNextPage: boolean;
+    isFetchingNextPage: boolean;
+    fetchNextPage: ReturnType<typeof vi.fn>;
+    refetchFeed: ReturnType<typeof vi.fn>;
+  }> = {},
+) {
+  return {
+    vm: BASE_VM,
+    isLoading: false,
+    isFeedLoading: false,
+    feedError: null,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+    refetchFeed: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+function renderProfileHubPage() {
+  return renderWithProviders(<ProfileHubPage />, {
+    route: '/app/profile',
+    authUser: TEST_AUTH_USER,
+  });
+}
+
+function mockProfileHubData(
+  overrides: Partial<ReturnType<typeof createProfileHubData>> = {},
+) {
+  mockUseProfileHubData.mockReturnValue(createProfileHubData(overrides));
+}
+
 describe('ProfileHubPage', () => {
   beforeEach(() => {
     mockUseProfileSession.mockReturnValue({ sessionInfo: { tenant: { id: 't-1', slug: 'aef' }, user: { id: 'u-1' } } });
-    mockUseProfileHubData.mockReturnValue({
-      vm: baseVm,
-      isLoading: false,
-      isFeedLoading: false,
-      feedError: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetchFeed: vi.fn().mockResolvedValue(undefined),
-    });
+    mockProfileHubData();
     mockCreateNews.mockReset();
   });
 
   it('renders safely with partial data (no avatar/bio/widgets)', () => {
-    renderWithProviders(<ProfileHubPage />, {
-      route: '/app/profile',
-      authUser: {
-        id: 'u-1',
-        username: 'test',
-        email: null,
-        displayName: 'Test User',
-        isSuperuser: false,
-        isStaff: false,
-      },
-    });
+    renderProfileHubPage();
 
     expect(screen.getByRole('heading', { name: 'Test User' })).toBeInTheDocument();
     expect(screen.getByText('Добавьте описание профиля — так людям проще понять, кто вы.')).toBeInTheDocument();
   });
 
   it('shows disabled composer hint when post.create is missing', () => {
-    mockUseProfileHubData.mockReturnValue({
+    mockProfileHubData({
       vm: {
-        ...baseVm,
-        capabilities: { ...baseVm.capabilities, canCreatePost: false },
+        ...BASE_VM,
+        capabilities: { ...BASE_VM.capabilities, canCreatePost: false },
       },
-      isLoading: false,
-      isFeedLoading: false,
-      feedError: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetchFeed: vi.fn(),
     });
 
-    renderWithProviders(<ProfileHubPage />, {
-      route: '/app/profile',
-      authUser: {
-        id: 'u-1',
-        username: 'test',
-        email: null,
-        displayName: 'Test User',
-        isSuperuser: false,
-        isStaff: false,
-      },
-    });
+    renderProfileHubPage();
 
     expect(screen.getByText('У вас нет прав на публикацию в этом tenant’е. Обратитесь к администратору.')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Опубликовать' }).some((button) => button.hasAttribute('disabled'))).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'Опубликовать' })[0]).toBeDisabled();
   });
 
   it('renders no-permission block instead of feed when post.view missing', () => {
-    mockUseProfileHubData.mockReturnValue({
+    mockProfileHubData({
       vm: {
-        ...baseVm,
-        capabilities: { ...baseVm.capabilities, canViewPosts: false },
+        ...BASE_VM,
+        capabilities: { ...BASE_VM.capabilities, canViewPosts: false },
       },
-      isLoading: false,
-      isFeedLoading: false,
-      feedError: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetchFeed: vi.fn(),
     });
 
-    renderWithProviders(<ProfileHubPage />, {
-      route: '/app/profile',
-      authUser: {
-        id: 'u-1',
-        username: 'test',
-        email: null,
-        displayName: 'Test User',
-        isSuperuser: false,
-        isStaff: false,
-      },
-    });
+    renderProfileHubPage();
 
     expect(screen.getByText('У вас нет прав на просмотр публикаций в этом разделе.')).toBeInTheDocument();
   });
 
-  it('renders feed loading skeleton and feed error state', () => {
-    mockUseProfileHubData.mockReturnValueOnce({
-      vm: baseVm,
-      isLoading: false,
-      isFeedLoading: true,
-      feedError: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetchFeed: vi.fn(),
-    });
+  it('renders feed loading skeleton while feed is loading', () => {
+    mockProfileHubData({ isFeedLoading: true });
 
-    const { rerender, container } = renderWithProviders(<ProfileHubPage />, {
-      route: '/app/profile',
-      authUser: {
-        id: 'u-1',
-        username: 'test',
-        email: null,
-        displayName: 'Test User',
-        isSuperuser: false,
-        isStaff: false,
-      },
-    });
+    const { container } = renderProfileHubPage();
 
     expect(container.querySelectorAll('.profile-hub__post-skeleton').length).toBeGreaterThan(0);
+  });
 
-    mockUseProfileHubData.mockReturnValueOnce({
-      vm: baseVm,
-      isLoading: false,
-      isFeedLoading: false,
-      feedError: new Error('boom'),
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetchFeed: vi.fn(),
-    });
+  it('renders feed error state with retry action', () => {
+    mockProfileHubData({ feedError: new Error('boom') });
 
-    rerender(<ProfileHubPage />);
+    renderProfileHubPage();
+
     expect(screen.getByText('Не удалось загрузить ленту')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
   });

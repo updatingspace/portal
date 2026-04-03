@@ -10,7 +10,6 @@ def _encrypt_existing_values(apps, schema_editor):
     AccountLink = apps.get_model("activity", "AccountLink")
     RawEvent = apps.get_model("activity", "RawEvent")
 
-    # Run after the field type swap so ORM saves write encrypted values.
     for source in Source.objects.all().iterator(chunk_size=200):
         source.save(update_fields=["config_json"])
 
@@ -24,7 +23,7 @@ def _encrypt_existing_values(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("activity", "0005_alter_newscomment_created_at_and_more"),
+        ("activity", "0006_news_comment_threads_and_reactions"),
     ]
 
     operations = [

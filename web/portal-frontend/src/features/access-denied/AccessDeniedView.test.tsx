@@ -4,20 +4,28 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AccessDeniedView } from './AccessDeniedView';
 
+type AccessDeniedViewProps = React.ComponentProps<typeof AccessDeniedView>;
+
+function renderAccessDeniedView(overrides: Partial<AccessDeniedViewProps> = {}) {
+  const defaultProps: AccessDeniedViewProps = {
+    onHome: vi.fn(),
+    onCopyAdminMessage: vi.fn(),
+  };
+
+  return render(<AccessDeniedView {...defaultProps} {...overrides} />);
+}
+
 describe('AccessDeniedView', () => {
   it('renders fixed minimal copy and hides raw upstream strings', () => {
     const onHome = vi.fn();
 
-    render(
-      <AccessDeniedView
-        tenant={{ id: 'tenant-1', slug: 'aef' }}
-        requestId="req-42"
-        service="voting"
-        onHome={onHome}
-        onCopyAdminMessage={vi.fn()}
-        onCopyRequestId={vi.fn()}
-      />,
-    );
+    renderAccessDeniedView({
+      tenant: { id: 'tenant-1', slug: 'aef' },
+      requestId: 'req-42',
+      service: 'voting',
+      onHome,
+      onCopyRequestId: vi.fn(),
+    });
 
     expect(screen.getByRole('heading', { name: 'Доступ ограничен' })).toBeInTheDocument();
     expect(screen.getByText('У вашего аккаунта пока нет прав для просмотра этого раздела.')).toBeInTheDocument();
@@ -27,15 +35,11 @@ describe('AccessDeniedView', () => {
   });
 
   it('shows tenant with uuid and reason summary in technical details without HTTP status line', () => {
-    render(
-      <AccessDeniedView
-        tenant={{ id: '7cbf2b8c-58f3-4ef2-8b14-cdd7e1b0436d', slug: 'aef' }}
-        requestId="req-88"
-        reasonSummary="Недостаточно прав для role portal.viewer"
-        onHome={vi.fn()}
-        onCopyAdminMessage={vi.fn()}
-      />,
-    );
+    renderAccessDeniedView({
+      tenant: { id: '7cbf2b8c-58f3-4ef2-8b14-cdd7e1b0436d', slug: 'aef' },
+      requestId: 'req-88',
+      reasonSummary: 'Недостаточно прав для role portal.viewer',
+    });
 
     fireEvent.click(screen.getByText('Технические детали'));
 
@@ -47,14 +51,7 @@ describe('AccessDeniedView', () => {
   it('shows request id in bottom area and copies by button click', () => {
     const onCopyRequestId = vi.fn();
 
-    render(
-      <AccessDeniedView
-        requestId="req-77"
-        onHome={vi.fn()}
-        onCopyAdminMessage={vi.fn()}
-        onCopyRequestId={onCopyRequestId}
-      />,
-    );
+    renderAccessDeniedView({ requestId: 'req-77', onCopyRequestId });
 
     expect(screen.getAllByText('Request ID: req-77').length).toBeGreaterThan(0);
 
@@ -63,12 +60,7 @@ describe('AccessDeniedView', () => {
   });
 
   it('hides request id footer when request id is missing', () => {
-    render(
-      <AccessDeniedView
-        onHome={vi.fn()}
-        onCopyAdminMessage={vi.fn()}
-      />,
-    );
+    renderAccessDeniedView();
 
     expect(screen.queryByText(/Request ID:/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Скопировать Request ID/i })).not.toBeInTheDocument();
@@ -77,14 +69,11 @@ describe('AccessDeniedView', () => {
   it('has actions including copy message for admin', () => {
     const onCopyAdminMessage = vi.fn();
 
-    render(
-      <AccessDeniedView
-        onHome={vi.fn()}
-        onBack={vi.fn()}
-        showBackAction
-        onCopyAdminMessage={onCopyAdminMessage}
-      />,
-    );
+    renderAccessDeniedView({
+      onBack: vi.fn(),
+      showBackAction: true,
+      onCopyAdminMessage,
+    });
 
     expect(screen.getByRole('button', { name: 'На главную' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();

@@ -7,7 +7,8 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from activity.models import ActivityAuditEvent, Outbox, RawEvent
+from activity.audit import ActivityAuditEvent
+from activity.models import Outbox, RawEvent
 
 
 class Command(BaseCommand):

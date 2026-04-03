@@ -1,27 +1,89 @@
 ---
 title: Consent Texts
+description: Тексты согласий и чекбоксов для privacy-sensitive сценариев
 ---
 
 # Consent Texts
 
-Ниже приведены базовые тексты согласий и notices, которые можно использовать как canonical copy source для продукта и админских сценариев.
+Ниже приведены рекомендуемые тексты согласий. Их нужно внедрять только там, где согласие действительно является правильным legal basis.
 
-## 1. External account linking
+## 1. Общие правила
 
-> I understand that UpdSpace will connect the selected external account, retrieve data necessary for the chosen integration, and use it to generate activity, profile, or service features as described in the Privacy Notice.
+- не использовать consent для core service processing, если корректнее опереться на договор/законный интерес;
+- consent должен быть отдельным, конкретным, информированным и отзываемым;
+- отказ от optional consent не должен ломать базовый сервис;
+- для детей младше применимого цифрового возраста согласия нужен parent/guardian flow.
 
-## 2. Optional connector sync
+## 2. Consent: external account linking
 
-> I agree that UpdSpace may periodically synchronize activity from the connected source to update my feed, achievements, or related platform features until I disconnect the source.
+### UI label
 
-## 3. Cookie banner for non-essential cookies
+`Я хочу подключить внешний аккаунт и разрешаю UpdSpace Portal обрабатывать данные, необходимые для этой интеграции.`
 
-> UpdSpace uses essential cookies to keep the service secure and working. Optional cookies, if enabled, are used only with your consent and can be changed later in settings.
+### Short notice under checkbox
 
-## 4. Minor users notice
+`Это включает идентификатор подключаемого аккаунта, технические настройки интеграции и производные события активности, необходимые для работы функции. Согласие можно отозвать, отключив интеграцию или написав на privacy@updspace.com.`
 
-> If you are under the age required in your jurisdiction to consent on your own, do not use optional integrations or provide information beyond what is necessary without appropriate authorization from a parent or guardian.
+### Audit / backend note
 
-## Product note
+При получении этого consent нужно сохранять:
 
-Если продуктовый UX будет требовать granular consent per connector or per region, эти тексты нужно выносить в region-aware UI copy, но первичный source of truth должен оставаться здесь.
+- `lawful_basis=consent`
+- `consent_captured_at`
+- `captured_via=self_service_account_link`
+- `request_id`
+
+## 3. Consent: optional public sharing of linked external activity
+
+_Использовать только если позже появится отдельная настройка на публикацию внешней активности наружу._
+
+### UI label
+
+`Я разрешаю публиковать связанную с моим внешним аккаунтом активность другим пользователям в соответствии с выбранными настройками видимости.`
+
+### Notice
+
+`Без этого согласия интеграция может использоваться только для private / internal функций сервиса.`
+
+## 4. Explicit consent: exceptional cross-border transfer fallback
+
+_Не использовать как основной механизм для регулярного GDPR transfer compliance. Это запасной текст для исключительных случаев._
+
+### UI text
+
+`Я понимаю, что мои данные могут быть переданы и обработаны за пределами Европейской экономической зоны, в том числе в странах, для которых Европейская комиссия не приняла решение об адекватности. Я подтверждаю, что получил(а) информацию о возможных рисках такой передачи и даю явное согласие на такую передачу для указанной цели.`
+
+### Operational warning
+
+Этот текст не заменяет нормальный transfer governance. Для постоянной схемы трансграничной передачи нужны документированные safeguards.
+
+## 5. Age confirmation
+
+### Registration / application text
+
+`Подтверждаю, что мне исполнилось не менее 13 лет, либо у меня есть разрешение родителя или законного представителя на использование optional функций, для которых такое разрешение требуется по закону.`
+
+## 6. Parent / guardian consent template
+
+`Я, как родитель/законный представитель, разрешаю обработку персональных данных ребенка в объеме, необходимом для использования UpdSpace Portal и тех optional функций, для которых требуется согласие.`
+
+Сохранять:
+
+- ФИО родителя/представителя;
+- связь с ребенком;
+- дату и время согласия;
+- способ верификации;
+- юрисдикцию/применимое право;
+- версию notice/policy.
+
+## 7. Optional product updates / marketing
+
+_Использовать только если реально будет запущена рассылка._
+
+### Checkbox
+
+`Я хочу получать новости о продукте, обновления и анонсы по email.`
+
+### Notice
+
+`Это согласие не влияет на использование сервиса и может быть отозвано в любой момент через письмо на privacy@updspace.com или ссылку unsubscribe.`

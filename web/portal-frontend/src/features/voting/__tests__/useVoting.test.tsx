@@ -4,10 +4,8 @@
  * Tests for TanStack Query hooks in the voting feature.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
     usePolls,
@@ -26,6 +24,7 @@ import {
     createVoteCastPayload,
     createPoll,
 } from './fixtures';
+import { createQueryClientWrapper } from '../../../test/queryClient';
 
 // Mock the voting API
 vi.mock('../api/votingApi', async () => {
@@ -43,20 +42,20 @@ vi.mock('../api/votingApi', async () => {
 
 import * as votingApi from '../api/votingApi';
 
-// Create wrapper with QueryClient
-function createWrapper() {
-    const queryClient = new QueryClient({
-        defaultOptions: {
-            queries: {
-                retry: false,
-                gcTime: 0,
-            },
-        },
-    });
+const DEFAULT_POLL_ID = 'poll-1';
+const DEFAULT_CAST_VOTE_PAYLOAD = {
+    poll_id: DEFAULT_POLL_ID,
+    nomination_id: 'nom-1',
+    option_id: 'opt-1',
+};
+const RATE_LIMIT_INFO = {
+    retryAfter: 30,
+    limit: 10,
+    window: 60,
+} as const;
 
-    return ({ children }: { children: React.ReactNode }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
+function createWrapper() {
+    return createQueryClientWrapper();
 }
 
 describe('Voting Hooks', () => {
@@ -64,21 +63,19 @@ describe('Voting Hooks', () => {
         vi.clearAllMocks();
     });
 
-    afterEach(() => {
-        vi.resetAllMocks();
-    });
-
     describe('votingKeys', () => {
-        it('generates correct query keys', () => {
-            expect(votingKeys.all).toEqual(['voting']);
-            expect(votingKeys.polls()).toEqual(['voting', 'polls']);
-            expect(votingKeys.pollDetail('123')).toEqual(['voting', 'polls', 'detail', '123']);
-            expect(votingKeys.pollInfo('123')).toEqual(['voting', 'polls', 'info', '123']);
+        it.each([
+            ['all', () => votingKeys.all, ['voting']],
+            ['poll list', () => votingKeys.polls(), ['voting', 'polls']],
+            ['poll detail', () => votingKeys.pollDetail('123'), ['voting', 'polls', 'detail', '123']],
+            ['poll info', () => votingKeys.pollInfo('123'), ['voting', 'polls', 'info', '123']],
+        ])('returns %s key', (_name, getKey, expected) => {
+            expect(getKey()).toEqual(expected);
         });
     });
 
     describe('usePolls', () => {
-        it('fetches polls with default parameters', async () => {
+        it('returns polls data when request succeeds', async () => {
             const mockData = createPaginatedPolls(5);
             vi.mocked(votingApi.fetchPolls).mockResolvedValueOnce(mockData);
 
@@ -92,7 +89,20 @@ describe('Voting Hooks', () => {
             });
 
             expect(result.current.data).toEqual(mockData);
-            // Called with undefined params when no arguments passed
+        });
+
+        it('calls polls API without params when hook params are omitted', async () => {
+            vi.mocked(votingApi.fetchPolls).mockResolvedValueOnce(createPaginatedPolls(2));
+
+            const { result } = renderHook(
+                () => usePolls(),
+                { wrapper: createWrapper() }
+            );
+
+            await waitFor(() => {
+                expect(result.current.isSuccess).toBe(true);
+            });
+
             expect(votingApi.fetchPolls).toHaveBeenCalledWith(undefined);
         });
 
@@ -120,22 +130,9 @@ describe('Voting Hooks', () => {
             const error = new Error('Network error');
             vi.mocked(votingApi.fetchPolls).mockRejectedValue(error);
 
-            const queryClient = new QueryClient({
-                defaultOptions: {
-                    queries: {
-                        retry: false,
-                        gcTime: 0,
-                    },
-                },
-            });
-
-            const wrapper = ({ children }: { children: React.ReactNode }) => (
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            );
-
             const { result } = renderHook(
                 () => usePolls(undefined, { retry: false }),
-                { wrapper }
+                { wrapper: createWrapper() }
             );
 
             await waitFor(() => {
@@ -146,29 +143,12 @@ describe('Voting Hooks', () => {
         });
 
         it('handles rate limit error', async () => {
-            const rateLimitError = new RateLimitError('Too many requests', {
-                retryAfter: 30,
-                limit: 10,
-                window: 60,
-            });
+            const rateLimitError = new RateLimitError('Too many requests', RATE_LIMIT_INFO);
             vi.mocked(votingApi.fetchPolls).mockRejectedValueOnce(rateLimitError);
-
-            const queryClient = new QueryClient({
-                defaultOptions: {
-                    queries: {
-                        retry: false,
-                        gcTime: 0,
-                    },
-                },
-            });
-
-            const wrapper = ({ children }: { children: React.ReactNode }) => (
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            );
 
             const { result } = renderHook(
                 () => usePolls(),
-                { wrapper }
+                { wrapper: createWrapper() }
             );
 
             await waitFor(() => {
@@ -176,7 +156,7 @@ describe('Voting Hooks', () => {
             });
 
             expect(isRateLimitError(result.current.error)).toBe(true);
-            expect((result.current.error as RateLimitError).retryAfter).toBe(30);
+            expect((result.current.error as RateLimitError).retryAfter).toBe(RATE_LIMIT_INFO.retryAfter);
         });
     });
 
@@ -250,44 +230,38 @@ describe('Voting Hooks', () => {
     });
 
     describe('useCastVote', () => {
-        it('casts a vote successfully', async () => {
+        it('calls castVote with expected payload', async () => {
             const mockVote = createVoteCastPayload();
             vi.mocked(votingApi.castVote).mockResolvedValueOnce(mockVote);
 
-            const queryClient = new QueryClient({
-                defaultOptions: {
-                    queries: { retry: false, gcTime: 0 },
-                },
-            });
-
-            const wrapper = ({ children }: { children: React.ReactNode }) => (
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            );
-
             const { result } = renderHook(
                 () => useCastVote(),
-                { wrapper }
+                { wrapper: createWrapper() }
             );
 
             await act(async () => {
-                result.current.mutate({
-                    poll_id: 'poll-1',
-                    nomination_id: 'nom-1',
-                    option_id: 'opt-1',
-                });
+                result.current.mutate(DEFAULT_CAST_VOTE_PAYLOAD);
+            });
+
+            expect(votingApi.castVote).toHaveBeenCalled();
+            const callArgs = vi.mocked(votingApi.castVote).mock.calls[0][0];
+            expect(callArgs).toEqual(DEFAULT_CAST_VOTE_PAYLOAD);
+        });
+
+        it('reports success state when vote cast succeeds', async () => {
+            vi.mocked(votingApi.castVote).mockResolvedValueOnce(createVoteCastPayload());
+
+            const { result } = renderHook(
+                () => useCastVote(),
+                { wrapper: createWrapper() }
+            );
+
+            await act(async () => {
+                result.current.mutate(DEFAULT_CAST_VOTE_PAYLOAD);
             });
 
             await waitFor(() => {
                 expect(result.current.isSuccess).toBe(true);
-            });
-
-            // Check first argument only (payload)
-            expect(votingApi.castVote).toHaveBeenCalled();
-            const callArgs = vi.mocked(votingApi.castVote).mock.calls[0][0];
-            expect(callArgs).toEqual({
-                poll_id: 'poll-1',
-                nomination_id: 'nom-1',
-                option_id: 'opt-1',
             });
         });
 
@@ -295,27 +269,13 @@ describe('Voting Hooks', () => {
             const error = new Error('Already voted');
             vi.mocked(votingApi.castVote).mockRejectedValueOnce(error);
 
-            const queryClient = new QueryClient({
-                defaultOptions: {
-                    queries: { retry: false, gcTime: 0 },
-                },
-            });
-
-            const wrapper = ({ children }: { children: React.ReactNode }) => (
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            );
-
             const { result } = renderHook(
                 () => useCastVote(),
-                { wrapper }
+                { wrapper: createWrapper() }
             );
 
             await act(async () => {
-                result.current.mutate({
-                    poll_id: 'poll-1',
-                    nomination_id: 'nom-1',
-                    option_id: 'opt-1',
-                });
+                result.current.mutate(DEFAULT_CAST_VOTE_PAYLOAD);
             });
 
             await waitFor(() => {
@@ -330,27 +290,13 @@ describe('Voting Hooks', () => {
             vi.mocked(votingApi.castVote).mockResolvedValueOnce(mockVote);
             const onSuccess = vi.fn();
 
-            const queryClient = new QueryClient({
-                defaultOptions: {
-                    queries: { retry: false, gcTime: 0 },
-                },
-            });
-
-            const wrapper = ({ children }: { children: React.ReactNode }) => (
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            );
-
             const { result } = renderHook(
                 () => useCastVote({ onSuccess }),
-                { wrapper }
+                { wrapper: createWrapper() }
             );
 
             await act(async () => {
-                result.current.mutate({
-                    poll_id: 'poll-1',
-                    nomination_id: 'nom-1',
-                    option_id: 'opt-1',
-                });
+                result.current.mutate(DEFAULT_CAST_VOTE_PAYLOAD);
             });
 
             await waitFor(() => {
@@ -373,7 +319,7 @@ describe('Voting Hooks', () => {
             await act(async () => {
                 result.current.mutate({
                     voteId: 'vote-1',
-                    pollId: 'poll-1',
+                    pollId: DEFAULT_POLL_ID,
                 });
             });
 
@@ -387,7 +333,7 @@ describe('Voting Hooks', () => {
 });
 
 describe('RateLimitError', () => {
-    it('creates error with retry info', () => {
+    it('preserves message when RateLimitError is created', () => {
         const error = new RateLimitError('Rate limit exceeded', {
             retryAfter: 45,
             limit: 10,
@@ -395,21 +341,38 @@ describe('RateLimitError', () => {
         });
         
         expect(error.message).toBe('Rate limit exceeded');
-        expect(error.retryAfter).toBe(45);
-        expect(error.name).toBe('RateLimitError');
     });
 
-    it('isRateLimitError correctly identifies error type', () => {
-        const rateLimitError = new RateLimitError('Too many requests', {
-            retryAfter: 30,
+    it('preserves retryAfter when RateLimitError is created', () => {
+        const error = new RateLimitError('Rate limit exceeded', {
+            retryAfter: 45,
             limit: 10,
             window: 60,
         });
-        const regularError = new Error('Some error');
-        
-        expect(isRateLimitError(rateLimitError)).toBe(true);
-        expect(isRateLimitError(regularError)).toBe(false);
-        expect(isRateLimitError(null)).toBe(false);
-        expect(isRateLimitError(undefined)).toBe(false);
+
+        expect(error.retryAfter).toBe(45);
     });
+
+    it('uses RateLimitError name for created errors', () => {
+        const error = new RateLimitError('Rate limit exceeded', {
+            retryAfter: 45,
+            limit: 10,
+            window: 60,
+        });
+
+        expect(error.name).toBe('RateLimitError');
+    });
+
+    it('returns true in isRateLimitError for RateLimitError instances', () => {
+        const rateLimitError = new RateLimitError('Too many requests', RATE_LIMIT_INFO);
+
+        expect(isRateLimitError(rateLimitError)).toBe(true);
+    });
+
+    it.each([new Error('Some error'), null, undefined])(
+        'returns false in isRateLimitError for %p',
+        (value) => {
+            expect(isRateLimitError(value)).toBe(false);
+        },
+    );
 });

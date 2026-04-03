@@ -1,38 +1,39 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Button, Card, Text } from '@gravity-ui/uikit';
-
+import { Alert, Button, Card, Checkbox, Icon, Loader, Text } from '@gravity-ui/uikit';
+import { ArrowDownToLine, ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { ResultsChart } from '../../../../features/voting/components/ResultsChart';
 import { usePollInfo, usePollResults } from '../../../../features/voting';
-import { useRouteBase } from '@/shared/hooks/useRouteBase';
-import { logger } from '../../../../utils/logger';
-import {
-  VotingEmptyState,
-  VotingErrorState,
-  VotingLoadingState,
-  VotingPageLayout,
-} from '../../ui';
 
 export const PollResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const routeBase = useRouteBase();
   const pollId = id ?? '';
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
 
   const {
     data: pollInfo,
     isLoading: isPollLoading,
     isError: isPollError,
     error: pollError,
-    refetch: refetchPoll,
-  } = usePollInfo(pollId);
+    refetch: refetchPollInfo,
+    isFetching: isFetchingPollInfo,
+  } = usePollInfo(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
   const {
     data: results,
     isLoading: isResultsLoading,
     isError: isResultsError,
     error: resultsError,
     refetch: refetchResults,
-  } = usePollResults(pollId);
+    isFetching: isFetchingResults,
+  } = usePollResults(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
 
   const nominationsWithTotals = useMemo(() => {
     if (!results) return [];
@@ -43,35 +44,59 @@ export const PollResultsPage: React.FC = () => {
     });
   }, [results]);
 
-  const retryAll = () => {
-    refetchPoll();
-    refetchResults();
+  const handleRefresh = () => {
+    Promise.all([refetchPollInfo(), refetchResults()]).finally(() => {
+      setLastRefreshAt(new Date());
+    });
   };
 
-  useEffect(() => {
+  const exportCsv = () => {
     if (!results) return;
-    logger.info('Voting v2 page loaded', {
-      area: 'voting',
-      event: 'voting_v2.page_loaded',
-      data: {
-        page: 'results',
-        pollId,
-        nominations: results.nominations.length,
-      },
-    });
-  }, [pollId, results]);
+    const rows = [
+      ['nomination_id', 'nomination_title', 'option_id', 'option_text', 'votes'],
+      ...results.nominations.flatMap((nomination) =>
+        nomination.options.map((option) => [
+          nomination.nomination_id,
+          nomination.title,
+          option.option_id,
+          option.text,
+          String(option.votes),
+        ]),
+      ),
+    ];
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `poll-results-${pollId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isPollLoading || isResultsLoading) {
-    return <VotingLoadingState text="Загружаем результаты…" />;
+    return (
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
+        <Loader size="l" />
+      </div>
+    );
   }
 
   if (isPollError || !pollInfo) {
     return (
-      <VotingErrorState
-        title="Не удалось загрузить опрос"
-        message={pollError instanceof Error ? pollError.message : 'Проверьте соединение и попробуйте снова.'}
-        onRetry={retryAll}
-      />
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-6 text-center">
+          <Text variant="subheader-2" className="mb-2">Не удалось загрузить опрос</Text>
+          <Text variant="body-2" color="secondary" className="mb-4">
+            {pollError instanceof Error ? pollError.message : 'Проверьте соединение и попробуйте снова.'}
+          </Text>
+          <Button onClick={() => window.location.reload()} view="action" width="max">
+            Обновить
+          </Button>
+        </Card>
+      </div>
     );
   }
 
@@ -80,24 +105,34 @@ export const PollResultsPage: React.FC = () => {
 
     if (errorCode === 'RESULTS_HIDDEN') {
       return (
-        <VotingEmptyState
-          title="Результаты пока скрыты"
-          message="Результаты откроются согласно настройкам опроса."
-          action={
-            <Link to={`${routeBase}/voting/${pollId}`}>
-              <Button view="action">Вернуться к опросу</Button>
+        <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full p-6 text-center">
+            <Text variant="subheader-2" className="mb-2">Результаты пока скрыты</Text>
+            <Text variant="body-2" color="secondary" className="mb-4">
+              Результаты откроются согласно настройкам опроса.
+            </Text>
+            <Link to={`/app/voting/${pollId}`}>
+              <Button view="action" width="max">
+                Вернуться к опросу
+              </Button>
             </Link>
-          }
-        />
+          </Card>
+        </div>
       );
     }
 
     return (
-      <VotingErrorState
-        title="Не удалось загрузить результаты"
-        message={resultsError instanceof Error ? resultsError.message : 'Проверьте соединение и попробуйте снова.'}
-        onRetry={retryAll}
-      />
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-6 text-center">
+          <Text variant="subheader-2" className="mb-2">Не удалось загрузить результаты</Text>
+          <Text variant="body-2" color="secondary" className="mb-4">
+            {resultsError instanceof Error ? resultsError.message : 'Проверьте соединение и попробуйте снова.'}
+          </Text>
+          <Button onClick={() => window.location.reload()} view="action" width="max">
+            Обновить
+          </Button>
+        </Card>
+      </div>
     );
   }
 
@@ -105,58 +140,127 @@ export const PollResultsPage: React.FC = () => {
 
   if (!results) {
     return (
-      <VotingEmptyState
-        title="Результатов пока нет"
-        message="Итоги появятся после завершения голосования."
-      />
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-6 text-center">
+          <Text variant="subheader-2" className="mb-2">Результатов пока нет</Text>
+          <Text variant="body-2" color="secondary">
+            Итоги появятся после завершения голосования.
+          </Text>
+        </Card>
+      </div>
     );
   }
 
   const totalVotes = nominationsWithTotals.reduce((sum, nomination) => sum + nomination.totalVotes, 0);
+  const leader = nominationsWithTotals
+    .flatMap((nomination) =>
+      nomination.options.map((option) => ({
+        nominationTitle: nomination.title,
+        optionText: option.text,
+        votes: option.votes,
+      })),
+    )
+    .sort((a, b) => b.votes - a.votes)[0];
 
   return (
-    <VotingPageLayout
-      title="Результаты опроса"
-      description={poll.title}
-      actions={
-        <>
-          <Link to={`${routeBase}/voting/${pollId}`}>
-            <Button view="outlined">К опросу</Button>
-          </Link>
-          <Link to={`${routeBase}/voting`}>
-            <Button view="action">Все опросы</Button>
-          </Link>
-        </>
-      }
-    >
-      <Alert
-        theme="normal"
-        title="Сводка"
-        message={`Всего голосов: ${totalVotes}. Вопросов: ${nominationsWithTotals.length}.`}
-      />
-
-      {poll.description ? (
-        <Card className="voting-v2__card">
-          <Text variant="body-2" color="secondary">
-            {poll.description}
-          </Text>
-        </Card>
-      ) : null}
-
-      <div className="voting-v2__grid">
-        {nominationsWithTotals.map((nomination) => (
-          <Card key={nomination.nomination_id} className="voting-v2__card">
-            <div className="voting-v2__grid" style={{ marginBottom: 8 }}>
-              <Text variant="subheader-2" className="voting-v2__section-title">{nomination.title}</Text>
-              <Text variant="body-2" color="secondary">
-                Всего голосов: {nomination.totalVotes}{' '}
-                {nomination.topOption ? `· Лидер: ${nomination.topOption.text}` : ''}
-              </Text>
-            </div>
-            <ResultsChart nomination={nomination} totalVotes={nomination.totalVotes} />
-          </Card>
-        ))}
+    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+      <div className="bg-white border-b border-slate-200">
+        <div className="container max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <Text variant="header-1" className="text-slate-900">Результаты опроса</Text>
+            <Text variant="body-2" color="secondary" className="mt-1">
+              {poll.title}
+            </Text>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              view="flat-secondary"
+              onClick={handleRefresh}
+              loading={isFetchingPollInfo || isFetchingResults}
+              disabled={isFetchingPollInfo || isFetchingResults}
+            >
+              <Icon data={ArrowRotateRight} size={16} />
+              <span className="ms-1">Обновить</span>
+            </Button>
+            <Button view="outlined" onClick={exportCsv} disabled={!results}>
+              <Icon data={ArrowDownToLine} size={16} />
+              <span className="ms-1">CSV</span>
+            </Button>
+            <Link to={`/app/voting/${pollId}`}>
+              <Button view="outlined">К опросу</Button>
+            </Link>
+            <Link to="/app/voting">
+              <Button view="action">Все опросы</Button>
+            </Link>
+          </div>
+        </div>
       </div>
-    </VotingPageLayout>
+
+      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <Card className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">Live-обновление:</span>{' '}
+              {liveUpdates ? 'включено (15с)' : 'выключено'}
+              {' · '}
+              <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
+              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+            </div>
+            <Checkbox checked={liveUpdates} onUpdate={setLiveUpdates} content="Автообновление результатов" />
+          </div>
+        </Card>
+
+        <Alert
+          theme="normal"
+          title="Сводка"
+          message={`Всего голосов: ${totalVotes}. Вопросов: ${nominationsWithTotals.length}.`}
+        />
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Всего голосов</Text>
+            <Text variant="header-2">{totalVotes}</Text>
+          </Card>
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Вопросов в опросе</Text>
+            <Text variant="header-2">{nominationsWithTotals.length}</Text>
+          </Card>
+          <Card className="p-4">
+            <Text variant="caption-2" color="secondary">Топ-кандидат</Text>
+            <Text variant="body-2" className="font-medium">
+              {leader ? `${leader.optionText} (${leader.votes})` : '—'}
+            </Text>
+            {leader && (
+              <Text variant="caption-2" color="secondary">
+                {leader.nominationTitle}
+              </Text>
+            )}
+          </Card>
+        </div>
+
+        {poll.description && (
+          <Card className="p-4">
+            <Text variant="body-2" color="secondary">
+              {poll.description}
+            </Text>
+          </Card>
+        )}
+
+        <div className="space-y-6">
+          {nominationsWithTotals.map((nomination) => (
+            <Card key={nomination.nomination_id} className="p-6 space-y-4">
+              <div>
+                <Text variant="subheader-2">{nomination.title}</Text>
+                <Text variant="body-2" color="secondary" className="mt-1">
+                  Всего голосов: {nomination.totalVotes}{' '}
+                  {nomination.topOption ? `· Лидер: ${nomination.topOption.text}` : ''}
+                </Text>
+              </div>
+              <ResultsChart nomination={nomination} totalVotes={nomination.totalVotes} />
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };

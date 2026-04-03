@@ -25,18 +25,6 @@ def read_env(name: str, default: str | None = None) -> str | None:
     return value or default
 
 
-def read_env_alias(
-    primary: str,
-    *aliases: str,
-    default: str | None = None,
-) -> str | None:
-    for name in (primary, *aliases):
-        value = read_env(name)
-        if value is not None:
-            return value
-    return default
-
-
 def read_env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -44,8 +32,8 @@ def read_env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def read_env_list(name: str, *aliases: str) -> list[str]:
-    value = read_env_alias(name, *aliases)
+def read_env_list(name: str) -> list[str]:
+    value = read_env(name)
     if value is None:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -68,7 +56,7 @@ def require_env(name: str, *, insecure_default: str | None = None) -> str:
 
 
 def read_allowed_hosts() -> list[str]:
-    hosts = read_env_list("ALLOWED_HOSTS", "DJANGO_ALLOWED_HOSTS")
+    hosts = read_env_list("ALLOWED_HOSTS")
     if not hosts:
         if ALLOW_INSECURE_DEFAULTS:
             return ["*"]
@@ -135,6 +123,7 @@ BFF_CSRF_COOKIE_DOMAIN = read_env("BFF_CSRF_COOKIE_DOMAIN")
 
 CSRF_COOKIE_NAME = BFF_CSRF_COOKIE_NAME
 CSRF_HEADER_NAME = BFF_CSRF_HEADER
+CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = BFF_COOKIE_SAMESITE
 CSRF_COOKIE_DOMAIN = BFF_CSRF_COOKIE_DOMAIN
 CSRF_COOKIE_PATH = "/"
@@ -156,6 +145,7 @@ BFF_UPSTREAM_VOTING_URL = read_env("BFF_UPSTREAM_VOTING_URL", "")
 BFF_UPSTREAM_EVENTS_URL = read_env("BFF_UPSTREAM_EVENTS_URL", "")
 BFF_UPSTREAM_FEED_URL = read_env("BFF_UPSTREAM_FEED_URL", "")
 BFF_UPSTREAM_GAMIFICATION_URL = read_env("BFF_UPSTREAM_GAMIFICATION_URL", "")
+BFF_UPSTREAM_FEATUREFLAGS_URL = read_env("BFF_UPSTREAM_FEATUREFLAGS_URL", "")
 BFF_UPSTREAM_ID_URL = read_env("ID_BASE_URL", "")
 ID_PUBLIC_BASE_URL = read_env("ID_PUBLIC_BASE_URL", "")
 BFF_UPSTREAM_ACCESS_URL = read_env("ACCESS_BASE_URL", "")
@@ -171,24 +161,6 @@ try:
     BFF_SESSION_RATE_LIMIT_PER_MIN = int(os.getenv("BFF_SESSION_RATE_LIMIT_PER_MIN", "60"))
 except ValueError:
     BFF_SESSION_RATE_LIMIT_PER_MIN = 60
-
-# Rate limit specifically for switch-tenant (tighter than general session)
-try:
-    BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN = int(os.getenv("BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN", "15"))
-except ValueError:
-    BFF_SWITCH_TENANT_RATE_LIMIT_PER_MIN = 15
-
-# TTL for cached tenants list (seconds)
-try:
-    BFF_TENANTS_CACHE_TTL = int(os.getenv("BFF_TENANTS_CACHE_TTL", "120"))
-except ValueError:
-    BFF_TENANTS_CACHE_TTL = 120
-
-# Rollout evaluation cache TTL (seconds)
-try:
-    BFF_ROLLOUT_CACHE_TTL = int(os.getenv("BFF_ROLLOUT_CACHE_TTL", "60"))
-except ValueError:
-    BFF_ROLLOUT_CACHE_TTL = 60
 
 try:
     BFF_PROXY_TIMEOUT_SECONDS = float(os.getenv("BFF_PROXY_TIMEOUT_SECONDS", "10"))

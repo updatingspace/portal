@@ -4,15 +4,13 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 
 import { isApiError } from '../api/client';
 import { notifyApiError } from '../utils/apiErrorHandling';
 import { logger } from '../utils/logger';
-import { fetchEntryMe } from '../api/tenant';
-import { fetchSessionMeResult } from '../modules/portal/api';
+import { fetchSessionMe } from '../modules/portal/api';
 
 export type UserInfo = {
   id: string;
@@ -24,11 +22,16 @@ export type UserInfo = {
   displayName: string;
   masterFlags?: Record<string, unknown> | null;
   tenant?: { id: string; slug: string };
+  availableTenants?: Array<{ id: string; slug: string }>;
   capabilities?: string[];
   roles?: string[];
   featureFlags?: Record<string, boolean>;
-  experiments?: Record<string, string>;
   language?: string | null;
+};
+
+export type SessionIssue = {
+  code: string;
+  message: string;
 };
 
 const boolFromUnknown = (value: unknown): boolean => value === true || value === 'true' || value === 1;
@@ -40,14 +43,12 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
   const data = payload as {
     user?: { id?: unknown; master_flags?: unknown };
     tenant?: { id?: unknown; slug?: unknown };
-    active_tenant?: { tenant_id?: unknown; tenant_slug?: unknown };
-    available_tenants?: unknown[];
+    available_tenants?: unknown;
     portal_profile?: Record<string, unknown> | null;
     id_profile?: { user?: Record<string, unknown> | null } | null;
     capabilities?: unknown;
     roles?: unknown;
     feature_flags?: unknown;
-    experiments?: unknown;
   };
 
   const userId = safeString(data.user?.id);
@@ -98,8 +99,21 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     safeString(idProfileUser?.displayName) ??
     username;
 
-  const tenantId = safeString(data.active_tenant?.tenant_id) ?? safeString(data.tenant?.id);
-  const tenantSlug = safeString(data.active_tenant?.tenant_slug) ?? safeString(data.tenant?.slug);
+  const tenantId = safeString(data.tenant?.id);
+  const tenantSlug = safeString(data.tenant?.slug);
+
+  const availableTenants = Array.isArray(data.available_tenants)
+    ? data.available_tenants
+        .filter(
+          (item): item is { id: string; slug: string } =>
+            Boolean(item) &&
+            typeof item === 'object' &&
+            typeof (item as { id?: unknown }).id === 'string' &&
+            typeof (item as { slug?: unknown }).slug === 'string',
+        )
+        .map((item) => ({ id: item.id.trim(), slug: item.slug.trim() }))
+        .filter((item) => item.id.length > 0 && item.slug.length > 0)
+    : undefined;
 
   const capabilities = Array.isArray(data.capabilities)
     ? data.capabilities
@@ -122,15 +136,6 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
         )
       : undefined;
 
-  const experiments =
-    data.experiments && typeof data.experiments === 'object'
-      ? Object.fromEntries(
-          Object.entries(data.experiments as Record<string, unknown>)
-            .filter(([, v]) => typeof v === 'string')
-            .map(([k, v]) => [k, v as string]),
-        )
-      : undefined;
-
   return {
     id: userId,
     username,
@@ -141,27 +146,11 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     displayName,
     masterFlags,
     tenant: tenantId && tenantSlug ? { id: tenantId, slug: tenantSlug } : undefined,
+    availableTenants,
     capabilities,
     roles,
     featureFlags,
-    experiments,
     language,
-  };
-};
-
-const deriveUserFromEntryMe = (payload: unknown): UserInfo | null => {
-  if (!payload || typeof payload !== 'object') return null;
-  const data = payload as { user?: { id?: unknown; email?: unknown } };
-  const userId = safeString(data.user?.id);
-  if (!userId) return null;
-  const email = safeString(data.user?.email);
-  return {
-    id: userId,
-    username: userId,
-    email,
-    isSuperuser: false,
-    isStaff: false,
-    displayName: userId,
   };
 };
 
@@ -169,6 +158,7 @@ type AuthContextValue = {
   user: UserInfo | null;
   isLoading: boolean;
   isInitialized: boolean;
+  sessionIssue: SessionIssue | null;
   refreshProfile: () => Promise<UserInfo | null>;
   setUser: (nextUser: UserInfo | null) => void;
 };
@@ -180,39 +170,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
   bootstrap = true,
 }) => {
   const [user, setUserState] = useState<UserInfo | null>(null);
+  const [sessionIssue, setSessionIssue] = useState<SessionIssue | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   // Start as not initialized in all modes; tests and runtime will
   // explicitly mark initialization complete via setUser/refreshProfile.
   const [isInitialized, setIsInitialized] = useState(false);
-  const refreshInFlightRef = useRef<Promise<UserInfo | null> | null>(null);
-  const lastRefreshAtRef = useRef<number>(0);
 
   const setUser = useCallback((nextUser: UserInfo | null) => {
     setUserState(nextUser);
+    setSessionIssue(null);
     setIsInitialized(true);
   }, []);
 
+  const getCurrentSubdomain = (): string | null => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const hostParts = window.location.host.split('.');
+    if (hostParts.length < 3) {
+      return null;
+    }
+    const subdomain = hostParts[0]?.trim();
+    return subdomain && subdomain.length > 0 ? subdomain : null;
+  };
+
+  const extractAvailableTenantsFromDetails = (
+    details: unknown,
+  ): Array<{ id: string; slug: string }> => {
+    if (!details || typeof details !== 'object') {
+      return [];
+    }
+    const raw = (details as { available_tenants?: unknown }).available_tenants;
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw
+      .filter(
+        (item): item is { id: string; slug: string } =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          typeof (item as { id?: unknown }).id === 'string' &&
+          typeof (item as { slug?: unknown }).slug === 'string',
+      )
+      .map((item) => ({ id: item.id.trim(), slug: item.slug.trim() }))
+      .filter((item) => item.id.length > 0 && item.slug.length > 0);
+  };
+
+  const tryRedirectToAvailableTenant = (
+    tenants: Array<{ id: string; slug: string }>,
+  ): boolean => {
+    if (typeof window === 'undefined' || tenants.length === 0) {
+      return false;
+    }
+
+    const currentSubdomain = getCurrentSubdomain();
+    const candidate = tenants.find(
+      (tenant) => tenant.slug !== currentSubdomain,
+    );
+    if (!candidate) {
+      return false;
+    }
+
+    const hostParts = window.location.host.split('.');
+    if (hostParts.length < 3) {
+      return false;
+    }
+    hostParts[0] = candidate.slug;
+
+    const nextHost = hostParts.join('.');
+    const nextUrl = `${window.location.protocol}//${nextHost}/app`;
+    window.location.assign(nextUrl);
+    return true;
+  };
+
   const refreshProfile = useCallback(async () => {
-    if (refreshInFlightRef.current) {
-      return refreshInFlightRef.current;
-    }
+    setIsLoading(true);
+    logger.info('Refreshing profile', {
+      area: 'auth',
+      event: 'refresh_profile',
+    });
 
-    const now = Date.now();
-    if (now - lastRefreshAtRef.current < 1000) {
-      return user;
-    }
-
-    const refreshPromise = (async () => {
-      setIsLoading(true);
-      logger.info('Refreshing profile', {
-        area: 'auth',
-        event: 'refresh_profile',
-      });
-
-      try {
-        const sessionResult = await fetchSessionMeResult();
-      if (sessionResult.data) {
-        const mapped = deriveUserFromSessionMe(sessionResult.data);
+    try {
+      const session = await fetchSessionMe();
+      if (session) {
+        setSessionIssue(null);
+        const mapped = deriveUserFromSessionMe(session);
         setUser(mapped);
         logger.info('Profile refreshed', {
           area: 'auth',
@@ -225,83 +267,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
         });
         return mapped;
       }
-
-      if (sessionResult.tenantNotSelected) {
-        try {
-          const entry = await fetchEntryMe();
-          const mapped = deriveUserFromEntryMe(entry);
-          setUser(mapped);
-          logger.info('Profile refresh: tenantless session', {
-            area: 'auth',
-            event: 'refresh_profile',
-            data: { userId: mapped?.id },
-          });
-          return mapped;
-        } catch (entryError) {
-          logger.warn('Profile refresh: failed entry/me during tenantless session', {
-            area: 'auth',
-            event: 'refresh_profile',
-            error: entryError,
-          });
-        }
-      }
-
-      if (sessionResult.unauthorized) {
-        setUser(null);
-        logger.info('Profile refresh: guest state', {
-          area: 'auth',
-          event: 'refresh_profile',
-        });
-        return null;
-      }
-
       setUser(null);
-      logger.info('Profile refresh: tenantless or unknown state', {
+      logger.info('Profile refresh: guest state', {
         area: 'auth',
         event: 'refresh_profile',
       });
       return null;
     } catch (error) {
       if (isApiError(error)) {
-        if (error.status === 429) {
-          logger.warn('Profile refresh rate limited', {
-            area: 'auth',
-            event: 'refresh_profile',
-            data: { status: error.status },
-            error,
-          });
-          return user;
-        }
         // Treat 401 and tenant-not-found as guest state (no toast)
         const isTenantNotFound =
           error.code === 'TENANT_NOT_FOUND' ||
           (error.message && error.message.toLowerCase().includes('unknown tenant'));
+        const isNoActiveMembership = error.code === 'NO_ACTIVE_MEMBERSHIP';
         if (error.kind === 'unauthorized' || isTenantNotFound) {
           setUser(null);
+          setSessionIssue(null);
           logger.warn('Profile refresh guest state', {
             area: 'auth',
             event: 'refresh_profile',
             data: { reason: error.kind === 'unauthorized' ? 'unauthorized' : 'tenant_not_found' },
             error,
           });
+        } else if (isNoActiveMembership) {
+          const availableTenants = extractAvailableTenantsFromDetails(error.details);
+          const redirected = tryRedirectToAvailableTenant(availableTenants);
+          setUserState(null);
+          setSessionIssue({
+            code: 'NO_ACTIVE_MEMBERSHIP',
+            message:
+              error.message ||
+              'В текущем tenant нет активного membership. Выберите другой tenant или обратитесь к администратору.',
+          });
+          logger.warn('Profile refresh blocked: no active membership', {
+            area: 'auth',
+            event: 'refresh_profile',
+            data: {
+              reason: 'no_active_membership',
+              redirected,
+              availableTenantsCount: availableTenants.length,
+            },
+            error,
+          });
         } else {
+          setSessionIssue(null);
           notifyApiError(error, 'Не получилось обновить профиль');
         }
       } else {
+        setSessionIssue(null);
         notifyApiError(error, 'Не получилось обновить профиль');
       }
       return null;
     } finally {
       setIsLoading(false);
       setIsInitialized(true);
-      lastRefreshAtRef.current = Date.now();
-      refreshInFlightRef.current = null;
     }
-    })();
-
-    refreshInFlightRef.current = refreshPromise;
-    return refreshPromise;
-  }, [setUser, user]);
+  }, [setUser]);
 
   useEffect(() => {
     if (bootstrap && !isInitialized) {
@@ -314,10 +335,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
       user,
       isLoading,
       isInitialized,
+      sessionIssue,
       refreshProfile,
       setUser,
     }),
-    [isInitialized, isLoading, refreshProfile, setUser, user],
+    [isInitialized, isLoading, refreshProfile, sessionIssue, setUser, user],
   );
 
   return (

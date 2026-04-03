@@ -94,21 +94,10 @@ def _check_any_permissions(
         raise last_error
 
 
-def _has_system_admin_flag(master_flags: object) -> bool:
-    if isinstance(master_flags, dict):
-        return bool(
-            master_flags.get("system_admin") is True
-            or master_flags.get("is_system_admin") is True
-        )
-    if isinstance(master_flags, (set, frozenset, list, tuple)):
-        return "system_admin" in master_flags or "is_system_admin" in master_flags
-    return False
-
-
 def _ensure_dsar_subject(ctx: PortalContext, target_user_id: UUID) -> None:
     if ctx.user_id == target_user_id:
         return
-    if _has_system_admin_flag(ctx.master_flags):
+    if "system_admin" in ctx.master_flags:
         return
     raise HttpError(403, error_payload("FORBIDDEN", "DSAR access denied"))
 
@@ -390,6 +379,14 @@ def communities_create(request, payload: CommunityCreateIn = REQUIRED_BODY):
     except Exception as exc:
         raise HttpError(409, error_payload("DUPLICATE", "Community already exists")) from exc
 
+    # Provision creator membership so the author keeps scoped access immediately.
+    CommunityMembership.objects.update_or_create(
+        tenant=tenant,
+        community=c,
+        user_id=ctx.user_id,
+        defaults={"role_hint": "owner"},
+    )
+
     return CommunityOut(
         id=c.id,
         tenant_id=c.tenant_id,
@@ -557,6 +554,20 @@ def teams_create(request, payload: TeamCreateIn = REQUIRED_BODY):
         )
     except Exception as exc:
         raise HttpError(409, error_payload("DUPLICATE", "Team already exists")) from exc
+
+    # Provision creator memberships for community and team scopes.
+    CommunityMembership.objects.update_or_create(
+        tenant=tenant,
+        community=community,
+        user_id=ctx.user_id,
+        defaults={"role_hint": "owner"},
+    )
+    TeamMembership.objects.update_or_create(
+        tenant=tenant,
+        team=t,
+        user_id=ctx.user_id,
+        defaults={"role_hint": "owner"},
+    )
 
     return TeamOut(
         id=t.id,

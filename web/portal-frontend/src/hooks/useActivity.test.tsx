@@ -4,10 +4,8 @@
  * Tests for React hooks using TanStack Query.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   useFeedInfinite,
@@ -28,7 +26,9 @@ import {
   createSources,
   createActivityEvents,
 } from '../test/fixtures';
+import { TEST_ACTIVITY_VALUES } from '../test/constants';
 import * as activityApi from '../api/activity';
+import { createQueryClientWrapper } from '../test/queryClient';
 
 // Mock the activity API
 vi.mock('../api/activity', () => ({
@@ -45,20 +45,17 @@ vi.mock('../api/activity', () => ({
   createNews: vi.fn(),
 }));
 
-// Create a wrapper with QueryClient for testing hooks
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
+const FEED_FILTER_TYPES = ['vote.cast', 'post.created'];
+const FEED_FILTER_PARAMS = { types: 'vote.cast', limit: 10 };
 
-  return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+function createWrapper() {
+  return createQueryClientWrapper();
+}
+
+function renderActivityHook<TResult>(hook: () => TResult) {
+  return renderHook(hook, {
+    wrapper: createWrapper(),
+  });
 }
 
 describe('Activity Hooks', () => {
@@ -66,18 +63,12 @@ describe('Activity Hooks', () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
   describe('useFeedInfinite', () => {
     it('fetches first page of feed', async () => {
       const feedData = createActivityFeedV2();
       vi.mocked(activityApi.fetchFeedV2).mockResolvedValueOnce(feedData);
 
-      const { result } = renderHook(() => useFeedInfinite(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useFeedInfinite());
 
       await waitFor(() => {
         expect(result.current.isSuccess).toBe(true);
@@ -92,9 +83,7 @@ describe('Activity Hooks', () => {
       const page1 = createActivityFeedV2();
       vi.mocked(activityApi.fetchFeedV2).mockResolvedValueOnce(page1);
 
-      const { result } = renderHook(() => useFeedInfinite(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useFeedInfinite());
 
       await waitFor(() => {
         expect(result.current.isSuccess).toBe(true);
@@ -109,9 +98,8 @@ describe('Activity Hooks', () => {
     it('passes filter params to API', async () => {
       vi.mocked(activityApi.fetchFeedV2).mockResolvedValueOnce(createActivityFeedV2());
 
-      const { result } = renderHook(
+      const { result } = renderActivityHook(
         () => useFeedInfinite({ types: 'vote.cast', limit: 10 }),
-        { wrapper: createWrapper() },
       );
 
       await waitFor(() => {
@@ -128,49 +116,37 @@ describe('Activity Hooks', () => {
   });
 
   describe('useUnreadCount', () => {
-    it('returns unread count', async () => {
-      vi.mocked(activityApi.fetchUnreadCount).mockResolvedValueOnce(42);
+    it.each([
+      ['API unread count', TEST_ACTIVITY_VALUES.unreadCount],
+      ['empty unread count', 0],
+    ])('returns %s from query result', async (_name, unreadCount) => {
+      vi.mocked(activityApi.fetchUnreadCount).mockResolvedValueOnce(unreadCount);
 
-      const { result } = renderHook(() => useUnreadCount(), {
-        wrapper: createWrapper(),
-      });
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(result.current.count).toBe(42);
-    });
-
-    it('returns 0 when query data is undefined', async () => {
-      vi.mocked(activityApi.fetchUnreadCount).mockResolvedValueOnce(0);
-
-      const { result } = renderHook(() => useUnreadCount(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useUnreadCount());
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.count).toBe(0);
+      expect(result.current.count).toBe(unreadCount);
     });
-
   });
 
   describe('useMarkFeedAsRead', () => {
-    it('calls markFeedAsRead and invalidates queries', async () => {
+    it('marks feed as read and reports success', async () => {
       vi.mocked(activityApi.markFeedAsRead).mockResolvedValueOnce(undefined);
 
-      const { result } = renderHook(() => useMarkFeedAsRead(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useMarkFeedAsRead());
 
       await act(async () => {
         await result.current.mutateAsync();
       });
 
       expect(activityApi.markFeedAsRead).toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
     });
   });
 
@@ -179,9 +155,7 @@ describe('Activity Hooks', () => {
       const links = createAccountLinks();
       vi.mocked(activityApi.fetchAccountLinks).mockResolvedValueOnce(links);
 
-      const { result } = renderHook(() => useAccountLinks(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useAccountLinks());
 
       await waitFor(() => {
         expect(result.current.isSuccess).toBe(true);
@@ -196,20 +170,18 @@ describe('Activity Hooks', () => {
       const newLink = createAccountLinks()[0];
       vi.mocked(activityApi.createAccountLink).mockResolvedValueOnce(newLink);
 
-      const { result } = renderHook(() => useCreateAccountLink(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useCreateAccountLink());
 
       await act(async () => {
         await result.current.mutateAsync({
-          sourceId: 1,
-          settingsJson: { steam_id: '12345' },
+          sourceId: TEST_ACTIVITY_VALUES.sourceId,
+          settingsJson: TEST_ACTIVITY_VALUES.accountLinkSettings,
         });
       });
 
       expect(activityApi.createAccountLink).toHaveBeenCalledWith({
-        sourceId: 1,
-        settingsJson: { steam_id: '12345' },
+        sourceId: TEST_ACTIVITY_VALUES.sourceId,
+        settingsJson: TEST_ACTIVITY_VALUES.accountLinkSettings,
       });
     });
   });
@@ -218,15 +190,13 @@ describe('Activity Hooks', () => {
     it('deletes account link', async () => {
       vi.mocked(activityApi.deleteAccountLink).mockResolvedValueOnce(undefined);
 
-      const { result } = renderHook(() => useDeleteAccountLink(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useDeleteAccountLink());
 
       await act(async () => {
-        await result.current.mutateAsync(123);
+        await result.current.mutateAsync(TEST_ACTIVITY_VALUES.accountLinkId);
       });
 
-      expect(activityApi.deleteAccountLink).toHaveBeenCalledWith(123);
+      expect(activityApi.deleteAccountLink).toHaveBeenCalledWith(TEST_ACTIVITY_VALUES.accountLinkId);
     });
   });
 
@@ -235,9 +205,7 @@ describe('Activity Hooks', () => {
       const sources = createSources();
       vi.mocked(activityApi.fetchSources).mockResolvedValueOnce(sources);
 
-      const { result } = renderHook(() => useSources(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useSources());
 
       await waitFor(() => {
         expect(result.current.isSuccess).toBe(true);
@@ -248,18 +216,15 @@ describe('Activity Hooks', () => {
   });
 
   describe('useFeedFilter', () => {
-    it('filters feed by types', async () => {
+    it('adds type to active filters when toggled', async () => {
       vi.mocked(activityApi.fetchFeedV2).mockResolvedValue(createActivityFeedV2());
 
-      const { result } = renderHook(() => useFeedFilter(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useFeedFilter());
 
       await waitFor(() => {
         expect(result.current.items.length).toBeGreaterThan(0);
       });
 
-      // Toggle filter
       act(() => {
         result.current.toggleType('vote.cast');
       });
@@ -267,22 +232,20 @@ describe('Activity Hooks', () => {
       expect(result.current.activeTypes).toContain('vote.cast');
     });
 
-    it('sets multiple type filters', async () => {
+    it('replaces active filters when setting explicit filter list', async () => {
       vi.mocked(activityApi.fetchFeedV2).mockResolvedValue(createActivityFeedV2());
 
-      const { result } = renderHook(() => useFeedFilter(), {
-        wrapper: createWrapper(),
-      });
+      const { result } = renderActivityHook(() => useFeedFilter());
 
       await waitFor(() => {
         expect(result.current.items.length).toBeGreaterThan(0);
       });
 
       act(() => {
-        result.current.setTypeFilter(['vote.cast', 'post.created']);
+        result.current.setTypeFilter(FEED_FILTER_TYPES);
       });
 
-      expect(result.current.activeTypes).toEqual(['vote.cast', 'post.created']);
+      expect(result.current.activeTypes).toEqual(FEED_FILTER_TYPES);
     });
   });
 });
@@ -326,22 +289,27 @@ describe('Utility Functions', () => {
 });
 
 describe('activityKeys', () => {
-  it('generates correct query keys', () => {
-    expect(activityKeys.all).toEqual(['activity']);
-    expect(activityKeys.feed()).toEqual(['activity', 'feed']);
-    expect(activityKeys.unreadCount()).toEqual(['activity', 'unread-count']);
-    expect(activityKeys.accountLinks()).toEqual(['activity', 'account-links']);
-    expect(activityKeys.sources()).toEqual(['activity', 'sources']);
-    expect(activityKeys.subscriptions()).toEqual(['activity', 'subscriptions']);
+  it.each([
+    ['all', () => activityKeys.all, ['activity']],
+    ['feed', () => activityKeys.feed(), ['activity', 'feed']],
+    ['unread count', () => activityKeys.unreadCount(), ['activity', 'unread-count']],
+    ['account links', () => activityKeys.accountLinks(), ['activity', 'account-links']],
+    ['sources', () => activityKeys.sources(), ['activity', 'sources']],
+    ['subscriptions', () => activityKeys.subscriptions(), ['activity', 'subscriptions']],
+  ])('returns %s key', (_name, getKey, expected) => {
+    expect(getKey()).toEqual(expected);
   });
 
   it('includes params in feed list key', () => {
-    const params = { types: 'vote.cast', limit: 10 };
-    expect(activityKeys.feedList(params)).toEqual(['activity', 'feed', params]);
+    expect(activityKeys.feedList(FEED_FILTER_PARAMS)).toEqual(['activity', 'feed', FEED_FILTER_PARAMS]);
   });
 
   it('includes params in infinite feed key', () => {
-    const params = { types: 'vote.cast' };
-    expect(activityKeys.feedInfinite(params)).toEqual(['activity', 'feed', 'infinite', params]);
+    expect(activityKeys.feedInfinite({ types: FEED_FILTER_TYPES[0] })).toEqual([
+      'activity',
+      'feed',
+      'infinite',
+      { types: FEED_FILTER_TYPES[0] },
+    ]);
   });
 });

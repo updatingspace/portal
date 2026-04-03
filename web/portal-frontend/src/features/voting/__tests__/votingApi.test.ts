@@ -4,100 +4,92 @@
  * Tests for the voting API client functions.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { RateLimitError, isRateLimitError } from '../api/votingApi';
 
-// Mock fetch globally
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
+const RETRY_AFTER_HEADER = 'Retry-After';
 
 describe('Voting API', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    afterEach(() => {
-        vi.resetAllMocks();
-    });
-
     describe('RateLimitError', () => {
-        it('creates error with correct properties', () => {
+        it('should create a RateLimitError instance when constructed', () => {
             const error = new RateLimitError('Too many requests', {
                 retryAfter: 60,
                 limit: 10,
                 window: 60,
             });
-            
-            expect(error).toBeInstanceOf(Error);
+
             expect(error).toBeInstanceOf(RateLimitError);
-            expect(error.name).toBe('RateLimitError');
-            expect(error.message).toBe('Too many requests');
-            expect(error.retryAfter).toBe(60);
-            expect(error.limit).toBe(10);
-            expect(error.window).toBe(60);
         });
 
-        it('uses provided values from info object', () => {
+        it('should preserve provided error metadata when constructed', () => {
+            const error = new RateLimitError('Too many requests', {
+                retryAfter: 60,
+                limit: 10,
+                window: 60,
+            });
+
+            expect(error).toMatchObject({
+                name: 'RateLimitError',
+                message: 'Too many requests',
+                retryAfter: 60,
+                limit: 10,
+                window: 60,
+            });
+        });
+
+        it('should use values from info object when provided', () => {
             const error = new RateLimitError('Rate limited', {
                 retryAfter: 45,
                 limit: 5,
                 window: 120,
             });
-            
-            expect(error.retryAfter).toBe(45);
-            expect(error.limit).toBe(5);
-            expect(error.window).toBe(120);
+
+            expect(error).toMatchObject({ retryAfter: 45, limit: 5, window: 120 });
         });
     });
 
     describe('isRateLimitError', () => {
-        it('returns true for RateLimitError instances', () => {
+        it('should return true when value is RateLimitError', () => {
             const error = new RateLimitError('Test', 30);
             expect(isRateLimitError(error)).toBe(true);
         });
 
-        it('returns false for regular Error instances', () => {
+        it('should return false when value is regular Error', () => {
             const error = new Error('Regular error');
             expect(isRateLimitError(error)).toBe(false);
         });
 
-        it('returns false for null and undefined', () => {
-            expect(isRateLimitError(null)).toBe(false);
-            expect(isRateLimitError(undefined)).toBe(false);
-        });
-
-        it('returns false for non-Error objects', () => {
-            expect(isRateLimitError({ message: 'fake error' })).toBe(false);
-            expect(isRateLimitError('string error')).toBe(false);
-            expect(isRateLimitError(123)).toBe(false);
-        });
+        it.each([null, undefined, { message: 'fake error' }, 'string error', 123])(
+            'should return false when value is %p',
+            (value) => {
+                expect(isRateLimitError(value)).toBe(false);
+            },
+        );
     });
 
     describe('Rate limit response handling', () => {
-        it('should parse Retry-After header correctly', () => {
-            // Simulate what the API client does when receiving 429
-            const headers = new Headers({
-                'Retry-After': '45',
-                'Content-Type': 'application/json',
-            });
-            
-            const retryAfter = parseInt(headers.get('Retry-After') || '60', 10);
-            expect(retryAfter).toBe(45);
-        });
+        it.each([
+            [{ [RETRY_AFTER_HEADER]: '45', 'Content-Type': 'application/json' }, 45],
+            [{ 'Content-Type': 'application/json' }, DEFAULT_RETRY_AFTER_SECONDS],
+        ])('should parse retry delay from headers %o', (headersInit, expectedRetryAfter) => {
+            const headers = new Headers(headersInit);
+            const retryAfter = parseInt(
+                headers.get(RETRY_AFTER_HEADER) || String(DEFAULT_RETRY_AFTER_SECONDS),
+                10,
+            );
 
-        it('should use default when Retry-After header missing', () => {
-            const headers = new Headers({
-                'Content-Type': 'application/json',
-            });
-            
-            const retryAfter = parseInt(headers.get('Retry-After') || '60', 10);
-            expect(retryAfter).toBe(60);
+            expect(retryAfter).toBe(expectedRetryAfter);
         });
     });
 });
 
 describe('Voting API Error Codes', () => {
-    it('should define standard error codes', () => {
+    it('should include ALREADY_VOTED in standard error codes', () => {
         // These are the error codes that the API returns
         const expectedCodes = [
             'VALIDATION_ERROR',

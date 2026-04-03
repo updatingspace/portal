@@ -5,14 +5,16 @@ import {
   Button,
   Card,
   Checkbox,
+  Icon,
   Label,
+  Loader,
   Modal,
   Select,
   Text,
   TextArea,
   TextInput,
 } from '@gravity-ui/uikit';
-
+import { ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { NominationForm } from '../../../../features/voting/components/NominationForm';
 import { OptionForm } from '../../../../features/voting/components/OptionForm';
@@ -27,40 +29,25 @@ import type {
   ResultsVisibility,
 } from '../../../../features/voting/types';
 import {
-  useAddParticipant,
-  useCreateNomination,
-  useCreateOption,
-  useDeleteNomination,
-  useDeleteOption,
-  useDeletePoll,
   usePollInfo,
-  usePollParticipants,
-  useRemoveParticipant,
-  useUpdateNomination,
-  useUpdateOption,
   useUpdatePoll,
+  useDeletePoll,
+  useCreateNomination,
+  useUpdateNomination,
+  useDeleteNomination,
+  useCreateOption,
+  useUpdateOption,
+  useDeleteOption,
+  usePollParticipants,
+  useAddParticipant,
+  useRemoveParticipant,
 } from '../../../../features/voting';
 import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
-import type {
-  NominationCreatePayload,
-  NominationUpdatePayload,
-  PollUpdatePayload,
-} from '../../../../features/voting/types';
-import {
-  NOMINATION_KIND_LABELS,
-  POLL_STATUS_META,
-  RESULTS_VISIBILITY_META,
-  SCOPE_LABELS,
-  VISIBILITY_META,
-  formatDateTime,
-} from '../../../../features/voting/utils/pollMeta';
-import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import type { NominationCreatePayload, NominationUpdatePayload, PollUpdatePayload } from '../../../../features/voting/types';
+import { POLL_STATUS_META, RESULTS_VISIBILITY_META, SCOPE_LABELS, VISIBILITY_META, formatDateTime, NOMINATION_KIND_LABELS } from '../../../../features/voting/utils/pollMeta';
 import { getLocale } from '@/shared/lib/locale';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { logger } from '../../../../utils/logger';
-import type { VotingConfirmAction } from '../../ui';
-import { VotingConfirmDialog, VotingErrorState, VotingLoadingState, VotingPageLayout } from '../../ui';
 
 const VISIBILITY_OPTIONS = [
   { value: 'public', content: 'Публичный' },
@@ -85,14 +72,32 @@ const PARTICIPANT_OPTIONS = [
 export const PollManagePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const routeBase = useRouteBase();
   const location = useLocation();
   const { user } = useAuth();
   const pollId = id ?? '';
   const locale = user?.language ?? getLocale();
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
 
-  const { data: pollInfo, isLoading, isError, error, refetch } = usePollInfo(pollId);
-  const { data: participants = [] } = usePollParticipants(pollId);
+  const {
+    data: pollInfo,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching: isFetchingPollInfo,
+  } = usePollInfo(pollId, {
+    refetchInterval: liveUpdates ? 15_000 : false,
+    refetchIntervalInBackground: true,
+  });
+  const {
+    data: participants = [],
+    refetch: refetchParticipants,
+    isFetching: isFetchingParticipants,
+  } = usePollParticipants(pollId, {
+    refetchInterval: liveUpdates ? 20_000 : false,
+    refetchIntervalInBackground: true,
+  });
 
   const updatePollMutation = useUpdatePoll();
   const deletePollMutation = useDeletePoll();
@@ -149,13 +154,11 @@ export const PollManagePage: React.FC = () => {
 
   const [participantUserId, setParticipantUserId] = useState('');
   const [participantRole, setParticipantRole] = useState<PollRole>('participant');
-  const [confirmAction, setConfirmAction] = useState<VotingConfirmAction | null>(null);
 
   useEffect(() => {
     if (!pollInfo) return;
     if (settingsDirty) return;
     const { poll } = pollInfo;
-    // Keep local draft in sync with latest poll data while form is clean.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSettingsDraft({
       title: poll.title,
@@ -169,28 +172,21 @@ export const PollManagePage: React.FC = () => {
     });
   }, [pollInfo, settingsDirty]);
 
-  useEffect(() => {
-    if (!pollInfo) return;
-    logger.info('Voting v2 page loaded', {
-      area: 'voting',
-      event: 'voting_v2.page_loaded',
-      data: {
-        page: 'manage',
-        pollId: pollInfo.poll.id,
-        status: pollInfo.poll.status,
-      },
-    });
-  }, [pollInfo]);
+  const sortedNominations = useMemo(() => {
+    return [...(pollInfo?.nominations ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  }, [pollInfo?.nominations]);
 
   const poll = pollInfo?.poll;
-  const nominations = useMemo(() => pollInfo?.nominations ?? [], [pollInfo?.nominations]);
+  const statusMeta = poll ? POLL_STATUS_META[poll.status] : null;
+  const visibilityMeta = poll ? VISIBILITY_META[poll.visibility] : null;
+  const resultsMeta = poll ? RESULTS_VISIBILITY_META[poll.results_visibility] : null;
 
-  const sortedNominations = useMemo(() => {
-    return [...nominations].sort((a, b) => a.sort_order - b.sort_order);
-  }, [nominations]);
+  const isDraft = poll?.status === 'draft';
+  const isActive = poll?.status === 'active';
 
   const publishIssues = useMemo(() => {
     const issues: string[] = [];
+    if (!poll) return issues;
     if (sortedNominations.length === 0) {
       issues.push('Добавьте хотя бы один вопрос.');
     }
@@ -200,44 +196,43 @@ export const PollManagePage: React.FC = () => {
       }
     }
     return issues;
-  }, [sortedNominations]);
+  }, [poll, sortedNominations]);
 
-  const isDraft = poll?.status === 'draft';
-  const isActive = poll?.status === 'active';
   const canPublish = Boolean(isDraft && publishIssues.length === 0);
-  const statusMeta = poll ? POLL_STATUS_META[poll.status] : POLL_STATUS_META.draft;
-  const visibilityMeta = poll ? VISIBILITY_META[poll.visibility] : VISIBILITY_META.public;
-  const resultsMeta = poll ? RESULTS_VISIBILITY_META[poll.results_visibility] : RESULTS_VISIBILITY_META.after_closed;
+
+  const handleRefresh = () => {
+    Promise.all([refetch(), refetchParticipants()]).finally(() => {
+      setLastRefreshAt(new Date());
+    });
+  };
 
   if (isLoading) {
-    return <VotingLoadingState text="Загружаем настройки опроса…" />;
-  }
-
-  if (isError || !pollInfo || !poll) {
     return (
-      <VotingErrorState
-        title="Не удалось загрузить опрос"
-        message={error instanceof Error ? error.message : 'Попробуйте снова.'}
-        onRetry={() => refetch()}
-      />
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
+        <Loader size="l" />
+      </div>
     );
   }
 
-  const confirmLoading =
-    deletePollMutation.isPending ||
-    updatePollMutation.isPending ||
-    deleteOptionMutation.isPending ||
-    deleteNominationMutation.isPending ||
-    removeParticipantMutation.isPending;
+  if (isError || !pollInfo) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-6 text-center">
+          <Text variant="subheader-2" className="mb-2">Не удалось загрузить опрос</Text>
+          <Text variant="body-2" color="secondary" className="mb-4">
+            {error instanceof Error ? error.message : 'Попробуйте снова.'}
+          </Text>
+          <Button onClick={() => refetch()} view="action" width="max">
+            Повторить
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
-  const openConfirm = (action: VotingConfirmAction) => {
-    setConfirmAction(action);
-  };
-
-  const closeConfirm = () => {
-    if (confirmLoading) return;
-    setConfirmAction(null);
-  };
+  if (!poll || !statusMeta || !visibilityMeta || !resultsMeta) {
+    return null;
+  }
 
   const saveSettings = () => {
     if (!settingsDraft) return;
@@ -256,7 +251,11 @@ export const PollManagePage: React.FC = () => {
       {
         onSuccess: () => {
           setSettingsDirty(false);
-          toaster.add({ name: 'poll-settings-saved', title: 'Изменения сохранены', theme: 'success' });
+          toaster.add({
+            name: 'poll-settings-saved',
+            title: 'Изменения сохранены',
+            theme: 'success',
+          });
         },
         onError: (err) => notifyApiError(err, 'Не удалось сохранить настройки'),
       },
@@ -265,42 +264,30 @@ export const PollManagePage: React.FC = () => {
 
   const handleDeletePoll = () => {
     if (!isDraft) {
-      toaster.add({ name: 'poll-delete-locked', title: 'Удалить можно только черновик', theme: 'warning' });
+      toaster.add({
+        name: 'poll-delete-locked',
+        title: 'Удалить можно только черновик',
+        theme: 'warning',
+      });
       return;
     }
-
-    openConfirm({
-      title: 'Удалить черновик?',
-      description: 'Это действие нельзя отменить.',
-      confirmLabel: 'Удалить',
-      mode: 'danger',
-      onConfirm: () => {
-        deletePollMutation.mutate(pollId, {
-          onSuccess: () => {
-            setConfirmAction(null);
-            toaster.add({ name: 'poll-deleted', title: 'Опрос удалён', theme: 'success' });
-            navigate(`${routeBase}/voting`);
-          },
-          onError: (err) => {
-            setConfirmAction(null);
-            notifyApiError(err, 'Не удалось удалить опрос');
-          },
+    if (!window.confirm('Удалить черновик? Это действие нельзя отменить.')) return;
+    deletePollMutation.mutate(pollId, {
+      onSuccess: () => {
+        toaster.add({
+          name: 'poll-deleted',
+          title: 'Опрос удалён',
+          theme: 'success',
         });
+        navigate('/app/voting');
       },
+      onError: (err) => notifyApiError(err, 'Не удалось удалить опрос'),
     });
   };
 
   const handlePublish = () => {
     if (!isDraft) return;
     if (!canPublish) {
-      logger.warn('Voting v2 publish blocked', {
-        area: 'voting',
-        event: 'voting_v2.publish_blocked',
-        data: {
-          pollId,
-          issues: publishIssues,
-        },
-      });
       setActiveTab('questions');
       toaster.add({
         name: 'poll-publish-blocked',
@@ -310,65 +297,52 @@ export const PollManagePage: React.FC = () => {
       });
       return;
     }
-
-    openConfirm({
-      title: 'Опубликовать опрос?',
-      description: 'После публикации вопросы и варианты будут заблокированы.',
-      confirmLabel: 'Опубликовать',
-      onConfirm: () => {
-        updatePollMutation.mutate(
-          { pollId, payload: { status: 'active' } },
-          {
-            onSuccess: () => {
-              logger.info('Voting v2 publish success', {
-                area: 'voting',
-                event: 'voting_v2.publish_success',
-                data: { pollId },
-              });
-              setConfirmAction(null);
-              toaster.add({ name: 'poll-published', title: 'Опрос опубликован', theme: 'success' });
-            },
-            onError: (err) => {
-              setConfirmAction(null);
-              const code = isApiError(err) ? err.code : undefined;
-              if (code === 'NO_QUESTIONS' || code === 'NO_OPTIONS') {
-                setActiveTab('questions');
-              }
-              notifyApiError(err, 'Не удалось опубликовать опрос');
-            },
-          },
-        );
+    if (!window.confirm('Опубликовать опрос? Вопросы и варианты будут заблокированы.')) return;
+    updatePollMutation.mutate(
+      { pollId, payload: { status: 'active' } },
+      {
+        onSuccess: () => {
+          toaster.add({
+            name: 'poll-published',
+            title: 'Опрос опубликован',
+            theme: 'success',
+          });
+        },
+        onError: (err) => {
+          const code = isApiError(err) ? err.code : undefined;
+          if (code === 'NO_QUESTIONS' || code === 'NO_OPTIONS') {
+            setActiveTab('questions');
+          }
+          notifyApiError(err, 'Не удалось опубликовать опрос');
+        },
       },
-    });
+    );
   };
 
   const handleClosePoll = () => {
     if (!isActive) return;
-
-    openConfirm({
-      title: 'Завершить голосование?',
-      description: 'Голосование будет остановлено и новые голоса не будут приниматься.',
-      confirmLabel: 'Завершить',
-      onConfirm: () => {
-        updatePollMutation.mutate(
-          { pollId, payload: { status: 'closed' } },
-          {
-            onSuccess: () => {
-              setConfirmAction(null);
-              toaster.add({ name: 'poll-closed', title: 'Опрос закрыт', theme: 'success' });
-            },
-            onError: (err) => {
-              setConfirmAction(null);
-              notifyApiError(err, 'Не удалось закрыть опрос');
-            },
-          },
-        );
+    if (!window.confirm('Закрыть опрос? Голосование будет остановлено.')) return;
+    updatePollMutation.mutate(
+      { pollId, payload: { status: 'closed' } },
+      {
+        onSuccess: () => {
+          toaster.add({
+            name: 'poll-closed',
+            title: 'Опрос закрыт',
+            theme: 'success',
+          });
+        },
+        onError: (err) => notifyApiError(err, 'Не удалось закрыть опрос'),
       },
-    });
+    );
   };
 
   const openCreateOption = (nominationId: string) => {
-    setOptionEditor({ mode: 'create', nominationId, payload: { title: '' } });
+    setOptionEditor({
+      mode: 'create',
+      nominationId,
+      payload: { title: '' },
+    });
   };
 
   const openEditOption = (nominationId: string, option: Option) => {
@@ -388,7 +362,11 @@ export const PollManagePage: React.FC = () => {
   const saveOption = () => {
     if (!optionEditor) return;
     if (!isDraft) {
-      toaster.add({ name: 'options-locked', title: 'Варианты редактируются только в черновике', theme: 'warning' });
+      toaster.add({
+        name: 'options-locked',
+        title: 'Варианты можно редактировать только в черновике',
+        theme: 'warning',
+      });
       return;
     }
     if (!optionEditor.payload.title.trim()) return;
@@ -421,35 +399,30 @@ export const PollManagePage: React.FC = () => {
 
   const deleteOption = (optionId: string) => {
     if (!isDraft) {
-      toaster.add({ name: 'options-locked', title: 'Варианты редактируются только в черновике', theme: 'warning' });
+      toaster.add({
+        name: 'options-locked',
+        title: 'Варианты можно редактировать только в черновике',
+        theme: 'warning',
+      });
       return;
     }
-
-    openConfirm({
-      title: 'Удалить вариант?',
-      confirmLabel: 'Удалить',
-      mode: 'danger',
-      onConfirm: () => {
-        deleteOptionMutation.mutate(
-          { pollId, optionId },
-          {
-            onSuccess: () => {
-              setConfirmAction(null);
-              toaster.add({ name: 'option-deleted', title: 'Вариант удалён', theme: 'success' });
-            },
-            onError: (err) => {
-              setConfirmAction(null);
-              notifyApiError(err, 'Не удалось удалить вариант');
-            },
-          },
-        );
+    if (!window.confirm('Удалить вариант?')) return;
+    deleteOptionMutation.mutate(
+      { pollId, optionId },
+      {
+        onSuccess: () => toaster.add({ name: 'option-deleted', title: 'Вариант удалён', theme: 'success' }),
+        onError: (err) => notifyApiError(err, 'Не удалось удалить вариант'),
       },
-    });
+    );
   };
 
   const openCreateNomination = () => {
     if (!isDraft) {
-      toaster.add({ name: 'questions-locked', title: 'Вопросы редактируются только в черновике', theme: 'warning' });
+      toaster.add({
+        name: 'questions-locked',
+        title: 'Вопросы можно редактировать только в черновике',
+        theme: 'warning',
+      });
       return;
     }
     setCreateQuestionOpen(true);
@@ -486,10 +459,13 @@ export const PollManagePage: React.FC = () => {
   const saveNomination = () => {
     if (!editingNomination) return;
     if (!isDraft) {
-      toaster.add({ name: 'questions-locked', title: 'Вопросы редактируются только в черновике', theme: 'warning' });
+      toaster.add({
+        name: 'questions-locked',
+        title: 'Вопросы можно редактировать только в черновике',
+        theme: 'warning',
+      });
       return;
     }
-
     updateNominationMutation.mutate(
       {
         pollId,
@@ -515,37 +491,26 @@ export const PollManagePage: React.FC = () => {
 
   const deleteNomination = (nominationId: string) => {
     if (!isDraft) {
-      toaster.add({ name: 'questions-locked', title: 'Вопросы редактируются только в черновике', theme: 'warning' });
+      toaster.add({
+        name: 'questions-locked',
+        title: 'Вопросы можно редактировать только в черновике',
+        theme: 'warning',
+      });
       return;
     }
-
-    openConfirm({
-      title: 'Удалить вопрос?',
-      description: 'Все варианты вопроса будут удалены.',
-      confirmLabel: 'Удалить',
-      mode: 'danger',
-      onConfirm: () => {
-        deleteNominationMutation.mutate(
-          { pollId, nominationId },
-          {
-            onSuccess: () => {
-              setConfirmAction(null);
-              toaster.add({ name: 'question-deleted', title: 'Вопрос удалён', theme: 'success' });
-            },
-            onError: (err) => {
-              setConfirmAction(null);
-              notifyApiError(err, 'Не удалось удалить вопрос');
-            },
-          },
-        );
+    if (!window.confirm('Удалить вопрос и все варианты?')) return;
+    deleteNominationMutation.mutate(
+      { pollId, nominationId },
+      {
+        onSuccess: () => toaster.add({ name: 'question-deleted', title: 'Вопрос удалён', theme: 'success' }),
+        onError: (err) => notifyApiError(err, 'Не удалось удалить вопрос'),
       },
-    });
+    );
   };
 
   const addParticipant = () => {
     const userId = participantUserId.trim();
     if (!userId) return;
-
     addParticipantMutation.mutate(
       { pollId, payload: { user_id: userId, role: participantRole } },
       {
@@ -559,26 +524,14 @@ export const PollManagePage: React.FC = () => {
   };
 
   const removeParticipant = (userId: string) => {
-    openConfirm({
-      title: 'Удалить участника?',
-      confirmLabel: 'Удалить',
-      mode: 'danger',
-      onConfirm: () => {
-        removeParticipantMutation.mutate(
-          { pollId, userId },
-          {
-            onSuccess: () => {
-              setConfirmAction(null);
-              toaster.add({ name: 'participant-removed', title: 'Участник удалён', theme: 'success' });
-            },
-            onError: (err) => {
-              setConfirmAction(null);
-              notifyApiError(err, 'Не удалось удалить участника');
-            },
-          },
-        );
+    if (!window.confirm('Удалить участника?')) return;
+    removeParticipantMutation.mutate(
+      { pollId, userId },
+      {
+        onSuccess: () => toaster.add({ name: 'participant-removed', title: 'Участник удалён', theme: 'success' }),
+        onError: (err) => notifyApiError(err, 'Не удалось удалить участника'),
       },
-    });
+    );
   };
 
   const tabItems = [
@@ -586,76 +539,108 @@ export const PollManagePage: React.FC = () => {
     { id: 'questions', label: `Вопросы (${sortedNominations.length})` },
     { id: 'participants', label: `Участники (${participants.length})` },
   ] as const;
-  const tabIds = {
-    settings: 'voting-manage-tab-settings',
-    questions: 'voting-manage-tab-questions',
-    participants: 'voting-manage-tab-participants',
-  } as const;
-  const panelIds = {
-    settings: 'voting-manage-panel-settings',
-    questions: 'voting-manage-panel-questions',
-    participants: 'voting-manage-panel-participants',
-  } as const;
 
   return (
-    <>
-      <VotingPageLayout
-        title={poll.title}
-        description="Черновик → вопросы → участники → публикация. После публикации вопросы блокируются."
-        actions={
-          <>
-            <Button view="outlined" onClick={() => navigate(`${routeBase}/voting`)}>К списку</Button>
-            <Button view="outlined" onClick={() => navigate(`${routeBase}/voting/${pollId}`)}>Просмотр</Button>
-            {poll.status === 'closed' ? (
-              <Button view="outlined" onClick={() => navigate(`${routeBase}/voting/${pollId}/results`)}>Результаты</Button>
-            ) : null}
-            <Button
-              view="outlined-danger"
-              onClick={handleDeletePoll}
-              loading={deletePollMutation.isPending}
-              disabled={!isDraft}
-            >
-              Удалить
-            </Button>
-            {isDraft ? (
-              <Button view="action" onClick={handlePublish} disabled={!canPublish} loading={updatePollMutation.isPending}>
-                Опубликовать
+    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+      <div className="bg-white border-b border-slate-200">
+        <div className="container max-w-6xl mx-auto px-4 py-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Text variant="header-1" className="text-slate-900">{poll.title}</Text>
+                <Label theme={statusMeta.theme} size="s" title={statusMeta.description}>
+                  {statusMeta.label}
+                </Label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Label theme={visibilityMeta.theme} size="xs">
+                  {visibilityMeta.label}
+                </Label>
+                <Label theme={resultsMeta.theme} size="xs">
+                  {resultsMeta.label}
+                </Label>
+                {poll.allow_revoting && <Label theme="info" size="xs">Переголосование</Label>}
+                {poll.anonymous && <Label theme="utility" size="xs">Анонимно</Label>}
+              </div>
+              <Text variant="body-2" color="secondary">
+                Черновик → добавьте вопросы → опубликуйте. После публикации вопросы блокируются.
+              </Text>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button view="outlined" onClick={() => navigate('/app/voting')}>
+                К списку
               </Button>
-            ) : null}
-            {isActive ? (
-              <Button view="action" onClick={handleClosePoll} loading={updatePollMutation.isPending}>
-                Закрыть
+              <Button
+                view="flat-secondary"
+                onClick={handleRefresh}
+                loading={isFetchingPollInfo || isFetchingParticipants}
+                disabled={isFetchingPollInfo || isFetchingParticipants}
+              >
+                <Icon data={ArrowRotateRight} size={16} />
+                <span className="ms-1">Обновить</span>
               </Button>
-            ) : null}
-          </>
-        }
-      >
-        <Card className="voting-v2__card voting-v2__card--soft">
-          <div className="voting-v2__pills">
-            <Label theme={statusMeta.theme} size="s" title={statusMeta.description}>{statusMeta.label}</Label>
-            <Label theme={visibilityMeta.theme} size="s">{visibilityMeta.label}</Label>
-            <Label theme={resultsMeta.theme} size="s">{resultsMeta.label}</Label>
-            {poll.allow_revoting ? <Label theme="info" size="s">Переголосование</Label> : null}
-            {poll.anonymous ? <Label theme="utility" size="s">Анонимно</Label> : null}
+              <Button view="outlined" href={`/app/voting/${pollId}`}>
+                Просмотр
+              </Button>
+              {poll.status === 'closed' && (
+                <Button view="outlined" href={`/app/voting/${pollId}/results`}>
+                  Результаты
+                </Button>
+              )}
+              <Button
+                view="outlined-danger"
+                onClick={handleDeletePoll}
+                loading={deletePollMutation.isPending}
+                disabled={!isDraft}
+              >
+                Удалить
+              </Button>
+              {isDraft && (
+                <Button view="action" onClick={handlePublish} disabled={!canPublish} loading={updatePollMutation.isPending}>
+                  Опубликовать
+                </Button>
+              )}
+              {isActive && (
+                <Button view="action" onClick={handleClosePoll} loading={updatePollMutation.isPending}>
+                  Закрыть
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <Card className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">Live-обновление:</span>{' '}
+              {liveUpdates ? 'включено (15-20с)' : 'выключено'}
+              {' · '}
+              <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
+              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+            </div>
+            <Checkbox
+              checked={liveUpdates}
+              onUpdate={setLiveUpdates}
+              content="Автообновление dashboard"
+            />
           </div>
         </Card>
 
-        {isDraft && publishIssues.length > 0 ? (
+        {isDraft && publishIssues.length > 0 && (
           <Alert
             theme="warning"
             title="Опрос не готов к публикации"
             message={publishIssues.join(' ')}
           />
-        ) : null}
+        )}
 
-        <div className="voting-v2__tabs" role="tablist" aria-label="Управление опросом">
+        <div className="flex flex-wrap gap-2">
           {tabItems.map((tab) => (
             <Button
               key={tab.id}
-              id={tabIds[tab.id]}
-              role="tab"
-              aria-controls={panelIds[tab.id]}
-              aria-selected={activeTab === tab.id}
               view={activeTab === tab.id ? 'action' : 'outlined'}
               size="s"
               onClick={() => setActiveTab(tab.id)}
@@ -665,299 +650,352 @@ export const PollManagePage: React.FC = () => {
           ))}
         </div>
 
-        {activeTab === 'settings' && settingsDraft ? (
-          <section role="tabpanel" id={panelIds.settings} aria-labelledby={tabIds.settings} className="voting-v2__split">
-            <Card className="voting-v2__card">
-              <div className="voting-form">
-                <div>
-                  <label className="voting-form__label">Название</label>
-                  <TextInput
-                    value={settingsDraft.title}
+        {activeTab === 'settings' && settingsDraft && (
+          <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+            <Card className="p-6 space-y-5">
+              <div>
+                <Text variant="subheader-2">Настройки опроса</Text>
+                <Text variant="body-2" color="secondary" className="mt-1">
+                  Задайте общие параметры, видимость и расписание.
+                </Text>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Название</div>
+                <TextInput
+                  value={settingsDraft.title}
+                  onUpdate={(value) => {
+                    setSettingsDraft((prev) => (prev ? { ...prev, title: value } : prev));
+                    setSettingsDirty(true);
+                  }}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Описание</div>
+                <TextArea
+                  value={settingsDraft.description}
+                  onUpdate={(value) => {
+                    setSettingsDraft((prev) => (prev ? { ...prev, description: value } : prev));
+                    setSettingsDirty(true);
+                  }}
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Видимость</div>
+                  <Select
+                    value={[settingsDraft.visibility]}
                     onUpdate={(value) => {
-                      setSettingsDraft((prev) => (prev ? { ...prev, title: value } : prev));
-                      setSettingsDirty(true);
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label className="voting-form__label">Описание</label>
-                  <TextArea
-                    id="poll-manage-description"
-                    value={settingsDraft.description}
-                    onUpdate={(value) => {
-                      setSettingsDraft((prev) => (prev ? { ...prev, description: value } : prev));
-                      setSettingsDirty(true);
-                    }}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="voting-form__grid">
-                  <div>
-                    <label className="voting-form__label">Видимость</label>
-                    <Select
-                      value={[settingsDraft.visibility]}
-                      onUpdate={(value) => {
-                        setSettingsDraft((prev) =>
-                          prev ? { ...prev, visibility: (value[0] ?? prev.visibility) as PollVisibility } : prev,
-                        );
-                        setSettingsDirty(true);
-                      }}
-                      options={VISIBILITY_OPTIONS}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="voting-form__label">Результаты</label>
-                    <Select
-                      value={[settingsDraft.results_visibility]}
-                      onUpdate={(value) => {
-                        setSettingsDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                results_visibility: (value[0] ?? prev.results_visibility) as ResultsVisibility,
-                              }
-                            : prev,
-                        );
-                        setSettingsDirty(true);
-                      }}
-                      options={RESULTS_OPTIONS}
-                    />
-                  </div>
-                </div>
-
-                <div className="voting-form__grid">
-                  <Checkbox
-                    checked={settingsDraft.allow_revoting}
-                    onUpdate={(checked) => {
-                      setSettingsDraft((prev) => (prev ? { ...prev, allow_revoting: checked } : prev));
-                      setSettingsDirty(true);
-                    }}
-                    content="Разрешить переголосование"
-                  />
-                  <Checkbox
-                    checked={settingsDraft.anonymous}
-                    onUpdate={(checked) => {
-                      setSettingsDraft((prev) => (prev ? { ...prev, anonymous: checked } : prev));
-                      setSettingsDirty(true);
-                    }}
-                    content="Анонимное голосование"
-                  />
-                </div>
-
-                <div>
-                  <label className="voting-form__label">Расписание</label>
-                  <ScheduleForm
-                    initialStartsAt={settingsDraft.starts_at}
-                    initialEndsAt={settingsDraft.ends_at}
-                    onUpdate={(payload) => {
                       setSettingsDraft((prev) =>
-                        prev ? { ...prev, starts_at: payload.starts_at, ends_at: payload.ends_at } : prev,
+                        prev ? { ...prev, visibility: (value[0] ?? prev.visibility) as PollVisibility } : prev,
                       );
                       setSettingsDirty(true);
                     }}
+                    options={VISIBILITY_OPTIONS}
                   />
                 </div>
 
-                <div className="voting-form__actions">
-                  <Button
-                    view="outlined"
-                    onClick={() => {
-                      setSettingsDraft({
-                        title: poll.title,
-                        description: poll.description ?? '',
-                        visibility: poll.visibility,
-                        allow_revoting: Boolean(poll.allow_revoting),
-                        anonymous: Boolean(poll.anonymous),
-                        results_visibility: poll.results_visibility,
-                        starts_at: poll.starts_at ?? null,
-                        ends_at: poll.ends_at ?? null,
-                      });
-                      setSettingsDirty(false);
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Результаты</div>
+                  <Select
+                    value={[settingsDraft.results_visibility]}
+                    onUpdate={(value) => {
+                      setSettingsDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              results_visibility: (value[0] ?? prev.results_visibility) as ResultsVisibility,
+                            }
+                          : prev,
+                      );
+                      setSettingsDirty(true);
                     }}
-                    disabled={!settingsDirty}
-                  >
-                    Сбросить
-                  </Button>
-                  <Button view="action" onClick={saveSettings} disabled={!settingsDirty} loading={updatePollMutation.isPending}>
-                    Сохранить
-                  </Button>
+                    options={RESULTS_OPTIONS}
+                  />
                 </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Checkbox
+                  checked={settingsDraft.allow_revoting}
+                  onUpdate={(checked) => {
+                    setSettingsDraft((prev) => (prev ? { ...prev, allow_revoting: checked } : prev));
+                    setSettingsDirty(true);
+                  }}
+                  content="Разрешить переголосование"
+                />
+                <Checkbox
+                  checked={settingsDraft.anonymous}
+                  onUpdate={(checked) => {
+                    setSettingsDraft((prev) => (prev ? { ...prev, anonymous: checked } : prev));
+                    setSettingsDirty(true);
+                  }}
+                  content="Анонимное голосование"
+                />
+              </div>
+
+              <div>
+                <Text variant="subheader-2" className="mb-2">Расписание</Text>
+                <ScheduleForm
+                  initialStartsAt={settingsDraft.starts_at}
+                  initialEndsAt={settingsDraft.ends_at}
+                  onUpdate={(payload) => {
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, starts_at: payload.starts_at, ends_at: payload.ends_at } : prev,
+                    );
+                    setSettingsDirty(true);
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  view="outlined"
+                  onClick={() => {
+                    setSettingsDraft({
+                      title: poll.title,
+                      description: poll.description ?? '',
+                      visibility: poll.visibility,
+                      allow_revoting: Boolean(poll.allow_revoting),
+                      anonymous: Boolean(poll.anonymous),
+                      results_visibility: poll.results_visibility,
+                      starts_at: poll.starts_at ?? null,
+                      ends_at: poll.ends_at ?? null,
+                    });
+                    setSettingsDirty(false);
+                  }}
+                  disabled={!settingsDirty}
+                >
+                  Сбросить
+                </Button>
+                <Button view="action" onClick={saveSettings} disabled={!settingsDirty} loading={updatePollMutation.isPending}>
+                  Сохранить
+                </Button>
               </div>
             </Card>
 
-            <div className="voting-v2__grid">
-              <Card className="voting-v2__card voting-v2__card--soft">
-                <Text variant="subheader-2" className="voting-v2__section-title">Служебная информация</Text>
-                <div className="voting-v2__meta-grid">
-                  <div><strong>Область:</strong> {SCOPE_LABELS[poll.scope_type]}</div>
-                  <div><strong>Scope ID:</strong> {poll.scope_id}</div>
-                  {poll.template ? <div><strong>Шаблон:</strong> {poll.template}</div> : null}
-                  <div><strong>Создан:</strong> {formatDateTime(poll.created_at, locale)}</div>
+            <div className="space-y-4">
+              <Card className="p-5">
+                <Text variant="subheader-2">Служебная информация</Text>
+                <div className="mt-3 space-y-2 text-sm text-slate-600">
+                  <div>
+                    <span className="font-semibold text-slate-800">Область:</span> {SCOPE_LABELS[poll.scope_type]}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-800">Scope ID:</span> {poll.scope_id}
+                  </div>
+                  {poll.template && (
+                    <div>
+                      <span className="font-semibold text-slate-800">Шаблон:</span> {poll.template}
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-semibold text-slate-800">Создан:</span> {formatDateTime(poll.created_at, locale)}
+                  </div>
                 </div>
               </Card>
 
-              {isDraft && publishIssues.length > 0 ? (
-                <Card className="voting-v2__card">
-                  <Text variant="subheader-2" className="voting-v2__section-title">Чеклист публикации</Text>
-                  <ul className="voting-v2__list voting-v2__small voting-v2__muted">
+              {isDraft && publishIssues.length > 0 && (
+                <Card className="p-5 border border-amber-200 bg-amber-50">
+                  <Text variant="subheader-2" className="text-amber-800">Чеклист публикации</Text>
+                  <ul className="mt-3 list-disc list-inside text-sm text-amber-700 space-y-1">
                     {publishIssues.map((issue) => (
                       <li key={issue}>{issue}</li>
                     ))}
                   </ul>
-                  <div className="voting-form__actions">
-                    <Button view="action" onClick={() => setActiveTab('questions')}>Исправить вопросы</Button>
-                  </div>
+                  <Button view="action" className="mt-4" onClick={() => setActiveTab('questions')}>
+                    Исправить вопросы
+                  </Button>
                 </Card>
-              ) : null}
+              )}
             </div>
-          </section>
-        ) : null}
+          </div>
+        )}
 
-        {activeTab === 'questions' ? (
-          <section role="tabpanel" id={panelIds.questions} aria-labelledby={tabIds.questions} className="voting-v2__grid">
-            <div className="voting-v2__toolbar">
+        {activeTab === 'questions' && (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <Text variant="subheader-2" className="voting-v2__section-title">Вопросы</Text>
-                <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
-                  Каждому вопросу нужен хотя бы один вариант ответа.
-                </Text>
+                <Text variant="subheader-2">Вопросы</Text>
+                <Text variant="body-2" color="secondary">Каждому вопросу нужен хотя бы один вариант ответа.</Text>
               </div>
               <Button view="action" onClick={openCreateNomination} disabled={!isDraft}>
                 Добавить вопрос
               </Button>
             </div>
 
-            {!isDraft ? (
+            {!isDraft && (
               <Alert
                 theme="normal"
                 title="Опрос опубликован"
                 message="Вопросы и варианты можно редактировать только в черновике."
               />
-            ) : null}
+            )}
 
             {sortedNominations.length === 0 ? (
-              <Card className="voting-v2__card voting-v2__state-card">
-                <Text variant="subheader-2" className="voting-v2__section-title">Вопросов пока нет</Text>
-                <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+              <Card className="p-8 text-center">
+                <Text variant="subheader-2" className="mb-2">Вопросов пока нет</Text>
+                <Text variant="body-2" color="secondary" className="mb-4">
                   Добавьте первый вопрос, чтобы подготовить опрос к публикации.
                 </Text>
-                <div className="voting-form__actions">
-                  <Button view="action" onClick={openCreateNomination} disabled={!isDraft}>Добавить вопрос</Button>
-                </div>
+                <Button view="action" onClick={openCreateNomination} disabled={!isDraft}>
+                  Добавить вопрос
+                </Button>
               </Card>
             ) : (
-              sortedNominations.map((nomination) => {
-                const options = [...(nomination.options ?? [])].sort((a, b) => a.sort_order - b.sort_order);
-                return (
-                  <Card key={nomination.id} className="voting-v2__card">
-                    <div className="voting-v2__toolbar">
-                      <div>
-                        <Text variant="subheader-2" className="voting-v2__section-title">{nomination.title}</Text>
-                        {nomination.description ? (
-                          <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">{nomination.description}</Text>
-                        ) : null}
-                        <div className="voting-v2__pills">
-                          <Label theme="normal" size="xs">{NOMINATION_KIND_LABELS[nomination.kind]}</Label>
-                          <Label theme="utility" size="xs">Макс. выборов: {nomination.max_votes}</Label>
-                          {nomination.is_required ? <Label theme="warning" size="xs">Обязательный</Label> : null}
-                          <Label theme="info" size="xs">Вариантов: {options.length}</Label>
+              <div className="space-y-4">
+                {sortedNominations.map((nomination) => {
+                  const options = [...(nomination.options ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+                  return (
+                    <Card key={nomination.id} className="p-6 space-y-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <Text variant="subheader-2">{nomination.title}</Text>
+                          {nomination.description && (
+                            <Text variant="body-2" color="secondary">{nomination.description}</Text>
+                          )}
+                          <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                            <Label theme="normal" size="xs">{NOMINATION_KIND_LABELS[nomination.kind]}</Label>
+                            <Label theme="utility" size="xs">Макс. выборов: {nomination.max_votes}</Label>
+                            {nomination.is_required && <Label theme="warning" size="xs">Обязательный</Label>}
+                            <Label theme="info" size="xs">Вариантов: {options.length}</Label>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button view="outlined" size="s" onClick={() => openEditNomination(nomination)} disabled={!isDraft}>
+                            Редактировать
+                          </Button>
+                          <Button view="outlined-danger" size="s" onClick={() => deleteNomination(nomination.id)} disabled={!isDraft}>
+                            Удалить
+                          </Button>
                         </div>
                       </div>
 
-                      <div className="voting-v2__toolbar-right">
-                        <Button view="outlined" size="s" onClick={() => openEditNomination(nomination)} disabled={!isDraft}>
-                          Редактировать
-                        </Button>
-                        <Button view="outlined-danger" size="s" onClick={() => deleteNomination(nomination.id)} disabled={!isDraft}>
-                          Удалить
-                        </Button>
-                      </div>
-                    </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Text variant="caption-2">Варианты ответа</Text>
+                          <Button view="outlined" size="s" onClick={() => openCreateOption(nomination.id)} disabled={!isDraft}>
+                            Добавить вариант
+                          </Button>
+                        </div>
 
-                    <div className="voting-v2__toolbar" style={{ marginTop: 12 }}>
-                      <Text variant="caption-2" className="voting-v2__muted">Варианты ответа</Text>
-                      <Button view="outlined" size="s" onClick={() => openCreateOption(nomination.id)} disabled={!isDraft}>
-                        Добавить вариант
-                      </Button>
-                    </div>
-
-                    {options.length === 0 ? (
-                      <div className="voting-v2__state-card voting-v2__muted">Варианты пока не добавлены.</div>
-                    ) : (
-                      <div className="voting-v2__table-like">
-                        {options.map((option) => (
-                          <div key={option.id} className="voting-v2__row">
-                            <div>
-                              <div className="voting-v2__option-title">{option.title}</div>
-                              {option.description ? (
-                                <div className="voting-v2__option-description">{option.description}</div>
-                              ) : null}
-                              {(option.media_url || option.game_id) ? (
-                                <div className="voting-v2__small voting-v2__muted">
-                                  {option.media_url ? `Медиа: ${option.media_url}` : null}
-                                  {option.media_url && option.game_id ? ' · ' : null}
-                                  {option.game_id ? `Game ID: ${option.game_id}` : null}
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="voting-v2__toolbar-right">
-                              <Button view="outlined" size="s" onClick={() => openEditOption(nomination.id, option)} disabled={!isDraft}>
-                                Редактировать
-                              </Button>
-                              <Button view="outlined-danger" size="s" onClick={() => deleteOption(option.id)} disabled={!isDraft}>
-                                Удалить
-                              </Button>
-                            </div>
+                        {options.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-600">
+                            Варианты пока не добавлены.
                           </div>
-                        ))}
+                        ) : (
+                          <div className="space-y-2">
+                            {options.map((option) => (
+                              <div
+                                key={option.id}
+                                className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div className="space-y-1">
+                                  <div className="font-medium text-slate-900">{option.title}</div>
+                                  {option.description && (
+                                    <div className="text-sm text-slate-600">{option.description}</div>
+                                  )}
+                                  {(option.media_url || option.game_id) && (
+                                    <div className="text-xs text-slate-500">
+                                      {option.media_url ? `Медиа: ${option.media_url}` : null}
+                                      {option.media_url && option.game_id ? ' · ' : null}
+                                      {option.game_id ? `Game ID: ${option.game_id}` : null}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    view="outlined"
+                                    size="s"
+                                    onClick={() => openEditOption(nomination.id, option)}
+                                    disabled={!isDraft}
+                                  >
+                                    Редактировать
+                                  </Button>
+                                  <Button
+                                    view="outlined-danger"
+                                    size="s"
+                                    onClick={() => deleteOption(option.id)}
+                                    disabled={!isDraft}
+                                  >
+                                    Удалить
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </Card>
-                );
-              })
+                    </Card>
+                  );
+                })}
+              </div>
             )}
-          </section>
-        ) : null}
+          </div>
+        )}
 
-        {activeTab === 'participants' ? (
-          <section role="tabpanel" id={panelIds.participants} aria-labelledby={tabIds.participants} className="voting-v2__grid">
-            <Card className="voting-v2__card">
-              <Text variant="subheader-2" className="voting-v2__section-title">Участники и роли</Text>
-              <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+              {activeTab === 'participants' && (
+          <div className="space-y-6">
+            <Card className="p-6">
+              <Text variant="subheader-2">Участники и роли</Text>
+              <Text variant="body-2" color="secondary" className="mt-1">
                 Используйте для приватных опросов или выдачи ролей модераторов.
               </Text>
 
-              <div className="voting-form__grid" style={{ marginTop: 12 }}>
-                <TextInput placeholder="UUID пользователя" value={participantUserId} onUpdate={setParticipantUserId} />
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr,200px,auto]">
+                <TextInput
+                  placeholder="UUID пользователя"
+                  value={participantUserId}
+                  onUpdate={setParticipantUserId}
+                />
                 <Select
                   value={[participantRole]}
                   onUpdate={(value) => setParticipantRole((value[0] ?? 'participant') as PollRole)}
                   options={PARTICIPANT_OPTIONS}
                 />
-              </div>
-              <div className="voting-form__actions">
                 <Button view="action" onClick={addParticipant} loading={addParticipantMutation.isPending}>
                   Добавить
                 </Button>
               </div>
             </Card>
 
-            <Card className="voting-v2__card">
-              <Text variant="subheader-2" className="voting-v2__section-title">Текущие участники</Text>
-              {participants.length === 0 ? (
-                <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
-                  Пока никто не добавлен.
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">Всего участников</Text>
+                <Text variant="header-2">{participants.length}</Text>
+              </Card>
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">Приняли участие</Text>
+                <Text variant="header-2">
+                  {participants.filter((p) => p.status === 'accepted').length}
                 </Text>
+              </Card>
+              <Card className="p-4">
+                <Text variant="caption-2" color="secondary">В ожидании</Text>
+                <Text variant="header-2">
+                  {participants.filter((p) => p.status === 'pending').length}
+                </Text>
+              </Card>
+            </div>
+
+            <Card className="p-6">
+              <Text variant="subheader-2" className="mb-4">Текущие участники</Text>
+              {participants.length === 0 ? (
+                <Text variant="body-2" color="secondary">Пока никто не добавлен.</Text>
               ) : (
-                <div className="voting-v2__table-like">
+                <div className="space-y-2">
                   {participants.map((participant) => (
-                    <div key={participant.user_id} className="voting-v2__row">
-                      <div>
-                        <div className="voting-v2__option-title">{participant.user_id}</div>
-                        <div className="voting-v2__option-description">
+                    <div
+                      key={participant.user_id}
+                      className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="font-medium text-slate-900">{participant.user_id}</div>
+                        <div className="text-sm text-slate-600">
                           Роль: {participant.role} · Статус: {participant.status}
                         </div>
                       </div>
@@ -969,16 +1007,9 @@ export const PollManagePage: React.FC = () => {
                 </div>
               )}
             </Card>
-          </section>
-        ) : null}
-      </VotingPageLayout>
-
-      <VotingConfirmDialog
-        open={Boolean(confirmAction)}
-        action={confirmAction}
-        onClose={closeConfirm}
-        loading={confirmLoading}
-      />
+          </div>
+        )}
+      </div>
 
       <Modal
         open={createQuestionOpen}
@@ -987,7 +1018,9 @@ export const PollManagePage: React.FC = () => {
         style={{ '--g-modal-width': '760px' }}
       >
         <div style={{ padding: 24, display: 'grid', gap: 16 }}>
-          <Text variant="subheader-2" id="create-question-title">Новый вопрос</Text>
+          <Text variant="subheader-2" id="create-question-title">
+            Новый вопрос
+          </Text>
           <NominationForm
             onSubmit={handleCreateNomination}
             onCancel={() => setCreateQuestionOpen(false)}
@@ -1003,13 +1036,15 @@ export const PollManagePage: React.FC = () => {
         aria-labelledby="edit-question-title"
         style={{ '--g-modal-width': '720px' }}
       >
-        {editingNomination ? (
+        {editingNomination && (
           <div style={{ padding: 24, display: 'grid', gap: 16 }}>
-            <Text variant="subheader-2" id="edit-question-title">Редактировать вопрос</Text>
+            <Text variant="subheader-2" id="edit-question-title">
+              Редактировать вопрос
+            </Text>
 
-            <div className="voting-form">
-              <div>
-                <label className="voting-form__label">Название</label>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Название</div>
                 <TextInput
                   value={editingNomination.title}
                   onUpdate={(value) =>
@@ -1018,10 +1053,9 @@ export const PollManagePage: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="voting-form__label">Описание</label>
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Описание</div>
                 <TextArea
-                  id="poll-manage-edit-description"
                   value={editingNomination.description}
                   onUpdate={(value) =>
                     setEditingNomination((prev) => (prev ? { ...prev, description: value } : prev))
@@ -1030,9 +1064,9 @@ export const PollManagePage: React.FC = () => {
                 />
               </div>
 
-              <div className="voting-form__grid">
-                <div>
-                  <label className="voting-form__label">Тип</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Тип</div>
                   <Select
                     value={[editingNomination.kind]}
                     onUpdate={(value) =>
@@ -1049,8 +1083,8 @@ export const PollManagePage: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="voting-form__label">Макс. выборов</label>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Макс. выборов</div>
                   <TextInput
                     type="number"
                     value={String(editingNomination.max_votes)}
@@ -1076,12 +1110,16 @@ export const PollManagePage: React.FC = () => {
               />
             </div>
 
-            <div className="voting-form__actions">
-              <Button view="outlined" onClick={() => setEditingNomination(null)}>Отмена</Button>
-              <Button view="action" onClick={saveNomination} loading={updateNominationMutation.isPending}>Сохранить</Button>
+            <div className="flex justify-end gap-2">
+              <Button view="outlined" onClick={() => setEditingNomination(null)}>
+                Отмена
+              </Button>
+              <Button view="action" onClick={saveNomination} loading={updateNominationMutation.isPending}>
+                Сохранить
+              </Button>
             </div>
           </div>
-        ) : null}
+        )}
       </Modal>
 
       <Modal
@@ -1090,7 +1128,7 @@ export const PollManagePage: React.FC = () => {
         aria-labelledby="option-modal-title"
         style={{ '--g-modal-width': '720px' }}
       >
-        {optionEditor ? (
+        {optionEditor && (
           <div style={{ padding: 24, display: 'grid', gap: 16 }}>
             <Text variant="subheader-2" id="option-modal-title">
               {optionEditor.mode === 'create' ? 'Новый вариант' : 'Редактировать вариант'}
@@ -1100,8 +1138,10 @@ export const PollManagePage: React.FC = () => {
               initialData={optionEditor.payload}
               onChange={(payload) => setOptionEditor((prev) => (prev ? { ...prev, payload } : prev))}
             />
-            <div className="voting-form__actions">
-              <Button view="outlined" onClick={() => setOptionEditor(null)}>Отмена</Button>
+            <div className="flex justify-end gap-2">
+              <Button view="outlined" onClick={() => setOptionEditor(null)}>
+                Отмена
+              </Button>
               <Button
                 view="action"
                 onClick={saveOption}
@@ -1112,8 +1152,8 @@ export const PollManagePage: React.FC = () => {
               </Button>
             </div>
           </div>
-        ) : null}
+        )}
       </Modal>
-    </>
+    </div>
   );
 };

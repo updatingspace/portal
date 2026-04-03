@@ -10,53 +10,43 @@ import {
   createAccountLinks,
   createSources,
 } from '../test/fixtures';
+import { TEST_ACTIVITY_VALUES } from '../test/constants';
 import { activityApiMock } from '../test/mocks/api';
 
 describe('Activity API (mocked)', () => {
+  const feedScenarios = [
+    ['default feed', createActivityFeedV2(), 4, true],
+    ['empty feed', { items: [], nextCursor: null, hasMore: false }, 0, false],
+  ] as const;
+
   beforeEach(() => {
-    // Reset all mocks before each test
-    Object.values(activityApiMock).forEach(mock => {
-      if (typeof mock === 'function' && 'mockReset' in mock) {
-        (mock as ReturnType<typeof vi.fn>).mockReset();
-      }
-    });
+    vi.clearAllMocks();
   });
 
   describe('fetchFeedV2', () => {
-    it('returns feed data', async () => {
-      const feedData = createActivityFeedV2();
-      activityApiMock.fetchFeedV2.mockResolvedValueOnce(feedData);
+    it.each(feedScenarios)('returns expected shape for %s', async (_name, response, itemCount, hasMore) => {
+      activityApiMock.fetchFeedV2.mockResolvedValueOnce(response);
 
       const result = await activityApiMock.fetchFeedV2();
 
-      expect(result).toEqual(feedData);
-      expect(result.items).toHaveLength(4);
-      expect(result.hasMore).toBe(true);
-    });
-
-    it('returns empty feed', async () => {
-      const emptyFeed = { items: [], nextCursor: null, hasMore: false };
-      activityApiMock.fetchFeedV2.mockResolvedValueOnce(emptyFeed);
-
-      const result = await activityApiMock.fetchFeedV2();
-
-      expect(result.items).toHaveLength(0);
-      expect(result.hasMore).toBe(false);
+      expect(result).toEqual(response);
+      expect(result.items).toHaveLength(itemCount);
+      expect(result.hasMore).toBe(hasMore);
     });
   });
 
   describe('fetchUnreadCount', () => {
-    it('returns unread count', async () => {
-      activityApiMock.fetchUnreadCount.mockResolvedValueOnce({ count: 42 });
+    it('returns unread count from mocked API', async () => {
+      activityApiMock.fetchUnreadCount.mockResolvedValueOnce({ count: TEST_ACTIVITY_VALUES.unreadCount });
 
       const result = await activityApiMock.fetchUnreadCount();
 
-      expect(result.count).toBe(42);
+      expect(result.count).toBe(TEST_ACTIVITY_VALUES.unreadCount);
     });
   });
 
   describe('markFeedAsRead', () => {
-    it('marks feed as read', async () => {
+    it('calls markFeedAsRead endpoint', async () => {
       activityApiMock.markFeedAsRead.mockResolvedValueOnce(undefined);
 
       await activityApiMock.markFeedAsRead();
@@ -66,7 +56,7 @@ describe('Activity API (mocked)', () => {
   });
 
   describe('fetchAccountLinks', () => {
-    it('returns account links', async () => {
+    it('returns account links list', async () => {
       const links = createAccountLinks();
       activityApiMock.fetchAccountLinks.mockResolvedValueOnce(links);
 
@@ -78,13 +68,13 @@ describe('Activity API (mocked)', () => {
   });
 
   describe('createAccountLink', () => {
-    it('creates account link', async () => {
+    it('creates account link with provided source and settings', async () => {
       const newLink = createAccountLinks()[0];
       activityApiMock.createAccountLink.mockResolvedValueOnce(newLink);
 
       const result = await activityApiMock.createAccountLink({
-        sourceId: 1,
-        settingsJson: { steam_id: '12345' },
+        sourceId: TEST_ACTIVITY_VALUES.sourceId,
+        settingsJson: TEST_ACTIVITY_VALUES.accountLinkSettings,
       });
 
       expect(result).toEqual(newLink);
@@ -92,17 +82,17 @@ describe('Activity API (mocked)', () => {
   });
 
   describe('deleteAccountLink', () => {
-    it('deletes account link', async () => {
+    it('deletes account link by id', async () => {
       activityApiMock.deleteAccountLink.mockResolvedValueOnce(undefined);
 
-      await activityApiMock.deleteAccountLink(123);
+      await activityApiMock.deleteAccountLink(TEST_ACTIVITY_VALUES.accountLinkId);
 
-      expect(activityApiMock.deleteAccountLink).toHaveBeenCalledWith(123);
+      expect(activityApiMock.deleteAccountLink).toHaveBeenCalledWith(TEST_ACTIVITY_VALUES.accountLinkId);
     });
   });
 
   describe('fetchSources', () => {
-    it('returns sources', async () => {
+    it('returns sources list', async () => {
       const sources = createSources();
       activityApiMock.fetchSources.mockResolvedValueOnce(sources);
 
@@ -114,7 +104,7 @@ describe('Activity API (mocked)', () => {
   });
 
   describe('triggerSync', () => {
-    it('triggers sync', async () => {
+    it('returns sync result payload', async () => {
       const syncResult = { ok: true, rawCreated: 5, rawDeduped: 2, activityCreated: 3 };
       activityApiMock.triggerSync.mockResolvedValueOnce(syncResult);
 
@@ -124,5 +114,4 @@ describe('Activity API (mocked)', () => {
       expect(result.ok).toBe(true);
     });
   });
-
 });
