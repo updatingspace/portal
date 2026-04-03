@@ -75,7 +75,7 @@ def backwards(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("access_control", "0012_seed_personalization_permissions"),
+        ("access_control", "0014_seed_personalization_permissions"),
     ]
 
     operations = [

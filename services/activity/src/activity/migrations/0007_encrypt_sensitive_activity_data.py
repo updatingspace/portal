@@ -23,7 +23,7 @@ def _encrypt_existing_values(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("activity", "0005_alter_newscomment_created_at_and_more"),
+        ("activity", "0006_news_comment_threads_and_reactions"),
     ]
 
     operations = [

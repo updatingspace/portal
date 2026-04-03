@@ -64,7 +64,7 @@ def backwards(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("access_control", "0011_sync_member_role_templates_v2"),
+        ("access_control", "0013_rename_access_cont_key_exp_idx_access_cont_key_a8bf02_idx_and_more"),
     ]
 
     operations = [
