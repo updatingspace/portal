@@ -7,13 +7,15 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from core.models import HomePageModal, UserPreference
+from core.models import HomePageModal
+from core.models import UserPreference as CoreUserPreference
+from personalization.models import UserPreference
 
 User = get_user_model()
 
 
 class UserPreferenceModelTests(TestCase):
-    """Tests for UserPreference model"""
+    """Tests for CoreUserPreference model (from core.models)"""
 
     def setUp(self):
         self.user_id = uuid.uuid4()
@@ -21,7 +23,7 @@ class UserPreferenceModelTests(TestCase):
 
     def test_create_user_preference(self):
         """Test creating a user preference with defaults"""
-        pref = UserPreference.objects.create(
+        pref = CoreUserPreference.objects.create(
             user_id=self.user_id,
             tenant_id=self.tenant_id,
         )
@@ -37,7 +39,7 @@ class UserPreferenceModelTests(TestCase):
 
     def test_user_preference_unique_constraint(self):
         """Test that user_id + tenant_id must be unique"""
-        UserPreference.objects.create(
+        CoreUserPreference.objects.create(
             user_id=self.user_id,
             tenant_id=self.tenant_id,
         )
@@ -45,14 +47,14 @@ class UserPreferenceModelTests(TestCase):
         from django.db import IntegrityError
 
         with self.assertRaises(IntegrityError):
-            UserPreference.objects.create(
+            CoreUserPreference.objects.create(
                 user_id=self.user_id,
                 tenant_id=self.tenant_id,
             )
 
     def test_get_default_notification_settings(self):
         """Test default notification settings structure"""
-        pref = UserPreference(user_id=self.user_id, tenant_id=self.tenant_id)
+        pref = CoreUserPreference(user_id=self.user_id, tenant_id=self.tenant_id)
         defaults = pref.get_default_notification_settings()
 
         self.assertIn("email", defaults)

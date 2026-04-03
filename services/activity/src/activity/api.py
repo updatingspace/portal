@@ -771,11 +771,20 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
     if len(body) > 2000:
         raise HttpError(400, error_payload("VALIDATION_ERROR", "Comment is too long"))
 
+    parent = None
+    if payload.parent_id:
+        parent = NewsComment.objects.filter(
+            id=payload.parent_id, tenant_id=ctx.tenant_id, post=post
+        ).first()
+        if not parent:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "Parent comment not found"))
+
     comment = NewsComment.objects.create(
         tenant_id=ctx.tenant_id,
         post=post,
         user_id=ctx.user_id,
         body=body,
+        parent=parent,
         created_at=timezone.now(),
     )
     post.comments_count += 1
@@ -786,6 +795,7 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
         user_id=comment.user_id,
         body=comment.body,
         created_at=comment.created_at,
+        parent_id=comment.parent_id,
     )
 
 
