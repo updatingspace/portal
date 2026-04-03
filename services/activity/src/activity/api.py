@@ -731,7 +731,7 @@ def news_comments_list(
     limit = min(100, max(1, limit))
     qs = (
         NewsComment.objects.filter(tenant_id=ctx.tenant_id, post=post, deleted_at__isnull=True)
-        .order_by("-created_at")[:limit]
+        .order_by("created_at", "id")[:limit]
     )
     return [
         schemas.NewsCommentOut(
