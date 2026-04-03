@@ -69,8 +69,10 @@ class UserPreferenceApiTests(TestCase):
 
     def setUp(self):
         self.client = Client()
-        self.user_id = str(uuid.uuid4())
-        self.tenant_id = str(uuid.uuid4())
+        self.user_uuid = uuid.uuid4()
+        self.tenant_uuid = uuid.uuid4()
+        self.user_id = str(self.user_uuid)
+        self.tenant_id = str(self.tenant_uuid)
         self.headers = {
             "HTTP_X_USER_ID": self.user_id,
             "HTTP_X_TENANT_ID": self.tenant_id,
@@ -93,8 +95,8 @@ class UserPreferenceApiTests(TestCase):
     def test_get_preferences_returns_existing(self):
         """Test that GET returns existing preferences"""
         UserPreference.objects.create(
-            user_id=self.user_id,
-            tenant_id=self.tenant_id,
+            user_id=self.user_uuid,
+            tenant_id=self.tenant_uuid,
             theme="dark",
             language="ru",
         )
@@ -117,8 +119,8 @@ class UserPreferenceApiTests(TestCase):
     def test_update_preferences_partial(self):
         """Test partial update of preferences"""
         UserPreference.objects.create(
-            user_id=self.user_id,
-            tenant_id=self.tenant_id,
+            user_id=self.user_uuid,
+            tenant_id=self.tenant_uuid,
         )
 
         response = self.client.put(
@@ -185,8 +187,8 @@ class UserPreferenceApiTests(TestCase):
         """Test resetting preferences to defaults"""
         # Create custom preferences
         UserPreference.objects.create(
-            user_id=self.user_id,
-            tenant_id=self.tenant_id,
+            user_id=self.user_uuid,
+            tenant_id=self.tenant_uuid,
             theme="dark",
             language="ru",
             profile_visibility="private",
@@ -258,13 +260,16 @@ class HomePageModalApiTests(TestCase):
         self.assertEqual(titles, {"Active"})
 
     def test_admin_modals_require_superuser(self):
+        # Anonymous request without headers returns 401
         response = self.client.get("/api/personalization/admin/homepage-modals")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
+        # Authenticated non-superuser returns 403
         self.client.force_login(self.user)
         response = self.client.get("/api/personalization/admin/homepage-modals")
         self.assertEqual(response.status_code, 403)
 
+        # Superuser can access
         self.client.force_login(self.superuser)
         response = self.client.get("/api/personalization/admin/homepage-modals")
         self.assertEqual(response.status_code, 200)

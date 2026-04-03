@@ -508,6 +508,43 @@ def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUI
     return [schemas.NewsReactionOut(emoji=r["emoji"], count=r["count"]) for r in rows]
 
 
+@router.get(
+    "/news/{news_id}/reactions",
+    response={200: list[schemas.NewsReactionDetailOut], 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="List reactions on a news post",
+    operation_id="activity_news_reactions_list",
+)
+def list_news_reactions(request, news_id: str, limit: int = 50, offset: int = 0):
+    """Get detailed list of reactions on a news post."""
+    ctx = require_activity_context(request, require_user=False)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.FEED_READ,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+    )
+
+    reactions = (
+        NewsReaction.objects.filter(tenant_id=ctx.tenant_id, post=post)
+        .order_by("-created_at")
+        [offset:offset + limit]
+    )
+    return [
+        schemas.NewsReactionDetailOut(
+            id=r.id,
+            user_id=r.user_id,
+            emoji=r.emoji,
+            created_at=r.created_at,
+        )
+        for r in reactions
+    ]
+
+
 def _can_manage_news(ctx, post: NewsPost) -> bool:
     if ctx.user_id and post.author_user_id == ctx.user_id:
         return True
