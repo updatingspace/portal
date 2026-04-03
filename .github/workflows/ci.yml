@@ -70,6 +70,7 @@ jobs:
       PYTHONPATH: src
       DJANGO_DEBUG: 'True'
       DJANGO_SECRET_KEY: ci-test-secret
+      DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
       ALLOWED_HOSTS: .updspace.com,testserver,localhost,127.0.0.1,bff,access,portal,voting,events,gamification,activity
       DATABASE_URL: sqlite:///db.sqlite3
       BFF_INTERNAL_HMAC_SECRET: ci-internal-hmac
