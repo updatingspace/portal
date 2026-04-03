@@ -69,8 +69,8 @@ export const NominationPageRedesigned: React.FC = () => {
   });
   const nominationData = nomination as LegacyNominationData | undefined;
   
-  // Cast vote mutation with optimistic updates
-  const castVoteMutation = useCastVoteUnified();
+  // Cast vote mutation with optimistic updates (legacy mode for nomination pages)
+  const castVoteMutation = useCastVoteUnified({ useLegacy: true });
   
   // Extract options from nomination
   const options: Option[] = useMemo(() => {

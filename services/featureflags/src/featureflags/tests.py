@@ -8,7 +8,7 @@ import uuid
 from typing import Any, cast
 
 from django.conf import settings
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 from .models import FeatureFlag
 
@@ -31,6 +31,7 @@ def _sign(
     ).hexdigest()
 
 
+@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret-for-featureflags")
 class FeatureFlagsApiTests(TestCase):
     def setUp(self):
         self.client = Client()

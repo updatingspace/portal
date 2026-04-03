@@ -53,12 +53,24 @@ def forwards(apps, schema_editor):
 
 def backwards(apps, schema_editor):
     Permission = apps.get_model("access_control", "Permission")
-    Permission.objects.filter(
-        key__in=[
-            "personalization.content.manage",
-            "personalization.dashboards.customize",
-        ]
-    ).delete()
+    Role = apps.get_model("access_control", "Role")
+    RolePermission = apps.get_model("access_control", "RolePermission")
+
+    service = "personalization"
+    permission_key = "personalization.dashboards.customize"
+
+    role = Role.objects.filter(
+        tenant_id=None,
+        service=service,
+        name=DEFAULT_MEMBER_ROLE_NAME,
+    ).first()
+    if role:
+        RolePermission.objects.filter(
+            role=role,
+            permission_id=permission_key,
+        ).delete()
+
+    Permission.objects.filter(key=permission_key).delete()
 
 
 class Migration(migrations.Migration):

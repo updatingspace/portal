@@ -23,8 +23,9 @@ export const buildProfileHubVM = (params: {
   achievements: Achievement[];
   communities: { id: string; name: string; description?: string | null }[];
   capabilities: ProfileHubVM['capabilities'];
+  routeBase: string;
 }): ProfileHubVM => {
-  const { user, sessionInfo, feedItems, hasMoreFeedItems, achievements, communities, capabilities } = params;
+  const { user, sessionInfo, feedItems, hasMoreFeedItems, achievements, communities, capabilities, routeBase } = params;
   const idProfileUser = (sessionInfo?.id_profile?.user as Record<string, unknown> | undefined) ?? undefined;
   const portalProfile = (sessionInfo?.portal_profile as Record<string, unknown> | undefined) ?? undefined;
 
@@ -85,7 +86,7 @@ export const buildProfileHubVM = (params: {
         title: item.nameI18n.ru ?? item.nameI18n.en ?? 'Без названия',
         subtitle: item.category || undefined,
         avatarUrl: item.images?.small ?? undefined,
-        href: `/app/gamification/achievements/${item.id}`,
+        href: `${routeBase}/gamification/achievements/${item.id}`,
       })),
       following: [],
       followers: [],

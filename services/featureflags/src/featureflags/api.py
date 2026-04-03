@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, cast
 
 from django.http import JsonResponse
+from django.db import models
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 
@@ -87,7 +88,8 @@ def evaluate(request: Any):
     flags = list(FeatureFlag.objects.all().order_by("key"))
     mapping = evaluate_flags(flags)
     latest_updated_at: datetime | None = (
-        flags[-1].updated_at if flags else None
+        FeatureFlag.objects.aggregate(max_updated=models.Max("updated_at"))["max_updated"]
+        if flags else None
     )
     return FeatureFlagsEvaluationOut(
         feature_flags=mapping,

@@ -371,7 +371,7 @@ const sections: { key: SectionKey; labelKey: keyof typeof translations['ru']['se
   { key: 'audience', labelKey: 'audience' },
 ];
 
-export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess }) => {
+const EventFormInner: React.FC<EventFormProps> = ({ event, onCancel, onSuccess }) => {
   const { user } = useAuth();
   const locale = useMemo(() => getPortalLanguage(user?.language ?? null), [user?.language]);
   const copy = translations[locale];
@@ -778,3 +778,7 @@ export const EventForm: React.FC<EventFormProps> = ({ event, onCancel, onSuccess
     </div>
   );
 };
+
+export const EventForm: React.FC<EventFormProps> = (props) => (
+  <EventFormInner key={props.event?.id ?? 'new'} {...props} />
+);

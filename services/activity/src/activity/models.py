@@ -249,15 +249,48 @@ class NewsComment(models.Model):
         on_delete=models.CASCADE,
         related_name="comments",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
     user_id = models.UUIDField()
     body = models.TextField()
     created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "act_news_comment"
         indexes = [
             models.Index(fields=["tenant_id", "post", "created_at"], name="act_news_comment_idx"),
+            models.Index(fields=["tenant_id", "post", "parent", "created_at"], name="act_news_comment_parent_idx"),
+        ]
+
+
+class NewsCommentReaction(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    tenant_id = models.UUIDField()
+    comment = models.ForeignKey(
+        NewsComment,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user_id = models.UUIDField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_news_comment_reaction"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comment", "user_id"],
+                name="act_news_comment_reaction_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant_id", "comment"], name="act_news_comment_react_idx"),
         ]
 
 
@@ -362,6 +395,35 @@ class FeedLastSeen(models.Model):
                 name="act_feed_last_seen_idx",
             ),
         ]
+
+
+class ActivityAuditEvent(models.Model):
+    """Immutable audit record for activity lifecycle operations."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField(db_index=True)
+    actor_user_id = models.UUIDField(db_index=True)
+    action = models.CharField(max_length=64)
+    target_type = models.CharField(max_length=32, blank=True)
+    target_id = models.CharField(max_length=128, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    request_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_audit_event"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant_id", "action"], name="a_audit_tnt_action_idx"),
+            models.Index(fields=["tenant_id", "created_at"], name="a_audit_tnt_created_idx"),
+            models.Index(
+                fields=["tenant_id", "actor_user_id", "-created_at"],
+                name="a_audit_tnt_actor_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.action} by {self.actor_user_id} ({self.tenant_id})"
 
 
 def source_ref_for_raw(*, source: Source, raw_event_id: int) -> str:

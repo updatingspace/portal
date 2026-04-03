@@ -1,191 +1,74 @@
 ---
-sidebar_position: 3
 title: Multi-Tenancy
-description: Архитектура мультитенантности в UpdSpace
 ---
 
 # Multi-Tenancy
 
-UpdSpace — мультитенантная платформа. Каждый tenant (например, AEF) полностью изолирован.
+Tenant isolation в UpdSpace завязана не на один механизм, а на комбинацию маршрутизации, internal context headers, permission scopes и фильтрации в моделях.
 
-## Определение Tenant
+## Tenant sources
 
-### По Subdomain
-```
-aef.updspace.com    → tenant_slug = "aef"
-gaming.updspace.com → tenant_slug = "gaming"
-```
+Платформа поддерживает два режима tenant routing:
 
-### Резолвинг в BFF
-```python
-# middleware/tenant.py
-def resolve_tenant(request):
-    host = request.META.get("HTTP_HOST", "")
-    subdomain = host.split(".")[0]  # aef.updspace.com → aef
-    
-    tenant = Tenant.objects.get(slug=subdomain)
-    request.tenant = tenant
-```
+- subdomain-oriented режим, когда tenant виден из host;
+- path-based frontend routing через `/t/:tenantSlug/*`.
 
-## Модель данных Tenant
+BFF связывает оба режима и приводит их к одному внутреннему представлению:
 
-```python
-class Tenant(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    slug = models.CharField(max_length=50, unique=True)  # aef
-    name = models.CharField(max_length=255)              # AEF Community
-    settings = models.JSONField(default=dict)           # Feature flags
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        db_table = "tenants"
+- `tenant_id`
+- `tenant_slug`
+- `user_id`
+- `master_flags`
+
+## Isolation layers
+
+```mermaid
+flowchart TD
+    Host["Host or path tenant selection"]
+    BFF["BFF tenant resolution"]
+    Headers["X-Tenant-Id / X-Tenant-Slug"]
+    Scope["Access scope check"]
+    Queryset["Service queryset filters"]
+
+    Host --> BFF --> Headers --> Scope --> Queryset
 ```
 
-## Изоляция данных
+## Scope model
 
-### Правило #1: tenant_id в каждой таблице
+В коде встречаются как минимум такие scope types:
 
-```python
-class Post(models.Model):
-    id = models.UUIDField(primary_key=True)
-    tenant_id = models.UUIDField(db_index=True)  # ОБЯЗАТЕЛЬНО
-    title = models.CharField(max_length=255)
-    # ...
-```
+- `TENANT`
+- `COMMUNITY`
+- `TEAM`
+- дополнительные доменные scope values в отдельных сервисах
 
-### Правило #2: Фильтрация в каждом запросе
+Не каждый сервис обязан одинаково поддерживать все scope types, но он обязан явно определять, на какой scope опирается при authorization.
 
-```python
-# ✅ Правильно
-posts = Post.objects.filter(tenant_id=request.tenant.id)
+## Где tenant важен особенно сильно
 
-# ❌ НИКОГДА так
-posts = Post.objects.all()  # Утечка данных!
-```
+| Service | Как tenant участвует |
+| --- | --- |
+| BFF | выбирает активный tenant и передает его downstream |
+| Access | вычисляет effective access в tenant и scope context |
+| Portal | все профили, communities, teams и posts привязаны к tenant |
+| Voting | новые poll-модели tenant-aware; legacy слой требует отдельной осторожности |
+| Events | visibility и membership checks выполняются внутри tenant |
+| Gamification | categories, achievements, grants живут в tenant |
+| Activity | feed, news, connectors, subscriptions и account links фильтруются по tenant |
 
-### Правило #3: Уникальность с tenant_id
+## Типовые ошибки
 
-```python
-class CommunityMembership(models.Model):
-    tenant_id = models.UUIDField()
-    community_id = models.UUIDField()
-    user_id = models.UUIDField()
-    
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tenant_id", "community_id", "user_id"],
-                name="unique_community_membership"
-            )
-        ]
-```
+- detail endpoint получает объект только по `id`, а не по `id + tenant_id`;
+- внутренний сервис доверяет только `user_id`, но не сверяет tenant;
+- compat layer возвращает legacy identifier, который не гарантирует tenant scoping;
+- background job нормализует или импортирует данные без явного tenant context.
 
-## Таблицы БЕЗ tenant_id
+## Что должен делать новый модуль
 
-Некоторые таблицы глобальны (в UpdSpaceID):
+Если вы добавляете новый tenant-aware домен:
 
-| Таблица | Причина |
-|---------|---------|
-| `User` | Пользователь может быть в нескольких tenants |
-| `Tenant` | Сама таблица tenants |
-| `ExternalIdentity` | OAuth привязки глобальны |
-
-Но даже для глобальных сущностей есть связь:
-
-```python
-class TenantMembership(models.Model):
-    user_id = models.UUIDField()
-    tenant_id = models.UUIDField()
-    status = models.CharField()  # active/disabled
-    base_role = models.CharField()  # member/admin
-```
-
-## Контекст в запросах
-
-### Headers от BFF
-
-```http
-GET /api/v1/portal/posts HTTP/1.1
-X-Request-Id: 550e8400-e29b-41d4-a716-446655440000
-X-Tenant-Id: 123e4567-e89b-12d3-a456-426614174000
-X-Tenant-Slug: aef
-X-User-Id: 987fcdeb-51a2-4bc3-8def-0123456789ab
-X-Master-Flags: {"suspended":false,"system_admin":false}
-X-Updspace-Timestamp: 1705234567
-X-Updspace-Signature: abc123...
-```
-
-### Получение в сервисе
-
-```python
-def get_posts(request):
-    tenant_id = request.headers.get("X-Tenant-Id")
-    user_id = request.headers.get("X-User-Id")
-    
-    # Проверка доступа
-    if not Access.check(tenant_id, user_id, "portal.posts.read"):
-        raise PermissionDenied()
-    
-    # Фильтрация по tenant
-    return Post.objects.filter(tenant_id=tenant_id)
-```
-
-## Тестирование изоляции
-
-### Обязательные тесты
-
-```python
-def test_tenant_isolation():
-    # Создаём два tenant
-    tenant_a = Tenant.objects.create(slug="tenant-a")
-    tenant_b = Tenant.objects.create(slug="tenant-b")
-    
-    # Создаём пост в tenant A
-    post = Post.objects.create(
-        tenant_id=tenant_a.id,
-        title="Secret Post"
-    )
-    
-    # Запрос от tenant B не должен видеть пост
-    response = client.get(
-        "/api/v1/portal/posts",
-        headers={"X-Tenant-Id": str(tenant_b.id)}
-    )
-    
-    assert post.id not in [p["id"] for p in response.json()]
-```
-
-## Миграция данных
-
-При импорте данных из legacy системы:
-
-```python
-def migrate_legacy_posts(legacy_posts, target_tenant_id):
-    for legacy in legacy_posts:
-        Post.objects.create(
-            tenant_id=target_tenant_id,  # Явно указываем tenant
-            title=legacy["title"],
-            content=legacy["content"],
-            # ...
-        )
-```
-
-## Threat Model: Утечки Tenant
-
-| Угроза | Митигация |
-|--------|-----------|
-| Запрос без tenant_id | BFF обязательно добавляет X-Tenant-Id |
-| SQL injection для bypass | ORM + параметризованные запросы |
-| Прямой доступ к сервису | Только BFF имеет доступ (network policy) |
-| Cross-tenant в URL | Валидация tenant_id в каждом endpoint |
-| Cache pollution | Tenant-scoped cache keys |
-
-### Пример cache key
-
-```python
-# ✅ Правильно
-cache_key = f"posts:{tenant_id}:list"
-
-# ❌ Утечка!
-cache_key = "posts:list"
-```
+1. храните `tenant_id` в модели;
+2. фильтруйте `queryset` по tenant до любой бизнес-логики;
+3. проверяйте permission через Access;
+4. документируйте scope_type/scope_id, который используется для authorization;
+5. добавляйте тест на cross-tenant isolation.

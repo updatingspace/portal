@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Card, Text } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
+import { useRouteBase } from '../../../../../shared/hooks/useRouteBase';
 import type { ProfileWidgetPreviewItemVM } from '../../model/types';
 import { profileHubStrings } from '../../strings/ru';
 
@@ -11,6 +12,7 @@ type FollowingWidgetProps = {
 
 export const FollowingWidget: React.FC<FollowingWidgetProps> = ({ items }) => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
 
   return (
     <Card view="filled" className="profile-widget">
@@ -27,7 +29,7 @@ export const FollowingWidget: React.FC<FollowingWidgetProps> = ({ items }) => {
           ))}
         </div>
       )}
-      <Button view="flat" size="s" onClick={() => navigate('/app/profile/following')}>
+      <Button view="flat" size="s" onClick={() => navigate(`${routeBase}/profile/following`)}>
         {profileHubStrings.following.showAll}
       </Button>
     </Card>

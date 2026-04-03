@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Loader } from '@gravity-ui/uikit';
 
+import { useRouteBase } from '../shared/hooks/useRouteBase';
+
 import type { ApiError } from '../api/client';
 import { HomePageModalDisplay } from '../components/HomePageModalDisplay';
 import { fetchVotingCatalog } from '../api/votings';
@@ -21,6 +23,7 @@ const MAX_ACTIVE_ITEMS = 20;
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
 
   const [votingCatalog, setVotingCatalog] = useState<VotingCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -104,7 +107,7 @@ export const HomePage: React.FC = () => {
     ? formatDeadline(nextDeadlineItem.deadline)
     : 'Дедлайн уточняется';
 
-  const openVoting = (id: string) => navigate(`/nominations?${new URLSearchParams({ voting: id }).toString()}`);
+  const openVoting = (id: string) => navigate(`${routeBase}/voting/${id}`);
 
   return (
     <div className="page-section home-page">

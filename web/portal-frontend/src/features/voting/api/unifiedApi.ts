@@ -111,9 +111,13 @@ export async function fetchVotingSessionDetail(
   config?: ApiConfig
 ): Promise<VotingDetailResponse> {
   if (config?.useLegacy) {
-    throw new Error(
-      'Legacy API does not support voting detail. Use fetchNomination for individual nominations.'
-    );
+    // Legacy API: fetch voting catalog and find by ID
+    const catalog = await fetchVotingCatalog();
+    const voting = catalog.find(v => String(v.id) === String(id));
+    if (!voting) {
+      throw new Error(`Voting session with ID ${id} not found`);
+    }
+    return adaptLegacyVotingToPoll(voting);
   }
   
   return fetchVotingSessionDetailModern(id);

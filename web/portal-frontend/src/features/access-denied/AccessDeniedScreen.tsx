@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AccessDeniedError, type AccessDeniedTenant } from '../../api/accessDenied';
 import { useAuth } from '../../contexts/AuthContext';
 import { env } from '../../shared/config/env';
+import { useRouteBase } from '../../shared/hooks/useRouteBase';
 import { getTenantFromHost } from '../../shared/lib/tenant';
 import { toaster } from '../../toaster';
 import { AccessDeniedView } from './AccessDeniedView';
@@ -41,6 +42,7 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const routeBase = useRouteBase();
 
   const routeHasHistory = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -123,7 +125,7 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
       service={error?.service ?? null}
       reasonSummary={reasonSummary}
       showBackAction={routeHasHistory}
-      onHome={() => navigate('/app')}
+      onHome={() => navigate(routeBase)}
       onBack={() => navigate(-1)}
       onCopyAdminMessage={handleCopyAdminMessage}
       onCopyRequestId={error?.requestId ? handleCopyRequestId : undefined}

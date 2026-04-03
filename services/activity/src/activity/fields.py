@@ -58,7 +58,9 @@ class EncryptedJSONField(models.TextField):
             try:
                 json.loads(value)
             except json.JSONDecodeError:
-                value = json.dumps(value, ensure_ascii=False)
+                # Non-JSON string: serialize once, then encrypt
+                return encrypt_text(json.dumps(value, ensure_ascii=False))
             else:
+                # Already valid JSON string: encrypt directly
                 return encrypt_text(value)
         return encrypt_json(value)

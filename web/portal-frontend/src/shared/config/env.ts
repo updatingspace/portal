@@ -6,6 +6,7 @@ const envSchema = z.object({
   VITE_LOGIN_PATH: z.string().optional(),
   VITE_TENANT_HINT: z.string().optional(),
   VITE_SUPPORT_TRACKER_URL: z.string().optional(),
+  VITE_VOTING_UI_V2: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(import.meta.env);
@@ -19,4 +20,6 @@ export const env = {
   tenantHint: raw.VITE_TENANT_HINT?.trim() || null,
   supportTrackerUrl:
     raw.VITE_SUPPORT_TRACKER_URL?.trim() || 'https://github.com/updatingspace/aef-vote/issues/new',
+  votingUiV2:
+    (raw.VITE_VOTING_UI_V2?.trim().toLowerCase() ?? 'true') === 'true',
 } as const;

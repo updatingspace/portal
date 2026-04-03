@@ -198,6 +198,188 @@ class TenantAdminAuditEvent(models.Model):
         return f"{self.action} by {self.performed_by} ({self.tenant_id})"
 
 
+# ---------------------------------------------------------------------------
+# Rollout / Feature Flag / AB Experiment models
+# ---------------------------------------------------------------------------
+
+
+class RolloutTargetType(models.TextChoices):
+    """What a feature flag or experiment targets."""
+    ALL = "all", "All users"
+    PERCENT = "percent", "Percentage rollout"
+    USER_LIST = "user_list", "Explicit user list"
+    TENANT_LIST = "tenant_list", "Explicit tenant list"
+
+
+class FeatureFlag(models.Model):
+    """Boolean feature flag — on/off per targeting rule.
+
+    Flags can be global (tenant_id=None) or scoped to a single tenant.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key = models.CharField(max_length=128, db_index=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    description = models.CharField(max_length=255, blank=True, default="")
+
+    enabled = models.BooleanField(default=False)
+    target_type = models.CharField(
+        max_length=16,
+        choices=RolloutTargetType.choices,
+        default=RolloutTargetType.ALL,
+    )
+    target_value = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Depends on target_type: percent={\"pct\": 25}, user_list={\"user_ids\": [...]}, etc.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Feature flag"
+        verbose_name_plural = "Feature flags"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["key", "tenant_id"],
+                name="ac_feature_flag_unique_key_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["key"],
+                condition=Q(tenant_id__isnull=True),
+                name="ac_feature_flag_unique_key_global",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["key"]),
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["enabled"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        scope = str(self.tenant_id) if self.tenant_id else "global"
+        return f"flag:{self.key} [{scope}] {'ON' if self.enabled else 'OFF'}"
+
+
+class Experiment(models.Model):
+    """A/B experiment with variant assignment.
+
+    Each experiment has a key, list of variant names, and percentage weights.
+    Assignment is deterministic via hash(user_key + experiment_key).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key = models.CharField(max_length=128, db_index=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    description = models.CharField(max_length=255, blank=True, default="")
+
+    enabled = models.BooleanField(default=False)
+    variants = models.JSONField(
+        default=list,
+        help_text='List of variant definitions: [{\"name\": \"control\", \"weight\": 50}, {\"name\": \"treatment\", \"weight\": 50}]',
+    )
+    target_type = models.CharField(
+        max_length=16,
+        choices=RolloutTargetType.choices,
+        default=RolloutTargetType.ALL,
+    )
+    target_value = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Experiment"
+        verbose_name_plural = "Experiments"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["key", "tenant_id"],
+                name="ac_experiment_unique_key_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["key"],
+                condition=Q(tenant_id__isnull=True),
+                name="ac_experiment_unique_key_global",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["key"]),
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["enabled"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        scope = str(self.tenant_id) if self.tenant_id else "global"
+        return f"experiment:{self.key} [{scope}] {'ON' if self.enabled else 'OFF'}"
+
+
+class KillSwitch(models.Model):
+    """Emergency kill switch for instant feature disable.
+
+    When active=True, the affected feature_key is force-disabled regardless
+    of FeatureFlag or Experiment state.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    feature_key = models.CharField(max_length=128, db_index=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+
+    active = models.BooleanField(default=True)
+    reason = models.CharField(max_length=255, blank=True, default="")
+
+    activated_at = models.DateTimeField(auto_now_add=True)
+    activated_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Kill switch"
+        verbose_name_plural = "Kill switches"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["feature_key", "tenant_id"],
+                name="ac_kill_switch_unique_key_tenant",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["feature_key"]),
+            models.Index(fields=["active"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"kill:{self.feature_key} {'ACTIVE' if self.active else 'inactive'}"
+
+
+class RolloutAuditLog(models.Model):
+    """Audit log for rollout/feature flag/experiment changes."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    performed_by = models.UUIDField(db_index=True)
+    action = models.CharField(max_length=64)
+    entity_type = models.CharField(
+        max_length=32,
+        help_text="feature_flag | experiment | kill_switch",
+    )
+    entity_id = models.UUIDField()
+    changes = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Rollout audit log"
+        verbose_name_plural = "Rollout audit logs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant_id", "entity_type"]),
+            models.Index(fields=["entity_id"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.action} {self.entity_type}:{self.entity_id}"
+
+
 __all__ = [
     "PermissionService",
     "Permission",
@@ -208,4 +390,9 @@ __all__ = [
     "PolicyAction",
     "PolicyOverride",
     "TenantAdminAuditEvent",
+    "RolloutTargetType",
+    "FeatureFlag",
+    "Experiment",
+    "KillSwitch",
+    "RolloutAuditLog",
 ]

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useRouteBase } from '@/shared/hooks/useRouteBase';
 import { Button, Card, Icon, Label, Loader, Text } from '@gravity-ui/uikit';
 import { Calendar as CalendarIcon, Clock, MapPin, Pencil, Eye, Person } from '@gravity-ui/icons';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -72,6 +73,7 @@ const formatRelative = (start: Date, now: Date) => {
 export const EventPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const routeBase = useRouteBase();
     const { user } = useAuth();
 
     const locale = user?.language?.toLowerCase().startsWith('ru') ? 'ru-RU' : 'en-US';
@@ -132,7 +134,7 @@ export const EventPage: React.FC = () => {
     };
 
     const handleEdit = () => {
-        navigate(`/app/events/${id}/edit`);
+        navigate(`${routeBase}/events/${id}/edit`);
     };
 
     const handleExport = () => {
@@ -154,7 +156,7 @@ export const EventPage: React.FC = () => {
 
     const handleCopyLink = async () => {
         if (!event) return;
-        const url = `${window.location.origin}/app/events/${event.id}`;
+        const url = `${window.location.origin}${routeBase}/events/${event.id}`;
         try {
             await navigator.clipboard.writeText(url);
             toaster.add({
@@ -181,7 +183,7 @@ export const EventPage: React.FC = () => {
             <div className="container py-6 max-w-3xl mx-auto">
                 <Card className="p-6">
                     <Text variant="subheader-2" className="text-red-600">Событие не найдено</Text>
-                    <Button onClick={() => navigate('/app/events')} view="outlined" className="mt-4">
+                    <Button onClick={() => navigate(`${routeBase}/events`)} view="outlined" className="mt-4">
                         Вернуться к событиям
                     </Button>
                 </Card>
@@ -237,7 +239,7 @@ export const EventPage: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Link to="/app/events">
+                            <Link to={`${routeBase}/events`}>
                                 <Button view="flat" size="m">Назад</Button>
                             </Link>
                             {canManage && (

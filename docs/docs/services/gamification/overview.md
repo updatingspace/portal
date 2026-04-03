@@ -1,53 +1,50 @@
 ---
-sidebar_position: 1
-title: Обзор Gamification
-description: Сервис ачивок и выдач
+title: Gamification Overview
 ---
 
-# Gamification Service
+# Gamification Overview
 
-**Gamification** — сервис ачивок и их выдач (grants), включая статусы, категории и историю выдач.
+Gamification отвечает за recognition layer внутри tenant-а: achievements, categories и grants.
 
-- **Path**: `services/gamification`
-- **Port**: 8007
+## Main API families
 
-## Функционал
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /gamification/achievements` | list achievements |
+| `POST /gamification/achievements` | create achievement |
+| `PATCH /gamification/achievements/{id}` | update achievement |
+| `POST /gamification/achievements/{id}/grants` | issue grant |
+| `POST /gamification/grants/{id}/revoke` | revoke grant |
+| `GET/POST/PATCH /gamification/categories` | category management |
 
-| Feature | Статус | Описание |
-|---------|--------|----------|
-| Achievements CRUD | ✅ MVP | Создание/редактирование/публикация/скрытие |
-| Categories | ✅ MVP | Управляемые категории (multi-tenant) |
-| Grants | ✅ MVP | Выдача и отзыв ачивок |
-| Private visibility | ✅ MVP | Draft/hidden и private grants |
-| Outbox events | ✅ MVP | `gamification.grant.created`, `gamification.grant.revoked` |
+## Main dependencies
 
-## Основные эндпоинты (BFF)
+- `Access` for permission checks;
+- `Portal` profile catalog indirectly through frontend/admin UX;
+- `BFF` as browser entrypoint.
 
-- `GET /api/v1/gamification/achievements`
-- `POST /api/v1/gamification/achievements`
-- `PATCH /api/v1/gamification/achievements/{id}`
-- `GET /api/v1/gamification/achievements/{id}/grants`
-- `POST /api/v1/gamification/achievements/{id}/grants`
-- `POST /api/v1/gamification/grants/{grant_id}/revoke`
-- `GET /api/v1/gamification/categories`
-- `POST /api/v1/gamification/categories`
-- `PATCH /api/v1/gamification/categories/{id}`
+## Capability-heavy domain
 
-## RBAC
+Gamification использует богатый набор capability keys:
 
-Права доступа задаются через Access service:
+- create
+- edit
+- publish
+- hide
+- assign
+- revoke
+- view_private
 
-- `gamification.achievements.create`
-- `gamification.achievements.edit`
-- `gamification.achievements.publish`
-- `gamification.achievements.hide`
-- `gamification.achievements.assign`
-- `gamification.achievements.revoke`
-- `gamification.achievements.view_private`
+Это значит, что многие UX paths зависят не от одной роли, а от комбинации прав.
 
-## Outbox
+## Internal architecture graph
 
-При выдаче/отзыве ачивок создаются события:
-
-- `gamification.grant.created`
-- `gamification.grant.revoked`
+```mermaid
+flowchart LR
+    BFF["BFF"] --> API["gamification/api.py"]
+    API --> Context["context.py"]
+    API --> Permissions["permissions.py"]
+    API --> Services["services.py"]
+    API --> Models["models.py"]
+    Permissions --> Access["Access"]
+```

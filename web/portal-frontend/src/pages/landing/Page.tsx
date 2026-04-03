@@ -13,7 +13,7 @@ export const LandingPage: React.FC = () => {
   const { user } = useAuth();
   const handlePrimary = () => {
     if (user) {
-      navigate('/app');
+      navigate('/choose-tenant');
     } else {
       navigate(landingContent.hero.primaryCta.href);
     }

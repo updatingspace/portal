@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Card, Text } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
+import { useRouteBase } from '../../../../../shared/hooks/useRouteBase';
 import { profileHubStrings } from '../../strings/ru';
 
 type AboutWidgetProps = {
@@ -13,6 +14,7 @@ type AboutWidgetProps = {
 
 export const AboutWidget: React.FC<AboutWidgetProps> = ({ language, timezone, contacts, isSelf }) => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const hasData = Boolean(language || timezone || (contacts && contacts.length > 0));
 
   return (
@@ -20,7 +22,7 @@ export const AboutWidget: React.FC<AboutWidgetProps> = ({ language, timezone, co
       <div className="profile-widget__head">
         <Text variant="subheader-2">{profileHubStrings.about.title}</Text>
         {isSelf && (
-          <Button view="flat" size="s" onClick={() => navigate('/app/settings')}>
+          <Button view="flat" size="s" onClick={() => navigate(`${routeBase}/settings`)}>
             {profileHubStrings.about.edit}
           </Button>
         )}

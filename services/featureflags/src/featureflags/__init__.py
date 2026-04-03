@@ -1,1 +1,1 @@
-default_app_config = "featureflags.apps.FeatureFlagsConfig"
+# Django auto-discovers apps via apps.py

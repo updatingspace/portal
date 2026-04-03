@@ -1,1 +1,1 @@
-default_app_config = "gamification.apps.GamificationConfig"
+# Django auto-discovers apps via apps.py

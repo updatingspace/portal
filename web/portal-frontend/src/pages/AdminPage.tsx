@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useRouteBase } from '../shared/hooks/useRouteBase';
 import { AsideHeader, type MenuItem } from '@gravity-ui/navigation';
 import {
   Button,
@@ -416,6 +417,7 @@ const mapImportPayloadToAdminVoting = (payload: VotingImportPayload): AdminVotin
 
 export const AdminPage: React.FC = () => {
   const navigate = useNavigate();
+  const routeBase = useRouteBase();
   const location = useLocation();
   const { user, isInitialized, isLoading, refreshProfile } = useAuth();
   const commandHistory = useMemo(() => new CommandHistory(30), []);
@@ -2080,7 +2082,7 @@ export const AdminPage: React.FC = () => {
                   isListLoading={isVotingsLoading}
                   selectedVotingId={selectedVotingId}
                   onSelectVoting={handleSelectVoting}
-                  onOpenVotingPublic={(id) => navigate(`/votings/${id}`)}
+                  onOpenVotingPublic={(id) => navigate(`${routeBase}/voting/${id}`)}
                   selectedVoting={selectedVoting}
                   isDetailLoading={isDetailLoading}
                   isEditingMeta={isEditingMeta}

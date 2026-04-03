@@ -1,0 +1,60 @@
+openapi: 3.0.0
+info:
+  title: updspace-portal-shared-gateway
+  version: 1.0.0
+
+x-yc-apigateway:
+  variables:
+    frontend_bucket:
+      default: replace-me-frontend-bucket
+    bff_container_id:
+      default: replace-me-bff-container
+    gateway_service_account_id:
+      default: replace-me-gateway-sa
+
+paths:
+  /api/{proxy+}:
+    x-yc-apigateway-any-method:
+      parameters:
+        - name: proxy
+          in: path
+          description: Greedy path for BFF API routing.
+          required: false
+          explode: false
+          style: simple
+          schema:
+            type: string
+            default: "-"
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${var.bff_container_id}
+        service_account_id: ${var.gateway_service_account_id}
+
+  /{file+}:
+    x-yc-apigateway-any-method:
+      parameters:
+        - name: file
+          in: path
+          description: Greedy path for SPA assets and client-side routes.
+          required: false
+          explode: false
+          style: simple
+          schema:
+            type: string
+            default: "-"
+      x-yc-apigateway-integration:
+        type: object_storage
+        bucket: ${var.frontend_bucket}
+        object: "{file}"
+        service_account_id: ${var.gateway_service_account_id}
+        error_object:
+          object: index.html
+          statusCode: 200
+
+  /:
+    get:
+      x-yc-apigateway-integration:
+        type: object_storage
+        bucket: ${var.frontend_bucket}
+        object: index.html
+        service_account_id: ${var.gateway_service_account_id}
