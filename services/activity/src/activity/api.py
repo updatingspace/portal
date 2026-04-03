@@ -23,6 +23,7 @@ from activity.models import (
     AccountLink,
     ActivityEvent,
     NewsComment,
+    NewsCommentReaction,
     NewsPost,
     NewsReaction,
     Source,
@@ -744,6 +745,108 @@ def news_comments_list(
     ]
 
 
+@router.get(
+    "/news/{news_id}/comments/page",
+    response={200: schemas.NewsCommentPageOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="List comments with cursor pagination",
+    operation_id="activity_news_comments_page",
+)
+def news_comments_page(
+    request,
+    news_id: str,
+    limit: int = 20,
+    cursor: str | None = None,
+    parent_id: int | None = None,
+):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.FEED_READ,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+    )
+
+    limit = min(100, max(1, limit))
+    qs = NewsComment.objects.filter(
+        tenant_id=ctx.tenant_id,
+        post=post,
+        deleted_at__isnull=True,
+    )
+    if parent_id is None:
+        qs = qs.filter(parent__isnull=True)
+    else:
+        qs = qs.filter(parent_id=parent_id)
+
+    if cursor:
+        try:
+            cursor_id = int(cursor)
+        except ValueError as exc:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid cursor")) from exc
+        qs = qs.filter(id__gt=cursor_id)
+
+    rows = list(qs.order_by("id")[: limit + 1])
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = str(items[-1].id) if has_more and items else None
+
+    comment_ids = [c.id for c in items]
+    likes_by_comment_id: dict[int, int] = {}
+    my_likes: set[int] = set()
+    replies_by_comment_id: dict[int, int] = {}
+    if comment_ids:
+        likes_rows = (
+            NewsCommentReaction.objects.filter(tenant_id=ctx.tenant_id, comment_id__in=comment_ids)
+            .values("comment_id")
+            .annotate(count=models.Count("id"))
+        )
+        likes_by_comment_id = {r["comment_id"]: r["count"] for r in likes_rows}
+
+        if ctx.user_id:
+            my_likes = set(
+                NewsCommentReaction.objects.filter(
+                    tenant_id=ctx.tenant_id,
+                    comment_id__in=comment_ids,
+                    user_id=ctx.user_id,
+                ).values_list("comment_id", flat=True)
+            )
+
+        replies_rows = (
+            NewsComment.objects.filter(
+                tenant_id=ctx.tenant_id,
+                parent_id__in=comment_ids,
+                deleted_at__isnull=True,
+            )
+            .values("parent_id")
+            .annotate(count=models.Count("id"))
+        )
+        replies_by_comment_id = {r["parent_id"]: r["count"] for r in replies_rows}
+
+    return schemas.NewsCommentPageOut(
+        items=[
+            schemas.NewsCommentOut(
+                id=c.id,
+                user_id=c.user_id,
+                body=c.body,
+                created_at=c.created_at,
+                parent_id=c.parent_id,
+                likes_count=likes_by_comment_id.get(c.id, 0),
+                my_liked=c.id in my_likes,
+                replies_count=replies_by_comment_id.get(c.id, 0),
+            )
+            for c in items
+        ],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        parent_id=parent_id,
+    )
+
+
 @router.post(
     "/news/{news_id}/comments",
     response={200: schemas.NewsCommentOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
@@ -796,6 +899,122 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
         body=comment.body,
         created_at=comment.created_at,
         parent_id=comment.parent_id,
+    )
+
+
+@router.post(
+    "/news/{news_id}/comments/{comment_id}/likes",
+    response={200: schemas.NewsCommentLikeOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Add or remove like on comment",
+    operation_id="activity_news_comment_like",
+)
+def news_comment_like(
+    request,
+    news_id: str,
+    comment_id: int,
+    payload: schemas.NewsCommentLikeIn = REQUIRED_BODY,
+):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+    comment = NewsComment.objects.filter(
+        id=comment_id,
+        tenant_id=ctx.tenant_id,
+        post=post,
+        deleted_at__isnull=True,
+    ).first()
+    if not comment:
+        raise HttpError(404, error_payload("NOT_FOUND", "Comment not found"))
+
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.FEED_READ,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+    )
+
+    if payload.action == "remove":
+        NewsCommentReaction.objects.filter(
+            tenant_id=ctx.tenant_id,
+            comment=comment,
+            user_id=ctx.user_id,
+        ).delete()
+        my_liked = False
+    else:
+        NewsCommentReaction.objects.get_or_create(
+            tenant_id=ctx.tenant_id,
+            comment=comment,
+            user_id=ctx.user_id,
+            defaults={"created_at": timezone.now()},
+        )
+        my_liked = True
+
+    likes_count = NewsCommentReaction.objects.filter(
+        tenant_id=ctx.tenant_id,
+        comment=comment,
+    ).count()
+    return schemas.NewsCommentLikeOut(likes_count=likes_count, my_liked=my_liked)
+
+
+@router.delete(
+    "/news/{news_id}/comments/{comment_id}",
+    response={200: schemas.NewsCommentOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Soft-delete comment",
+    operation_id="activity_news_comment_delete",
+)
+def news_comment_delete(request, news_id: str, comment_id: int):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+    comment = NewsComment.objects.filter(
+        id=comment_id,
+        tenant_id=ctx.tenant_id,
+        post=post,
+        deleted_at__isnull=True,
+    ).first()
+    if not comment:
+        raise HttpError(404, error_payload("NOT_FOUND", "Comment not found"))
+
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.FEED_READ,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+    )
+    if ctx.user_id != comment.user_id and not _can_manage_news(ctx, post):
+        raise HttpError(403, error_payload("FORBIDDEN", "Insufficient permissions"))
+
+    comment.deleted_at = timezone.now()
+    comment.body = "Комментарий удалён"
+    comment.save(update_fields=["deleted_at", "body", "updated_at"])
+
+    likes_count = NewsCommentReaction.objects.filter(
+        tenant_id=ctx.tenant_id,
+        comment=comment,
+    ).count()
+    replies_count = NewsComment.objects.filter(
+        tenant_id=ctx.tenant_id,
+        parent=comment,
+        deleted_at__isnull=True,
+    ).count()
+    return schemas.NewsCommentOut(
+        id=comment.id,
+        user_id=None,
+        body=comment.body,
+        created_at=comment.created_at,
+        parent_id=comment.parent_id,
+        deleted=True,
+        likes_count=likes_count,
+        my_liked=False,
+        replies_count=replies_count,
     )
 
 
