@@ -13,7 +13,7 @@ RUN npm i -g corepack@0.34.6 \
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY web/portal-frontend/package.json web/portal-frontend/pnpm-lock.yaml ./
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
@@ -21,22 +21,22 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 
 FROM base AS dev
 
-COPY . ./
+COPY web/portal-frontend/ ./
 
 EXPOSE 5173
 CMD ["pnpm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
 
 FROM base AS builder
 
-COPY . ./
+COPY web/portal-frontend/ ./
 
 RUN pnpm run build:docker
 
 FROM nginx:1.27-alpine AS runner
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY web/portal-frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY scripts/frontend-entrypoint.sh /entrypoint.sh
+COPY web/portal-frontend/scripts/frontend-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 80
