@@ -8,6 +8,7 @@ from ninja import Body, Query, Router
 from ninja.errors import HttpError
 
 from core.schemas import ErrorOut
+from core.security import require_internal_signature
 from portal.access import AccessService
 from portal.audit import log_audit_event as _log_audit
 from portal.context import PortalContext
@@ -260,6 +261,8 @@ def portal_internal_profiles_list(
     request,
     user_ids: str | None = Query(None),
 ):
+    # Internal service-to-service only — reject BFF-proxied user requests.
+    require_internal_signature(request)
     ctx = _ctx(request)
     tenant = ensure_tenant(ctx)
 

@@ -203,7 +203,7 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
 
         request.auth_ctx = AuthContext(
             session_id=session.session_id,
-            tenant_id=session.tenant_id,
+            tenant_id=effective_tenant_id,
             tenant_slug=effective_tenant_slug,
             user_id=session.user_id,
             master_flags=session.master_flags,

@@ -44,20 +44,16 @@ export const LoginPage: React.FC = () => {
 
             {authErrorMessage && (
               <div
-                style={{
-                  padding: '0.75rem 1rem',
-                  background: '#f8d7da',
-                  border: '1px solid #f5c6cb',
-                  borderRadius: 6,
-                  marginBottom: '1rem',
-                }}
+                role="alert"
+                aria-live="assertive"
+                className="login-auth-error"
               >
-                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                <div className="login-auth-error__title">
                   Не удалось завершить вход
                 </div>
                 <div>{authErrorMessage}</div>
                 {requestId && (
-                  <div style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#6c757d' }}>
+                  <div className="login-auth-error__request-id">
                     Request ID: {requestId}
                   </div>
                 )}

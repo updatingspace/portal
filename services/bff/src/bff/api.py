@@ -657,6 +657,64 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
     return sorted(effective_permissions), sorted(effective_roles)
 
 
+def _load_access_rollout_snapshot(
+    request: HttpRequest, ctx
+) -> tuple[dict[str, bool], dict[str, Any]]:
+    """Call access/rollout/evaluate and return (feature_flags, experiments)."""
+    access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
+    if not access_upstream:
+        return {}, {}
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=access_upstream,
+            upstream_path="access/rollout/evaluate",
+            method="GET",
+            query_string="",
+            body=b"",
+            incoming_headers=request.headers,
+            context_headers={
+                "X-Request-Id": request.request_id,
+                "X-Tenant-Id": ctx.tenant_id,
+                "X-Tenant-Slug": ctx.tenant_slug,
+                "X-User-Id": ctx.user_id,
+                "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+            },
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.warning(
+            "session/me rollout probe failed",
+            extra={"request_id": request.request_id},
+            exc_info=True,
+        )
+        return {}, {}
+
+    if resp.status_code != 200:
+        return {}, {}
+
+    try:
+        data = resp.json()
+    except Exception:
+        return {}, {}
+
+    if not isinstance(data, dict):
+        return {}, {}
+
+    raw_flags = data.get("feature_flags")
+    feature_flags = (
+        {str(k): bool(v) for k, v in raw_flags.items() if isinstance(k, str)}
+        if isinstance(raw_flags, dict)
+        else {}
+    )
+
+    experiments = data.get("experiments") or {}
+    if not isinstance(experiments, dict):
+        experiments = {}
+
+    return feature_flags, experiments
+
+
 def _load_feature_flags_snapshot(request: HttpRequest, ctx) -> dict[str, bool]:
     featureflags_upstream = str(
         getattr(settings, "BFF_UPSTREAM_FEATUREFLAGS_URL", "") or ""
@@ -881,10 +939,14 @@ def session_me(request: HttpRequest):
 
     if tenant_selected:
         capabilities, roles = _load_effective_access_snapshot(request, ctx)
-        feature_flags = _load_feature_flags_snapshot(request, ctx)
+        rollout_flags, experiments = _load_access_rollout_snapshot(request, ctx)
+        feature_flags_from_service = _load_feature_flags_snapshot(request, ctx)
+        # Merge: rollout flags supplement the feature-flags service output
+        feature_flags = {**feature_flags_from_service, **rollout_flags}
     else:
         capabilities, roles = [], []
         feature_flags = {}
+        experiments = {}
 
     # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
     if (
@@ -902,9 +964,18 @@ def session_me(request: HttpRequest):
             details={"tenant_slug": ctx.tenant_slug, "available_tenants": available_tenants},
         )
 
+    active_tenant_id = getattr(ctx, "active_tenant_id", "") or ""
+    active_tenant_slug = getattr(ctx, "active_tenant_slug", "") or ""
+    active_tenant = (
+        {"tenant_id": active_tenant_id, "tenant_slug": active_tenant_slug}
+        if active_tenant_id and active_tenant_slug
+        else None
+    )
+
     return {
         "user": {"id": ctx.user_id, "master_flags": ctx.master_flags},
         "tenant": {"id": ctx.tenant_id, "slug": ctx.tenant_slug},
+        "active_tenant": active_tenant,
         "portal_profile": portal_profile,
         "id_profile": id_profile,
         "id_defaults": {
@@ -915,6 +986,7 @@ def session_me(request: HttpRequest):
         "capabilities": capabilities,
         "roles": roles,
         "feature_flags": feature_flags,
+        "experiments": experiments,
         "id_frontend_base_url": id_frontend_base_url,
         "request_id": request.request_id,
     }
@@ -1039,17 +1111,11 @@ def entry_tenant_applications(request: HttpRequest):
     routing_tenant_id = str(ctx.tenant_id or "").strip()
 
     if not routing_tenant_slug:
+        # Tenantless session: the requested slug may not exist yet (new community creation).
+        # Use it directly as routing context; the upstream ID service owns tenant creation.
         resolved_tenant = resolve_tenant_by_slug(requested_slug)
-        if not resolved_tenant:
-            return error_response(
-                code="TENANT_NOT_FOUND",
-                message="Tenant not found for application context",
-                request_id=getattr(request, "request_id", None),
-                status=404,
-                details={"requested_slug": requested_slug},
-            )
-        routing_tenant_slug = resolved_tenant.slug
-        routing_tenant_id = resolved_tenant.id
+        routing_tenant_slug = resolved_tenant.slug if resolved_tenant else requested_slug
+        routing_tenant_id = resolved_tenant.id if resolved_tenant else ""
 
     requested_email = str(incoming_payload.get("email") or "").strip()
     if not requested_email:
@@ -1180,6 +1246,11 @@ def switch_tenant(request: HttpRequest):
 
     try:
         payload = json.loads((request.body or b"{}").decode("utf-8"))
+        # Tolerate double-encoded bodies (e.g. JSON string wrapping a JSON object)
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        if not isinstance(payload, dict):
+            payload = {}
     except Exception:
         return error_response(
             code="BAD_REQUEST",

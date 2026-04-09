@@ -48,13 +48,15 @@ jobs:
           - service: activity
             test_target: src
           - service: bff
-            test_target: src/bff/tests.py
+            test_target: src/bff/tests.py src/bff/tests_tenant_context.py
           - service: events
             test_target: src/events/tests.py
           - service: gamification
             test_target: src/gamification/tests.py
           - service: portal
             test_target: src/portal/tests.py
+          - service: featureflags
+            test_target: src/featureflags/tests.py
           - service: voting
             test_target: >-
               src/core/tests/test_production_components.py
@@ -71,7 +73,7 @@ jobs:
       DJANGO_DEBUG: 'True'
       DJANGO_SECRET_KEY: ci-test-secret
       DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
-      ALLOWED_HOSTS: .updspace.com,testserver,localhost,127.0.0.1,bff,access,portal,voting,events,gamification,activity
+      ALLOWED_HOSTS: .updspace.com,.updating.space,.localhost,testserver,localhost,127.0.0.1,bff,access,portal,voting,events,gamification,activity
       DATABASE_URL: sqlite:///db.sqlite3
       BFF_INTERNAL_HMAC_SECRET: ci-internal-hmac
     steps:
@@ -122,6 +124,10 @@ jobs:
           - image: updatingspace-portal-portal
             context: services/portal
             dockerfile: services/portal/Dockerfile
+            build_args: ''
+          - image: updatingspace-portal-featureflags
+            context: services/featureflags
+            dockerfile: services/featureflags/Dockerfile
             build_args: ''
           - image: updatingspace-portal-voting
             context: services/voting
@@ -179,6 +185,10 @@ jobs:
           - image: updatingspace-portal-portal
             context: services/portal
             dockerfile: services/portal/Dockerfile
+            build_args: ''
+          - image: updatingspace-portal-featureflags
+            context: services/featureflags
+            dockerfile: services/featureflags/Dockerfile
             build_args: ''
           - image: updatingspace-portal-voting
             context: services/voting

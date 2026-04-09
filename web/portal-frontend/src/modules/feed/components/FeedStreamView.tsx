@@ -25,8 +25,8 @@ type FeedStreamViewProps = {
   isLoading: boolean;
   source: 'all' | 'news' | 'voting' | 'events';
   sortedItems: ActivityEvent[];
-  draftItems: ActivityEvent[];
-  focusedNewsId: string | null;
+  draftItems?: ActivityEvent[];
+  focusedNewsId?: string | null;
   selectedModerationIds: string[];
   getItemNewsId: (item: ActivityEvent) => string | null;
   handleModerationToggle: (newsId: string, selected: boolean) => void;

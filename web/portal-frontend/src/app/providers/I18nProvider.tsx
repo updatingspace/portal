@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getLocale, getTimezone, setLocale, setTimezone } from '@/shared/lib/locale';
+import { getLocale, getTimezone, normalizeTimezone, setLocale, setTimezone } from '@/shared/lib/locale';
 import type { Locale } from '@/shared/lib/locale';
 import { I18nContext } from './i18nContext';
 
@@ -21,11 +21,12 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changeTimezone = useCallback(
     (next: string) => {
-      if (next === timezone) {
+      const normalized = normalizeTimezone(next);
+      if (normalized === timezone) {
         return;
       }
-      setTimezone(next);
-      setTimezoneState(next);
+      setTimezone(normalized);
+      setTimezoneState(normalized);
     },
     [timezone],
   );

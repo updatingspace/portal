@@ -44,8 +44,11 @@ def ensure_tenant(ctx: PortalContext) -> Tenant:
                 updated_at=now,
             )
     except IntegrityError:
-        # Race-safe fallback: concurrent request could create slug first.
-        existing = Tenant.objects.filter(slug=ctx.tenant_slug).first()
+        # Race-safe fallback: concurrent request could have created by id or slug first.
+        existing = (
+            Tenant.objects.filter(id=ctx.tenant_id).first()
+            or Tenant.objects.filter(slug=ctx.tenant_slug).first()
+        )
         if existing:
             return _sync_tenant_fields(existing, ctx.tenant_slug)
         raise

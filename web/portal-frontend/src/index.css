@@ -2541,3 +2541,23 @@ body.reduce-motion *,
     grid-template-columns: 1fr;
   }
 }
+
+/* Login page auth error */
+.login-auth-error {
+  padding: 0.75rem 1rem;
+  background: var(--g-color-base-danger-light, #f8d7da);
+  border: 1px solid var(--g-color-line-danger, #f5c6cb);
+  border-radius: var(--g-border-radius-m, 6px);
+  margin-bottom: 1rem;
+}
+
+.login-auth-error__title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.login-auth-error__request-id {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--g-color-text-secondary, #6c757d);
+}

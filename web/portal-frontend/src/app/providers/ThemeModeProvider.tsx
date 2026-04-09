@@ -92,7 +92,13 @@ export const ThemeModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== KEY || typeof event.newValue !== 'string') {
+      if (event.key !== KEY) {
+        return;
+      }
+
+      if (event.newValue === null) {
+        // Key was removed in another tab — revert to stored/default
+        setModeState(readStoredMode());
         return;
       }
 

@@ -110,7 +110,7 @@ services:
   bff:
     build:
       context: ../../services/bff
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8080 --reload --workers 4 --worker-class gthread --threads 8 --timeout 0
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8080 --reload --workers 4 --worker-class gthread --threads 8 --timeout 120
     volumes:
       - ../../services/bff/src:/app/src
     ports:
@@ -253,7 +253,7 @@ services:
   activity:
     build:
       context: ../../services/activity
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8006 --reload --workers 2 --worker-class gthread --threads 4 --timeout 0
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8006 --reload --workers 2 --worker-class gthread --threads 4 --timeout 120
     volumes:
       - ../../services/activity/src:/app/src
     ports:
