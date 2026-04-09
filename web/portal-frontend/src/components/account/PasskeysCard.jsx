@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Label, Loader, TextInput } from "@gravity-ui/uikit";
+import { useFormatters } from "../../shared/hooks/useFormatters";
 import {
   listAuthenticators,
   passkeysBegin,
@@ -76,13 +77,14 @@ const credentialToJSON = (cred) => {
   };
 };
 
-export default function PasskeysCard({ profile = null, isSystemAdmin = false }) {
+export default function PasskeysCard({ isSystemAdmin = false }) {
   const [loading, setLoading] = useState(false);
   const [authenticators, setAuthenticators] = useState([]);
   const [msg, setMsg] = useState("");
   const [supported, setSupported] = useState(true);
   const [nameDrafts, setNameDrafts] = useState({});
   const [newName, setNewName] = useState("Мой Passkey");
+  const { formatDateTime } = useFormatters();
 
   const webauthn = useMemo(
     () => (authenticators || []).filter((a) => a?.type === "webauthn"),
@@ -264,11 +266,9 @@ export default function PasskeysCard({ profile = null, isSystemAdmin = false }) 
                 </div>
                 <div style={{ opacity: 0.7, fontSize: 12 }}>
                   Создан:{" "}
-                  {a.created_at
-                    ? new Date(a.created_at * 1000).toLocaleString()
-                    : "—"}
+                  {a.created_at ? formatDateTime(a.created_at * 1000) : "—"}
                   {a.last_used_at
-                    ? ` · Последнее использование: ${new Date(a.last_used_at * 1000).toLocaleString()}`
+                    ? ` · Последнее использование: ${formatDateTime(a.last_used_at * 1000)}`
                     : ""}
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -310,8 +310,3 @@ export default function PasskeysCard({ profile = null, isSystemAdmin = false }) 
     </section>
   );
 }
-
-PasskeysCard.defaultProps = {
-  profile: null,
-  isSystemAdmin: false,
-};

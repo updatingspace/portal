@@ -12,7 +12,7 @@ import { request } from './client';
 export type TenantSummary = {
   tenant_id: string;
   tenant_slug: string;
-  display_name: string;
+  display_name?: string | null;
   status: string;
   base_role: string;
 };
@@ -20,7 +20,7 @@ export type TenantSummary = {
 export type ActiveTenant = {
   tenant_id: string;
   tenant_slug: string;
-  display_name: string;
+  display_name?: string | null;
   base_role: string;
 };
 
@@ -36,7 +36,7 @@ export type PendingApplication = {
 };
 
 export type EntryMeResponse = {
-  user: { id: string; email: string };
+  user: { id: string; email?: string | null };
   memberships: TenantSummary[];
   last_tenant: { tenant_slug: string } | null;
   pending_tenant_applications: PendingApplication[];
@@ -46,6 +46,7 @@ export type TenantApplicationPayload = {
   slug: string;
   name: string;
   description?: string;
+  email?: string;
 };
 
 // --- API calls ---

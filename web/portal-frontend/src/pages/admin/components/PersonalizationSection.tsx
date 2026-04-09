@@ -1,12 +1,15 @@
 import React from 'react';
 import { Button, Card, Loader, Table, type TableColumnConfig } from '@gravity-ui/uikit';
 import type { HomePageModal } from '../../../api/personalization';
+import { DashboardAnalytics } from '../../../features/personalization';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 
 interface PersonalizationSectionProps {
   modals: HomePageModal[];
   isLoading: boolean;
   error: string | null;
   selectedModalId: number | null;
+  showAnalytics?: boolean;
   onSelectModal: (id: number) => void;
   onCreateModal: () => void;
   onEditModal: (modal: HomePageModal) => void;
@@ -20,27 +23,17 @@ const modalTypeLabels: Record<string, string> = {
   promo: 'Промо',
 };
 
-const formatDate = (date: string | null): string => {
-  if (!date) return '—';
-  try {
-    return new Date(date).toLocaleString('ru-RU', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-  } catch {
-    return '—';
-  }
-};
-
 export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
   modals,
   isLoading,
   error,
+  showAnalytics = false,
   onSelectModal,
   onCreateModal,
   onEditModal,
   onDeleteModal,
 }) => {
+  const { formatDateTime } = useFormatters();
   const columns: TableColumnConfig<HomePageModal>[] = [
     {
       id: 'title',
@@ -57,13 +50,13 @@ export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
       id: 'startDate',
       name: 'Начало показа',
       width: 180,
-      template: (item) => formatDate(item.startDate),
+      template: (item) => (item.startDate ? formatDateTime(item.startDate) : '—'),
     },
     {
       id: 'endDate',
       name: 'Окончание показа',
       width: 180,
-      template: (item) => formatDate(item.endDate),
+      template: (item) => (item.endDate ? formatDateTime(item.endDate) : '—'),
     },
     {
       id: 'order',
@@ -147,6 +140,8 @@ export const PersonalizationSection: React.FC<PersonalizationSectionProps> = ({
           </div>
         )}
       </Card>
+
+      {showAnalytics ? <DashboardAnalytics /> : null}
     </div>
   );
 };

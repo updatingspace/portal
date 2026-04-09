@@ -17,6 +17,7 @@ import React, { useMemo } from 'react';
 import { Button, Progress } from '@gravity-ui/uikit';
 import type { VotingSession } from '../unified';
 import { isLegacyPoll } from '../unified';
+import { formatDate } from '@/shared/lib/formatters';
 
 // ============================================================================
 // Types
@@ -42,12 +43,8 @@ function formatDeadline(endsAt?: string | null): string {
   
   const deadline = new Date(endsAt);
   if (Number.isNaN(deadline.getTime())) return 'Без срока';
-  
-  return deadline.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+
+  return formatDate(deadline);
 }
 
 /**

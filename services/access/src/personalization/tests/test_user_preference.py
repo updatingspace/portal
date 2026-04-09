@@ -9,15 +9,19 @@ Test coverage includes:
 """
 from __future__ import annotations
 
+import json
 import uuid
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 
+from core.models import DashboardLayout, DashboardWidget
 from personalization.models import (
     FontSizeChoice,
     LanguageChoice,
     ProfileVisibilityChoice,
     ThemeChoice,
+    ThemeSourceChoice,
     UserPreference,
 )
 from personalization.schemas import (
@@ -46,6 +50,7 @@ class TestUserPreferenceModel(TestCase):
         )
 
         self.assertEqual(pref.theme, ThemeChoice.AUTO)
+        self.assertEqual(pref.theme_source, ThemeSourceChoice.PORTAL)
         self.assertEqual(pref.language, LanguageChoice.EN)
         self.assertEqual(pref.font_size, FontSizeChoice.MEDIUM)
         self.assertEqual(pref.accent_color, "#8B5CF6")
@@ -64,6 +69,7 @@ class TestUserPreferenceModel(TestCase):
             user_id=self.user_id,
             tenant_id=self.tenant_id,
             theme=ThemeChoice.DARK,
+            theme_source=ThemeSourceChoice.ID,
             language=LanguageChoice.RU,
             font_size=FontSizeChoice.LARGE,
             accent_color="#FF5733",
@@ -74,6 +80,7 @@ class TestUserPreferenceModel(TestCase):
         )
 
         self.assertEqual(pref.theme, ThemeChoice.DARK)
+        self.assertEqual(pref.theme_source, ThemeSourceChoice.ID)
         self.assertEqual(pref.language, LanguageChoice.RU)
         self.assertEqual(pref.font_size, FontSizeChoice.LARGE)
         self.assertEqual(pref.accent_color, "#FF5733")
@@ -142,6 +149,7 @@ class TestUserPreferenceModel(TestCase):
         defaults = UserPreference.get_default_preferences()
 
         self.assertEqual(defaults["theme"], ThemeChoice.AUTO)
+        self.assertEqual(defaults["theme_source"], ThemeSourceChoice.PORTAL)
         self.assertEqual(defaults["language"], LanguageChoice.EN)
         self.assertEqual(defaults["timezone"], "UTC")
         self.assertIn("notification_settings", defaults)
@@ -167,12 +175,14 @@ class TestUserPreferenceModel(TestCase):
 
         pref.update_from_dict({
             "theme": ThemeChoice.DARK,
+            "theme_source": ThemeSourceChoice.ID,
             "language": LanguageChoice.RU,
         })
         pref.save()
         pref.refresh_from_db()
 
         self.assertEqual(pref.theme, ThemeChoice.DARK)
+        self.assertEqual(pref.theme_source, ThemeSourceChoice.ID)
         self.assertEqual(pref.language, LanguageChoice.RU)
         # Unchanged
         self.assertEqual(pref.font_size, FontSizeChoice.MEDIUM)
@@ -204,6 +214,7 @@ class TestUserPreferenceModel(TestCase):
         data = pref.to_dict()
 
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertIn("localization", data)
         self.assertIn("privacy", data)
         self.assertIn("notifications", data)
@@ -259,6 +270,7 @@ class TestUserPreferenceService(TestCase):
         self.assertEqual(pref.theme, "dark")
         self.assertEqual(pref.accent_color, "#00FF00")
         self.assertTrue(pref.high_contrast)
+        self.assertEqual(pref.theme_source, ThemeSourceChoice.PORTAL)
 
     def test_update_preferences_localization(self):
         """Test updating localization settings."""
@@ -334,6 +346,7 @@ class TestUserPreferenceService(TestCase):
         self.assertIn("notifications", defaults)
         self.assertIn("privacy", defaults)
         self.assertEqual(defaults["appearance"]["theme"], ThemeChoice.AUTO)
+        self.assertEqual(defaults["appearance"]["theme_source"], ThemeSourceChoice.PORTAL)
 
     def test_reset_to_defaults(self):
         """Test reset_to_defaults reverts all settings."""
@@ -341,6 +354,7 @@ class TestUserPreferenceService(TestCase):
             user_id=self.user_id,
             tenant_id=self.tenant_id,
             theme=ThemeChoice.DARK,
+            theme_source=ThemeSourceChoice.ID,
             language=LanguageChoice.RU,
             profile_visibility=ProfileVisibilityChoice.PRIVATE,
         )
@@ -348,6 +362,7 @@ class TestUserPreferenceService(TestCase):
         pref = UserPreferenceService.reset_to_defaults(self.user_id, self.tenant_id)
 
         self.assertEqual(pref.theme, ThemeChoice.AUTO)
+        self.assertEqual(pref.theme_source, ThemeSourceChoice.PORTAL)
         self.assertEqual(pref.language, LanguageChoice.EN)
         self.assertEqual(pref.profile_visibility, ProfileVisibilityChoice.MEMBERS)
 
@@ -391,10 +406,12 @@ class TestSchemaValidation(TestCase):
         # Valid
         schema = AppearanceSchema(
             theme=ThemeEnum.DARK,
+            theme_source="id",
             accent_color="#FF0000",
             high_contrast=True,
         )
         self.assertEqual(schema.theme, ThemeEnum.DARK)
+        self.assertEqual(schema.theme_source, "id")
         self.assertEqual(schema.accent_color, "#FF0000")
 
     def test_localization_schema_timezone_validation(self):
@@ -437,6 +454,7 @@ class TestPreferencesAPI(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "auto")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "en")
 
     def test_get_preferences_returns_existing(self):
@@ -456,6 +474,7 @@ class TestPreferencesAPI(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "ru")
 
     def test_get_preferences_requires_auth_headers(self):
@@ -475,6 +494,7 @@ class TestPreferencesAPI(TestCase):
             data={
                 "appearance": {
                     "theme": "dark",
+                    "theme_source": "id",
                     "accent_color": "#00FF00",
                 },
             },
@@ -485,6 +505,7 @@ class TestPreferencesAPI(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "id")
         self.assertEqual(data["appearance"]["accent_color"], "#00FF00")
 
     def test_put_preferences_partial_update(self):
@@ -511,6 +532,7 @@ class TestPreferencesAPI(TestCase):
         self.assertEqual(data["localization"]["language"], "en")
         # Theme should remain unchanged
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
 
     def test_get_defaults(self):
         """GET /preferences/defaults returns default structure."""
@@ -543,6 +565,7 @@ class TestPreferencesAPI(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "auto")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "en")
 
     def test_preferences_per_tenant_isolation(self):
@@ -555,6 +578,7 @@ class TestPreferencesAPI(TestCase):
             user_id=self.user_id,
             tenant_id=tenant1,
             theme=ThemeChoice.DARK,
+            theme_source=ThemeSourceChoice.ID,
         )
 
         # Create preference for tenant2
@@ -562,6 +586,7 @@ class TestPreferencesAPI(TestCase):
             user_id=self.user_id,
             tenant_id=tenant2,
             theme=ThemeChoice.LIGHT,
+            theme_source=ThemeSourceChoice.PORTAL,
         )
 
         # Get tenant1 preference
@@ -579,3 +604,69 @@ class TestPreferencesAPI(TestCase):
             HTTP_X_TENANT_ID=str(tenant2),
         )
         self.assertEqual(response2.json()["appearance"]["theme"], "light")
+
+
+class TestDashboardWidgetAPI(TestCase):
+    """Integration tests for dashboard widget API endpoints."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user_id = uuid.uuid4()
+        self.tenant_id = uuid.uuid4()
+        self.headers = {
+            "HTTP_X_USER_ID": str(self.user_id),
+            "HTTP_X_TENANT_ID": str(self.tenant_id),
+        }
+
+    def test_create_dashboard_widget_restores_soft_deleted_row(self):
+        layout = DashboardLayout.objects.create(
+            user_id=self.user_id,
+            tenant_id=self.tenant_id,
+            layout_name="main",
+            layout_config={},
+            is_default=True,
+        )
+        widget = DashboardWidget.objects.create(
+            layout=layout,
+            tenant_id=self.tenant_id,
+            widget_key="upcoming-events",
+            position_x=0,
+            position_y=0,
+            width=4,
+            height=3,
+            settings={"limit": 3},
+            is_visible=True,
+        )
+        widget.soft_delete()
+
+        with patch("personalization.api._ensure_dashboard_customize_permission"):
+            response = self.client.post(
+                f"/api/personalization/admin/dashboards/layouts/{layout.id}/widgets",
+                data=json.dumps(
+                    {
+                        "widget_key": "upcoming-events",
+                        "position_x": 2,
+                        "position_y": 5,
+                        "width": 6,
+                        "height": 4,
+                        "settings": {"limit": 5},
+                        "is_visible": True,
+                    }
+                ),
+                content_type="application/json",
+                **self.headers,
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        widget.refresh_from_db()
+        self.assertIsNone(widget.deleted_at)
+        self.assertEqual(widget.position_x, 2)
+        self.assertEqual(widget.position_y, 5)
+        self.assertEqual(widget.width, 6)
+        self.assertEqual(widget.height, 4)
+        self.assertEqual(widget.settings["limit"], 5)
+        self.assertEqual(
+            DashboardWidget.objects.filter(layout=layout, widget_key="upcoming-events").count(),
+            1,
+        )

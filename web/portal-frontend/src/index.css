@@ -1,11 +1,25 @@
 :root {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #111;
+  --user-accent-color: #2f6edb;
+  --user-font-size: 15px;
+  --portal-font-scale: 1;
+  --portal-focus-ring-color: rgba(47, 110, 219, 0.2);
+  --portal-surface-contrast: #ffffff;
+  --portal-text-contrast: #111111;
+}
+
+html {
+  font-size: calc(16px * var(--portal-font-scale));
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   background-color: #e3f1ff;
+  font-size: var(--user-font-size);
+  accent-color: var(--user-accent-color);
+  color: var(--portal-text-contrast);
 }
 
 /* Public (landing/login) */
@@ -41,6 +55,48 @@ body {
   margin: 0;
   padding: 0;
   text-align: left;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="radio"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--user-accent-color);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--portal-focus-ring-color);
+}
+
+[data-high-contrast='true'] body {
+  background-color: #eef4ff;
+}
+
+[data-high-contrast='true'] .text-muted,
+[data-high-contrast='true'] .g-text_color_secondary,
+[data-high-contrast='true'] [class*='text-secondary'] {
+  color: color-mix(in srgb, var(--portal-text-contrast) 72%, #000) !important;
+}
+
+[data-high-contrast='true'] .g-root,
+[data-high-contrast='true'] .g-root .g-card,
+[data-high-contrast='true'] .g-root .g-button,
+[data-high-contrast='true'] .g-root .g-text-input,
+[data-high-contrast='true'] .g-root .g-select,
+[data-high-contrast='true'] .g-root .g-tabs {
+  --g-color-base-background: var(--portal-surface-contrast);
+  --g-color-line-generic: color-mix(in srgb, var(--user-accent-color) 28%, #111);
+  --g-color-line-generic-hover: color-mix(in srgb, var(--user-accent-color) 46%, #111);
+}
+
+body.reduce-motion *,
+[data-reduce-motion='true'] * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 .app-root {

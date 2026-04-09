@@ -43,6 +43,9 @@ export type SessionMe = {
   tenant?: { id: string; slug: string } | null;
   feature_flags?: Record<string, boolean>;
   portal_profile?: unknown;
+  id_defaults?: {
+    theme?: 'light' | 'dark' | 'auto' | null;
+  } | null;
   id_profile?: {
     user?: UpdspaceIdUser | null;
     memberships?: UpdspaceIdMembership[] | null;

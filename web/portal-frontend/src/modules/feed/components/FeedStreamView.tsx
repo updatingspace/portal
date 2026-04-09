@@ -7,6 +7,7 @@ import { SkeletonBlock } from '../../../shared/ui/skeleton/SkeletonBlock';
 import { FeedItem } from './FeedItem';
 
 type FeedStreamViewProps = {
+  composer?: React.ReactNode;
   unreadCount: number;
   refetch: () => void;
   isMarkingRead: boolean;
@@ -24,6 +25,8 @@ type FeedStreamViewProps = {
   isLoading: boolean;
   source: 'all' | 'news' | 'voting' | 'events';
   sortedItems: ActivityEvent[];
+  draftItems: ActivityEvent[];
+  focusedNewsId: string | null;
   selectedModerationIds: string[];
   getItemNewsId: (item: ActivityEvent) => string | null;
   handleModerationToggle: (newsId: string, selected: boolean) => void;
@@ -33,6 +36,7 @@ type FeedStreamViewProps = {
 };
 
 export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
+  composer,
   unreadCount,
   refetch,
   isMarkingRead,
@@ -50,6 +54,8 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
   isLoading,
   source,
   sortedItems,
+  draftItems = [],
+  focusedNewsId = null,
   selectedModerationIds,
   getItemNewsId,
   handleModerationToggle,
@@ -58,34 +64,38 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
   hasNextPage,
 }) => (
   <>
-    <div className="feed-stream__header">
-      <div className="feed-stream__title">
-        <Text variant="header-1">Лента активности</Text>
-        <Text variant="body-2" color="secondary" className="feed-stream__subtitle">
-          Новости сообщества, голосования и игровые события в одном месте.
-        </Text>
-      </div>
-      <div className="feed-stream__header-actions" data-qa="feed-actions">
-        <Button view="flat" size="m" onClick={() => refetch()}>
-          <Icon data={ArrowRotateRight} />
-          Обновить
-        </Button>
-        {unreadCount > 0 && (
-          <Button view="action" size="m" loading={isMarkingRead} onClick={() => markAsRead()}>
-            Отметить прочитанным
+    <div className="feed-stream__top">
+      <div className="feed-stream__header">
+        <div className="feed-stream__title">
+          <Text variant="header-1">Лента активности</Text>
+          <Text variant="body-2" color="secondary" className="feed-stream__subtitle">
+            Новости сообщества, голосования и игровые события в одном месте.
+          </Text>
+        </div>
+        <div className="feed-stream__header-actions" data-qa="feed-actions">
+          <Button view="flat" size="m" onClick={() => refetch()}>
+            <Icon data={ArrowRotateRight} />
+            Обновить
           </Button>
-        )}
-        {canModerateNews && (
-          <Button
-            view={moderationMode ? 'outlined-danger' : 'outlined'}
-            size="m"
-            onClick={toggleModerationMode}
-            aria-label="Переключить режим модерации"
-          >
-            {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
-          </Button>
-        )}
+          {unreadCount > 0 && (
+            <Button view="action" size="m" loading={isMarkingRead} onClick={() => markAsRead()}>
+              Отметить прочитанным
+            </Button>
+          )}
+          {canModerateNews && (
+            <Button
+              view={moderationMode ? 'outlined-danger' : 'outlined'}
+              size="m"
+              onClick={toggleModerationMode}
+              aria-label="Переключить режим модерации"
+            >
+              {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {composer ? <div className="feed-stream__composer-slot">{composer}</div> : null}
     </div>
 
     {moderationMode && (
@@ -129,6 +139,26 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
       </Card>
     )}
 
+    {draftItems.length > 0 && (
+      <div className="feed-drafts" data-qa="feed-drafts">
+        <div className="feed-drafts__header">
+          <Text variant="subheader-2">Мои черновики</Text>
+          <Text variant="caption-2" color="secondary">
+            Черновики видны только вам до публикации.
+          </Text>
+        </div>
+        <div className="feed-drafts__list">
+          {draftItems.map((item) => (
+            <FeedItem
+              key={`draft-${getItemNewsId(item) ?? item.id}`}
+              item={item}
+              showPayload={false}
+            />
+          ))}
+        </div>
+      </div>
+    )}
+
     {!hasContent && isLoading ? (
       <div className="feed-stream__list" data-qa="feed-list-loading">
         {Array.from({ length: 4 }).map((_, index) => (
@@ -163,6 +193,8 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
               item={item}
               showPayload={false}
               moderationMode={moderationMode}
+              highlighted={Boolean(focusedNewsId && itemNewsId === focusedNewsId)}
+              autoOpenComments={Boolean(focusedNewsId && itemNewsId === focusedNewsId)}
               moderationSelected={Boolean(itemNewsId && selectedModerationIds.includes(itemNewsId))}
               onModerationToggle={handleModerationToggle}
             />

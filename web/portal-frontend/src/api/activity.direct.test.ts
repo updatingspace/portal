@@ -29,6 +29,7 @@ import {
   listNewsComments,
   markFeedAsRead,
   reactToNews,
+  recordNewsView,
   requestNewsMediaUpload,
   triggerSync,
   updateAccountLink,
@@ -51,7 +52,8 @@ describe('activity direct api wrappers', () => {
       if (url === '/activity/feed/mark-read') return undefined;
       if (url === '/activity/news/media/upload-url') return { key: 'k', upload_url: 'https://upload', upload_headers: { a: 'b' }, expires_in: 60 };
       if (url === '/activity/news' || url === '/activity/news/n1') return { id: 3, tenant_id: 't', actor_user_id: 'u', target_user_id: null, type: 'post.created', occurred_at: '2026-01-03', title: 'n', payload_json: {}, visibility: 'public', scope_type: 'TENANT', scope_id: 't', source_ref: 'news' };
-      if (url.endsWith('/reactions')) return [{ emoji: '🔥', count: 2 }];
+      if (url.endsWith('/reactions')) return [{ emoji: '🔥', count: 2, my_reacted: true }];
+      if (url.endsWith('/views')) return { views_count: 1, counted: true };
       if (url.endsWith('/comments?limit=5')) return [{ id: 1, user_id: 'u', body: 'c', created_at: 'd' }];
       if (url.endsWith('/comments')) return { id: 2, user_id: 'u', body: 'c2', created_at: 'd2' };
       if (url === '/activity/games') return { items: [{ id: 1 }] };
@@ -86,6 +88,7 @@ describe('activity direct api wrappers', () => {
     await updateNews('n1', { title: 'upd' });
     await deleteNews('n1');
     await reactToNews('n1', { emoji: '🔥' });
+    const view = await recordNewsView('n1');
     await listNewsComments('n1', 5);
     await createNewsComment('n1', 'hi');
     await fetchActivityGames();
@@ -107,6 +110,7 @@ describe('activity direct api wrappers', () => {
     await expect(uploadNewsMediaFile('https://upload', { a: 'b' }, new File(['x'], 'x.txt'))).resolves.toBeUndefined();
     expect(subs).toHaveLength(1);
     expect(updatedSubs).toBeDefined();
+    expect(view.counted).toBe(true);
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   });

@@ -5,6 +5,7 @@ import { ChartBar, ChartColumn, ChartLine } from '@gravity-ui/icons';
 
 import { usePolls } from '../../../../features/voting';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { formatDate } from '@/features/voting/utils/pollMeta';
 import { logger } from '../../../../utils/logger';
 import {
   VotingEmptyState,
@@ -119,7 +120,7 @@ export const AnalyticsDashboardPage: React.FC = () => {
                 <Card key={poll.id} className="voting-v2__card">
                   <Text variant="subheader-2" className="voting-v2__section-title">{poll.title}</Text>
                   <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
-                    {new Date(poll.created_at).toLocaleDateString('ru-RU')}
+                    {formatDate(poll.created_at) ?? '—'}
                   </Text>
                   <div className="voting-v2__toolbar" style={{ marginTop: 8 }}>
                     <span className="voting-v2__small voting-v2__muted">Голосов: {votes}</span>

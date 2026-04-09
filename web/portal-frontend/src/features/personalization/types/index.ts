@@ -4,6 +4,7 @@
 
 // Theme options
 export type Theme = 'light' | 'dark' | 'auto';
+export type ThemeSource = 'portal' | 'id';
 
 // Supported languages
 export type Language = 'en' | 'ru';
@@ -25,6 +26,7 @@ export type NotificationChannel = 'email' | 'in_app' | 'push';
  */
 export interface AppearanceSettings {
   theme: Theme;
+  theme_source: ThemeSource;
   accent_color: string;
   font_size: FontSize;
   high_contrast: boolean;

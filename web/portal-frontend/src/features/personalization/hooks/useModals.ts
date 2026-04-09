@@ -37,6 +37,7 @@ export function useModals(initialFilters?: ModalListFilters) {
   } = useQuery({
     queryKey: [MODALS_QUERY_KEY, filters],
     queryFn: () => fetchModals(filters),
+    retry: false,
   });
 
   // Create modal mutation
@@ -145,6 +146,7 @@ export function useModal(modalId: number | null) {
     queryKey: [MODALS_QUERY_KEY, 'single', modalId],
     queryFn: () => (modalId ? fetchModal(modalId) : null),
     enabled: modalId !== null,
+    retry: false,
   });
 
   return {

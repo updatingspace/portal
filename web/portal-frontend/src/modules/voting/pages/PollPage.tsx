@@ -20,7 +20,8 @@ import {
   getScheduleMeta,
 } from '../../../features/voting/utils/pollMeta';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
-import { getLocale } from '@/shared/lib/locale';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import { toaster } from '../../../toaster';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { logger } from '../../../utils/logger';
@@ -37,8 +38,9 @@ export const PollPage: React.FC = () => {
   const navigate = useNavigate();
   const routeBase = useRouteBase();
   const { user } = useAuth();
+  const { intlLocale } = useFormatters();
   const pollId = id ?? '';
-  const locale = user?.language ?? getLocale();
+  const locale = intlLocale;
   const hasCapabilities = Boolean(user?.capabilities?.length || user?.roles?.length);
   const canManage = Boolean(
     user?.isSuperuser || (!hasCapabilities ? true : can(user, ['voting.votings.admin', 'voting.nominations.admin'])),
@@ -114,6 +116,7 @@ export const PollPage: React.FC = () => {
   });
 
   const loading = loadingInfo || loadingVotes;
+  useDocumentTitle(info ? `${info.poll.title} · Опрос` : 'Опрос');
 
   const votesByNomination = useMemo(() => {
     const map = new Map<string, typeof myVotes>();

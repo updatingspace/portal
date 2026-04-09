@@ -26,6 +26,12 @@ from .errors import error_response
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
+from .tenant import (
+    get_or_create_global_tenant,
+    resolve_tenant_by_slug,
+    tenant_slug_from_host,
+    validate_tenant_slug,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -39,6 +45,8 @@ SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
     ("events", "events.event.read"),
     ("activity", "activity.feed.read"),
     ("gamification", "gamification.achievements.read"),
+    ("personalization", "personalization.preferences.read_own"),
+    ("personalization", "personalization.content.manage"),
 )
 
 
@@ -58,6 +66,171 @@ def _require_auth(request: HttpRequest):
             status=401,
         )
     return ctx, None
+
+
+def _resolve_auth_tenant(request: HttpRequest):
+    """Resolve tenant context for auth redirect/callback flows.
+
+    - Tenant subdomain host (aef.localhost / aef.updspace.com): use resolved tenant.
+    - Portal host (portal.localhost / bare suffix): use global placeholder tenant.
+    - Unknown tenant subdomain: return None (caller should return TENANT_NOT_FOUND).
+    """
+    tenant = getattr(request, "tenant", None)
+    if tenant:
+        return tenant
+
+    requested_slug = tenant_slug_from_host(request.get_host())
+    if requested_slug:
+        return None
+
+    return get_or_create_global_tenant()
+
+
+def _sanitize_next_path(next_path: str | None, *, default: str = "/choose-tenant") -> str:
+    candidate = str(next_path or "").strip()
+    if not candidate:
+        return default
+    if (
+        candidate.startswith("http://")
+        or candidate.startswith("https://")
+        or candidate.startswith("//")
+    ):
+        return default
+    if not candidate.startswith("/"):
+        return default
+    return candidate
+
+
+def _auth_error_redirect(
+    request: HttpRequest,
+    *,
+    code: str,
+    next_path: str | None = None,
+) -> HttpResponseRedirect:
+    params: dict[str, str] = {
+        "next": _sanitize_next_path(next_path),
+        "auth_error": code,
+    }
+    request_id = getattr(request, "request_id", None)
+    if request_id:
+        params["request_id"] = str(request_id)
+    return HttpResponseRedirect(f"/login?{urlencode(params)}")
+
+
+def _proxy_id_tenantless(
+    request: HttpRequest,
+    ctx,
+    *,
+    upstream_path: str,
+    method: str,
+    body: bytes = b"",
+    query_string: str = "",
+    retry_with_tenant_context_on_403: bool = False,
+):
+    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    if not id_upstream:
+        return None, error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID upstream is not configured",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    base_context_headers = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+    }
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=id_upstream,
+            upstream_path=upstream_path,
+            method=method,
+            query_string=query_string,
+            body=body,
+            incoming_headers=request.headers,
+            context_headers=base_context_headers,
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception(
+            "Tenantless ID proxy failed for %s %s",
+            method,
+            upstream_path,
+            extra={"request_id": request.request_id},
+        )
+        return None, error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID upstream is unavailable",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    if (
+        retry_with_tenant_context_on_403
+        and resp.status_code == 403
+        and ctx.tenant_id
+        and ctx.tenant_slug
+    ):
+        try:
+            resp = proxy_request(
+                upstream_base_url=id_upstream,
+                upstream_path=upstream_path,
+                method=method,
+                query_string=query_string,
+                body=body,
+                incoming_headers=request.headers,
+                context_headers={
+                    **base_context_headers,
+                    "X-Tenant-Id": ctx.tenant_id,
+                    "X-Tenant-Slug": ctx.tenant_slug,
+                },
+                request_id=request.request_id,
+            )
+        except Exception:
+            logger.exception(
+                "Tenant-context retry for ID proxy failed for %s %s",
+                method,
+                upstream_path,
+                extra={"request_id": request.request_id},
+            )
+            return None, error_response(
+                code="UPSTREAM_UNAVAILABLE",
+                message="ID upstream is unavailable",
+                request_id=getattr(request, "request_id", None),
+                status=502,
+            )
+
+    if resp.status_code >= 400:
+        details: dict[str, Any] = {"upstream_status": resp.status_code}
+        try:
+            details["upstream_body"] = resp.json()
+        except Exception:
+            details["upstream_body"] = resp.text
+        return None, error_response(
+            code="UPSTREAM_ERROR",
+            message="ID upstream returned error",
+            request_id=getattr(request, "request_id", None),
+            status=resp.status_code,
+            details=details,
+        )
+
+    return resp, None
+
+
+def _extract_memberships(id_payload: Any) -> list[dict[str, Any]]:
+    memberships = id_payload.get("memberships") if isinstance(id_payload, dict) else None
+    if not isinstance(memberships, list):
+        return []
+    return [item for item in memberships if isinstance(item, dict)]
+
+
+def _active_memberships(id_payload: Any) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in _extract_memberships(id_payload)
+        if str(item.get("status") or "").strip().lower() == "active"
+    ]
 
 
 def _resolve_access_check_path(upstream: str) -> str:
@@ -87,6 +260,55 @@ def _extract_user_id_from_approve_payload(payload: Any) -> str | None:
         nested_user_id = nested_user.get("id")
         if isinstance(nested_user_id, str) and nested_user_id.strip():
             return nested_user_id.strip()
+
+    return None
+
+
+def _normalize_theme_hint(value: Any) -> str | None:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"light", "dark", "auto"}:
+            return normalized
+    return None
+
+
+def _extract_id_theme_hint(id_profile: Any) -> str | None:
+    if not isinstance(id_profile, dict):
+        return None
+
+    candidates: list[Any] = [
+        id_profile.get("theme"),
+        id_profile.get("appearance", {}).get("theme") if isinstance(id_profile.get("appearance"), dict) else None,
+        id_profile.get("preferences", {}).get("theme") if isinstance(id_profile.get("preferences"), dict) else None,
+        (
+            id_profile.get("preferences", {}).get("appearance", {}).get("theme")
+            if isinstance(id_profile.get("preferences"), dict)
+            and isinstance(id_profile.get("preferences", {}).get("appearance"), dict)
+            else None
+        ),
+    ]
+
+    user_payload = id_profile.get("user")
+    if isinstance(user_payload, dict):
+        candidates.extend(
+            [
+                user_payload.get("theme"),
+                user_payload.get("preferences", {}).get("theme")
+                if isinstance(user_payload.get("preferences"), dict)
+                else None,
+                (
+                    user_payload.get("preferences", {}).get("appearance", {}).get("theme")
+                    if isinstance(user_payload.get("preferences"), dict)
+                    and isinstance(user_payload.get("preferences", {}).get("appearance"), dict)
+                    else None
+                ),
+            ]
+        )
+
+    for candidate in candidates:
+        theme = _normalize_theme_hint(candidate)
+        if theme:
+            return theme
 
     return None
 
@@ -265,16 +487,16 @@ def _provision_default_tenant_member_binding(
         )
 
 
-def _maybe_provision_after_application_approve(
+def _finalize_application_approve(
     request: HttpRequest,
     response: HttpResponse,
-) -> None:
+) -> HttpResponse:
     if response.status_code >= 400:
-        return
+        return response
 
     ctx = getattr(request, "auth_ctx", None)
     if not ctx:
-        return
+        return response
 
     try:
         payload = (
@@ -287,14 +509,56 @@ def _maybe_provision_after_application_approve(
             "Skip post-approve provisioning: invalid approve payload",
             extra={"request_id": request.request_id},
         )
-        return
+        return response
 
     approved_user_id = _extract_user_id_from_approve_payload(payload)
+    activation_token = (
+        str(payload.get("activation_token") or "").strip()
+        if isinstance(payload, dict)
+        else ""
+    )
+
+    if not approved_user_id and activation_token:
+        id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+        if id_upstream:
+            try:
+                activate_resp = proxy_request(
+                    upstream_base_url=id_upstream,
+                    upstream_path="auth/activate",
+                    method="POST",
+                    query_string="",
+                    body=json.dumps({"token": activation_token}).encode("utf-8"),
+                    incoming_headers=request.headers,
+                    context_headers={
+                        "X-Request-Id": request.request_id,
+                        "X-User-Id": ctx.user_id,
+                        "X-Tenant-Id": ctx.tenant_id,
+                        "X-Tenant-Slug": ctx.tenant_slug,
+                        "Content-Type": "application/json",
+                    },
+                    request_id=request.request_id,
+                )
+                if activate_resp.status_code == 200:
+                    activate_payload = activate_resp.json()
+                    approved_user_id = _extract_user_id_from_approve_payload(activate_payload)
+                    if isinstance(payload, dict):
+                        payload["activated"] = True
+                        payload["user_id"] = approved_user_id
+                elif isinstance(payload, dict):
+                    payload["activated"] = False
+                    payload["activation_status"] = activate_resp.status_code
+            except Exception:
+                logger.exception(
+                    "Post-approve activation failed",
+                    extra={"request_id": request.request_id},
+                )
+
     if not approved_user_id:
-        return
+        return JsonResponse(payload, status=response.status_code, safe=isinstance(payload, dict))
 
     try:
         _provision_default_tenant_member_binding(request, ctx, approved_user_id)
+        SessionStore().clear_cached_pending_applications(approved_user_id, tenant_slug=ctx.tenant_slug)
     except Exception:
         logger.exception(
             "Post-approve provisioning failed",
@@ -303,6 +567,7 @@ def _maybe_provision_after_application_approve(
                 "approved_user_id": approved_user_id,
             },
         )
+    return JsonResponse(payload, status=response.status_code, safe=isinstance(payload, dict))
 
 
 def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str]]:
@@ -452,13 +717,15 @@ def session_me(request: HttpRequest):
     if err:
         return err
 
+    tenant_selected = bool(str(ctx.tenant_slug or "").strip())
+
     # MVP aggregation: user + portal profile (optional)
     upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "")
     portal_profile: dict[str, Any] | None = None
     id_profile: dict[str, Any] | None = None
     tenant_membership: dict[str, Any] | None = None
     available_tenants: list[dict[str, str]] = []
-    if upstream:
+    if upstream and tenant_selected:
         resp = proxy_request(
             upstream_base_url=upstream,
             upstream_path="portal/me",
@@ -488,47 +755,59 @@ def session_me(request: HttpRequest):
     id_upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "")
     if id_upstream:
         try:
-            id_resp = proxy_request(
-                upstream_base_url=id_upstream,
-                upstream_path="me",
-                method="GET",
-                query_string="",
-                body=b"",
-                incoming_headers=request.headers,
-                context_headers={
-                    "X-Request-Id": request.request_id,
-                    "X-Tenant-Id": ctx.tenant_id,
-                    "X-Tenant-Slug": ctx.tenant_slug,
-                    "X-User-Id": ctx.user_id,
-                },
-                request_id=request.request_id,
-            )
-            if id_resp.status_code == 200:
-                id_profile = id_resp.json()
-                memberships = id_profile.get("memberships") if isinstance(id_profile, dict) else None
-                if isinstance(memberships, list):
-                    for m in memberships:
-                        if not isinstance(m, dict):
-                            continue
-                        membership_status = str(m.get("status") or "").strip().lower()
-                        tenant_id = str(m.get("tenant_id") or "").strip()
-                        tenant_slug = str(m.get("tenant_slug") or "").strip()
-                        if membership_status == "active" and tenant_id and tenant_slug:
-                            available_tenants.append({"id": tenant_id, "slug": tenant_slug})
-                        try:
-                            if (
-                                tenant_membership is None
-                                and (
-                                    str(m.get("tenant_id")) == str(ctx.tenant_id)
-                                    or str(m.get("tenant_slug"))
-                                    == str(ctx.tenant_slug)
-                                )
-                            ):
-                                tenant_membership = m
-                        except Exception:
-                            continue
+            if tenant_selected:
+                id_resp = proxy_request(
+                    upstream_base_url=id_upstream,
+                    upstream_path="me",
+                    method="GET",
+                    query_string="",
+                    body=b"",
+                    incoming_headers=request.headers,
+                    context_headers={
+                        "X-Request-Id": request.request_id,
+                        "X-Tenant-Id": ctx.tenant_id,
+                        "X-Tenant-Slug": ctx.tenant_slug,
+                        "X-User-Id": ctx.user_id,
+                    },
+                    request_id=request.request_id,
+                )
+                if id_resp.status_code == 200:
+                    id_profile = id_resp.json()
+            else:
+                id_resp, proxy_err = _proxy_id_tenantless(
+                    request,
+                    ctx,
+                    upstream_path="me",
+                    method="GET",
+                    retry_with_tenant_context_on_403=False,
+                )
+                if proxy_err is None and id_resp is not None:
+                    id_profile = id_resp.json()
         except Exception:
             id_profile = None
+        memberships = id_profile.get("memberships") if isinstance(id_profile, dict) else None
+        if isinstance(memberships, list):
+            for m in memberships:
+                if not isinstance(m, dict):
+                    continue
+                membership_status = str(m.get("status") or "").strip().lower()
+                tenant_id = str(m.get("tenant_id") or "").strip()
+                tenant_slug = str(m.get("tenant_slug") or "").strip()
+                if membership_status == "active" and tenant_id and tenant_slug:
+                    available_tenants.append({"id": tenant_id, "slug": tenant_slug})
+                if tenant_selected:
+                    try:
+                        if (
+                            tenant_membership is None
+                            and (
+                                str(m.get("tenant_id")) == str(ctx.tenant_id)
+                                or str(m.get("tenant_slug"))
+                                == str(ctx.tenant_slug)
+                            )
+                        ):
+                            tenant_membership = m
+                    except Exception:
+                        continue
 
     def _safe_str(value: Any) -> str | None:
         if isinstance(value, str) and value.strip():
@@ -560,7 +839,7 @@ def session_me(request: HttpRequest):
         return payload or None
 
     # Best-effort sync: if portal profile has no name, use ID profile names
-    if upstream and id_profile:
+    if upstream and id_profile and tenant_selected:
         try:
             id_user = id_profile.get("user") if isinstance(id_profile, dict) else None
             if isinstance(id_user, dict):
@@ -600,12 +879,17 @@ def session_me(request: HttpRequest):
     else:
         id_frontend_base_url = None
 
-    capabilities, roles = _load_effective_access_snapshot(request, ctx)
-    feature_flags = _load_feature_flags_snapshot(request, ctx)
+    if tenant_selected:
+        capabilities, roles = _load_effective_access_snapshot(request, ctx)
+        feature_flags = _load_feature_flags_snapshot(request, ctx)
+    else:
+        capabilities, roles = [], []
+        feature_flags = {}
 
     # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
     if (
         getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
+        and tenant_selected
         and isinstance(id_profile, dict)
         and tenant_membership is None
         and available_tenants
@@ -623,6 +907,9 @@ def session_me(request: HttpRequest):
         "tenant": {"id": ctx.tenant_id, "slug": ctx.tenant_slug},
         "portal_profile": portal_profile,
         "id_profile": id_profile,
+        "id_defaults": {
+            "theme": _extract_id_theme_hint(id_profile),
+        },
         "tenant_membership": tenant_membership,
         "available_tenants": available_tenants,
         "capabilities": capabilities,
@@ -630,6 +917,354 @@ def session_me(request: HttpRequest):
         "feature_flags": feature_flags,
         "id_frontend_base_url": id_frontend_base_url,
         "request_id": request.request_id,
+    }
+
+
+@router.get("/session/tenants")
+def session_tenants(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    store = SessionStore()
+    cached = store.get_cached_user_tenants(ctx.user_id)
+    if isinstance(cached, list):
+        return cached
+
+    resp, proxy_err = _proxy_id_tenantless(
+        request,
+        ctx,
+        upstream_path="me",
+        method="GET",
+        retry_with_tenant_context_on_403=True,
+    )
+    if proxy_err:
+        if proxy_err.status_code == 403:
+            return []
+        return proxy_err
+
+    id_payload = resp.json()
+    memberships = _extract_memberships(id_payload)
+    store.cache_user_tenants(ctx.user_id, memberships)
+    return memberships
+
+
+@router.get("/entry/me")
+def entry_me(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    store = SessionStore()
+    session = store.get(ctx.session_id)
+
+    me_resp, proxy_err = _proxy_id_tenantless(
+        request,
+        ctx,
+        upstream_path="me",
+        method="GET",
+        retry_with_tenant_context_on_403=True,
+    )
+    if proxy_err and proxy_err.status_code != 403:
+        return proxy_err
+
+    if me_resp is not None:
+        id_payload = me_resp.json()
+        memberships = _extract_memberships(id_payload)
+        store.cache_user_tenants(ctx.user_id, memberships)
+    else:
+        id_payload = {"user": {"id": ctx.user_id}}
+        memberships = []
+
+    pending_apps = store.get_cached_pending_applications(ctx.user_id) or []
+    if memberships:
+        active_slugs = {
+            str(item.get("tenant_slug") or "").strip().lower()
+            for item in memberships
+            if str(item.get("tenant_slug") or "").strip()
+        }
+        pending_apps = [
+            item
+            for item in pending_apps
+            if str(item.get("slug") or "").strip().lower() not in active_slugs
+        ]
+        store.cache_pending_applications(ctx.user_id, pending_apps)
+
+    user_payload = id_payload.get("user") if isinstance(id_payload, dict) else None
+    if not isinstance(user_payload, dict):
+        user_payload = {"id": ctx.user_id}
+
+    last_tenant_slug = ""
+    if session and isinstance(session.last_tenant_slug, str):
+        last_tenant_slug = session.last_tenant_slug.strip()
+
+    return {
+        "user": user_payload,
+        "memberships": memberships,
+        "last_tenant": (
+            {"tenant_slug": last_tenant_slug}
+            if last_tenant_slug
+            else None
+        ),
+        "pending_tenant_applications": pending_apps,
+    }
+
+
+@router.post("/entry/tenant-applications")
+def entry_tenant_applications(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    try:
+        incoming_payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        return error_response(
+            code="BAD_REQUEST",
+            message="Invalid JSON body",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    requested_slug = str(incoming_payload.get("slug") or "").strip().lower()
+    if not validate_tenant_slug(requested_slug):
+        return error_response(
+            code="INVALID_SLUG",
+            message="Invalid tenant slug",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    routing_tenant_slug = str(ctx.tenant_slug or "").strip().lower()
+    routing_tenant_id = str(ctx.tenant_id or "").strip()
+
+    if not routing_tenant_slug:
+        resolved_tenant = resolve_tenant_by_slug(requested_slug)
+        if not resolved_tenant:
+            return error_response(
+                code="TENANT_NOT_FOUND",
+                message="Tenant not found for application context",
+                request_id=getattr(request, "request_id", None),
+                status=404,
+                details={"requested_slug": requested_slug},
+            )
+        routing_tenant_slug = resolved_tenant.slug
+        routing_tenant_id = resolved_tenant.id
+
+    requested_email = str(incoming_payload.get("email") or "").strip()
+    if not requested_email:
+        me_resp, me_err = _proxy_id_tenantless(
+            request,
+            ctx,
+            upstream_path="me",
+            method="GET",
+            retry_with_tenant_context_on_403=True,
+        )
+        if me_err and me_err.status_code != 403:
+            return me_err
+        if me_resp is not None:
+            try:
+                me_payload = me_resp.json()
+            except Exception:
+                me_payload = {}
+            if isinstance(me_payload, dict):
+                user_payload = me_payload.get("user")
+                if isinstance(user_payload, dict):
+                    requested_email = str(user_payload.get("email") or "").strip()
+
+    if not requested_email:
+        return error_response(
+            code="EMAIL_REQUIRED",
+            message="Application email is required",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    application_payload = {
+        "tenant_slug": routing_tenant_slug,
+        "payload_json": {
+            "name": str(incoming_payload.get("name") or requested_slug).strip(),
+            "description": str(incoming_payload.get("description") or "").strip(),
+            "email": requested_email,
+            "requested_by_user_id": ctx.user_id,
+            "requested_slug": requested_slug,
+        },
+    }
+
+    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    if not id_upstream:
+        return error_response(
+            code="UPSTREAM_NOT_CONFIGURED",
+            message="ID upstream is not configured",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    context_headers: dict[str, str] = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+        "X-Tenant-Slug": routing_tenant_slug,
+        "Content-Type": "application/json",
+    }
+    if routing_tenant_id:
+        context_headers["X-Tenant-Id"] = routing_tenant_id
+
+    try:
+        resp = proxy_request(
+            upstream_base_url=id_upstream,
+            upstream_path="applications",
+            method="POST",
+            query_string="",
+            body=json.dumps(application_payload).encode("utf-8"),
+            incoming_headers=request.headers,
+            context_headers=context_headers,
+            request_id=request.request_id,
+        )
+    except Exception:
+        logger.exception(
+            "Tenant application create proxy failed",
+            extra={"request_id": request.request_id, "tenant_slug": requested_slug},
+        )
+        return error_response(
+            code="UPSTREAM_UNAVAILABLE",
+            message="ID upstream is unavailable",
+            request_id=getattr(request, "request_id", None),
+            status=502,
+        )
+
+    if resp.status_code >= 400:
+        details: dict[str, Any] = {"upstream_status": resp.status_code}
+        try:
+            details["upstream_body"] = resp.json()
+        except Exception:
+            details["upstream_body"] = resp.text
+        return error_response(
+            code="UPSTREAM_ERROR",
+            message="ID upstream returned error",
+            request_id=getattr(request, "request_id", None),
+            status=resp.status_code,
+            details=details,
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {
+            "slug": requested_slug,
+            "status": "pending",
+        }
+
+    pending_entry = {
+        "id": payload.get("id") if isinstance(payload, dict) else None,
+        "slug": requested_slug,
+        "status": (payload.get("status") if isinstance(payload, dict) else None) or "pending",
+    }
+    store = SessionStore()
+    existing_pending = store.get_cached_pending_applications(ctx.user_id) or []
+    deduped_pending = [
+        item
+        for item in existing_pending
+        if str(item.get("slug") or "").strip().lower() != requested_slug
+    ]
+    deduped_pending.append(pending_entry)
+    store.cache_pending_applications(ctx.user_id, deduped_pending)
+
+    return JsonResponse(payload, status=resp.status_code, safe=isinstance(payload, dict))
+
+
+@router.post("/session/switch-tenant")
+def switch_tenant(request: HttpRequest):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+
+    try:
+        payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        return error_response(
+            code="BAD_REQUEST",
+            message="Invalid JSON body",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    tenant_slug = str(payload.get("tenant_slug") or "").strip().lower()
+    if not validate_tenant_slug(tenant_slug):
+        return error_response(
+            code="INVALID_SLUG",
+            message="Invalid tenant slug",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    target_tenant = resolve_tenant_by_slug(tenant_slug)
+    if not target_tenant:
+        return error_response(
+            code="TENANT_NOT_FOUND",
+            message="Tenant not found",
+            request_id=getattr(request, "request_id", None),
+            status=404,
+        )
+
+    me_resp, proxy_err = _proxy_id_tenantless(
+        request,
+        ctx,
+        upstream_path="me",
+        method="GET",
+        retry_with_tenant_context_on_403=True,
+    )
+    if proxy_err:
+        return proxy_err
+
+    memberships = _extract_memberships(me_resp.json())
+    SessionStore().cache_user_tenants(ctx.user_id, memberships)
+
+    membership = next(
+        (
+            item
+            for item in memberships
+            if str(item.get("tenant_slug") or "").strip().lower() == tenant_slug
+            or str(item.get("tenant_id") or "").strip() == target_tenant.id
+        ),
+        None,
+    )
+    if not membership:
+        return error_response(
+            code="TENANT_FORBIDDEN",
+            message="No membership for requested tenant",
+            request_id=getattr(request, "request_id", None),
+            status=403,
+        )
+
+    if str(membership.get("status") or "").strip().lower() != "active":
+        return error_response(
+            code="TENANT_FORBIDDEN",
+            message="Membership is not active",
+            request_id=getattr(request, "request_id", None),
+            status=403,
+        )
+
+    session = SessionStore().set_active_tenant(
+        ctx.session_id,
+        tenant_id=target_tenant.id,
+        tenant_slug=target_tenant.slug,
+    )
+    if not session:
+        return error_response(
+            code="UNAUTHENTICATED",
+            message="Session not found",
+            request_id=getattr(request, "request_id", None),
+            status=401,
+        )
+
+    return {
+        "active_tenant": {
+            "tenant_id": target_tenant.id,
+            "tenant_slug": target_tenant.slug,
+            "display_name": membership.get("display_name") or target_tenant.slug,
+            "base_role": membership.get("base_role") or "",
+        },
+        "redirect_to": f"/t/{target_tenant.slug}/",
     }
 
 
@@ -681,7 +1316,7 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     Initiates OIDC login flow by redirecting to ID.UpdSpace.
     After user authenticates, they are redirected back to /auth/callback.
     """
-    tenant = getattr(request, "tenant", None)
+    tenant = _resolve_auth_tenant(request)
     if not tenant:
         return error_response(
             code="TENANT_NOT_FOUND",
@@ -722,10 +1357,7 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
 
     # Store state → next mapping in cache (short TTL)
     from django.core.cache import cache
-    next_path = next if next else "/"
-    # Prevent open redirects
-    if next_path.startswith("http://") or next_path.startswith("https://") or next_path.startswith("//"):
-        next_path = "/"
+    next_path = _sanitize_next_path(next, default="/")
     cache.set(f"oauth_state:{state}", {"next": next_path, "tenant_id": str(tenant.id)}, timeout=600)
 
     # Build authorization URL
@@ -750,47 +1382,30 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     OIDC callback handler. Exchanges authorization code for tokens and creates session.
     """
     if error:
-        return error_response(
-            code="OAUTH_ERROR",
-            message=f"Authorization denied: {error}",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
+        return _auth_error_redirect(request, code="OAUTH_ERROR")
 
     if not code or not state:
-        return error_response(
-            code="BAD_REQUEST",
-            message="Missing code or state parameter",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
+        return _auth_error_redirect(request, code="BAD_REQUEST")
 
     # Retrieve state from cache
     from django.core.cache import cache
     state_data = cache.get(f"oauth_state:{state}")
     if not state_data:
-        return error_response(
-            code="INVALID_STATE",
-            message="Invalid or expired state",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-    tenant = getattr(request, "tenant", None)
+        return _auth_error_redirect(request, code="INVALID_STATE")
+    tenant = _resolve_auth_tenant(request)
     if not tenant:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
+            next_path=state_data.get("next"),
         )
 
     state_tenant_id = str(state_data.get("tenant_id") or "").strip()
     if state_tenant_id and state_tenant_id != str(tenant.id):
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TENANT_MISMATCH",
-            message="OAuth state tenant does not match current tenant",
-            request_id=getattr(request, "request_id", None),
-            status=400,
+            next_path=state_data.get("next"),
         )
 
     cache.delete(f"oauth_state:{state}")
@@ -801,11 +1416,10 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     # We need to construct the base URL without the /api/v1 suffix
     id_url = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(settings, "ID_BASE_URL", "")
     if not id_url:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_NOT_CONFIGURED",
-            message="ID upstream is not configured",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     # Strip /api/v1 suffix to get base URL for OAuth endpoints
@@ -837,20 +1451,17 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             timeout=10.0,
         )
     except Exception:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable during token exchange",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     if token_resp.status_code != 200:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TOKEN_EXCHANGE_FAILED",
-            message="Failed to exchange authorization code",
-            request_id=getattr(request, "request_id", None),
-            status=401,
-            details={"upstream_status": token_resp.status_code},
+            next_path=next_path,
         )
 
     tokens = token_resp.json()
@@ -865,30 +1476,27 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             timeout=10.0,
         )
     except Exception:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable during userinfo fetch",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     if userinfo_resp.status_code != 200:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="USERINFO_FAILED",
-            message="Failed to fetch user info",
-            request_id=getattr(request, "request_id", None),
-            status=401,
+            next_path=next_path,
         )
 
     userinfo = userinfo_resp.json()
     user_id = userinfo.get("sub") or userinfo.get("user_id")
 
     if not user_id:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="INVALID_USERINFO",
-            message="User ID not found in userinfo",
-            request_id=getattr(request, "request_id", None),
-            status=401,
+            next_path=next_path,
         )
 
     # Create BFF session
@@ -1255,7 +1863,11 @@ def _proxy_group(
     )
     
     accept_header = request.headers.get("accept", "")
-    is_stream = "event-stream" in accept_header or upstream_path.startswith("feed/sse")
+    is_stream = (
+        "event-stream" in accept_header
+        or upstream_path.startswith("feed/sse")
+        or upstream_path.startswith("feed/live")
+    )
     is_long_poll = upstream_path.endswith("unread-count/long-poll")
 
     try:
@@ -1406,8 +2018,7 @@ def proxy_portal_applications_approve(request: HttpRequest, application_id: int)
         "BFF_UPSTREAM_ID_URL",
         f"applications/{application_id}/approve",
     )
-    _maybe_provision_after_application_approve(request, response)
-    return response
+    return _finalize_application_approve(request, response)
 
 
 @router.api_operation(
@@ -1434,6 +2045,34 @@ def proxy_access_root(request: HttpRequest):
 )
 def proxy_access(request: HttpRequest, path: str):
     return _proxy_group(request, "access", "BFF_UPSTREAM_ACCESS_URL", path, ensure_prefix="access")
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/personalization",
+)
+def proxy_personalization_root(request: HttpRequest):
+    return _proxy_group(
+        request,
+        "personalization",
+        "BFF_UPSTREAM_ACCESS_URL",
+        "",
+        ensure_prefix="personalization",
+    )
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/personalization/{path:path}",
+)
+def proxy_personalization(request: HttpRequest, path: str):
+    return _proxy_group(
+        request,
+        "personalization",
+        "BFF_UPSTREAM_ACCESS_URL",
+        path,
+        ensure_prefix="personalization",
+    )
 
 
 @router.api_operation(
@@ -1481,7 +2120,15 @@ def proxy_voting(request: HttpRequest, path: str):
     "/events",
 )
 def proxy_events_root(request: HttpRequest):
-    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "")
+    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "events/")
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/events/",
+)
+def proxy_events_root_slash(request: HttpRequest):
+    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", "events/")
 
 
 @router.api_operation(
@@ -1489,7 +2136,13 @@ def proxy_events_root(request: HttpRequest):
     "/events/{path:path}",
 )
 def proxy_events(request: HttpRequest, path: str):
-    return _proxy_group(request, "events", "BFF_UPSTREAM_EVENTS_URL", path)
+    return _proxy_group(
+        request,
+        "events",
+        "BFF_UPSTREAM_EVENTS_URL",
+        path,
+        ensure_prefix="events",
+    )
 
 
 @router.api_operation(

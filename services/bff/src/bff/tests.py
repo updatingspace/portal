@@ -152,6 +152,41 @@ class BffProxyRoutingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(captured["upstream_path"], "portal/profiles")
 
+    def test_events_root_proxy_routes_to_events_collection(self):
+        resp, captured = self._call_proxy(
+            "/api/v1/events",
+            {"BFF_UPSTREAM_EVENTS_URL": "http://events:8005/api/v1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured["upstream_path"], "events/")
+
+    def test_events_root_proxy_with_trailing_slash_routes_to_events_collection(self):
+        resp, captured = self._call_proxy(
+            "/api/v1/events/",
+            {"BFF_UPSTREAM_EVENTS_URL": "http://events:8005/api/v1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured["upstream_path"], "events/")
+
+    def test_events_proxy_adds_prefix_when_missing(self):
+        resp, captured = self._call_proxy(
+            "/api/v1/events/event-123",
+            {"BFF_UPSTREAM_EVENTS_URL": "http://events:8005/api/v1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured["upstream_path"], "events/event-123")
+
+    def test_personalization_proxy_adds_prefix_when_missing(self):
+        resp, captured = self._call_proxy(
+            "/api/v1/personalization/preferences/defaults",
+            {"BFF_UPSTREAM_ACCESS_URL": "http://access:8002/api/v1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            captured["upstream_path"],
+            "personalization/preferences/defaults",
+        )
+
     def test_feature_flags_proxy_routes_to_configured_upstream(self):
         resp, captured = self._call_proxy(
             "/api/v1/feature-flags/flags",
@@ -559,6 +594,7 @@ class BffSessionProfileSyncTests(TestCase):
                     200,
                     json={
                         "user": {"first_name": "Max", "last_name": "Doe"},
+                        "preferences": {"appearance": {"theme": "dark"}},
                         "memberships": [],
                     },
                 )
@@ -584,6 +620,7 @@ class BffSessionProfileSyncTests(TestCase):
         payload = resp.json()
         self.assertEqual(payload["portal_profile"]["first_name"], "Max")
         self.assertEqual(payload["portal_profile"]["last_name"], "Doe")
+        self.assertEqual(payload["id_defaults"]["theme"], "dark")
         self.assertIn(("PATCH", "portal/me"), calls)
 
     def test_session_me_includes_effective_capabilities_from_access(self):
@@ -636,6 +673,32 @@ class BffSessionProfileSyncTests(TestCase):
                             "effective_permissions": ["activity.feed.read", "activity.news.create"],
                         },
                     )
+                if action == "personalization.preferences.read_own":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "allowed": True,
+                            "reason_code": "RBAC_ALLOW",
+                            "effective_roles": [{"id": 3, "name": "member", "service": "personalization"}],
+                            "effective_permissions": [
+                                "personalization.dashboards.customize",
+                                "personalization.preferences.edit_own",
+                                "personalization.preferences.read_own",
+                            ],
+                        },
+                    )
+                if action == "personalization.content.manage":
+                    return httpx.Response(
+                        200,
+                        json={
+                            "allowed": True,
+                            "reason_code": "RBAC_ALLOW",
+                            "effective_roles": [{"id": 4, "name": "manager", "service": "personalization"}],
+                            "effective_permissions": [
+                                "personalization.content.manage",
+                            ],
+                        },
+                    )
                 return httpx.Response(
                     200,
                     json={
@@ -667,11 +730,18 @@ class BffSessionProfileSyncTests(TestCase):
             [
                 "activity.feed.read",
                 "activity.news.create",
+                "personalization.content.manage",
+                "personalization.dashboards.customize",
+                "personalization.preferences.edit_own",
+                "personalization.preferences.read_own",
                 "portal.posts.create_public",
                 "portal.profile.read_self",
             ],
         )
-        self.assertEqual(payload.get("roles"), ["activity:member", "portal:member"])
+        self.assertEqual(
+            payload.get("roles"),
+            ["activity:member", "personalization:manager", "personalization:member", "portal:member"],
+        )
 
     def test_session_me_includes_feature_flags(self):
         self.client.cookies[self.cookie_name] = self.session.session_id
@@ -865,6 +935,48 @@ class OidcAuthLoginTests(TestCase):
         self.assertIn("redirect_uri=", location)
         self.assertIn("state=", location)
 
+    def test_auth_login_on_portal_host_uses_global_tenant(self):
+        from django.core.cache import cache
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="localhost",
+            ID_PUBLIC_BASE_URL="http://id.localhost",
+            BFF_OIDC_CLIENT_ID="test-client-id",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                "/api/v1/auth/login?next=/choose-tenant",
+                HTTP_HOST="portal.localhost",
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        location = resp["Location"]
+
+        import re
+        match = re.search(r"state=([^&]+)", location)
+        self.assertIsNotNone(match)
+        state = match.group(1)
+
+        cached = cache.get(f"oauth_state:{state}")
+        global_tenant = Tenant.objects.get(slug="__portal__")
+        self.assertEqual(cached["tenant_id"], str(global_tenant.id))
+
+    def test_auth_login_on_unknown_subdomain_stays_not_found(self):
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="localhost",
+            ID_PUBLIC_BASE_URL="http://id.localhost",
+            BFF_OIDC_CLIENT_ID="test-client-id",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                "/api/v1/auth/login?next=/choose-tenant",
+                HTTP_HOST="unknown.localhost",
+            )
+
+        self.assertEqual(resp.status_code, 404)
+        payload = resp.json()
+        self.assertEqual(payload["error"]["code"], "TENANT_NOT_FOUND")
+
     def test_auth_login_without_id_url_returns_error(self):
         """GET /auth/login without ID_PUBLIC_BASE_URL returns 502."""
         with self.settings(
@@ -948,40 +1060,40 @@ class OidcAuthCallbackTests(TestCase):
         self.host = "aef.updspace.com"
 
     def test_callback_without_code_returns_error(self):
-        """GET /auth/callback without code param returns 400."""
+        """GET /auth/callback without code redirects to login with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?state=abc123",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "BAD_REQUEST")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=BAD_REQUEST", resp["Location"])
 
     def test_callback_without_state_returns_error(self):
-        """GET /auth/callback without state param returns 400."""
+        """GET /auth/callback without state redirects to login with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?code=abc123",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "BAD_REQUEST")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=BAD_REQUEST", resp["Location"])
 
     def test_callback_with_invalid_state_returns_error(self):
-        """GET /auth/callback with invalid/expired state returns 400."""
+        """GET /auth/callback with invalid/expired state redirects to login."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?code=abc123&state=invalid-state",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "INVALID_STATE")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=INVALID_STATE", resp["Location"])
 
     def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(self):
         """GET /auth/callback rejects state created for another tenant."""
@@ -1001,22 +1113,23 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "TENANT_MISMATCH")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=TENANT_MISMATCH", resp["Location"])
+        self.assertIn("next=%2Fdashboard", resp["Location"])
         self.assertIsNotNone(cache.get(f"oauth_state:{state}"))
 
     def test_callback_with_oauth_error_returns_error(self):
-        """GET /auth/callback with error param returns 400."""
+        """GET /auth/callback with error param redirects to login with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?error=access_denied",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "OAUTH_ERROR")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=OAUTH_ERROR", resp["Location"])
 
     @patch("httpx.post")
     @patch("httpx.get")
@@ -1086,8 +1199,60 @@ class OidcAuthCallbackTests(TestCase):
         self.assertIsNone(cache.get(f"oauth_state:{state}"))
 
     @patch("httpx.post")
+    @patch("httpx.get")
+    def test_callback_on_portal_host_uses_global_tenant(self, mock_get, mock_post):
+        from django.core.cache import cache
+
+        global_tenant = Tenant.objects.create(slug="__portal__")
+        state = "portal-state-123"
+        cache.set(
+            f"oauth_state:{state}",
+            {"next": "/choose-tenant", "tenant_id": str(global_tenant.id)},
+            timeout=600,
+        )
+
+        mock_post.return_value = httpx.Response(
+            200,
+            json={
+                "access_token": "mock-access-token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            },
+        )
+        mock_get.return_value = httpx.Response(
+            200,
+            json={
+                "sub": "f1e2d3c4-b5a6-7890-1234-abcdef123456",
+                "email": "portal@example.com",
+                "master_flags": {},
+            },
+        )
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="localhost",
+            BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            BFF_OIDC_CLIENT_ID="test-client",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+            BFF_SESSION_COOKIE_NAME="updspace_session",
+            DEBUG=True,
+        ):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=auth-code-123&state={state}",
+                HTTP_HOST="portal.localhost",
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/choose-tenant")
+        self.assertIn("updspace_session", resp.cookies)
+        session_id = resp.cookies["updspace_session"].value
+        session_data = SessionStore().get(session_id)
+        self.assertIsNotNone(session_data)
+        self.assertEqual(session_data.tenant_id, str(global_tenant.id))
+        self.assertIsNone(cache.get(f"oauth_state:{state}"))
+
+    @patch("httpx.post")
     def test_callback_token_exchange_failure_returns_error(self, mock_post):
-        """Failed token exchange returns 401."""
+        """Failed token exchange redirects to login with auth_error."""
         from django.core.cache import cache
 
         state = "valid-state-456"
@@ -1113,14 +1278,15 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 401)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "TOKEN_EXCHANGE_FAILED")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
+        self.assertIn("next=%2F", resp["Location"])
 
     @patch("httpx.post")
     @patch("httpx.get")
     def test_callback_userinfo_failure_returns_error(self, mock_get, mock_post):
-        """Failed userinfo fetch returns 401."""
+        """Failed userinfo fetch redirects to login with auth_error."""
         from django.core.cache import cache
 
         state = "valid-state-789"
@@ -1150,9 +1316,10 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 401)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "USERINFO_FAILED")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=USERINFO_FAILED", resp["Location"])
+        self.assertIn("next=%2F", resp["Location"])
 
 
 class OidcAuthIntegrationTests(TestCase):
@@ -1498,6 +1665,27 @@ class CsrfProtectionTests(TestCase):
             "Domain=",
             resp.cookies[settings.CSRF_COOKIE_NAME].OutputString(),
         )
+
+    def test_csrf_bootstrap_allows_session_without_active_tenant_on_portal_host(self):
+        session = SessionStore().create(
+            tenant_id=str(self.tenant.id),
+            user_id=str(uuid.uuid4()),
+            master_flags={"email_verified": True},
+            ttl=timedelta(minutes=10),
+        )
+        self.client.cookies[getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")] = (
+            session.session_id
+        )
+
+        resp = self.client.get(
+            "/api/v1/csrf",
+            HTTP_HOST="portal.localhost",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload.get("csrfToken"))
+        self.assertEqual(payload.get("ok"), True)
 
     def test_unsigned_request_requires_csrf(self):
         resp = self.client.post(

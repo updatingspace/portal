@@ -7,6 +7,8 @@ import { ChevronLeft, ChevronRight, Eye, Pencil } from '@gravity-ui/icons';
 import { useCallback, useMemo, useState } from 'react';
 import type { HomePageModal, ModalType } from '../../types';
 import { getModalTypeColor, getModalTypeLabel } from '../../utils';
+import { formatDate } from '@/shared/lib/formatters';
+import { usePortalI18n } from '@/shared/i18n/usePortalI18n';
 import './CalendarView.css';
 
 interface CalendarViewProps {
@@ -18,20 +20,25 @@ interface CalendarViewProps {
 
 type ViewMode = 'month' | 'week';
 
-const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
-
 export function CalendarView({
   modals,
   onEdit,
   onPreview,
 }: CalendarViewProps) {
+  const { locale, t } = usePortalI18n();
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedModal, setSelectedModal] = useState<HomePageModal | null>(null);
+  const intlLocale = locale === 'ru' ? 'ru-RU' : 'en-US';
+
+  const weekdayLabels = useMemo(() => {
+    const monday = new Date(2024, 0, 1);
+    return Array.from({ length: 7 }, (_, index) =>
+      new Intl.DateTimeFormat(intlLocale, { weekday: 'short' }).format(
+        new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index),
+      ),
+    );
+  }, [intlLocale]);
 
   // Get start of week (Monday)
   const getStartOfWeek = useCallback((date: Date) => {
@@ -204,7 +211,7 @@ export function CalendarView({
           </span>
           {viewMode === 'week' && (
             <span className="calendar-day__weekday">
-              {DAYS_OF_WEEK[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+              {weekdayLabels[date.getDay() === 0 ? 6 : date.getDay() - 1]}
             </span>
           )}
         </div>
@@ -214,7 +221,7 @@ export function CalendarView({
           )}
           {hiddenCount > 0 && (
             <div className="calendar-day__more">
-              +{hiddenCount} more
+              +{hiddenCount} {t('content.calendar.more')}
             </div>
           )}
         </div>
@@ -225,19 +232,24 @@ export function CalendarView({
   // Render month title
   const title = useMemo(() => {
     if (viewMode === 'month') {
-      return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+      return new Intl.DateTimeFormat(intlLocale, { month: 'long', year: 'numeric' }).format(
+        currentDate,
+      );
     }
     
     const startOfWeek = getStartOfWeek(currentDate);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
-    
-    if (startOfWeek.getMonth() === endOfWeek.getMonth()) {
-      return `${MONTHS[startOfWeek.getMonth()]} ${startOfWeek.getDate()}-${endOfWeek.getDate()}, ${startOfWeek.getFullYear()}`;
-    }
-    
-    return `${MONTHS[startOfWeek.getMonth()].slice(0, 3)} ${startOfWeek.getDate()} - ${MONTHS[endOfWeek.getMonth()].slice(0, 3)} ${endOfWeek.getDate()}, ${endOfWeek.getFullYear()}`;
-  }, [currentDate, viewMode, getStartOfWeek]);
+    const startLabel = new Intl.DateTimeFormat(intlLocale, {
+      month: 'short',
+      day: 'numeric',
+    }).format(startOfWeek);
+    const endLabel = new Intl.DateTimeFormat(intlLocale, {
+      month: 'short',
+      day: 'numeric',
+    }).format(endOfWeek);
+    return `${startLabel} - ${endLabel}, ${endOfWeek.getFullYear()}`;
+  }, [currentDate, viewMode, getStartOfWeek, intlLocale]);
 
   return (
     <div className="calendar-view">
@@ -248,7 +260,7 @@ export function CalendarView({
             <Icon data={ChevronLeft} />
           </Button>
           <Button view="flat" onClick={navigateToday}>
-            Today
+            {t('content.calendar.today')}
           </Button>
           <Button view="flat" onClick={navigateNext}>
             <Icon data={ChevronRight} />
@@ -263,8 +275,8 @@ export function CalendarView({
           <Select
             value={[viewMode]}
             options={[
-              { value: 'month', content: 'Month' },
-              { value: 'week', content: 'Week' },
+              { value: 'month', content: t('content.calendar.month') },
+              { value: 'week', content: t('content.calendar.week') },
             ]}
             onUpdate={([value]) => setViewMode(value as ViewMode)}
             width={120}
@@ -277,7 +289,7 @@ export function CalendarView({
         {/* Day headers */}
         {viewMode === 'month' && (
           <div className="calendar-grid__header">
-            {DAYS_OF_WEEK.map(day => (
+            {weekdayLabels.map((day) => (
               <div key={day} className="calendar-grid__day-name">
                 {day}
               </div>
@@ -303,39 +315,39 @@ export function CalendarView({
           
           <div className="calendar-details__body">
             <div className="calendar-details__row">
-              <Text variant="body-1" color="secondary">Type</Text>
+              <Text variant="body-1" color="secondary">{t('content.calendar.type')}</Text>
               <Label theme={getModalTypeColor(selectedModal.modal_type)} size="s">
                 {getModalTypeLabel(selectedModal.modal_type)}
               </Label>
             </div>
             
             <div className="calendar-details__row">
-              <Text variant="body-1" color="secondary">Status</Text>
+              <Text variant="body-1" color="secondary">{t('content.calendar.status')}</Text>
               <Label theme={selectedModal.is_active ? 'success' : 'normal'} size="s">
-                {selectedModal.is_active ? 'Active' : 'Inactive'}
+                {selectedModal.is_active ? t('content.calendar.active') : t('content.calendar.inactive')}
               </Label>
             </div>
             
             {selectedModal.start_date && (
               <div className="calendar-details__row">
-                <Text variant="body-1" color="secondary">Start</Text>
+                <Text variant="body-1" color="secondary">{t('content.calendar.start')}</Text>
                 <Text variant="body-1">
-                  {new Date(selectedModal.start_date).toLocaleDateString()}
+                  {formatDate(selectedModal.start_date)}
                 </Text>
               </div>
             )}
             
             {selectedModal.end_date && (
               <div className="calendar-details__row">
-                <Text variant="body-1" color="secondary">End</Text>
+                <Text variant="body-1" color="secondary">{t('content.calendar.end')}</Text>
                 <Text variant="body-1">
-                  {new Date(selectedModal.end_date).toLocaleDateString()}
+                  {formatDate(selectedModal.end_date)}
                 </Text>
               </div>
             )}
             
             <div className="calendar-details__row">
-              <Text variant="body-1" color="secondary">Order</Text>
+              <Text variant="body-1" color="secondary">{t('content.calendar.order')}</Text>
               <Text variant="body-1">{selectedModal.order}</Text>
             </div>
           </div>
@@ -347,7 +359,7 @@ export function CalendarView({
               onClick={() => onPreview(selectedModal)}
             >
               <Icon data={Eye} />
-              Preview
+              {t('content.calendar.preview')}
             </Button>
             <Button 
               view="action" 
@@ -355,7 +367,7 @@ export function CalendarView({
               onClick={() => onEdit(selectedModal)}
             >
               <Icon data={Pencil} />
-              Edit
+              {t('content.calendar.edit')}
             </Button>
           </div>
         </Card>
@@ -363,7 +375,7 @@ export function CalendarView({
 
       {/* Legend */}
       <div className="calendar-legend">
-        <Text variant="caption-1" color="secondary">Modal Types:</Text>
+        <Text variant="caption-1" color="secondary">{t('content.calendar.modalTypes')}</Text>
         {(['info', 'warning', 'success', 'promo'] as ModalType[]).map(type => (
           <div key={type} className="calendar-legend__item">
             <span 

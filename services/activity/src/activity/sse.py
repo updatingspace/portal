@@ -11,10 +11,12 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 from django.http import StreamingHttpResponse
 
 from activity.context import require_activity_context
+from activity.models import NewsPost, Outbox, Subscription
 from activity.permissions import Permissions, has_permission
 from activity.services import get_unread_count, require_not_suspended
 
@@ -33,6 +35,49 @@ def _sse_event(event_type: str, data: dict) -> str:
     lines.append(f"data: {json.dumps(data)}")
     lines.append("")  # Empty line marks end of event
     return "\n".join(lines) + "\n"
+
+
+def _load_subscription_scopes(tenant_id, user_id) -> set[tuple[str, str]]:
+    sub = Subscription.objects.filter(tenant_id=tenant_id, user_id=user_id).first()
+    scopes: set[tuple[str, str]] = set()
+    if sub and isinstance(sub.rules_json, dict):
+        for scope in sub.rules_json.get("scopes") or []:
+            scope_type = str(scope.get("scope_type") or "").strip().upper()
+            scope_id = str(scope.get("scope_id") or "").strip()
+            if scope_type and scope_id:
+                scopes.add((scope_type, scope_id))
+    return scopes
+
+
+def _scope_visible(scopes: set[tuple[str, str]], *, scope_type: str, scope_id: str) -> bool:
+    return (str(scope_type).upper(), str(scope_id)) in scopes
+
+
+def _can_receive_news_change(ctx, payload: dict[str, Any], subscribed_scopes: set[tuple[str, str]]) -> bool:
+    status = str(payload.get("status") or "").strip()
+    visibility = str(payload.get("visibility") or "").strip()
+    scope_type = str(payload.get("scope_type") or "").strip().upper()
+    scope_id = str(payload.get("scope_id") or "").strip()
+    author_user_id = str(payload.get("author_user_id") or "").strip()
+
+    if status == "draft":
+        return bool(ctx.user_id and author_user_id and str(ctx.user_id) == author_user_id)
+    if visibility == "private":
+        return bool(ctx.user_id and author_user_id and str(ctx.user_id) == author_user_id)
+    if not scope_type or not scope_id:
+        return False
+    if not _scope_visible(subscribed_scopes, scope_type=scope_type, scope_id=scope_id):
+        return False
+    return has_permission(
+        user_id=ctx.user_id,
+        tenant_id=ctx.tenant_id,
+        tenant_slug=ctx.tenant_slug,
+        master_flags=ctx.master_flags,
+        permission_key=Permissions.FEED_READ,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        request_id=ctx.request_id,
+    )
 
 
 def sse_unread_count(request):
@@ -139,4 +184,91 @@ def sse_unread_count(request):
     )
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"  # Disable nginx buffering
+    return response
+
+
+def sse_feed_live(request):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+    subscribed_scopes = _load_subscription_scopes(ctx.tenant_id, ctx.user_id)
+
+    def event_stream():
+        start_time = time.monotonic()
+        last_heartbeat = start_time
+        last_check = start_time
+        last_outbox_id = (
+            Outbox.objects.filter(tenant_id=ctx.tenant_id, aggregate_type="news")
+            .order_by("-id")
+            .values_list("id", flat=True)
+            .first()
+            or 0
+        )
+        yield _sse_event("ready", {"timestamp": datetime.now(timezone.utc).isoformat()})
+
+        while True:
+            current_time = time.monotonic()
+            if current_time - start_time > SSE_MAX_DURATION:
+                yield _sse_event("close", {"reason": "max_duration", "message": "Please reconnect"})
+                break
+
+            if current_time - last_heartbeat >= SSE_HEARTBEAT_INTERVAL:
+                yield _sse_event("heartbeat", {"timestamp": datetime.now(timezone.utc).isoformat()})
+                last_heartbeat = current_time
+
+            if current_time - last_check >= 1:
+                last_check = current_time
+                rows = list(
+                    Outbox.objects.filter(
+                        tenant_id=ctx.tenant_id,
+                        aggregate_type="news",
+                        id__gt=last_outbox_id,
+                    )
+                    .order_by("id")[:50]
+                )
+                for row in rows:
+                    last_outbox_id = max(last_outbox_id, row.id)
+                    payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+                    news_id = str(payload.get("news_id") or row.aggregate_id or "").strip()
+                    if not news_id:
+                        continue
+
+                    if row.event_type == "activity.news.deleted":
+                        if _can_receive_news_change(ctx, payload, subscribed_scopes):
+                            yield _sse_event(
+                                "news-delete",
+                                {"news_id": news_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+                            )
+                        continue
+
+                    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+                    if not post:
+                        continue
+                    current_payload = {
+                        **payload,
+                        "status": post.status,
+                        "visibility": post.visibility,
+                        "scope_type": post.scope_type,
+                        "scope_id": post.scope_id,
+                        "author_user_id": str(post.author_user_id),
+                    }
+                    if _can_receive_news_change(ctx, current_payload, subscribed_scopes):
+                        yield _sse_event(
+                            "news-upsert",
+                            {
+                                "news_id": news_id,
+                                "changed": payload.get("changed") or [],
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                        )
+                    else:
+                        yield _sse_event(
+                            "news-delete",
+                            {"news_id": news_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+                        )
+
+            time.sleep(1)
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
     return response

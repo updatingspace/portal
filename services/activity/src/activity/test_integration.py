@@ -11,14 +11,16 @@ from __future__ import annotations
 import json
 import importlib
 import sys
+import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from django.test import Client, TestCase, override_settings
 
 from activity.media import UploadUrl
-from activity.models import NewsPost
+from activity.models import ActivityEvent, FeedLastSeen, NewsPost
 
 BFF_SRC = Path(__file__).resolve().parents[4] / "services" / "bff" / "src"
 if str(BFF_SRC) not in sys.path:
@@ -127,6 +129,22 @@ class NewsIntegrationTests(TestCase):
             ),
         )
 
+    def _put_binary(self, path: str, body: bytes, request_id: str, *, content_type: str):
+        return self.client.put(
+            path,
+            data=body,
+            content_type=content_type,
+            **_headers(
+                method="PUT",
+                path=path,
+                body=body,
+                tenant_id=self.tenant_id,
+                tenant_slug=self.tenant_slug,
+                user_id=self.user_id,
+                request_id=request_id,
+            ),
+        )
+
     def _delete(self, path: str, request_id: str):
         return self.client.delete(
             path,
@@ -175,17 +193,64 @@ class NewsIntegrationTests(TestCase):
             ],
         }
 
-        with patch.object(self.activity_api, "generate_download_url", return_value="https://cdn.test/news.jpg"):
+        with (
+            patch.object(self.activity_api, "generate_download_url", return_value="https://cdn.test/news.jpg"),
+            patch.object(
+                self.activity_api.portal_client,
+                "list_profiles",
+                return_value={
+                    self.user_id: {
+                        "user_id": self.user_id,
+                        "display_name": "Mihhail Matvejev",
+                        "first_name": "Mihhail",
+                        "last_name": "Matvejev",
+                    }
+                },
+            ),
+        ):
             create_resp = self._post("/api/v1/news", news_payload, "rid-news-1")
         self.assertEqual(create_resp.status_code, 200)
         data = create_resp.json()
         self.assertEqual(data["type"], "news.posted")
         self.assertIn("news_id", data["payload_json"])
+        self.assertEqual(data["actor_profile"]["display_name"], "Mihhail Matvejev")
+        self.assertEqual(data["payload_json"]["views_count"], 0)
 
         feed_resp = self._get("/api/v1/v2/feed?limit=10", "rid-feed-1")
         self.assertEqual(feed_resp.status_code, 200)
         feed = feed_resp.json()
         self.assertTrue(feed["items"], "Expected at least one feed item")
+        self.assertEqual(feed["items"][0]["type"], "news.posted")
+
+    def test_news_create_appears_in_feed_v2_with_lowercase_subscription_scope(self):
+        scopes_payload = {
+            "scopes": [
+                {
+                    "scope_type": "tenant",
+                    "scope_id": self.tenant_id,
+                }
+            ]
+        }
+        resp = self._post("/api/v1/subscriptions", scopes_payload, "rid-sub-lower-1")
+        self.assertEqual(resp.status_code, 200)
+
+        news_payload = {
+            "title": "Frontend publish",
+            "body": "Проверяем моментальное появление новости.",
+            "tags": ["feed"],
+            "visibility": "public",
+            "scope_type": "TENANT",
+            "scope_id": self.tenant_id,
+            "media": [],
+        }
+
+        create_resp = self._post("/api/v1/news", news_payload, "rid-news-lower-1")
+        self.assertEqual(create_resp.status_code, 200)
+
+        feed_resp = self._get("/api/v1/v2/feed?limit=10", "rid-feed-lower-1")
+        self.assertEqual(feed_resp.status_code, 200)
+        feed = feed_resp.json()
+        self.assertTrue(feed["items"], "Expected news item to be visible with lowercase subscription scope")
         self.assertEqual(feed["items"][0]["type"], "news.posted")
 
     def test_news_reactions_and_comments_flow(self):
@@ -212,6 +277,7 @@ class NewsIntegrationTests(TestCase):
         reactions = react_resp.json()
         self.assertEqual(reactions[0]["emoji"], "🔥")
         self.assertEqual(reactions[0]["count"], 1)
+        self.assertTrue(reactions[0]["my_reacted"])
 
         reactions_list_resp = self._get(
             f"/api/v1/news/{news_id}/reactions?limit=10",
@@ -222,6 +288,15 @@ class NewsIntegrationTests(TestCase):
         self.assertEqual(reactions_list[0]["emoji"], "🔥")
         self.assertEqual(reactions_list[0]["user_id"], self.user_id)
         self.assertTrue(reactions_list[0]["created_at"])
+
+        view_resp = self._post(
+            f"/api/v1/news/{news_id}/views",
+            {},
+            "rid-view-1",
+        )
+        self.assertEqual(view_resp.status_code, 200)
+        self.assertEqual(view_resp.json()["views_count"], 0)
+        self.assertFalse(view_resp.json()["counted"])
 
         comment_payload = {"body": "Годно!"}
         comment_resp = self._post(
@@ -328,6 +403,82 @@ class NewsIntegrationTests(TestCase):
         self.assertEqual(data["upload_url"], mocked.upload_url)
         self.assertEqual(data["upload_headers"], mocked.upload_headers)
         self.assertEqual(data["expires_in"], mocked.expires_in)
+
+    @override_settings(
+        DEBUG=True,
+        NEWS_MEDIA_BUCKET="",
+        NEWS_MEDIA_LOCAL_PUBLIC_PREFIX="/api/v1/activity",
+    )
+    def test_news_media_upload_url_uses_local_fallback_in_debug_without_bucket(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(NEWS_MEDIA_LOCAL_STORAGE_ROOT=tmp_dir):
+                upload_payload = {
+                    "filename": "news.png",
+                    "content_type": "image/png",
+                    "size_bytes": 12,
+                }
+                resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-local-1")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertEqual(data["key"].split("/")[1], self.tenant_id)
+                self.assertTrue(data["upload_url"].startswith("/api/v1/activity/news/media/upload/"))
+
+                binary = b"\x89PNG\r\n\x1a\nlocal"
+                put_resp = self._put_binary(
+                    data["upload_url"],
+                    binary,
+                    "rid-upload-local-2",
+                    content_type="image/png",
+                )
+                self.assertEqual(put_resp.status_code, 204)
+
+                get_resp = self._get(
+                    f"/api/v1/activity/news/media/file/{data['key']}",
+                    "rid-upload-local-3",
+                )
+                self.assertEqual(get_resp.status_code, 200)
+                self.assertEqual(b"".join(get_resp.streaming_content), binary)
+                self.assertEqual(get_resp["Content-Type"], "image/png")
+
+    @override_settings(DEBUG=False, NEWS_MEDIA_BUCKET="")
+    def test_news_media_upload_url_requires_bucket_outside_debug(self):
+        upload_payload = {
+            "filename": "news.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": 100,
+        }
+        with self.assertRaisesRegex(RuntimeError, "NEWS_MEDIA_BUCKET is not configured"):
+            self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-no-bucket-1")
+
+    def test_feed_mark_read_updates_last_seen(self):
+        FeedLastSeen.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            last_seen_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=uuid.uuid4(),
+            type="news.posted",
+            occurred_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            title="Unread event",
+            payload_json={"news_id": str(uuid.uuid4())},
+            visibility="public",
+            scope_type="TENANT",
+            scope_id=self.tenant_id,
+            source_ref="news:test",
+        )
+
+        unread_before = self._get("/api/v1/feed/unread-count", "rid-mark-read-before")
+        self.assertEqual(unread_before.status_code, 200)
+        self.assertEqual(unread_before.json()["count"], 1)
+
+        mark_resp = self._post("/api/v1/feed/mark-read", {}, "rid-mark-read-1")
+        self.assertEqual(mark_resp.status_code, 204)
+
+        unread_after = self._get("/api/v1/feed/unread-count", "rid-mark-read-after")
+        self.assertEqual(unread_after.status_code, 200)
+        self.assertEqual(unread_after.json()["count"], 0)
 
     def test_news_update_and_delete(self):
         create_resp = self._post(

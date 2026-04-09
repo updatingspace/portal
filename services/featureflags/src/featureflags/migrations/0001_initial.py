@@ -59,10 +59,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="outboxmessage",
-            index=models.Index(fields=["event_type", "occurred_at"], name="feature_flag_outbox_type_occ_idx"),
+            index=models.Index(fields=["event_type", "occurred_at"], name="ff_outbox_type_occ_idx"),
         ),
         migrations.AddIndex(
             model_name="outboxmessage",
-            index=models.Index(fields=["published_at"], name="feature_flag_outbox_published_idx"),
+            index=models.Index(fields=["published_at"], name="ff_outbox_pub_idx"),
         ),
     ]

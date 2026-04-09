@@ -40,22 +40,17 @@ const renderWithAuth = (user: UserInfo | null) => {
 };
 
 describe('RequireCapability integration', () => {
-  it.each([
-    ['missing capability', ['events.event.read'], true],
-    ['present capability', ['activity.feed.read'], false],
-  ])(
-    'renders access state for %s',
-    async (_name, capabilities, shouldBeDenied) => {
-      renderWithAuth(createUser({ capabilities }));
+  it('renders access denied screen when user lacks capability', async () => {
+    renderWithAuth(createUser({ capabilities: ['events.event.read'] }));
 
-      if (shouldBeDenied) {
-        expect(await screen.findByRole('heading', { name: 'Доступ ограничен' })).toBeInTheDocument();
-        expect(screen.queryByText('Feed Content')).not.toBeInTheDocument();
-        return;
-      }
+    expect(await screen.findByRole('heading', { name: 'Доступ ограничен' })).toBeInTheDocument();
+    expect(screen.queryByText('Feed Content')).not.toBeInTheDocument();
+  });
 
-      expect(await screen.findByText('Feed Content')).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Доступ ограничен' })).not.toBeInTheDocument();
-    },
-  );
+  it('renders protected content when user has required capability', async () => {
+    renderWithAuth(createUser({ capabilities: ['activity.feed.read'] }));
+
+    expect(await screen.findByText('Feed Content')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Доступ ограничен' })).not.toBeInTheDocument();
+  });
 });

@@ -52,7 +52,13 @@ const toJsDate = (value: CalendarValue): Date | null => {
   if (!value) return null;
   if (typeof value !== 'object') return null;
 
-  const candidate = value as { toDate?: () => Date; toJSDate?: () => Date; year?: number; month?: number; date?: number };
+  const candidate = value as {
+    toDate?: () => Date;
+    toJSDate?: () => Date;
+    year?: () => number;
+    month?: () => number;
+    date?: () => number;
+  };
 
   if (typeof candidate.toDate === 'function') {
     const result = candidate.toDate();
@@ -65,11 +71,11 @@ const toJsDate = (value: CalendarValue): Date | null => {
   }
 
   if (
-    typeof candidate.year === 'number' &&
-    typeof candidate.month === 'number' &&
-    typeof candidate.date === 'number'
+    typeof candidate.year === 'function' &&
+    typeof candidate.month === 'function' &&
+    typeof candidate.date === 'function'
   ) {
-    return new Date(candidate.year, candidate.month - 1, candidate.date);
+    return new Date(candidate.year(), candidate.month() - 1, candidate.date());
   }
 
   return null;

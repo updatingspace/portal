@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import uuid
 
+from django.apps import apps
 from django.test import TestCase
 
 from access_control.models import (
@@ -204,3 +206,42 @@ class AccessControlComputeTests(TestCase):
 
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason_code, "RBAC_DENY")
+
+
+class PersonalizationMemberPermissionMigrationTests(TestCase):
+    def setUp(self):
+        self.tenant_id = uuid.uuid4()
+        self.role = Role.objects.create(
+            tenant_id=self.tenant_id,
+            service="personalization",
+            name="member",
+            is_system_template=False,
+        )
+        Permission.objects.get_or_create(
+            key="personalization.content.manage",
+            defaults={
+                "description": "Manage personalization content",
+                "service": "personalization",
+            },
+        )
+        RolePermission.objects.create(
+            role=self.role,
+            permission_id="personalization.content.manage",
+        )
+
+    def test_backfill_adds_baseline_permissions_without_removing_existing_grants(self):
+        migration = importlib.import_module(
+            "access_control.migrations.0016_backfill_personalization_member_permissions"
+        )
+
+        migration.forwards(apps, None)
+
+        self.assertCountEqual(
+            RolePermission.objects.filter(role=self.role).values_list("permission_id", flat=True),
+            [
+                "personalization.content.manage",
+                "personalization.dashboards.customize",
+                "personalization.preferences.edit_own",
+                "personalization.preferences.read_own",
+            ],
+        )

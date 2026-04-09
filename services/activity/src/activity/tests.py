@@ -14,6 +14,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 
+from activity.context import ActivityContext
 from activity.connectors.steam import SteamConnector
 from activity.connectors.base import RawEventIn
 from activity.logging_config import JsonFormatter
@@ -23,6 +24,7 @@ from activity.models import (
     FeedLastSeen,
     NewsComment,
     NewsPost,
+    NewsPostView,
     NewsReaction,
     Outbox,
     OutboxEventType,
@@ -30,6 +32,7 @@ from activity.models import (
     Source,
     Subscription,
 )
+from activity.portal_client import PortalClient
 from activity.privacy import REDACTED_VALUE
 from activity.services import (
     FeedFilters,
@@ -88,6 +91,46 @@ def _headers(
 def _sign(secret: str, body: bytes) -> str:
     sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     return f"sha256={sig}"
+
+
+@override_settings(
+    BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET,
+    PORTAL_SERVICE_URL="http://portal:8003/api/v1",
+)
+class PortalClientTests(TestCase):
+    def test_list_profiles_signs_full_internal_path_with_api_prefix(self):
+        tenant_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        ctx = ActivityContext(
+            request_id="rid-profiles-1",
+            tenant_id=tenant_id,
+            tenant_slug="aef",
+            user_id=user_id,
+            master_flags=frozenset({"system_admin"}),
+            preferred_language="ru",
+        )
+        client = PortalClient()
+
+        fake_response = type(
+            "FakeResponse",
+            (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: [{"user_id": str(user_id), "display_name": "Mihhail Matvejev"}],
+            },
+        )()
+
+        with patch.object(client, "_sign", wraps=client._sign) as sign_spy:
+            with patch.object(client._client, "get", return_value=fake_response) as get_mock:
+                result = client.list_profiles(ctx, [str(user_id)])
+
+        self.assertEqual(result[str(user_id)]["display_name"], "Mihhail Matvejev")
+        sign_spy.assert_called_once_with("GET", "/api/v1/portal/internal/profiles", b"", "rid-profiles-1")
+        get_mock.assert_called_once()
+        self.assertEqual(
+            get_mock.call_args.args[0],
+            f"http://portal:8003/api/v1/portal/internal/profiles?user_ids={user_id}",
+        )
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
@@ -562,6 +605,40 @@ class FeedLastSeenTests(TestCase):
         )
         self.assertEqual(count, 2)
 
+    def test_get_unread_count_excludes_events_authored_by_same_user(self):
+        FeedLastSeen.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            last_seen_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+
+        ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=self.user_id,
+            type="news.posted",
+            occurred_at=datetime.now(timezone.utc) - timedelta(minutes=15),
+            title="Own Event",
+            scope_type="tenant",
+            scope_id=str(self.tenant_id),
+            source_ref="test:self",
+        )
+        ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            actor_user_id=uuid.uuid4(),
+            type="news.posted",
+            occurred_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            title="Other Event",
+            scope_type="tenant",
+            scope_id=str(self.tenant_id),
+            source_ref="test:other",
+        )
+
+        count = get_unread_count(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+        )
+        self.assertEqual(count, 1)
+
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET=TEST_HMAC_SECRET)
 class FeedLongPollTests(TestCase):
@@ -613,9 +690,21 @@ class NewsCreateTests(TestCase):
         self.client = Client()
 
     @patch("activity.permissions.has_permission", return_value=True)
-    def test_news_create_basic(self, mock_has_permission):
+    @patch(
+        "activity.api.portal_client.list_profiles",
+        return_value={
+            "00000000-0000-0000-0000-000000000001": {
+                "user_id": "00000000-0000-0000-0000-000000000001",
+                "display_name": "Mihhail Matvejev",
+                "first_name": "Mihhail",
+                "last_name": "Matvejev",
+            }
+        },
+    )
+    def test_news_create_basic(self, mock_profiles, mock_has_permission):
+        del mock_profiles, mock_has_permission
         tenant_id = uuid.uuid4()
-        user_id = uuid.uuid4()
+        user_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
         body = json.dumps(
             {
                 "title": "Patch notes",
@@ -646,6 +735,8 @@ class NewsCreateTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
         self.assertEqual(payload["type"], "news.posted")
+        self.assertEqual(payload["actor_profile"]["display_name"], "Mihhail Matvejev")
+        self.assertEqual(payload["payload_json"]["views_count"], 0)
 
     @patch("activity.permissions.has_permission", return_value=True)
     def test_news_reactions_and_comments(self, mock_has_permission):
@@ -696,6 +787,7 @@ class NewsCreateTests(TestCase):
             ),
         )
         self.assertEqual(react_resp.status_code, 200)
+        self.assertTrue(react_resp.json()[0]["my_reacted"])
 
         comment_body = json.dumps({"body": "Круто!"}).encode("utf-8")
         comment_resp = self.client.post(
@@ -713,6 +805,77 @@ class NewsCreateTests(TestCase):
             ),
         )
         self.assertEqual(comment_resp.status_code, 200)
+
+    @patch("activity.permissions.has_permission", return_value=True)
+    def test_news_views_are_tracked_uniquely(self, mock_has_permission):
+        del mock_has_permission
+        tenant_id = uuid.uuid4()
+        author_id = uuid.uuid4()
+        viewer_id = uuid.uuid4()
+        create_body = json.dumps(
+            {
+                "body": "Новости дня",
+                "tags": [],
+                "visibility": "public",
+                "scope_type": "TENANT",
+                "scope_id": str(tenant_id),
+                "media": [],
+            }
+        ).encode("utf-8")
+
+        create_resp = self.client.post(
+            "/api/v1/news",
+            data=create_body,
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-views-create",
+                user_id=author_id,
+                method="POST",
+                path="/api/v1/news",
+                body=create_body,
+            ),
+        )
+        self.assertEqual(create_resp.status_code, 200)
+        news_id = create_resp.json()["payload_json"]["news_id"]
+
+        first_view_resp = self.client.post(
+            f"/api/v1/news/{news_id}/views",
+            data=b"{}",
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-views-1",
+                user_id=viewer_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/views",
+                body=b"{}",
+            ),
+        )
+        self.assertEqual(first_view_resp.status_code, 200)
+        self.assertEqual(first_view_resp.json()["views_count"], 1)
+        self.assertTrue(first_view_resp.json()["counted"])
+
+        second_view_resp = self.client.post(
+            f"/api/v1/news/{news_id}/views",
+            data=b"{}",
+            content_type="application/json",
+            **_headers(
+                tenant_id=tenant_id,
+                tenant_slug="t",
+                request_id="rid-news-views-2",
+                user_id=viewer_id,
+                method="POST",
+                path=f"/api/v1/news/{news_id}/views",
+                body=b"{}",
+            ),
+        )
+        self.assertEqual(second_view_resp.status_code, 200)
+        self.assertEqual(second_view_resp.json()["views_count"], 1)
+        self.assertFalse(second_view_resp.json()["counted"])
+        self.assertEqual(NewsPostView.objects.filter(tenant_id=tenant_id).count(), 1)
 
 
 class FeedFilteringTests(TestCase):
@@ -827,6 +990,36 @@ class FeedFilteringTests(TestCase):
 
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].title, "New Event")
+
+    def test_feed_matches_uppercase_event_scope_with_lowercase_subscription(self):
+        """Lowercase subscription scopes should still match normalized event scopes."""
+        Subscription.objects.create(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            rules_json={"scopes": [{"scope_type": "tenant", "scope_id": str(self.tenant_id)}]},
+        )
+
+        ActivityEvent.objects.create(
+            tenant_id=self.tenant_id,
+            type="news.posted",
+            occurred_at=self.now,
+            title="News Event",
+            scope_type="TENANT",
+            scope_id=str(self.tenant_id),
+            source_ref="news:1",
+        )
+
+        items = list_feed(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            filters=FeedFilters(
+                from_dt=None, to_dt=None, types=["news.posted"], scope_type=None, scope_id=None
+            ),
+            update_last_seen_flag=False,
+        )
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].title, "News Event")
 
 
 class SteamConnectorTests(TestCase):

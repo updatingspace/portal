@@ -49,6 +49,18 @@ BFF обрабатывает напрямую (не проксирует):
 
 ## Proxy Routes
 
+### Personalization
+
+```
+/api/v1/personalization/* → http://access:8002/api/v1/personalization/*
+```
+
+| Frontend Path | Backend Path |
+|---------------|--------------|
+| `/api/v1/personalization/preferences` | `/api/v1/personalization/preferences` |
+| `/api/v1/personalization/preferences/defaults` | `/api/v1/personalization/preferences/defaults` |
+| `/api/v1/personalization/admin/dashboards/layouts` | `/api/v1/personalization/admin/dashboards/layouts` |
+
 ### Portal
 
 ```
@@ -77,12 +89,13 @@ BFF обрабатывает напрямую (не проксирует):
 ### Events
 
 ```
-/api/v1/events/* → http://events:8005/api/v1/*
+/api/v1/events/* → http://events:8005/api/v1/events/*
 ```
 
 | Frontend Path | Backend Path |
 |---------------|--------------|
-| `/api/v1/events` | `/api/v1/events` |
+| `/api/v1/events` | `/api/v1/events/` |
+| `/api/v1/events/` | `/api/v1/events/` |
 | `/api/v1/events/{id}/rsvp` | `/api/v1/events/{id}/rsvp` |
 
 ### Activity

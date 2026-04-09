@@ -6,7 +6,7 @@ import uuid
 from django.db import models
 from django.utils import timezone
 
-from activity.enums import AccountLinkStatus, ScopeType, SourceType, Visibility
+from activity.enums import AccountLinkStatus, NewsStatus, ScopeType, SourceType, Visibility
 from activity.fields import EncryptedJSONField, EncryptedTextField
 
 
@@ -197,6 +197,11 @@ class NewsPost(models.Model):
         choices=Visibility.choices,
         default=Visibility.PUBLIC,
     )
+    status = models.CharField(
+        max_length=16,
+        choices=NewsStatus.choices,
+        default=NewsStatus.PUBLISHED,
+    )
     scope_type = models.CharField(
         max_length=16,
         choices=ScopeType.choices,
@@ -213,6 +218,7 @@ class NewsPost(models.Model):
         indexes = [
             models.Index(fields=["tenant_id", "created_at"], name="act_news_tnt_created_idx"),
             models.Index(fields=["tenant_id", "scope_type", "scope_id"], name="act_news_scope_idx"),
+            models.Index(fields=["tenant_id", "author_user_id", "status"], name="act_news_author_status_idx"),
         ]
 
 
@@ -238,6 +244,32 @@ class NewsReaction(models.Model):
         ]
         indexes = [
             models.Index(fields=["tenant_id", "post"], name="act_news_react_post_idx"),
+        ]
+
+
+class NewsPostView(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    tenant_id = models.UUIDField()
+    post = models.ForeignKey(
+        NewsPost,
+        on_delete=models.CASCADE,
+        related_name="views",
+    )
+    user_id = models.UUIDField()
+    first_viewed_at = models.DateTimeField(default=timezone.now)
+    last_viewed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "act_news_post_view"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "user_id"],
+                name="act_news_post_view_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant_id", "post"], name="act_news_view_post_idx"),
+            models.Index(fields=["tenant_id", "user_id"], name="act_news_view_user_idx"),
         ]
 
 

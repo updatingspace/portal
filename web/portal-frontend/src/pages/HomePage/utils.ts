@@ -1,4 +1,5 @@
 import type { VoteStatus } from './types';
+import { formatDate, formatDateTime } from '@/shared/lib/formatters';
 
 export const parseDeadline = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -8,10 +9,7 @@ export const parseDeadline = (value?: string | null): Date | null => {
 
 export const formatDeadline = (deadline: Date | null) => {
   if (!deadline) return 'Дедлайн не назначен';
-  return deadline.toLocaleString('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return formatDateTime(deadline);
 };
 
 export const formatTimeLeft = (deadline: Date | null, status: VoteStatus, nowTs: number) => {
@@ -24,7 +22,7 @@ export const formatTimeLeft = (deadline: Date | null, status: VoteStatus, nowTs:
   const diffMs = deadline.getTime() - nowTs;
 
   if (status === 'finished' || status === 'archived' || diffMs <= 0) {
-    return `Финиш: ${deadline.toLocaleDateString('ru-RU', { dateStyle: 'medium' })}`;
+    return `Финиш: ${formatDate(deadline)}`;
   }
 
   const minutesTotal = Math.floor(diffMs / (1000 * 60));

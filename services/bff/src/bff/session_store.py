@@ -37,6 +37,10 @@ def _tenants_cache_key(user_id: str) -> str:
     return f"bff:tenants:{user_id}"
 
 
+def _pending_apps_cache_key(user_id: str) -> str:
+    return f"bff:pending-applications:{user_id}"
+
+
 class SessionStore:
     def create(
         self,
@@ -217,6 +221,45 @@ class SessionStore:
     def invalidate_user_tenants_cache(self, user_id: str) -> None:
         """Invalidate the cached tenants list (e.g. after switch or membership change)."""
         cache.delete(_tenants_cache_key(user_id))
+
+    def cache_pending_applications(
+        self,
+        user_id: str,
+        applications: list[dict[str, Any]],
+        ttl: int = 3600,
+    ) -> None:
+        cache.set(_pending_apps_cache_key(user_id), applications, timeout=ttl)
+
+    def get_cached_pending_applications(
+        self,
+        user_id: str,
+    ) -> list[dict[str, Any]] | None:
+        return cache.get(_pending_apps_cache_key(user_id))
+
+    def clear_cached_pending_applications(
+        self,
+        user_id: str,
+        *,
+        tenant_slug: str | None = None,
+    ) -> None:
+        if not tenant_slug:
+            cache.delete(_pending_apps_cache_key(user_id))
+            return
+
+        current = self.get_cached_pending_applications(user_id)
+        if not isinstance(current, list):
+            cache.delete(_pending_apps_cache_key(user_id))
+            return
+
+        filtered = [
+            item
+            for item in current
+            if str(item.get("slug") or "").strip().lower() != tenant_slug.strip().lower()
+        ]
+        if filtered:
+            self.cache_pending_applications(user_id, filtered)
+        else:
+            cache.delete(_pending_apps_cache_key(user_id))
 
     def revoke(self, session_id: str) -> None:
         cache.delete(_cache_key(session_id))

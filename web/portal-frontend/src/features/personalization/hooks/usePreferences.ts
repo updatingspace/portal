@@ -21,11 +21,16 @@ import type {
 
 const PREFERENCES_KEY = ['preferences'];
 const DEFAULTS_KEY = ['preferences', 'defaults'];
-const CACHE_KEY = 'personalization-preferences-cache-v1';
+export const PERSONALIZATION_PREFERENCES_CACHE_KEY = 'personalization-preferences-cache-v1';
+export const PERSONALIZATION_PREFERENCES_UPDATED_EVENT = 'updspace:preferences-updated';
 
-function getCachedPreferences(): UserPreferences | undefined {
+export function readCachedPreferences(): UserPreferences | undefined {
+  if (typeof localStorage === 'undefined') {
+    return undefined;
+  }
+
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(PERSONALIZATION_PREFERENCES_CACHE_KEY);
     if (!raw) {
       return undefined;
     }
@@ -73,14 +78,26 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     queryKey: PREFERENCES_KEY,
     queryFn: fetchPreferences,
     enabled,
-    initialData: getCachedPreferences,
+    initialData: readCachedPreferences,
+    retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30, // 30 minutes
   });
 
   const cachePreferences = useCallback((data: UserPreferences) => {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      localStorage.setItem(PERSONALIZATION_PREFERENCES_CACHE_KEY, JSON.stringify(data));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent<UserPreferences>(PERSONALIZATION_PREFERENCES_UPDATED_EVENT, {
+            detail: data,
+          }),
+        );
+      }
     } catch {
       // ignore storage failures
     }
@@ -91,6 +108,7 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     queryKey: DEFAULTS_KEY,
     queryFn: fetchDefaultPreferences,
     enabled,
+    retry: false,
     staleTime: 1000 * 60 * 60, // 1 hour
   });
 

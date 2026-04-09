@@ -25,6 +25,11 @@ class Visibility(models.TextChoices):
     PRIVATE = "private", "private"
 
 
+class NewsStatus(models.TextChoices):
+    PUBLISHED = "published", "published"
+    DRAFT = "draft", "draft"
+
+
 class ScopeType(models.TextChoices):
     GLOBAL = "GLOBAL", "GLOBAL"
     TENANT = "TENANT", "TENANT"

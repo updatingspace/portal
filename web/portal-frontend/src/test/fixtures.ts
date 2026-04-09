@@ -323,6 +323,9 @@ export const createSessionMe = (overrides: Partial<SessionMe> = {}): SessionMe =
         },
       ],
     },
+    id_defaults: {
+      theme: 'dark',
+    },
     tenant_membership: {
       tenant_id: 'tenant-uuid-555',
       tenant_slug: 'aef',
@@ -478,4 +481,3 @@ export const createActivityFeedV2Empty = (): FeedResponseV2 => clone(feedRespons
 export const createAccountLinks = (): AccountLinkDetail[] => clone(accountLinks);
 export const createSources = (): Source[] => clone(sources);
 export const createSyncStatuses = (): SyncStatus[] => clone(syncStatuses);
-

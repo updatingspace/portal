@@ -51,7 +51,14 @@ class UserPreferenceService:
         
         if "appearance" in updates:
             appearance = updates["appearance"]
-            for field in ["theme", "accent_color", "font_size", "high_contrast", "reduce_motion"]:
+            for field in [
+                "theme",
+                "theme_source",
+                "accent_color",
+                "font_size",
+                "high_contrast",
+                "reduce_motion",
+            ]:
                 if field in appearance:
                     flat_updates[field] = appearance[field]
         
@@ -96,6 +103,7 @@ class UserPreferenceService:
         return {
             "appearance": {
                 "theme": defaults["theme"],
+                "theme_source": defaults["theme_source"],
                 "accent_color": defaults["accent_color"],
                 "font_size": defaults["font_size"],
                 "high_contrast": defaults["high_contrast"],
@@ -135,6 +143,7 @@ class UserPreferenceService:
             {
                 "appearance": {
                     "theme": defaults["theme"],
+                    "theme_source": defaults["theme_source"],
                     "accent_color": defaults["accent_color"],
                     "font_size": defaults["font_size"],
                     "high_contrast": defaults["high_contrast"],

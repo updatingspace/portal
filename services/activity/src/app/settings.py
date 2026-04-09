@@ -161,7 +161,7 @@ ACTIVITY_RETENTION_PROCESSED_OUTBOX_DAYS = int(
 ACTIVITY_RETENTION_AUDIT_DAYS = int(os.getenv("ACTIVITY_RETENTION_AUDIT_DAYS", "365"))
 
 # ============================================================================
-# News Media (S3) Configuration
+# News Media Configuration
 # ============================================================================
 
 NEWS_MEDIA_BUCKET = os.getenv("NEWS_MEDIA_BUCKET", "")
@@ -170,6 +170,14 @@ NEWS_MEDIA_UPLOAD_TTL_SECONDS = int(os.getenv("NEWS_MEDIA_UPLOAD_TTL_SECONDS", "
 NEWS_MEDIA_URL_TTL_SECONDS = int(os.getenv("NEWS_MEDIA_URL_TTL_SECONDS", "604800"))
 NEWS_MEDIA_MAX_IMAGE_BYTES = int(os.getenv("NEWS_MEDIA_MAX_IMAGE_BYTES", "10485760"))
 NEWS_MEDIA_MAX_ATTACHMENTS = int(os.getenv("NEWS_MEDIA_MAX_ATTACHMENTS", "8"))
+NEWS_MEDIA_LOCAL_STORAGE_ROOT = os.getenv(
+    "NEWS_MEDIA_LOCAL_STORAGE_ROOT",
+    "/var/app/news-media",
+)
+NEWS_MEDIA_LOCAL_PUBLIC_PREFIX = os.getenv(
+    "NEWS_MEDIA_LOCAL_PUBLIC_PREFIX",
+    "/api/v1/activity",
+)
 
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
 S3_REGION = os.getenv("S3_REGION", "")

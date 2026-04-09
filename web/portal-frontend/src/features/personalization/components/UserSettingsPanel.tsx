@@ -5,9 +5,11 @@
 import { Button, Card, Text } from '@gravity-ui/uikit';
 import { useCallback, useState } from 'react';
 
+import { useAuth } from '../../../contexts/AuthContext';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { usePreferences } from '../hooks/usePreferences';
 import { usePersonalizationI18n } from '../i18n';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import type { PreferencesUpdatePayload } from '../types';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { NotificationsSettings } from './settings/NotificationsSettings';
@@ -21,6 +23,8 @@ interface UserSettingsPanelProps {
 type TabId = 'appearance' | 'notifications' | 'privacy';
 
 export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
+  const { user } = useAuth();
+  const { formatTime } = useFormatters();
   const [activeTab, setActiveTab] = useState<TabId>('appearance');
   const { t } = usePersonalizationI18n();
   const tabs: Array<{ id: TabId; title: string; description: string }> = [
@@ -135,7 +139,11 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
   }
 
   // Merge preferences with pending changes
-  const currentAppearance = { ...preferences.appearance, ...formData.appearance };
+  const currentAppearance = {
+    ...preferences.appearance,
+    ...formData.appearance,
+    theme_source: formData.appearance?.theme_source ?? preferences.appearance.theme_source ?? 'portal',
+  };
   const currentLocalization = { ...preferences.localization, ...formData.localization };
   const currentNotifications = { ...preferences.notifications, ...formData.notifications };
   const currentPrivacy = { ...preferences.privacy, ...formData.privacy };
@@ -162,7 +170,7 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
             )}
             {autoSave.lastSaved && !hasUnsavedChanges && (
               <Text variant="caption-2" color="positive">
-                {t('userSettings.state.saved')} {autoSave.lastSaved.toLocaleTimeString()}
+                {t('userSettings.state.saved')} {formatTime(autoSave.lastSaved)}
               </Text>
             )}
             {hasUnsavedChanges && !autoSave.isSaving && (
@@ -223,6 +231,7 @@ export function UserSettingsPanel({ className }: UserSettingsPanelProps) {
               onAppearanceChange={handleAppearanceChange}
               onLocalizationChange={handleLocalizationChange}
               disabled={isDisabled}
+              canInheritThemeFromId={Boolean(user?.idTheme)}
             />
           )}
           {activeTab === 'notifications' && (

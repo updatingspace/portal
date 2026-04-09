@@ -252,6 +252,59 @@ def portal_dsar_erase(request, target_user_id: str):
 
 
 @router.get(
+    "/portal/internal/profiles",
+    response={200: list[PortalProfileOut], 401: ErrorOut, 400: ErrorOut},
+    operation_id="portal_internal_profiles_list",
+)
+def portal_internal_profiles_list(
+    request,
+    user_ids: str | None = Query(None),
+):
+    ctx = _ctx(request)
+    tenant = ensure_tenant(ctx)
+
+    if not user_ids:
+        return []
+
+    parsed_ids: list[UUID] = []
+    for raw in user_ids.split(","):
+        value = raw.strip()
+        if not value:
+            continue
+        parsed_ids.append(
+            _parse_uuid(
+                value,
+                code="INVALID_USER_ID",
+                message="Invalid user id",
+            )
+        )
+
+    if not parsed_ids:
+        return []
+    if len(parsed_ids) > 100:
+        raise HttpError(400, error_payload("VALIDATION_ERROR", "Too many user ids"))
+
+    profiles = PortalProfile.objects.filter(tenant=tenant, user_id__in=parsed_ids)
+    by_user_id = {profile.user_id: profile for profile in profiles}
+
+    return [
+        PortalProfileOut(
+            tenant_id=profile.tenant_id,
+            user_id=profile.user_id,
+            username=profile.username or None,
+            display_name=profile.display_name or None,
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+            bio=profile.bio,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at,
+        )
+        for user_id in parsed_ids
+        if (profile := by_user_id.get(user_id)) is not None
+    ]
+
+
+@router.get(
     "/portal/profiles",
     response={200: list[PortalProfileOut], 401: ErrorOut, 400: ErrorOut, 403: ErrorOut},
     operation_id="portal_profiles_list",
