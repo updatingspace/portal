@@ -1,7 +1,7 @@
 import React from 'react';
 
 import App from './App';
-import { renderWithProviders, screen } from './test/test-utils';
+import { renderWithProviders, screen, waitFor } from './test/test-utils';
 
 const AUTH_USER = {
   id: 'user-1',
@@ -26,6 +26,9 @@ describe('App integration', () => {
     const portalTitles = await screen.findAllByText('AEF Portal');
     expect(portalTitles.length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Login')[0]).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.title).toBe('Главная · UpdSpace Portal');
+    });
   });
 
   test('redirects guest from /app to /login', async () => {
@@ -39,5 +42,8 @@ describe('App integration', () => {
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByText('Open voting')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.title).toBe('Dashboard · AEF · UpdSpace Portal');
+    });
   });
 });

@@ -19,7 +19,7 @@ from ninja.errors import HttpError
 
 from activity.connectors.base import RawEventIn
 from activity.connectors.registry import get_connector
-from activity.enums import AccountLinkStatus
+from activity.enums import AccountLinkStatus, Visibility
 from activity.models import (
     AccountLink,
     ActivityEvent,
@@ -46,6 +46,12 @@ MVP_EVENT_TYPES = {
     "post.created",
     "news.posted",
 }
+
+VISIBLE_FEED_VISIBILITIES = (
+    Visibility.PUBLIC,
+    Visibility.COMMUNITY,
+    Visibility.TEAM,
+)
 
 
 def require_not_suspended(ctx) -> None:
@@ -101,10 +107,11 @@ def get_unread_count(*, tenant_id: UUID, user_id: UUID) -> int:
     if not last_seen:
         return 0
 
-    return ActivityEvent.objects.filter(
-        tenant_id=tenant_id,
-        occurred_at__gt=last_seen.last_seen_at,
-    ).count()
+    qs = ActivityEvent.objects.filter(tenant_id=tenant_id)
+    qs = qs.filter(type__in=list(MVP_EVENT_TYPES))
+    qs = _apply_feed_visibility_filters(qs, user_id=user_id)
+    qs = qs.exclude(actor_user_id=user_id)
+    return qs.filter(occurred_at__gt=last_seen.last_seen_at).count()
 
 
 def get_unread_count_fresh(*, tenant_id: UUID, user_id: UUID) -> int:
@@ -232,20 +239,11 @@ def parse_csv(value: str | None) -> list[str] | None:
     return items or None
 
 
-def list_feed(
-    *,
-    tenant_id: UUID,
-    user_id: UUID,
-    filters: FeedFilters,
-    limit: int = 100,
-    update_last_seen_flag: bool = True,
-) -> list[ActivityEvent]:
-    """
-    Get activity feed for user with filtering and subscription matching.
+def _normalize_scope_type(value: str | None) -> str:
+    return (value or "").strip().upper()
 
-    If update_last_seen_flag is True, updates the user's last_seen_at timestamp.
-    """
-    qs = ActivityEvent.objects.filter(tenant_id=tenant_id)
+
+def _apply_feed_type_filters(qs, filters: FeedFilters):
     if filters.from_dt:
         qs = qs.filter(occurred_at__gte=filters.from_dt)
     if filters.to_dt:
@@ -265,31 +263,75 @@ def list_feed(
         qs = qs.filter(type__in=list(requested))
     else:
         qs = qs.filter(type__in=list(MVP_EVENT_TYPES))
+    return qs
 
+
+def _apply_feed_scope_filters(qs, *, tenant_id: UUID, user_id: UUID, filters: FeedFilters):
     if filters.scope_type and filters.scope_id:
-        qs = qs.filter(
-            scope_type=filters.scope_type,
+        return qs.filter(
+            scope_type__iexact=filters.scope_type,
             scope_id=filters.scope_id,
         )
-    else:
-        sub = Subscription.objects.filter(
-            tenant_id=tenant_id,
-            user_id=user_id,
-        ).first()
-        scopes = []
-        if sub and isinstance(sub.rules_json, dict):
-            scopes = sub.rules_json.get("scopes") or []
-        scope_q = Q()
-        for s in scopes:
-            st = (s.get("scope_type") or "").strip()
-            sid = (s.get("scope_id") or "").strip()
-            if st and sid:
-                scope_q |= Q(scope_type=st, scope_id=sid)
-        if scope_q:
-            qs = qs.filter(scope_q)
-        else:
-            # No subscriptions, no explicit scope => empty feed.
-            return []
+
+    sub = Subscription.objects.filter(
+        tenant_id=tenant_id,
+        user_id=user_id,
+    ).first()
+    scopes = []
+    if sub and isinstance(sub.rules_json, dict):
+        scopes = sub.rules_json.get("scopes") or []
+    scope_q = Q()
+    for s in scopes:
+        st = _normalize_scope_type(s.get("scope_type"))
+        sid = (s.get("scope_id") or "").strip()
+        if st and sid:
+            scope_q |= Q(scope_type__iexact=st, scope_id=sid)
+    if scope_q:
+        return qs.filter(scope_q)
+    return None
+
+
+def _apply_feed_visibility_filters(qs, *, user_id: UUID):
+    return qs.filter(
+        Q(visibility__in=VISIBLE_FEED_VISIBILITIES)
+        | Q(visibility=Visibility.PRIVATE, actor_user_id=user_id)
+        | Q(visibility=Visibility.PRIVATE, target_user_id=user_id)
+    )
+
+
+def _build_feed_queryset(
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    filters: FeedFilters,
+):
+    qs = ActivityEvent.objects.filter(tenant_id=tenant_id)
+    qs = _apply_feed_type_filters(qs, filters)
+    qs = _apply_feed_visibility_filters(qs, user_id=user_id)
+    scoped = _apply_feed_scope_filters(qs, tenant_id=tenant_id, user_id=user_id, filters=filters)
+    return scoped
+
+
+def list_feed(
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    filters: FeedFilters,
+    limit: int = 100,
+    update_last_seen_flag: bool = True,
+) -> list[ActivityEvent]:
+    """
+    Get activity feed for user with filtering and subscription matching.
+
+    If update_last_seen_flag is True, updates the user's last_seen_at timestamp.
+    """
+    qs = _build_feed_queryset(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        filters=filters,
+    )
+    if qs is None:
+        return []
 
     items = list(qs.order_by("-occurred_at", "-id")[:limit])
 
@@ -353,53 +395,13 @@ def list_feed_paginated(
                 error_payload("INVALID_CURSOR", "Invalid pagination cursor"),
             )
 
-    # Build base query (same as list_feed)
-    qs = ActivityEvent.objects.filter(tenant_id=tenant_id)
-
-    if filters.from_dt:
-        qs = qs.filter(occurred_at__gte=filters.from_dt)
-    if filters.to_dt:
-        qs = qs.filter(occurred_at__lte=filters.to_dt)
-    if filters.types:
-        requested = set(filters.types)
-        unknown = sorted(requested - MVP_EVENT_TYPES)
-        if unknown:
-            raise HttpError(
-                400,
-                error_payload(
-                    "INVALID_EVENT_TYPES",
-                    "Unsupported event types requested",
-                    details={"unknown": unknown},
-                ),
-            )
-        qs = qs.filter(type__in=list(requested))
-    else:
-        qs = qs.filter(type__in=list(MVP_EVENT_TYPES))
-
-    # Apply scope filters
-    if filters.scope_type and filters.scope_id:
-        qs = qs.filter(
-            scope_type=filters.scope_type,
-            scope_id=filters.scope_id,
-        )
-    else:
-        sub = Subscription.objects.filter(
-            tenant_id=tenant_id,
-            user_id=user_id,
-        ).first()
-        scopes = []
-        if sub and isinstance(sub.rules_json, dict):
-            scopes = sub.rules_json.get("scopes") or []
-        scope_q = Q()
-        for s in scopes:
-            st = (s.get("scope_type") or "").strip()
-            sid = (s.get("scope_id") or "").strip()
-            if st and sid:
-                scope_q |= Q(scope_type=st, scope_id=sid)
-        if scope_q:
-            qs = qs.filter(scope_q)
-        else:
-            return PaginatedFeedResult(items=[], next_cursor=None, has_more=False)
+    qs = _build_feed_queryset(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        filters=filters,
+    )
+    if qs is None:
+        return PaginatedFeedResult(items=[], next_cursor=None, has_more=False)
 
     # Apply cursor-based pagination
     # We order by (occurred_at DESC, id DESC), so cursor checks for items "before" the cursor
@@ -550,7 +552,15 @@ def upsert_subscription(
     user_id,
     scopes: list[dict[str, str]],
 ) -> Subscription:
-    rules = {"scopes": scopes}
+    normalized_scopes = [
+        {
+            "scope_type": _normalize_scope_type(scope.get("scope_type")),
+            "scope_id": (scope.get("scope_id") or "").strip(),
+        }
+        for scope in scopes
+        if _normalize_scope_type(scope.get("scope_type")) and (scope.get("scope_id") or "").strip()
+    ]
+    rules = {"scopes": normalized_scopes}
     obj, _ = Subscription.objects.update_or_create(
         tenant_id=tenant_id,
         user_id=user_id,

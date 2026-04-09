@@ -500,6 +500,153 @@ class EntryMeEndpointTests(TestCase):
         self.assertIn("X-User-Id", ctx_headers)
 
 
+class EntryTenantApplicationsEndpointTests(TestCase):
+    """Integration tests for POST /api/v1/entry/tenant-applications."""
+
+    def setUp(self):
+        self.client = Client()
+        self.tenant = Tenant.objects.create(slug="aef")
+        self.user_id = str(uuid.uuid4())
+        self.store = SessionStore()
+        self.session = self.store.create(
+            tenant_id=str(self.tenant.id),
+            user_id=self.user_id,
+            master_flags={},
+            ttl=timedelta(minutes=10),
+        )
+        self.cookie_name = "updspace_session"
+
+    def _post(self, payload: dict[str, str], **kwargs):
+        return self.client.post(
+            "/api/v1/entry/tenant-applications",
+            data=json.dumps(payload),
+            content_type="application/json",
+            **kwargs,
+        )
+
+    def test_entry_application_allows_new_slug_different_from_active_tenant(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        self.store.set_active_tenant(
+            self.session.session_id,
+            tenant_id=str(self.tenant.id),
+            tenant_slug="aef",
+        )
+
+        captured: dict[str, object] = {}
+
+        def _mocked_proxy(**kwargs):
+            upstream_path = kwargs.get("upstream_path")
+            if upstream_path == "me":
+                return httpx.Response(
+                    200,
+                    json={"user": {"email": "member@example.com"}},
+                )
+            if upstream_path == "applications":
+                captured.update(kwargs)
+                return httpx.Response(
+                    201,
+                    json={
+                        "id": "app-1",
+                        "status": "pending",
+                        "tenant_slug": "new-community",
+                    },
+                )
+            return httpx.Response(404, json={})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self._post(
+                    {"slug": "new-community", "name": "New Community"},
+                    HTTP_HOST="aef.updating.space",
+                )
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["status"], "pending")
+        self.assertEqual(captured.get("upstream_path"), "applications")
+
+        payload = json.loads(captured["body"].decode("utf-8"))  # type: ignore[index]
+        self.assertEqual(payload["tenant_slug"], "aef")
+        self.assertEqual(
+            payload["payload_json"]["requested_by_user_id"],
+            self.user_id,
+        )
+        self.assertEqual(payload["payload_json"]["requested_slug"], "new-community")
+        self.assertEqual(payload["payload_json"]["email"], "member@example.com")
+
+        headers = captured["context_headers"]  # type: ignore[index]
+        self.assertEqual(headers["X-Tenant-Slug"], "aef")
+        self.assertEqual(headers["X-Tenant-Id"], str(self.tenant.id))
+        self.assertEqual(headers["X-User-Id"], self.user_id)
+
+        cached_pending = self.store.get_cached_pending_applications(self.user_id)
+        self.assertIsNotNone(cached_pending)
+        self.assertEqual(cached_pending[0]["slug"], "new-community")
+
+    def test_entry_application_without_active_tenant_uses_requested_slug_context(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        future_tenant = Tenant.objects.create(slug="future-team")
+        captured: dict[str, object] = {}
+
+        def _mocked_proxy(**kwargs):
+            upstream_path = kwargs.get("upstream_path")
+            if upstream_path == "me":
+                return httpx.Response(
+                    200,
+                    json={"user": {"email": "future@example.com"}},
+                )
+            if upstream_path == "applications":
+                captured.update(kwargs)
+                return httpx.Response(201, json={"id": "app-2", "status": "pending"})
+            return httpx.Response(404, json={})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self._post(
+                    {"slug": "future-team", "name": "Future Team"},
+                    HTTP_HOST="portal.updating.space",
+                )
+
+        self.assertEqual(resp.status_code, 201)
+        headers = captured["context_headers"]  # type: ignore[index]
+        self.assertEqual(headers["X-Tenant-Slug"], "future-team")
+        self.assertEqual(headers["X-Tenant-Id"], str(future_tenant.id))
+        self.assertEqual(headers["X-User-Id"], self.user_id)
+
+    def test_entry_application_requires_email_when_it_cannot_be_resolved(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        self.store.set_active_tenant(
+            self.session.session_id,
+            tenant_id=str(self.tenant.id),
+            tenant_slug="aef",
+        )
+
+        def _mocked_proxy(**kwargs):
+            if kwargs.get("upstream_path") == "me":
+                return httpx.Response(200, json={"user": {}})
+            if kwargs.get("upstream_path") == "applications":
+                raise AssertionError("applications call must not be executed without email")
+            return httpx.Response(404, json={})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self._post(
+                    {"slug": "new-community", "name": "New Community"},
+                    HTTP_HOST="aef.updating.space",
+                )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"]["code"], "EMAIL_REQUIRED")
+
+
 class DownstreamTenantHeadersTests(TestCase):
     """Verify downstream services get correct X-Tenant-* headers from active session tenant."""
 
@@ -647,6 +794,73 @@ class SessionMeWithActiveTenantTests(TestCase):
         self.assertIn("available_tenants", data)
         self.assertIn("feature_flags", data)
         self.assertIn("experiments", data)
+
+
+class SessionMeTenantlessTests(TestCase):
+    """session/me on portal host without active tenant should still return session user."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user_tenant = Tenant.objects.create(slug="aef")
+        self.global_tenant = Tenant.objects.create(slug="__portal__")
+        self.user_id = str(uuid.uuid4())
+        self.store = SessionStore()
+        self.session = self.store.create(
+            tenant_id=str(self.global_tenant.id),
+            user_id=self.user_id,
+            master_flags={"email_verified": True},
+            ttl=timedelta(minutes=10),
+        )
+        self.cookie_name = "updspace_session"
+
+    def test_session_me_works_without_active_tenant_on_portal_host(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        captured_headers: list[dict[str, str]] = []
+
+        memberships = [
+            {
+                "tenant_id": str(self.user_tenant.id),
+                "tenant_slug": "aef",
+                "status": "active",
+                "base_role": "owner",
+                "display_name": "AEF",
+            },
+        ]
+
+        def _mocked_proxy(**kwargs):
+            upstream_path = kwargs.get("upstream_path")
+            method = kwargs.get("method")
+            context_headers = kwargs.get("context_headers") or {}
+            if upstream_path == "me" and method == "GET":
+                captured_headers.append(dict(context_headers))
+                return httpx.Response(
+                    200,
+                    json={
+                        "user": {"id": self.user_id, "email": "tenantless@example.com"},
+                        "memberships": memberships,
+                    },
+                )
+            return httpx.Response(200, json={})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+                resp = self.client.get(
+                    "/api/v1/session/me",
+                    HTTP_HOST="portal.updating.space",
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["user"]["id"], self.user_id)
+        self.assertEqual(payload["tenant"]["slug"], "")
+        self.assertEqual(payload["available_tenants"][0]["slug"], "aef")
+        self.assertEqual(len(captured_headers), 1)
+        self.assertNotIn("X-Tenant-Id", captured_headers[0])
+        self.assertNotIn("X-Tenant-Slug", captured_headers[0])
 
 
 # ===================================================================

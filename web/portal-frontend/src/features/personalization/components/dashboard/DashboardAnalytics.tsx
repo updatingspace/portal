@@ -6,12 +6,23 @@ import { useAnalyticsReport } from '../../hooks/useAnalytics';
 import './DashboardAnalytics.css';
 
 function DashboardAnalyticsComponent() {
-  const { report, isLoading, error } = useAnalyticsReport(30);
+  const { report, isLoading, error, isForbidden } = useAnalyticsReport(30);
 
   if (isLoading) {
     return (
       <Card className="dashboard-analytics">
         <Loader size="m" />
+      </Card>
+    );
+  }
+
+  if (isForbidden) {
+    return (
+      <Card className="dashboard-analytics">
+        <Text variant="header-2">Content Analytics (30 days)</Text>
+        <Text variant="body-2" color="secondary">
+          Analytics are unavailable for this account.
+        </Text>
       </Card>
     );
   }

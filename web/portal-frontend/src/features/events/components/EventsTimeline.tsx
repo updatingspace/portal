@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Text } from '@gravity-ui/uikit';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import type { EventWithCounts } from '../types';
 import { EventCard } from './EventCard';
 
@@ -22,7 +23,7 @@ export const EventsTimeline: React.FC<{
     events: EventWithCounts[];
     onEdit?: (e: EventWithCounts) => void;
 }> = ({ events, onEdit }) => {
-    const locale = typeof navigator !== 'undefined' ? navigator.language : 'ru-RU';
+    const { intlLocale } = useFormatters();
     const grouped = useMemo(() => {
         const map = new Map<string, { date: Date; items: EventWithCounts[] }>();
 
@@ -47,7 +48,7 @@ export const EventsTimeline: React.FC<{
                     <div className="sticky top-0 z-10 bg-white/80 dark:bg-slate-950/60 backdrop-blur border-b border-slate-200/60 dark:border-white/10 py-2">
                         <div className="flex items-baseline justify-between">
                             <Text variant="subheader-1" className="capitalize">
-                                {dayTitle(g.date, locale)}
+                                {dayTitle(g.date, intlLocale)}
                             </Text>
                             <Text variant="caption-2" color="secondary">
                                 {g.items.length} {g.items.length === 1 ? 'событие' : g.items.length < 5 ? 'события' : 'событий'}

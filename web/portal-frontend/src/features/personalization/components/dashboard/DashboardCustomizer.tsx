@@ -52,7 +52,15 @@ const BASE_WIDGETS: Record<string, BaseWidgetConfig> = {
 
 function DashboardCustomizerComponent() {
   const { add: addToast } = useToaster();
-  const { layouts, isLoading, createLayout, updateLayout, deleteLayout } = useDashboards();
+  const {
+    layouts,
+    isLoading,
+    error,
+    isForbidden,
+    createLayout,
+    updateLayout,
+    deleteLayout,
+  } = useDashboards();
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
   const [newLayoutName, setNewLayoutName] = useState('');
   const [previewViewport, setPreviewViewport] = useState<PreviewViewport>('desktop');
@@ -63,22 +71,68 @@ function DashboardCustomizerComponent() {
 
   const {
     widgets,
+    isForbidden: widgetsForbidden,
     createWidget,
     updateWidget,
     deleteWidget,
-  } = useDashboardWidgets(selectedLayout?.id ?? null);
+  } = useDashboardWidgets(selectedLayout?.id ?? null, false, !isForbidden);
+
+  if (isForbidden || widgetsForbidden) {
+    return (
+      <Card className="dashboard-customizer">
+        <div className="dashboard-customizer__header">
+          <div>
+            <Text variant="header-1">Dashboard Customizer</Text>
+            <Text variant="body-1" color="secondary">
+              Manage dashboard layouts and widget visibility
+            </Text>
+          </div>
+        </div>
+        <Text variant="body-2" color="secondary">
+          Dashboard customization is unavailable for this account.
+        </Text>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="dashboard-customizer">
+        <div className="dashboard-customizer__header">
+          <div>
+            <Text variant="header-1">Dashboard Customizer</Text>
+            <Text variant="body-1" color="secondary">
+              Manage dashboard layouts and widget visibility
+            </Text>
+          </div>
+        </div>
+        <Text variant="body-2" color="danger">
+          Failed to load dashboard customization settings.
+        </Text>
+      </Card>
+    );
+  }
 
   async function handleCreateLayout() {
     if (!newLayoutName.trim()) {
       return;
     }
-    await createLayout({
-      layout_name: newLayoutName.trim(),
-      layout_config: {},
-      is_default: layouts.length === 0,
-    });
-    setNewLayoutName('');
-    addToast({ name: 'layout-created', title: 'Layout created', theme: 'success' });
+    try {
+      await createLayout({
+        layout_name: newLayoutName.trim(),
+        layout_config: {},
+        is_default: layouts.length === 0,
+      });
+      setNewLayoutName('');
+      addToast({ name: 'layout-created', title: 'Layout created', theme: 'success' });
+    } catch (error) {
+      addToast({
+        name: 'layout-create-error',
+        title: 'Failed to create layout',
+        content: error instanceof Error ? error.message : undefined,
+        theme: 'danger',
+      });
+    }
   }
 
   async function handleAddWidget(widgetKey: string) {
@@ -90,30 +144,57 @@ function DashboardCustomizerComponent() {
       });
       return;
     }
-    const nextY = widgets.length > 0 ? Math.max(...widgets.map((widget) => widget.position_y + widget.height)) : 0;
-    await createWidget({
-      widget_key: widgetKey,
-      position_x: 0,
-      position_y: nextY,
-      width: 6,
-      height: 3,
-      is_visible: true,
-      settings: BASE_WIDGETS[widgetKey]?.defaultSettings ?? {},
-    });
-    addToast({ name: 'widget-added', title: 'Widget added', theme: 'success' });
+    try {
+      const nextY = widgets.length > 0 ? Math.max(...widgets.map((widget) => widget.position_y + widget.height)) : 0;
+      await createWidget({
+        widget_key: widgetKey,
+        position_x: 0,
+        position_y: nextY,
+        width: 6,
+        height: 3,
+        is_visible: true,
+        settings: BASE_WIDGETS[widgetKey]?.defaultSettings ?? {},
+      });
+      addToast({ name: 'widget-added', title: 'Widget added', theme: 'success' });
+    } catch (error) {
+      addToast({
+        name: 'widget-add-error',
+        title: 'Failed to add widget',
+        content: error instanceof Error ? error.message : undefined,
+        theme: 'danger',
+      });
+    }
   }
 
   async function handleToggleVisibility(widgetId: string, current: DashboardWidgetInput) {
-    await updateWidget(widgetId, { ...current, is_visible: !current.is_visible });
+    try {
+      await updateWidget(widgetId, { ...current, is_visible: !current.is_visible });
+    } catch (error) {
+      addToast({
+        name: 'widget-toggle-error',
+        title: 'Failed to update widget',
+        content: error instanceof Error ? error.message : undefined,
+        theme: 'danger',
+      });
+    }
   }
 
   async function handleSetDefault(layout: DashboardLayout) {
-    await updateLayout(layout.id, {
-      layout_name: layout.layout_name,
-      layout_config: layout.layout_config,
-      is_default: true,
-    });
-    addToast({ name: 'layout-default', title: 'Default layout updated', theme: 'success' });
+    try {
+      await updateLayout(layout.id, {
+        layout_name: layout.layout_name,
+        layout_config: layout.layout_config,
+        is_default: true,
+      });
+      addToast({ name: 'layout-default', title: 'Default layout updated', theme: 'success' });
+    } catch (error) {
+      addToast({
+        name: 'layout-default-error',
+        title: 'Failed to update default layout',
+        content: error instanceof Error ? error.message : undefined,
+        theme: 'danger',
+      });
+    }
   }
 
   return (
@@ -157,7 +238,16 @@ function DashboardCustomizerComponent() {
               Set default
             </Button>
             <Button
-              onClick={() => deleteLayout(selectedLayout.id)}
+              onClick={() =>
+                void deleteLayout(selectedLayout.id).catch((error) =>
+                  addToast({
+                    name: 'layout-delete-error',
+                    title: 'Failed to delete layout',
+                    content: error instanceof Error ? error.message : undefined,
+                    theme: 'danger',
+                  }),
+                )
+              }
               view="flat-danger"
             >
               Delete layout
@@ -230,7 +320,16 @@ function DashboardCustomizerComponent() {
                     <Button
                       view="flat-danger"
                       size="s"
-                      onClick={() => deleteWidget(widget.id)}
+                      onClick={() =>
+                        void deleteWidget(widget.id).catch((error) =>
+                          addToast({
+                            name: 'widget-delete-error',
+                            title: 'Failed to delete widget',
+                            content: error instanceof Error ? error.message : undefined,
+                            theme: 'danger',
+                          }),
+                        )
+                      }
                     >
                       Remove
                     </Button>

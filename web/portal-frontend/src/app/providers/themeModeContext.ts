@@ -4,6 +4,7 @@ import type { ThemeMode } from './themeMode.types';
 
 export type ThemeModeContextValue = {
   mode: ThemeMode;
+  resolvedMode: Exclude<ThemeMode, 'auto'>;
   setMode: (next: ThemeMode) => void;
 };
 

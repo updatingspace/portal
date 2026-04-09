@@ -11,6 +11,10 @@ class UserPreference(models.Model):
         DARK = "dark", "Dark"
         AUTO = "auto", "Auto"
 
+    class ThemeSource(models.TextChoices):
+        PORTAL = "portal", "Portal"
+        ID = "id", "ID"
+
     class Language(models.TextChoices):
         EN = "en", "English"
         RU = "ru", "Русский"
@@ -34,6 +38,11 @@ class UserPreference(models.Model):
         max_length=10,
         choices=Theme.choices,
         default=Theme.AUTO,
+    )
+    theme_source = models.CharField(
+        max_length=10,
+        choices=ThemeSource.choices,
+        default=ThemeSource.PORTAL,
     )
     accent_color = models.CharField(max_length=7, default="#007AFF")
     font_size = models.CharField(

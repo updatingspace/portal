@@ -30,17 +30,14 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
 describe('table column alignment', () => {
   it('avoids deprecated left/right values', async () => {
     const files = await collectSourceFiles(sourceRoot);
-    const matches: string[] = [];
-
-    await Promise.all(
+    const matches = (await Promise.all(
       files.map(async (filePath) => {
         const contents = await readFile(filePath, 'utf-8');
-        if (deprecatedAlignRegex.test(contents)) {
-          const relativePath = path.relative(sourceRoot, filePath);
-          matches.push(relativePath);
-        }
+        return deprecatedAlignRegex.test(contents)
+          ? path.relative(sourceRoot, filePath)
+          : null;
       }),
-    );
+    )).filter((filePath): filePath is string => filePath !== null);
 
     expect(matches).toEqual([]);
   });

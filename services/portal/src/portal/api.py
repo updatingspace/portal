@@ -8,6 +8,7 @@ from ninja import Body, Query, Router
 from ninja.errors import HttpError
 
 from core.schemas import ErrorOut
+from core.security import require_internal_signature
 from portal.access import AccessService
 from portal.audit import log_audit_event as _log_audit
 from portal.context import PortalContext
@@ -249,6 +250,61 @@ def portal_dsar_erase(request, target_user_id: str):
         request_id=ctx.request_id,
     )
     return payload
+
+
+@router.get(
+    "/portal/internal/profiles",
+    response={200: list[PortalProfileOut], 401: ErrorOut, 400: ErrorOut},
+    operation_id="portal_internal_profiles_list",
+)
+def portal_internal_profiles_list(
+    request,
+    user_ids: str | None = Query(None),
+):
+    # Internal service-to-service only — reject BFF-proxied user requests.
+    require_internal_signature(request)
+    ctx = _ctx(request)
+    tenant = ensure_tenant(ctx)
+
+    if not user_ids:
+        return []
+
+    parsed_ids: list[UUID] = []
+    for raw in user_ids.split(","):
+        value = raw.strip()
+        if not value:
+            continue
+        parsed_ids.append(
+            _parse_uuid(
+                value,
+                code="INVALID_USER_ID",
+                message="Invalid user id",
+            )
+        )
+
+    if not parsed_ids:
+        return []
+    if len(parsed_ids) > 100:
+        raise HttpError(400, error_payload("VALIDATION_ERROR", "Too many user ids"))
+
+    profiles = PortalProfile.objects.filter(tenant=tenant, user_id__in=parsed_ids)
+    by_user_id = {profile.user_id: profile for profile in profiles}
+
+    return [
+        PortalProfileOut(
+            tenant_id=profile.tenant_id,
+            user_id=profile.user_id,
+            username=profile.username or None,
+            display_name=profile.display_name or None,
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+            bio=profile.bio,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at,
+        )
+        for user_id in parsed_ids
+        if (profile := by_user_id.get(user_id)) is not None
+    ]
 
 
 @router.get(

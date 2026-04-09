@@ -673,17 +673,36 @@ def create_dashboard_widget(request: HttpRequest, layout_id: str, payload: Dashb
         deleted_at__isnull=True,
     )
     data = payload.model_dump()
-    return DashboardWidget.objects.create(
-        layout=layout,
-        tenant_id=tenant_id,
-        widget_key=data["widget_key"],
-        position_x=data.get("position_x", 0),
-        position_y=data.get("position_y", 0),
-        width=data.get("width", 4),
-        height=data.get("height", 3),
-        settings=data.get("settings", {}),
-        is_visible=data.get("is_visible", True),
+    defaults = {
+        "tenant_id": tenant_id,
+        "position_x": data.get("position_x", 0),
+        "position_y": data.get("position_y", 0),
+        "width": data.get("width", 4),
+        "height": data.get("height", 3),
+        "settings": data.get("settings", {}),
+        "is_visible": data.get("is_visible", True),
+    }
+    widget = (
+        DashboardWidget.objects.filter(
+            layout=layout,
+            widget_key=data["widget_key"],
+            deleted_at__isnull=True,
+        )
+        .first()
+        or DashboardWidget.objects.filter(layout=layout, widget_key=data["widget_key"]).first()
     )
+    if widget is None:
+        return DashboardWidget.objects.create(
+            layout=layout,
+            widget_key=data["widget_key"],
+            **defaults,
+        )
+
+    for attr, value in defaults.items():
+        setattr(widget, attr, value)
+    widget.deleted_at = None
+    widget.save()
+    return widget
 
 
 @router.put("/admin/dashboards/widgets/{widget_id}", response=DashboardWidgetOut)

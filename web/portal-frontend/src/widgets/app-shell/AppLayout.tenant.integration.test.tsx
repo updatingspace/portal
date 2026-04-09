@@ -9,6 +9,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { I18nProvider } from '../../app/providers/I18nProvider';
 import { AuthProvider, type UserInfo, useAuth } from '../../contexts/AuthContext';
 import { TenantProvider, useTenantContext } from '../../contexts/TenantContext';
 import { AppLayout } from './AppLayout';
@@ -30,6 +31,14 @@ vi.mock('./AppHeader', () => ({
   AppHeader: ({ tenantSwitcher }: { tenantSwitcher?: React.ReactNode }) => (
     <div data-testid="app-header">{tenantSwitcher}</div>
   ),
+}));
+
+vi.mock('../../app/providers/RouteDocumentTitle', () => ({
+  RouteDocumentTitle: () => null,
+}));
+
+vi.mock('../../features/personalization/runtime/PersonalizationRuntime', () => ({
+  PersonalizationRuntime: () => null,
 }));
 
 const AuthInit: React.FC<{ user: UserInfo | null }> = ({ user }) => {
@@ -70,22 +79,24 @@ const testUser: UserInfo = {
 function renderLayout(path: string, user: UserInfo | null, tenants: { id: string; slug: string; name: string; role: string }[] = []) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <AuthProvider bootstrap={false}>
-        <TenantProvider>
-          <AuthInit user={user} />
-          <TenantInit tenants={tenants} />
-          <Routes>
-            <Route path="/t/:tenantSlug/*" element={<AppLayout />}>
-              <Route index element={<div data-testid="page">Dashboard</div>} />
-              <Route path="feed" element={<div data-testid="page">Feed</div>} />
-            </Route>
-            <Route path="/app/*" element={<AppLayout />}>
-              <Route index element={<div data-testid="page">Dashboard</div>} />
-              <Route path="feed" element={<div data-testid="page">Feed</div>} />
-            </Route>
-          </Routes>
-        </TenantProvider>
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider bootstrap={false}>
+          <TenantProvider>
+            <AuthInit user={user} />
+            <TenantInit tenants={tenants} />
+            <Routes>
+              <Route path="/t/:tenantSlug/*" element={<AppLayout />}>
+                <Route index element={<div data-testid="page">Dashboard</div>} />
+                <Route path="feed" element={<div data-testid="page">Feed</div>} />
+              </Route>
+              <Route path="/app/*" element={<AppLayout />}>
+                <Route index element={<div data-testid="page">Dashboard</div>} />
+                <Route path="feed" element={<div data-testid="page">Feed</div>} />
+              </Route>
+            </Routes>
+          </TenantProvider>
+        </AuthProvider>
+      </I18nProvider>
     </MemoryRouter>,
   );
 }

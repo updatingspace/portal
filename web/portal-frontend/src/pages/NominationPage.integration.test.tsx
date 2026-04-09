@@ -2,10 +2,42 @@ import React from 'react';
 
 import { ApiError } from '../api/client';
 import { Routes, Route } from 'react-router-dom';
+import { vi } from 'vitest';
+
+vi.mock('@gravity-ui/uikit', async () => {
+  const actual = await vi.importActual<typeof import('@gravity-ui/uikit')>('@gravity-ui/uikit');
+
+  const BreadcrumbsStub = ({ children }: { children?: React.ReactNode }) => <nav>{children}</nav>;
+  BreadcrumbsStub.Item = ({ children, href }: { children?: React.ReactNode; href?: string }) => <a href={href}>{children}</a>;
+
+  return {
+    ...actual,
+    Breadcrumbs: BreadcrumbsStub,
+    ToasterProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    ToasterComponent: () => null,
+  };
+});
+
+vi.mock('@/features/voting/components/VotingAlerts', async () => {
+  const actual = await vi.importActual<typeof import('@/features/voting/components/VotingAlerts')>(
+    '@/features/voting/components/VotingAlerts',
+  );
+
+  return {
+    ...actual,
+    VotingAlerts: ({ alerts }: { alerts: Array<{ id: string; title?: string }> }) => (
+      <div>
+        {alerts.map((alert) => (
+          <div key={alert.id}>{alert.title}</div>
+        ))}
+      </div>
+    ),
+  };
+});
 
 import { nominationsApiMock } from '../test/mocks/api';
 import { createNominationDetail } from '../test/fixtures';
-import { renderWithProviders, screen, userEvent, within, waitFor } from '../test/test-utils';
+import { renderWithProviders, screen, userEvent, waitFor } from '../test/test-utils';
 import { NominationPage } from './NominationPage';
 import { withMockedDate } from '../test/time';
 
@@ -17,19 +49,15 @@ const MISSING_NOMINATION_ROUTE = '/nominations/missing';
 
 const NOMINATION_TITLE = 'Выбор редакции';
 const CLOSED_NOMINATION_TITLE = 'Закрытая номинация';
-const RETRY_BUTTON_LABEL = 'Попробовать еще раз';
-const NEXT_PAGE_BUTTON_LABEL = '>';
-const TOGGLE_COUNTERS_LABEL = 'Посмотреть количество голосов';
-const COUNTER_VALUE_PATTERN = /Голосов:/;
-const CLOSED_VOTING_LABEL = 'Голосование завершено';
-const UPDATE_VOTE_LABEL = 'Обновить голос';
-
-const FIRST_PAGE_LABEL = 'Страница 1 из 3';
-const SECOND_PAGE_LABEL = 'Страница 2 из 3';
+const RETRY_BUTTON_LABEL = 'Попробовать ещё раз';
+const TOGGLE_COUNTERS_LABEL = 'Показать результаты';
+const COUNTER_VALUE_PATTERN = /голос(ов|а)?/i;
+const UPDATE_VOTE_LABEL = 'Изменить голос';
+const SUBMIT_VOTE_LABEL = 'Проголосовать';
 const OPTION_1_TITLE = 'Игра 1';
 const OPTION_3_TITLE = 'Игра 3';
 const OPTION_4_TITLE = 'Игра 4';
-const OPTION_CARD_SELECTOR = '.option-card';
+const OPTION_CARD_SELECTOR = '.nomination-card-wrapper';
 const OPTION_3_ID = 'opt-3';
 
 function renderNominationPage(route: string = NOMINATION_ROUTE) {
@@ -49,7 +77,8 @@ function getOptionCard(title: string) {
 
 async function clickVoteButtonForOption(title: string) {
   const optionCard = getOptionCard(title);
-  const voteButton = within(optionCard).getByRole('button');
+  await userEvent.click(optionCard);
+  const voteButton = screen.getByRole('button', { name: new RegExp(`${SUBMIT_VOTE_LABEL}|${UPDATE_VOTE_LABEL}`) });
   expect(voteButton).toBeEnabled();
   await userEvent.click(voteButton);
 }
@@ -62,41 +91,32 @@ describe('NominationPage integration', () => {
 
     renderNominationPage(MISSING_NOMINATION_ROUTE);
 
-    const notFoundMessages = await screen.findAllByText('Не найдено');
-    expect(notFoundMessages.length).toBeGreaterThan(0);
+    expect(await screen.findByText('Номинация не найдена')).toBeInTheDocument();
 
     const retry = screen.getByRole('button', { name: RETRY_BUTTON_LABEL });
     expect(retry).toBeEnabled();
     await userEvent.click(retry);
 
     expect(nominationsApiMock.fetchNomination).toHaveBeenCalledTimes(2);
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: NOMINATION_TITLE })).toBeInTheDocument();
   }));
 
-  test('should show next page options when user clicks next page', withMockedDate(async () => {
+  test('should render all options without legacy pagination controls', withMockedDate(async () => {
     renderNominationPage(NOMINATION_ROUTE_WITH_LIMIT);
 
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(FIRST_PAGE_LABEL)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: NOMINATION_TITLE })).toBeInTheDocument();
     expect(screen.getByText(OPTION_1_TITLE)).toBeInTheDocument();
     expect(screen.getByText(OPTION_3_TITLE)).toBeInTheDocument();
-    expect(screen.queryByText(OPTION_4_TITLE)).not.toBeInTheDocument();
-
-    const nextBtn = screen.getByRole('button', { name: NEXT_PAGE_BUTTON_LABEL });
-    expect(nextBtn).toBeEnabled();
-    await userEvent.click(nextBtn);
-
-    expect(screen.getByText(SECOND_PAGE_LABEL)).toBeInTheDocument();
     expect(screen.getByText(OPTION_4_TITLE)).toBeInTheDocument();
-    expect(screen.queryByText(OPTION_1_TITLE)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '>' })).not.toBeInTheDocument();
   }));
 
   test('should show vote counters when user enables counter visibility', withMockedDate(async () => {
     renderNominationPage(NOMINATION_ROUTE_WITH_LIMIT);
 
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: NOMINATION_TITLE })).toBeInTheDocument();
 
-    const toggle = screen.getByLabelText(TOGGLE_COUNTERS_LABEL);
+    const toggle = screen.getByRole('button', { name: TOGGLE_COUNTERS_LABEL });
     expect(toggle).toBeInTheDocument();
     await userEvent.click(toggle);
 
@@ -108,7 +128,7 @@ describe('NominationPage integration', () => {
   test('should submit expected payload when user votes for an option', withMockedDate(async () => {
     renderNominationPage();
 
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: NOMINATION_TITLE })).toBeInTheDocument();
 
     await clickVoteButtonForOption(OPTION_3_TITLE);
 
@@ -121,9 +141,15 @@ describe('NominationPage integration', () => {
   }));
 
   test('should show vote update action after successful vote', withMockedDate(async () => {
+    const unvotedNomination = {
+      ...createNominationDetail(),
+      userVote: null,
+    };
+    nominationsApiMock.fetchNomination.mockResolvedValueOnce(unvotedNomination);
+
     renderNominationPage();
 
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: NOMINATION_TITLE })).toBeInTheDocument();
 
     await clickVoteButtonForOption(OPTION_3_TITLE);
 
@@ -131,8 +157,7 @@ describe('NominationPage integration', () => {
       expect(nominationsApiMock.voteForOption).toHaveBeenCalledTimes(1);
     });
 
-    const updatedCard = getOptionCard(OPTION_3_TITLE);
-    expect(within(updatedCard).getByRole('button', { name: UPDATE_VOTE_LABEL })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: UPDATE_VOTE_LABEL })).toBeInTheDocument();
   }));
 
   test('should disable voting controls when nomination is closed', withMockedDate(async () => {
@@ -146,13 +171,10 @@ describe('NominationPage integration', () => {
 
     renderNominationPage();
 
-    expect(await screen.findByText(CLOSED_NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: CLOSED_NOMINATION_TITLE })).toBeInTheDocument();
 
-    const closedNotices = screen.getAllByText(CLOSED_VOTING_LABEL);
-    expect(closedNotices.length).toBeGreaterThan(0);
-
-    const lockedBtns = screen.getAllByRole('button', { name: CLOSED_VOTING_LABEL });
-    expect(lockedBtns.length).toBeGreaterThan(0);
-    expect(lockedBtns[0]).toBeDisabled();
+    expect(screen.getByText('Завершено')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: SUBMIT_VOTE_LABEL })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('radio').every((radio) => radio.getAttribute('aria-disabled') === 'true')).toBe(true);
   }));
 });

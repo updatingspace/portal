@@ -8,6 +8,7 @@ import { usePersonalizationI18n } from '../../i18n';
 import type { AppearanceSettings as AppearanceData, LocalizationSettings } from '../../types';
 import { SettingsSection } from './SettingsSection';
 import { ThemeSelector } from './ThemeSelector';
+import { ThemeSourceSelector } from './ThemeSourceSelector';
 import { LanguageSelector } from './LanguageSelector';
 import { TimezoneSelector } from './TimezoneSelector';
 import { FontSizeSelector } from './FontSizeSelector';
@@ -21,6 +22,7 @@ export interface AppearanceSettingsProps {
   onAppearanceChange: (appearance: Partial<AppearanceData>) => void;
   onLocalizationChange: (localization: Partial<LocalizationSettings>) => void;
   disabled?: boolean;
+  canInheritThemeFromId?: boolean;
 }
 
 export function AppearanceSettings({
@@ -29,6 +31,7 @@ export function AppearanceSettings({
   onAppearanceChange,
   onLocalizationChange,
   disabled,
+  canInheritThemeFromId = false,
 }: AppearanceSettingsProps) {
   const { t } = usePersonalizationI18n();
   const handleThemeChange = useCallback(
@@ -73,6 +76,13 @@ export function AppearanceSettings({
     [onLocalizationChange]
   );
 
+  const handleThemeSourceChange = useCallback(
+    (theme_source: AppearanceData['theme_source']) => {
+      onAppearanceChange({ theme_source });
+    },
+    [onAppearanceChange]
+  );
+
   const handleTimezoneChange = useCallback(
     (timezone: string) => {
       onLocalizationChange({ timezone });
@@ -98,6 +108,25 @@ export function AppearanceSettings({
             </Text>
           </div>
         </div>
+        {canInheritThemeFromId ? (
+          <div className="settings-row">
+            <div className="settings-row__info">
+              <Text variant="body-1" className="settings-row__label">
+                {t('appearance.labels.themeSource')}
+              </Text>
+              <Text variant="caption-1" color="secondary" className="settings-row__description">
+                {t('appearance.labels.themeSourceDescription')}
+              </Text>
+            </div>
+            <div className="settings-row__control">
+              <ThemeSourceSelector
+                value={appearance.theme_source}
+                onChange={handleThemeSourceChange}
+                disabled={disabled}
+              />
+            </div>
+          </div>
+        ) : null}
         <ThemeSelector
           value={appearance.theme}
           onChange={handleThemeChange}
@@ -116,6 +145,9 @@ export function AppearanceSettings({
           onChange={handleAccentColorChange}
           disabled={disabled}
         />
+        <Text variant="caption-1" color="secondary">
+          {t('appearance.labels.accentPreviewDescription')}
+        </Text>
       </SettingsSection>
 
       {/* Typography Section */}

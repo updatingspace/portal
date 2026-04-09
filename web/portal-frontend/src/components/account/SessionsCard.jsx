@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   Modal,
 } from "@gravity-ui/uikit";
+import { useFormatters } from "../../shared/hooks/useFormatters";
 import {
   listSessionsHeadless,
   revokeSessionHeadless,
@@ -99,6 +100,7 @@ function normalizeSession(raw) {
 }
 
 export default function SessionsCard() {
+  const { formatDateTime } = useFormatters();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -297,15 +299,15 @@ export default function SessionsCard() {
                   <div style={{ opacity: 0.7, fontSize: 12 }}>
                     Последняя активность:{" "}
                     {s.last_seen
-                      ? new Date(s.last_seen).toLocaleString()
+                      ? formatDateTime(s.last_seen)
                       : s.created
-                        ? new Date(s.created).toLocaleString()
+                        ? formatDateTime(s.created)
                         : "—"}
                     {s.ip ? ` · IP: ${s.ip}` : ""}
                   </div>
                   <div style={{ opacity: 0.7, fontSize: 12 }}>
                     Истекает:{" "}
-                    {s.expires ? new Date(s.expires).toLocaleString() : "—"}
+                    {s.expires ? formatDateTime(s.expires) : "—"}
                   </div>
                 </div>
 

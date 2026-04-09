@@ -187,6 +187,7 @@ def sign_request(method, path, body, request_id, timestamp, secret):
 | `/api/v1/auth/*` | BFF (handled locally) |
 | `/api/v1/account/me/export` | BFF (aggregate DSAR export) |
 | `/api/v1/account/me` | BFF (self-service erase + account delete) |
+| `/api/v1/personalization/*` | Access `:8002` |
 | `/api/v1/portal/*` | Portal `:8003` |
 | `/api/v1/voting/*` | Voting `:8004` |
 | `/api/v1/events/*` | Events `:8005` |

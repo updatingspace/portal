@@ -35,4 +35,4 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "4", "--access-logfile", "-"]
+CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "4", "--worker-class", "gthread", "--threads", "8", "--timeout", "0", "--access-logfile", "-"]

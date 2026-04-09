@@ -52,6 +52,17 @@ function mockAuthState(overrides: Partial<AuthState> = {}) {
 }
 
 describe('RequireSession', () => {
+  it('keeps protected content during background refresh when user exists', async () => {
+    mockAuthState({
+      user: { id: 'u-1' },
+      isLoading: true,
+    });
+
+    renderGuard('/app/feed');
+
+    expect(await screen.findByText('feed page')).toBeTruthy();
+  });
+
   it('redirects guest user to login by default', async () => {
     mockAuthState();
 

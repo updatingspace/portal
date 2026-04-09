@@ -13,6 +13,11 @@ class ThemeChoice(models.TextChoices):
     AUTO = "auto", "Auto"
 
 
+class ThemeSourceChoice(models.TextChoices):
+    PORTAL = "portal", "Portal"
+    ID = "id", "Identity Provider"
+
+
 class LanguageChoice(models.TextChoices):
     EN = "en", "English"
     RU = "ru", "Русский"
@@ -51,6 +56,12 @@ class UserPreference(models.Model):
         choices=ThemeChoice.choices,
         default=ThemeChoice.AUTO,
         help_text="Theme mode: light, dark, or auto (follows system preference)",
+    )
+    theme_source = models.CharField(
+        max_length=10,
+        choices=ThemeSourceChoice.choices,
+        default=ThemeSourceChoice.PORTAL,
+        help_text="Theme source: portal preference or inherited from ID",
     )
     accent_color = models.CharField(
         max_length=7,
@@ -167,6 +178,7 @@ class UserPreference(models.Model):
         """
         return {
             "theme": ThemeChoice.AUTO,
+            "theme_source": ThemeSourceChoice.PORTAL,
             "accent_color": "#8B5CF6",
             "font_size": FontSizeChoice.MEDIUM,
             "high_contrast": False,
@@ -239,6 +251,7 @@ class UserPreference(models.Model):
         """
         allowed_fields = {
             "theme",
+            "theme_source",
             "accent_color",
             "font_size",
             "high_contrast",
@@ -271,6 +284,7 @@ class UserPreference(models.Model):
             "tenant_id": str(self.tenant_id),
             "appearance": {
                 "theme": self.theme,
+                "theme_source": self.theme_source,
                 "accent_color": self.accent_color,
                 "font_size": self.font_size,
                 "high_contrast": self.high_contrast,

@@ -20,8 +20,16 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: null }),
 }));
 
-vi.mock('@gravity-ui/markdown-editor', () => ({
-  MarkdownEditorView: () => <div data-testid="mock-markdown-editor" />,
+vi.mock('../../../api/activity', () => ({
+  createNewsComment: vi.fn(),
+  deleteNews: vi.fn(),
+  deleteNewsComment: vi.fn(),
+  likeNewsComment: vi.fn(async () => ({ likes_count: 0, my_liked: false })),
+  listNewsCommentsPage: vi.fn(async () => ({ items: [], next_cursor: null, has_more: false, parent_id: null })),
+  listNewsReactions: vi.fn(async () => []),
+  reactToNews: vi.fn(async () => []),
+  recordNewsView: vi.fn(async () => ({ views_count: 0, counted: false })),
+  updateNews: vi.fn(),
 }));
 
 // Wrapper for Gravity UI components
@@ -156,7 +164,7 @@ describe('FeedItem', () => {
 
   it('renders moderation checkbox in moderation mode', () => {
     const onModerationToggle = vi.fn();
-    renderWithTheme(
+    const { container } = renderWithTheme(
       <FeedItem
         item={{
           ...mockItem,
@@ -168,9 +176,43 @@ describe('FeedItem', () => {
       />,
     );
 
-    const checkbox = screen.getByRole('checkbox');
-    fireEvent.click(checkbox);
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    expect(checkbox).not.toBeNull();
+    fireEvent.click(checkbox as HTMLInputElement);
     expect(onModerationToggle).toHaveBeenCalledWith('news-1', true);
+  });
+
+  it('renders author display name for news and avoids duplicated markdown title', () => {
+    renderWithTheme(
+      <FeedItem
+        item={{
+          ...mockItem,
+          type: 'news.posted',
+          title: 'legacy title',
+          actorUserId: 'user-uuid-123',
+          actorProfile: {
+            user_id: 'user-uuid-123',
+            display_name: 'Mihhail Matvejev',
+            first_name: 'Mihhail',
+            last_name: 'Matvejev',
+          },
+          payloadJson: {
+            news_id: 'news-2',
+            title: 'Заголовок',
+            body: '# Заголовок\n\nТекст новости',
+            tags: [],
+            reaction_counts: [],
+            my_reactions: [],
+            views_count: 0,
+          },
+        }}
+        showPayload={false}
+      />,
+    );
+
+    expect(screen.getByText('Mihhail Matvejev')).toBeInTheDocument();
+    expect(screen.getAllByText('Заголовок')).toHaveLength(1);
+    expect(screen.getByText('Текст новости')).toBeInTheDocument();
   });
 });
 
@@ -179,18 +221,16 @@ describe('FeedComposerPanel', () => {
     canCreateNews: true,
     composerOpen: true,
     setComposerOpen: vi.fn(),
-    emptyToolbarsPreset: { items: {}, orders: {} },
-    editor: { getValue: vi.fn(), on: vi.fn(), off: vi.fn() },
+    composerValue: 'Новости дня',
+    setComposerValue: vi.fn(),
     fileInputRef: { current: null } as React.RefObject<HTMLInputElement>,
     handleImageUpload: vi.fn(),
     detectedTags: [],
-    composerError: null,
-    newsVisibility: 'public' as const,
-    setNewsVisibility: vi.fn(),
+    publishMode: 'public' as const,
+    setPublishMode: vi.fn(),
     isCreatingNews: false,
     uploading: false,
-    composerHasText: true,
-    composerHasMedia: true,
+    canPublishNews: true,
     handlePublishNews: vi.fn(),
     handleComposerKeyDown: vi.fn(),
     newsMedia: [],
@@ -205,19 +245,36 @@ describe('FeedComposerPanel', () => {
   it('calls handleComposerKeyDown on key press', () => {
     const onKeyDown = vi.fn();
     renderWithTheme(<FeedComposerPanel {...baseProps} handleComposerKeyDown={onKeyDown} />);
-    fireEvent.keyDown(screen.getByLabelText('Композер новостей'), { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(screen.getByLabelText('Текст новости'), { key: 'Enter', ctrlKey: true });
     expect(onKeyDown).toHaveBeenCalled();
   });
 
-  it('disables publish button when composer has no media', () => {
-    renderWithTheme(<FeedComposerPanel {...baseProps} composerHasMedia={false} />);
-    expect(screen.getByRole('button', { name: 'Опубликовать новость' })).toBeDisabled();
+  it('disables publish button when composer has no text', () => {
+    renderWithTheme(
+      <FeedComposerPanel
+        {...baseProps}
+        composerValue=""
+        canPublishNews={false}
+      />,
+    );
+    const submit = document.querySelector('[data-qa="composer-submit"]') as HTMLButtonElement | null;
+    expect(submit).not.toBeNull();
+    expect(submit).toBeDisabled();
   });
 
-  it('invokes publish action when publish button clicked', () => {
+  it('invokes publish action for text-only post', () => {
     const handlePublishNews = vi.fn();
-    renderWithTheme(<FeedComposerPanel {...baseProps} handlePublishNews={handlePublishNews} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Опубликовать новость' }));
+    renderWithTheme(
+      <FeedComposerPanel
+        {...baseProps}
+        canPublishNews={true}
+        newsMedia={[]}
+        handlePublishNews={handlePublishNews}
+      />,
+    );
+    const submit = document.querySelector('[data-qa="composer-submit"]') as HTMLButtonElement | null;
+    expect(submit).not.toBeNull();
+    fireEvent.click(submit as HTMLButtonElement);
     expect(handlePublishNews).toHaveBeenCalledTimes(1);
   });
 });
@@ -247,6 +304,8 @@ describe('FeedStreamView', () => {
     isLoading: false,
     source: 'all' as const,
     sortedItems: [baseEvent],
+    draftItems: [],
+    focusedNewsId: null,
     selectedModerationIds: [],
     getItemNewsId: () => 'news-1',
     handleModerationToggle: vi.fn(),

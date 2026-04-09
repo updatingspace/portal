@@ -24,11 +24,12 @@ All frontend calls go through:
 ## BFF endpoints
 
 - `GET /api/v1/csrf` → issues Django CSRF cookie/token for SPA bootstrap
-- `GET /api/v1/session/me` → aggregates `user + portal_profile`
+- `GET /api/v1/session/me` → aggregates `user + portal_profile + id_profile + id_defaults + capability probes`
 - `POST /api/v1/session/logout`
 - `POST /api/v1/internal/session/establish` (server-to-server from UpdSpaceID; sets HttpOnly cookie)
 - Proxy (adds context + signature):
   - `/api/v1/portal/*` → Portal Core
+  - `/api/v1/personalization/*` → Access personalization
   - `/api/v1/voting/*` → Voting
   - `/api/v1/events/*` → Events
   - `/api/v1/feed/*` → Activity

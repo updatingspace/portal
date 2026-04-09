@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Card, Button, Label } from '@gravity-ui/uikit';
+import { formatDateTime } from '@/shared/lib/formatters';
 import type { AccountLinkDetail, SourceType, AccountLinkStatus } from '../../../types/activity';
 
 // Source type configuration
@@ -42,7 +43,7 @@ export const AccountLinkCard: React.FC<AccountLinkCardProps> = ({
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Никогда';
-    return new Date(dateStr).toLocaleString();
+    return formatDateTime(dateStr);
   };
 
   return (

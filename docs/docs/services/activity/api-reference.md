@@ -274,6 +274,11 @@ pollUnread();
     "title": "Обновление сервера",
     "body": "Мы выкатили патч...",
     "tags": ["patch", "servers"],
+    "views_count": 0,
+    "reaction_counts": [
+      { "emoji": "🔥", "count": 2 }
+    ],
+    "my_reactions": ["🔥"],
     "media": [
       {
         "type": "image",
@@ -281,6 +286,13 @@ pollUnread();
         "url": "https://s3...signed"
       }
     ]
+  },
+  "actor_profile": {
+    "user_id": "uuid",
+    "display_name": "Mihhail Matvejev",
+    "first_name": "Mihhail",
+    "last_name": "Matvejev",
+    "avatar_url": null
   }
 }
 ```
@@ -369,9 +381,56 @@ pollUnread();
 
 ```json
 [
-  { "emoji": "🔥", "count": 3 },
-  { "emoji": "👍", "count": 1 }
+  { "emoji": "🔥", "count": 3, "my_reacted": true },
+  { "emoji": "👍", "count": 1, "my_reacted": false }
 ]
+```
+
+---
+
+### `GET /news/{news_id}/reactions`
+
+Публичный список реакций с пользователями, которые их поставили.
+
+**Permissions**: `activity.feed.read`
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": 17,
+    "user_id": "uuid",
+    "emoji": "🔥",
+    "created_at": "2026-02-03T12:00:00Z",
+    "user_profile": {
+      "user_id": "uuid",
+      "display_name": "Mihhail Matvejev",
+      "first_name": "Mihhail",
+      "last_name": "Matvejev",
+      "avatar_url": null
+    }
+  }
+]
+```
+
+---
+
+### `POST /news/{news_id}/views`
+
+Зафиксировать уникальный просмотр новости текущим пользователем.
+
+Автор новости в счётчик не включается, повторный просмотр тем же пользователем счётчик не увеличивает.
+
+**Permissions**: `activity.feed.read`
+
+**Response** `200 OK`:
+
+```json
+{
+  "views_count": 42,
+  "counted": true
+}
 ```
 
 ---

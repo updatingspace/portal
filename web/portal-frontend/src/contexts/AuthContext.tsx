@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -27,6 +28,7 @@ export type UserInfo = {
   roles?: string[];
   featureFlags?: Record<string, boolean>;
   language?: string | null;
+  idTheme?: 'light' | 'dark' | 'auto' | null;
 };
 
 export type SessionIssue = {
@@ -46,6 +48,7 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     available_tenants?: unknown;
     portal_profile?: Record<string, unknown> | null;
     id_profile?: { user?: Record<string, unknown> | null } | null;
+    id_defaults?: { theme?: unknown } | null;
     capabilities?: unknown;
     roles?: unknown;
     feature_flags?: unknown;
@@ -74,6 +77,10 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     safeString(portalProfile?.username) ??
     userId;
   const language = safeString(portalProfile?.language) ?? safeString(portalProfile?.lang) ?? safeString(portalProfile?.locale);
+  const idThemeRaw =
+    data.id_defaults && typeof data.id_defaults === 'object'
+      ? safeString((data.id_defaults as { theme?: unknown }).theme)
+      : null;
   const email = safeString(portalProfile?.email) ?? safeString(idProfileUser?.email);
   const avatarUrl =
     safeString(portalProfile?.avatar_url) ??
@@ -151,6 +158,7 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     roles,
     featureFlags,
     language,
+    idTheme: idThemeRaw === 'light' || idThemeRaw === 'dark' || idThemeRaw === 'auto' ? idThemeRaw : null,
   };
 };
 
@@ -175,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
   // Start as not initialized in all modes; tests and runtime will
   // explicitly mark initialization complete via setUser/refreshProfile.
   const [isInitialized, setIsInitialized] = useState(false);
+  const refreshInFlightRef = useRef<Promise<UserInfo | null> | null>(null);
 
   const setUser = useCallback((nextUser: UserInfo | null) => {
     setUserState(nextUser);
@@ -243,85 +252,96 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
     return true;
   };
 
-  const refreshProfile = useCallback(async () => {
-    setIsLoading(true);
-    logger.info('Refreshing profile', {
-      area: 'auth',
-      event: 'refresh_profile',
-    });
+  const refreshProfile = useCallback((): Promise<UserInfo | null> => {
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
 
-    try {
-      const session = await fetchSessionMe();
-      if (session) {
-        setSessionIssue(null);
-        const mapped = deriveUserFromSessionMe(session);
-        setUser(mapped);
-        logger.info('Profile refreshed', {
-          area: 'auth',
-          event: 'refresh_profile',
-          data: {
-            userId: mapped?.id,
-            tenant: mapped?.tenant?.slug,
-            isAdmin: mapped?.isSuperuser,
-          },
-        });
-        return mapped;
-      }
-      setUser(null);
-      logger.info('Profile refresh: guest state', {
+    const refreshPromise = (async (): Promise<UserInfo | null> => {
+      setIsLoading(true);
+      logger.info('Refreshing profile', {
         area: 'auth',
         event: 'refresh_profile',
       });
-      return null;
-    } catch (error) {
-      if (isApiError(error)) {
-        // Treat 401 and tenant-not-found as guest state (no toast)
-        const isTenantNotFound =
-          error.code === 'TENANT_NOT_FOUND' ||
-          (error.message && error.message.toLowerCase().includes('unknown tenant'));
-        const isNoActiveMembership = error.code === 'NO_ACTIVE_MEMBERSHIP';
-        if (error.kind === 'unauthorized' || isTenantNotFound) {
-          setUser(null);
+
+      try {
+        const session = await fetchSessionMe();
+        if (session) {
           setSessionIssue(null);
-          logger.warn('Profile refresh guest state', {
-            area: 'auth',
-            event: 'refresh_profile',
-            data: { reason: error.kind === 'unauthorized' ? 'unauthorized' : 'tenant_not_found' },
-            error,
-          });
-        } else if (isNoActiveMembership) {
-          const availableTenants = extractAvailableTenantsFromDetails(error.details);
-          const redirected = tryRedirectToAvailableTenant(availableTenants);
-          setUserState(null);
-          setSessionIssue({
-            code: 'NO_ACTIVE_MEMBERSHIP',
-            message:
-              error.message ||
-              'В текущем tenant нет активного membership. Выберите другой tenant или обратитесь к администратору.',
-          });
-          logger.warn('Profile refresh blocked: no active membership', {
+          const mapped = deriveUserFromSessionMe(session);
+          setUser(mapped);
+          logger.info('Profile refreshed', {
             area: 'auth',
             event: 'refresh_profile',
             data: {
-              reason: 'no_active_membership',
-              redirected,
-              availableTenantsCount: availableTenants.length,
+              userId: mapped?.id,
+              tenant: mapped?.tenant?.slug,
+              isAdmin: mapped?.isSuperuser,
             },
-            error,
           });
+          return mapped;
+        }
+        setUser(null);
+        logger.info('Profile refresh: guest state', {
+          area: 'auth',
+          event: 'refresh_profile',
+        });
+        return null;
+      } catch (error) {
+        if (isApiError(error)) {
+          // Treat 401 and tenant-not-found as guest state (no toast)
+          const isTenantNotFound =
+            error.code === 'TENANT_NOT_FOUND' ||
+            (error.message && error.message.toLowerCase().includes('unknown tenant'));
+          const isNoActiveMembership = error.code === 'NO_ACTIVE_MEMBERSHIP';
+          if (error.kind === 'unauthorized' || isTenantNotFound) {
+            setUser(null);
+            setSessionIssue(null);
+            logger.warn('Profile refresh guest state', {
+              area: 'auth',
+              event: 'refresh_profile',
+              data: { reason: error.kind === 'unauthorized' ? 'unauthorized' : 'tenant_not_found' },
+              error,
+            });
+          } else if (isNoActiveMembership) {
+            const availableTenants = extractAvailableTenantsFromDetails(error.details);
+            const redirected = tryRedirectToAvailableTenant(availableTenants);
+            setUserState(null);
+            setSessionIssue({
+              code: 'NO_ACTIVE_MEMBERSHIP',
+              message:
+                error.message ||
+                'В текущем tenant нет активного membership. Выберите другой tenant или обратитесь к администратору.',
+            });
+            logger.warn('Profile refresh blocked: no active membership', {
+              area: 'auth',
+              event: 'refresh_profile',
+              data: {
+                reason: 'no_active_membership',
+                redirected,
+                availableTenantsCount: availableTenants.length,
+              },
+              error,
+            });
+          } else {
+            setSessionIssue(null);
+            notifyApiError(error, 'Не получилось обновить профиль');
+          }
         } else {
           setSessionIssue(null);
           notifyApiError(error, 'Не получилось обновить профиль');
         }
-      } else {
-        setSessionIssue(null);
-        notifyApiError(error, 'Не получилось обновить профиль');
+        return null;
+      } finally {
+        setIsLoading(false);
+        setIsInitialized(true);
       }
-      return null;
-    } finally {
-      setIsLoading(false);
-      setIsInitialized(true);
-    }
+    })().finally(() => {
+      refreshInFlightRef.current = null;
+    });
+
+    refreshInFlightRef.current = refreshPromise;
+    return refreshPromise;
   }, [setUser]);
 
   useEffect(() => {

@@ -102,10 +102,10 @@ describe('PollCreatePage integration', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Начать с нуля' }));
     expect(await screen.findByText('Новый опрос')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Назад к выбору старта' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(await screen.findByText('Создание опроса')).toBeInTheDocument();
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Использовать шаблон' })[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Выбрать шаблон' }));
     expect(await screen.findByText('Создание по шаблону «Премия сообщества»')).toBeInTheDocument();
   }, 15000);
 
@@ -126,9 +126,13 @@ describe('PollCreatePage integration', () => {
     await screen.findByText('Создание опроса');
     await userEvent.click(screen.getByRole('button', { name: 'Начать с нуля' }));
 
-    const titleInput = await screen.findByLabelText('Название');
+    const titleInput = await screen.findByLabelText(/Название/);
     await userEvent.clear(titleInput);
     await userEvent.type(titleInput, 'Опрос квартала');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    expect(await screen.findByText('Проверка перед созданием')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Создать опрос' }));
 

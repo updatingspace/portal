@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardCustomizer } from '../components/dashboard/DashboardCustomizer';
+import { fetchDashboardLayouts } from '../api/contentApi';
 
 vi.mock('@gravity-ui/uikit', async () => {
   const actual = await vi.importActual<typeof import('@gravity-ui/uikit')>('@gravity-ui/uikit');
@@ -14,19 +15,22 @@ vi.mock('@gravity-ui/uikit', async () => {
 });
 
 vi.mock('../api/contentApi', () => ({
-  fetchDashboardLayouts: vi.fn().mockResolvedValue([
-    {
-      id: 'layout-1',
-      user_id: 'user-1',
-      tenant_id: 'tenant-1',
-      layout_name: 'Main',
-      layout_config: {},
-      is_default: true,
-      deleted_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ]),
+  fetchDashboardLayouts: vi.fn().mockResolvedValue({
+    status: 'ok',
+    data: [
+      {
+        id: 'layout-1',
+        user_id: 'user-1',
+        tenant_id: 'tenant-1',
+        layout_name: 'Main',
+        layout_config: {},
+        is_default: true,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ],
+  }),
   createDashboardLayout: vi.fn().mockImplementation(async (payload) => ({
     id: 'layout-created',
     user_id: 'user-1',
@@ -40,23 +44,26 @@ vi.mock('../api/contentApi', () => ({
   })),
   updateDashboardLayout: vi.fn().mockResolvedValue({}),
   deleteDashboardLayout: vi.fn().mockResolvedValue({ success: true }),
-  fetchDashboardWidgets: vi.fn().mockResolvedValue([
-    {
-      id: 'widget-1',
-      layout_id: 'layout-1',
-      tenant_id: 'tenant-1',
-      widget_key: 'activity-feed',
-      position_x: 0,
-      position_y: 0,
-      width: 6,
-      height: 3,
-      settings: { limit: 10 },
-      is_visible: true,
-      deleted_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ]),
+  fetchDashboardWidgets: vi.fn().mockResolvedValue({
+    status: 'ok',
+    data: [
+      {
+        id: 'widget-1',
+        layout_id: 'layout-1',
+        tenant_id: 'tenant-1',
+        widget_key: 'activity-feed',
+        position_x: 0,
+        position_y: 0,
+        width: 6,
+        height: 3,
+        settings: { limit: 10 },
+        is_visible: true,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ],
+  }),
   createDashboardWidget: vi.fn().mockResolvedValue({}),
   updateDashboardWidget: vi.fn().mockResolvedValue({}),
   deleteDashboardWidget: vi.fn().mockResolvedValue({ success: true }),
@@ -113,5 +120,14 @@ describe('DashboardCustomizer', () => {
     await user.click(await screen.findByText('Tablet'));
     await user.click(screen.getByText('Mobile'));
     expect(screen.getByText('Responsive preview')).toBeInTheDocument();
+  });
+
+  it('shows an inline unavailable state when dashboard access is forbidden', async () => {
+    vi.mocked(fetchDashboardLayouts).mockResolvedValueOnce({ status: 'forbidden' });
+
+    render(<DashboardCustomizer />, { wrapper: createWrapper() });
+
+    expect(await screen.findByText('Dashboard customization is unavailable for this account.')).toBeInTheDocument();
+    expect(screen.queryByText('Widget library')).not.toBeInTheDocument();
   });
 });

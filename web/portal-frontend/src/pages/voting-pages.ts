@@ -5,11 +5,6 @@
  */
 
 // Redesigned pages (Phase 4)
-export { HomePageRedesigned } from './HomePage/HomePageRedesigned';
-export { VotingPageRedesigned } from './VotingPageRedesigned';
-export { NominationPageRedesigned } from './NominationPageRedesigned';
-
-// Legacy pages (for gradual migration)
-export { HomePage } from './HomePage';
-export { VotingPage } from './VotingPage';
-export { NominationPage } from './NominationPage';
+export { HomePageRedesigned as HomePage } from './HomePage/HomePageRedesigned';
+export { VotingPageRedesigned as VotingPage } from './VotingPageRedesigned';
+export { NominationPageRedesigned as NominationPage } from './NominationPageRedesigned';

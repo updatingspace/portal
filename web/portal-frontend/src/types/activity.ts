@@ -29,6 +29,7 @@ export type ActivityEventType =
   | 'event.created'
   | 'event.rsvp.changed'
   | 'post.created'
+  | 'news.posted'
   | 'game.achievement'
   | 'game.playtime'
   | 'steam.private'
@@ -127,6 +128,7 @@ export interface ActivityEvent {
   scopeType: string;
   scopeId: string;
   sourceRef: string;
+  actorProfile?: ActivityActorProfile | null;
 }
 
 /**
@@ -185,14 +187,41 @@ export type NewsMediaYoutube = {
 
 export type NewsMediaItem = NewsMediaImage | NewsMediaYoutube;
 
+export type ActivityActorProfile = {
+  user_id: string;
+  username?: string | null;
+  display_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_url?: string | null;
+};
+
+export type NewsStatus = 'published' | 'draft';
+
+export type NewsPermalink = {
+  news_id: string;
+  path: string;
+};
+
+export type NewsReactionSummary = {
+  emoji: string;
+  count: number;
+  my_reacted?: boolean;
+};
+
 export type NewsPayload = {
   news_id?: string;
   title?: string | null;
   body: string;
   tags: string[];
   media?: NewsMediaItem[];
+  status?: NewsStatus;
+  permalink?: NewsPermalink | null;
   comments_count?: number;
   reactions_count?: number;
+  views_count?: number;
+  reaction_counts?: NewsReactionSummary[];
+  my_reactions?: string[];
 };
 
 // ============================================================================

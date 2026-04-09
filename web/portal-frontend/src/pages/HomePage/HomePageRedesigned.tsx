@@ -18,6 +18,7 @@ import { HomePageModalDisplay } from '../../components/HomePageModalDisplay';
 import { useVotingSessions } from '../../features/voting/hooks/useVotingUnified';
 import { VotingList } from '../../features/voting/components/VotingList';
 import type { VotingSession } from '../../features/voting/unified';
+import { formatDate } from '@/shared/lib/formatters';
 import { HomeHero } from './components/HomeHero';
 import { StagesSection } from './components/StagesSection';
 import { voteStages } from './constants';
@@ -74,11 +75,7 @@ export const HomePageRedesigned: React.FC = () => {
     if (!next?.ends_at) return 'Дедлайн уточняется';
     
     const deadline = new Date(next.ends_at);
-    return deadline.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    return formatDate(deadline);
   }, [activeVotings]);
   
   // Navigate to voting detail

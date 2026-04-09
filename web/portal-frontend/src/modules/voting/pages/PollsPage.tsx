@@ -8,7 +8,7 @@ import { PollCard } from '../../../features/voting/components/PollCard';
 import { isRateLimitError, usePolls } from '../../../features/voting';
 import type { Poll, PollStatus } from '../../../features/voting';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
-import { getLocale } from '@/shared/lib/locale';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import { logger } from '../../../utils/logger';
 import {
   VotingEmptyState,
@@ -48,10 +48,11 @@ export const PollsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const { user } = useAuth();
   const routeBase = useRouteBase();
+  const { intlLocale } = useFormatters();
 
   const offset = (page - 1) * PAGE_SIZE;
   const effectiveStatus = statusFilter === 'all' ? undefined : (statusFilter as PollStatus);
-  const locale = user?.language ?? getLocale();
+  const locale = intlLocale;
   const hasCapabilities = Boolean(user?.capabilities?.length || user?.roles?.length);
   const canManage = Boolean(user?.isSuperuser || (!hasCapabilities ? true : can(user, ['voting.votings.admin', 'voting.nominations.admin'])));
 

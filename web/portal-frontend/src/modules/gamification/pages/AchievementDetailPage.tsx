@@ -20,6 +20,8 @@ import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
 import { useAchievement, useCreateGrant, useGrantsList, useRevokeGrant } from '../../../hooks/useGamification';
 import type { Grant, GrantVisibility } from '../../../types/gamification';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
+import { formatDateTime } from '@/shared/lib/formatters';
 import { fetchPortalProfiles } from '../../portal/api';
 import './gamification.css';
 
@@ -27,7 +29,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
+  return formatDateTime(date);
 };
 
 const VISIBILITY_OPTIONS: { value: 'all' | GrantVisibility; content: string }[] = [
@@ -46,6 +48,8 @@ export const AchievementDetailPage: React.FC = () => {
   const hasAccess = Boolean(user);
 
   const { data: achievement, isLoading } = useAchievement(id);
+  const achievementTitle = achievement?.nameI18n.ru ?? achievement?.nameI18n.en ?? null;
+  useDocumentTitle(achievementTitle ? `${achievementTitle} · Ачивка` : 'Карточка ачивки');
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | GrantVisibility>('all');
 
   const grantsQuery = useGrantsList(id ?? '', {

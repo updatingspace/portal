@@ -47,6 +47,6 @@ class OutboxMessage(models.Model):
     class Meta:
         db_table = "feature_flag_outbox"
         indexes = [
-            models.Index(fields=["event_type", "occurred_at"], name="feature_flag_outbox_type_occ_idx"),
-            models.Index(fields=["published_at"], name="feature_flag_outbox_published_idx"),
+            models.Index(fields=["event_type", "occurred_at"], name="ff_outbox_type_occ_idx"),
+            models.Index(fields=["published_at"], name="ff_outbox_pub_idx"),
         ]

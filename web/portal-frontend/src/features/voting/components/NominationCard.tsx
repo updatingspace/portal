@@ -203,6 +203,7 @@ export const NominationCard: React.FC<NominationCardProps> = ({
             aria-expanded={isExpanded}
           >
             <Icon data={isExpanded ? ChevronUp : ChevronDown} size={16} />
+            <span>{isExpanded ? 'Свернуть' : 'Подробнее'}</span>
           </Button>
         )}
       </div>

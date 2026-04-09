@@ -30,9 +30,11 @@ vi.mock('../../api/tenant', () => ({
 
 // Mock TenantContext
 const doSwitchTenantMock = vi.fn();
+let tenantErrorMessageMock: string | null = null;
 vi.mock('../../contexts/TenantContext', () => ({
   useTenantContext: () => ({
     doSwitchTenant: doSwitchTenantMock,
+    errorMessage: tenantErrorMessageMock,
   }),
 }));
 
@@ -74,6 +76,13 @@ const makeNoMemberships = (): EntryMeResponse => ({
   pending_tenant_applications: [],
 });
 
+const makeNoMembershipsWithoutEmail = (): EntryMeResponse => ({
+  user: { id: 'u1', email: null },
+  memberships: [],
+  last_tenant: null,
+  pending_tenant_applications: [],
+});
+
 const makePending = (): EntryMeResponse => ({
   user: { id: 'u1', email: 'test@example.com' },
   memberships: [],
@@ -83,9 +92,28 @@ const makePending = (): EntryMeResponse => ({
   ],
 });
 
+const makeMembershipWithoutDisplayName = (): EntryMeResponse => ({
+  user: { id: 'u1', email: 'test@example.com' },
+  memberships: [
+    { tenant_id: 't1', tenant_slug: 'aef', status: 'active', base_role: 'member' },
+  ],
+  last_tenant: null,
+  pending_tenant_applications: [],
+});
+
+const makeInactiveMembership = (): EntryMeResponse => ({
+  user: { id: 'u1', email: 'test@example.com' },
+  memberships: [
+    { tenant_id: 't1', tenant_slug: 'archived-team', display_name: 'Archived Team', status: 'invited', base_role: 'member' },
+  ],
+  last_tenant: null,
+  pending_tenant_applications: [],
+});
+
 describe('TenantChooserPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    tenantErrorMessageMock = null;
   });
 
   // ----------------------------------------------------------------
@@ -186,6 +214,39 @@ describe('TenantChooserPage', () => {
     expect(screen.getByText('Portal Updating Space')).toBeInTheDocument();
   });
 
+  it('shows fallback tenant name and context error when switch fails', async () => {
+    fetchEntryMeMock.mockResolvedValueOnce(makeMembershipWithoutDisplayName());
+    tenantErrorMessageMock = 'Switch denied by context';
+    doSwitchTenantMock.mockResolvedValue(false);
+    renderChooser();
+
+    await waitFor(() => {
+      expect(screen.getByText('/aef')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('/aef'));
+
+    await waitFor(() => {
+      expect(doSwitchTenantMock).toHaveBeenCalledWith('aef');
+      expect(
+        screen.getByText('Не удалось переключиться на «aef». Switch denied by context'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
+  });
+
+  it('does not switch inactive memberships and shows status error', async () => {
+    fetchEntryMeMock.mockResolvedValueOnce(makeInactiveMembership());
+    renderChooser();
+
+    await waitFor(() => {
+      expect(screen.getByText('Нет активных membership для входа в сообщества.')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Часть сообществ скрыта для входа, потому что статус membership не active.')).toBeInTheDocument();
+    expect(doSwitchTenantMock).not.toHaveBeenCalled();
+  });
+
   // ----------------------------------------------------------------
   // No memberships — create form
   // ----------------------------------------------------------------
@@ -200,8 +261,26 @@ describe('TenantChooserPage', () => {
 
     expect(screen.getByPlaceholderText('Slug (например: my-community)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Название')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Email для заявки')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Описание (необязательно)')).toBeInTheDocument();
     expect(screen.getByText('Отправить заявку')).toBeInTheDocument();
+  });
+
+  it('shows create action when memberships exist and opens form on demand', async () => {
+    fetchEntryMeMock.mockResolvedValueOnce(makeMemberships());
+    renderChooser();
+
+    await waitFor(() => {
+      expect(screen.getByText('AEF')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByPlaceholderText('Slug (например: my-community)')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Создать сообщество' }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Slug (например: my-community)')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Скрыть создание' })).toBeInTheDocument();
+    });
   });
 
   it('submit button is disabled when slug is empty', async () => {
@@ -213,6 +292,32 @@ describe('TenantChooserPage', () => {
     });
 
     expect(screen.getByText('Отправить заявку')).toBeDisabled();
+  });
+
+  it('requires email input when entry/me has no email', async () => {
+    fetchEntryMeMock.mockResolvedValueOnce(makeNoMembershipsWithoutEmail());
+    submitTenantApplicationMock.mockResolvedValueOnce({ ok: true });
+    fetchEntryMeMock.mockResolvedValueOnce(makePending());
+    renderChooser();
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Email для заявки')).toBeInTheDocument();
+    });
+
+    await userEvent.type(screen.getByPlaceholderText('Slug (например: my-community)'), 'no-email-yet');
+    expect(screen.getByText('Отправить заявку')).toBeDisabled();
+
+    await userEvent.type(screen.getByPlaceholderText('Email для заявки'), 'new-user@example.com');
+    await userEvent.click(screen.getByText('Отправить заявку'));
+
+    await waitFor(() => {
+      expect(submitTenantApplicationMock).toHaveBeenCalledWith({
+        slug: 'no-email-yet',
+        name: 'no-email-yet',
+        description: '',
+        email: 'new-user@example.com',
+      });
+    });
   });
 
   it('submitting application transitions to pending state', async () => {
@@ -237,6 +342,7 @@ describe('TenantChooserPage', () => {
         slug: 'new-community',
         name: 'New Community',
         description: 'A great community',
+        email: 'test@example.com',
       });
     });
 
@@ -266,6 +372,7 @@ describe('TenantChooserPage', () => {
         slug: 'slug-only',
         name: 'slug-only',
         description: '',
+        email: 'test@example.com',
       });
     });
   });

@@ -8,6 +8,28 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get('next') ?? '/choose-tenant';
+  const authErrorCode = (params.get('auth_error') ?? '').trim().toUpperCase();
+  const requestId = (params.get('request_id') ?? '').trim();
+
+  const authErrorMessage = (() => {
+    if (!authErrorCode) return null;
+    switch (authErrorCode) {
+      case 'INVALID_STATE':
+        return 'Сессия входа истекла или уже была использована. Попробуйте войти снова.';
+      case 'OAUTH_ERROR':
+        return 'Авторизация в UpdSpaceID была отклонена.';
+      case 'TOKEN_EXCHANGE_FAILED':
+      case 'USERINFO_FAILED':
+      case 'UPSTREAM_UNAVAILABLE':
+      case 'UPSTREAM_NOT_CONFIGURED':
+        return 'Не удалось завершить вход через UpdSpaceID. Попробуйте ещё раз.';
+      case 'TENANT_MISMATCH':
+      case 'TENANT_NOT_FOUND':
+        return 'Не удалось определить tenant для текущего входа.';
+      default:
+        return 'Не удалось завершить вход. Повторите попытку.';
+    }
+  })();
 
   return (
     <div className="container py-5">
@@ -19,6 +41,24 @@ export const LoginPage: React.FC = () => {
             <p className="text-muted mb-4">
               This starts the UpdSpaceID flow via BFF (same-origin).
             </p>
+
+            {authErrorMessage && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="login-auth-error"
+              >
+                <div className="login-auth-error__title">
+                  Не удалось завершить вход
+                </div>
+                <div>{authErrorMessage}</div>
+                {requestId && (
+                  <div className="login-auth-error__request-id">
+                    Request ID: {requestId}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="d-flex flex-wrap gap-2">
               <Button view="action" size="l" onClick={() => redirectToLogin(next)}>

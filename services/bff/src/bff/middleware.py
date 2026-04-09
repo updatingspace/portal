@@ -17,8 +17,10 @@ REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 # Endpoints that work without any tenant context (tenantless mode)
 TENANTLESS_PREFIXES = (
     "/api/v1/entry/",
+    "/api/v1/session/me",
     "/api/v1/session/switch-tenant",
     "/api/v1/session/tenants",
+    "/api/v1/csrf",
 )
 
 # Endpoints that don't require authentication
@@ -201,7 +203,7 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
 
         request.auth_ctx = AuthContext(
             session_id=session.session_id,
-            tenant_id=session.tenant_id,
+            tenant_id=effective_tenant_id,
             tenant_slug=effective_tenant_slug,
             user_id=session.user_id,
             master_flags=session.master_flags,
@@ -222,12 +224,29 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
         if not request.path.startswith("/api/v1/session/"):
             return None
 
-        limit = int(getattr(settings, "BFF_SESSION_RATE_LIMIT_PER_MIN", 60))
+        base_limit = int(getattr(settings, "BFF_SESSION_RATE_LIMIT_PER_MIN", 60))
+        if request.path == "/api/v1/session/me":
+            limit = int(
+                getattr(
+                    settings,
+                    "BFF_SESSION_ME_RATE_LIMIT_PER_MIN",
+                    max(base_limit, 240),
+                )
+            )
+        else:
+            limit = base_limit
         if limit <= 0:
             return None
 
-        ident = request.META.get("REMOTE_ADDR", "unknown")
-        key = f"bff:rl:session:{ident}"
+        remote_addr = request.META.get("REMOTE_ADDR", "unknown")
+        cookie_name = getattr(
+            settings,
+            "BFF_SESSION_COOKIE_NAME",
+            "updspace_session",
+        )
+        session_id = request.COOKIES.get(cookie_name)
+        ident = f"{remote_addr}:{session_id or 'anon'}"
+        key = f"bff:rl:session:{request.path}:{ident}"
         current = self.cache.get(key)
         if current is None:
             self.cache.set(key, 1, timeout=60)

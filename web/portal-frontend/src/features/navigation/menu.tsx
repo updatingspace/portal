@@ -9,6 +9,8 @@ import Gear from '@gravity-ui/icons/Gear';
 
 import type {UserInfo} from '../../contexts/AuthContext';
 import {can} from '../rbac/can';
+import { portalMessages } from '../../shared/i18n/messages';
+import { normalizeLocale, type Locale } from '../../shared/lib/locale';
 
 export type NavItemConfig = {
   id: string;
@@ -52,10 +54,17 @@ const preventDefaultIfPossible = (event: NavigationClickEvent) => {
 
 export const buildAsideMenuItems = (params: {
   user: UserInfo | null;
+  locale?: Locale;
   currentPath: string;
   onNavigate: (to: string) => void;
+  routeBase?: string;
 }): MenuItem[] => {
-  const {user, currentPath, onNavigate} = params;
+  const {user, locale: inputLocale, currentPath, onNavigate, routeBase = '/app'} = params;
+  const locale = normalizeLocale(inputLocale ?? user?.language ?? null);
+  const messages = portalMessages[locale];
+
+  const resolveRoute = (route: string) =>
+    route.startsWith('/app') ? route.replace(/^\/app\b/, routeBase) : route;
 
   const visible = (item: NavItemConfig) => {
     if (!user?.capabilities?.length && !user?.roles?.length) {
@@ -64,60 +73,82 @@ export const buildAsideMenuItems = (params: {
     return can(user, item.required);
   };
 
+  const localizedConfig = (item: NavItemConfig): NavItemConfig => {
+    const keyMap: Record<string, keyof typeof messages.navigation> = {
+      dashboard: 'dashboard',
+      feed: 'feed',
+      events: 'events',
+      voting: 'voting',
+      gamification: 'gamification',
+      'tenant-admin': 'tenantAdmin',
+    };
+    const key = keyMap[item.id];
+    if (!key) {
+      return item;
+    }
+    return {
+      ...item,
+      title: messages.navigation[key].title,
+      description: messages.navigation[key].description,
+    };
+  };
+
   const toMenuItem = (item: NavItemConfig): MenuItem => ({
     id: item.id,
     title: item.title,
-    link: item.route,
-    current: currentPath === item.route || (item.route !== '/app' && currentPath.startsWith(item.route)),
+    link: resolveRoute(item.route),
+    current:
+      currentPath === resolveRoute(item.route) ||
+      (resolveRoute(item.route) !== routeBase && currentPath.startsWith(resolveRoute(item.route))),
     icon: item.icon,
     iconSize: 18,
     rightAdornment: item.badge ? item.badge : undefined,
     tooltipText: makeTooltip(item.title, item.description),
     onItemClick: (_it, _collapsed, event) => {
       const e = event as unknown as NavigationClickEvent;
-      if (isModifiedClick(e)) {
-        return;
-      }
-      preventDefaultIfPossible(e);
-      onNavigate(item.route);
-    },
+        if (isModifiedClick(e)) {
+          return;
+        }
+        preventDefaultIfPossible(e);
+        onNavigate(resolveRoute(item.route));
+      },
   });
 
-  const items: MenuItem[] = BASE_ITEMS.filter(visible).map(toMenuItem);
+  const items: MenuItem[] = BASE_ITEMS.filter(visible).map(localizedConfig).map(toMenuItem);
 
   if (user?.isSuperuser) {
     items.push({
       id: 'admin',
-      title: 'Admin',
-      link: '/app/admin',
-      current: currentPath.startsWith('/app/admin'),
+      title: messages.shell.admin,
+      link: `${routeBase}/admin`,
+      current: currentPath.startsWith(`${routeBase}/admin`),
       icon: Gear,
       iconSize: 18,
-      tooltipText: makeTooltip('Admin', 'Admin tools'),
+      tooltipText: makeTooltip(messages.shell.admin, messages.shell.adminDescription),
       onItemClick: (_it, _collapsed, event) => {
         const e = event as unknown as NavigationClickEvent;
         if (isModifiedClick(e)) {
           return;
         }
         preventDefaultIfPossible(e);
-        onNavigate('/app/admin');
+        onNavigate(`${routeBase}/admin`);
       },
     });
     items.push({
       id: 'feature-flags',
-      title: 'Feature Flags',
-      link: '/app/feature-flags',
-      current: currentPath.startsWith('/app/feature-flags'),
+      title: messages.shell.featureFlags,
+      link: `${routeBase}/feature-flags`,
+      current: currentPath.startsWith(`${routeBase}/feature-flags`),
       icon: Gear,
       iconSize: 18,
-      tooltipText: makeTooltip('Feature Flags', 'Network feature toggles'),
+      tooltipText: makeTooltip(messages.shell.featureFlags, messages.shell.featureFlagsDescription),
       onItemClick: (_it, _collapsed, event) => {
         const e = event as unknown as NavigationClickEvent;
         if (isModifiedClick(e)) {
           return;
         }
         preventDefaultIfPossible(e);
-        onNavigate('/app/feature-flags');
+        onNavigate(`${routeBase}/feature-flags`);
       },
     });
   }

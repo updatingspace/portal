@@ -1,7 +1,10 @@
 /**
  * API client for content management (modals, widgets, analytics)
  */
-import { request } from '../../../api/client';
+import {
+  request,
+  requestResult,
+} from '../../../api/client';
 import type {
   HomePageModal,
   HomePageModalInput,
@@ -25,6 +28,22 @@ const WIDGETS_BASE = '/personalization/admin/content-widgets';
 const ANALYTICS_BASE = '/personalization/analytics';
 const DASHBOARDS_BASE = '/personalization/admin/dashboards';
 
+export type OptionalPersonalizationRead<T> =
+  | { status: 'ok'; data: T }
+  | { status: 'forbidden' };
+
+async function requestOptionalPersonalizationRead<T>(
+  path: string,
+): Promise<OptionalPersonalizationRead<T>> {
+  const result = await requestResult<T>(path, {
+    noRetry: true,
+  });
+  if (result.ok) {
+    return { status: 'ok', data: result.data };
+  }
+  return { status: 'forbidden' };
+}
+
 // =============================================================================
 // Homepage Modals API (User-facing)
 // =============================================================================
@@ -36,7 +55,8 @@ export async function fetchActiveModals(
   language: string = 'en'
 ): Promise<HomePageModal[]> {
   return request<HomePageModal[]>(
-    `${MODALS_BASE}/homepage-modals?language=${language}`
+    `${MODALS_BASE}/homepage-modals?language=${language}`,
+    { noRetry: true },
   );
 }
 
@@ -68,7 +88,8 @@ export async function fetchModals(
 
   const query = params.toString();
   return request<HomePageModal[]>(
-    `${ADMIN_MODALS_BASE}${query ? `?${query}` : ''}`
+    `${ADMIN_MODALS_BASE}${query ? `?${query}` : ''}`,
+    { noRetry: true },
   );
 }
 
@@ -76,7 +97,9 @@ export async function fetchModals(
  * Fetch a single homepage modal by ID
  */
 export async function fetchModal(modalId: number): Promise<HomePageModal> {
-  return request<HomePageModal>(`${ADMIN_MODALS_BASE}/${modalId}`);
+  return request<HomePageModal>(`${ADMIN_MODALS_BASE}/${modalId}`, {
+    noRetry: true,
+  });
 }
 
 /**
@@ -88,6 +111,7 @@ export async function createModal(
   return request<HomePageModal>(ADMIN_MODALS_BASE, {
     method: 'POST',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -101,6 +125,7 @@ export async function updateModal(
   return request<HomePageModal>(`${ADMIN_MODALS_BASE}/${modalId}`, {
     method: 'PUT',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -113,6 +138,7 @@ export async function deleteModal(
 ): Promise<{ success: boolean }> {
   return request(`${ADMIN_MODALS_BASE}/${modalId}?hard=${hard}`, {
     method: 'DELETE',
+    noRetry: true,
   });
 }
 
@@ -122,6 +148,7 @@ export async function deleteModal(
 export async function restoreModal(modalId: number): Promise<HomePageModal> {
   return request<HomePageModal>(`${ADMIN_MODALS_BASE}/${modalId}/restore`, {
     method: 'POST',
+    noRetry: true,
   });
 }
 
@@ -137,6 +164,7 @@ export async function bulkActionModals(
       modal_ids: payload.modalIds,
       action: payload.action,
     },
+    noRetry: true,
   });
 }
 
@@ -175,7 +203,9 @@ export async function fetchWidgets(options?: {
   if (typeof options?.offset === 'number') params.set('offset', String(options.offset));
 
   const query = params.toString();
-  return request<ContentWidget[]>(`${WIDGETS_BASE}${query ? `?${query}` : ''}`);
+  return request<ContentWidget[]>(`${WIDGETS_BASE}${query ? `?${query}` : ''}`, {
+    noRetry: true,
+  });
 }
 
 /**
@@ -187,6 +217,7 @@ export async function createWidget(
   return request<ContentWidget>(WIDGETS_BASE, {
     method: 'POST',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -200,6 +231,7 @@ export async function updateWidget(
   return request<ContentWidget>(`${WIDGETS_BASE}/${widgetId}`, {
     method: 'PUT',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -212,6 +244,7 @@ export async function deleteWidget(
 ): Promise<{ success: boolean }> {
   return request(`${WIDGETS_BASE}/${widgetId}?hard=${hard}`, {
     method: 'DELETE',
+    noRetry: true,
   });
 }
 
@@ -233,6 +266,7 @@ export async function trackEvent(
       session_id: payload.sessionId || '',
       metadata: payload.metadata || {},
     },
+    noRetry: true,
   });
 }
 
@@ -241,8 +275,8 @@ export async function trackEvent(
  */
 export async function fetchModalAnalytics(
   days: number = 30
-): Promise<ModalAnalytics[]> {
-  return request<ModalAnalytics[]>(
+): Promise<OptionalPersonalizationRead<ModalAnalytics[]>> {
+  return requestOptionalPersonalizationRead<ModalAnalytics[]>(
     `${MODALS_BASE}/admin/analytics/modals?days=${days}`
   );
 }
@@ -252,8 +286,8 @@ export async function fetchModalAnalytics(
  */
 export async function fetchAnalyticsReport(
   days: number = 30
-): Promise<AnalyticsReport> {
-  return request<AnalyticsReport>(
+): Promise<OptionalPersonalizationRead<AnalyticsReport>> {
+  return requestOptionalPersonalizationRead<AnalyticsReport>(
     `${MODALS_BASE}/admin/analytics/report?days=${days}`
   );
 }
@@ -266,8 +300,8 @@ export async function fetchDashboardLayouts(
   includeDeleted: boolean = false,
   limit: number = 100,
   offset: number = 0
-): Promise<DashboardLayout[]> {
-  return request<DashboardLayout[]>(
+): Promise<OptionalPersonalizationRead<DashboardLayout[]>> {
+  return requestOptionalPersonalizationRead<DashboardLayout[]>(
     `${DASHBOARDS_BASE}/layouts?include_deleted=${includeDeleted}&limit=${limit}&offset=${offset}`
   );
 }
@@ -278,6 +312,7 @@ export async function createDashboardLayout(
   return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts`, {
     method: 'POST',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -288,6 +323,7 @@ export async function updateDashboardLayout(
   return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts/${layoutId}`, {
     method: 'PUT',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -297,6 +333,7 @@ export async function deleteDashboardLayout(
 ): Promise<{ success: boolean }> {
   return request<{ success: boolean }>(`${DASHBOARDS_BASE}/layouts/${layoutId}?hard=${hard}`, {
     method: 'DELETE',
+    noRetry: true,
   });
 }
 
@@ -305,8 +342,8 @@ export async function fetchDashboardWidgets(
   includeDeleted: boolean = false,
   limit: number = 200,
   offset: number = 0
-): Promise<DashboardWidget[]> {
-  return request<DashboardWidget[]>(
+): Promise<OptionalPersonalizationRead<DashboardWidget[]>> {
+  return requestOptionalPersonalizationRead<DashboardWidget[]>(
     `${DASHBOARDS_BASE}/layouts/${layoutId}/widgets?include_deleted=${includeDeleted}&limit=${limit}&offset=${offset}`
   );
 }
@@ -318,6 +355,7 @@ export async function createDashboardWidget(
   return request<DashboardWidget>(`${DASHBOARDS_BASE}/layouts/${layoutId}/widgets`, {
     method: 'POST',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -328,6 +366,7 @@ export async function updateDashboardWidget(
   return request<DashboardWidget>(`${DASHBOARDS_BASE}/widgets/${widgetId}`, {
     method: 'PUT',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -337,23 +376,27 @@ export async function deleteDashboardWidget(
 ): Promise<{ success: boolean }> {
   return request<{ success: boolean }>(`${DASHBOARDS_BASE}/widgets/${widgetId}?hard=${hard}`, {
     method: 'DELETE',
+    noRetry: true,
   });
 }
 
 export async function restoreWidget(widgetId: string): Promise<ContentWidget> {
   return request<ContentWidget>(`${WIDGETS_BASE}/${widgetId}/restore`, {
     method: 'POST',
+    noRetry: true,
   });
 }
 
 export async function restoreDashboardLayout(layoutId: string): Promise<DashboardLayout> {
   return request<DashboardLayout>(`${DASHBOARDS_BASE}/layouts/${layoutId}/restore`, {
     method: 'POST',
+    noRetry: true,
   });
 }
 
 export async function restoreDashboardWidget(widgetId: string): Promise<DashboardWidget> {
   return request<DashboardWidget>(`${DASHBOARDS_BASE}/widgets/${widgetId}/restore`, {
     method: 'POST',
+    noRetry: true,
   });
 }

@@ -2,7 +2,7 @@
 
 ## Base
 
-- Prefix: `/api/personalization`
+- Prefix: `/api/v1/personalization`
 - Auth: via BFF signed headers (`X-User-Id`, `X-Tenant-Id`)
 
 ## Preferences
@@ -11,6 +11,8 @@
 - `PUT /preferences` — partial update.
 - `GET /preferences/defaults` — default preference model.
 - `POST /preferences/reset` — reset to defaults.
+- `appearance.theme_source` supports `portal | id`.
+- `localization.timezone` remains portal-local in v1 and drives shared formatting on the frontend.
 
 ## Homepage Modals
 
@@ -48,6 +50,11 @@
 - `POST /admin/dashboards/layouts/{layoutId}/widgets`
 - `PUT /admin/dashboards/widgets/{widgetId}`
 - `DELETE /admin/dashboards/widgets/{widgetId}?hard=false`
+
+Notes:
+
+- `layout_config` is a versioned JSON document with breakpoint metadata.
+- creating a widget for an already known `widget_key` restores the soft-deleted row instead of inserting a duplicate.
 
 RBAC keys:
 

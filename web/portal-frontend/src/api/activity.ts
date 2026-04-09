@@ -7,12 +7,15 @@
  * @module api/activity
  */
 
-import { request } from './client';
+import { apiBaseUrl, request } from './client';
 import type {
   ActivityEvent,
+  ActivityActorProfile,
   FeedResponse,
   FeedResponseV2,
   FeedParams,
+  NewsReactionSummary,
+  NewsStatus,
   UnreadCountResponse,
   NewsMediaItem,
   Game,
@@ -49,6 +52,7 @@ type ActivityEventApi = {
   scope_type: string;
   scope_id: string;
   source_ref: string;
+  actor_profile?: ActivityActorProfile | null;
 };
 
 type FeedResponseApi = {
@@ -81,6 +85,7 @@ const mapActivityEvent = (item: ActivityEventApi): ActivityEvent => ({
   scopeType: item.scope_type,
   scopeId: item.scope_id,
   sourceRef: item.source_ref,
+  actorProfile: item.actor_profile ?? null,
 });
 
 const mapSubscription = (item: SubscriptionApi): Subscription => ({
@@ -161,6 +166,7 @@ export type NewsCreatePayload = {
   body: string;
   tags?: string[];
   visibility: 'public' | 'community' | 'team' | 'private';
+  status?: NewsStatus;
   scope_type?: 'TENANT' | 'COMMUNITY' | 'TEAM';
   scope_id?: string | null;
   media?: NewsMediaItem[];
@@ -171,6 +177,7 @@ export type NewsUpdatePayload = {
   body?: string | null;
   tags?: string[] | null;
   visibility?: 'public' | 'community' | 'team' | 'private' | null;
+  status?: NewsStatus | null;
   media?: NewsMediaItem[] | null;
 };
 
@@ -202,12 +209,23 @@ export async function createNews(payload: NewsCreatePayload): Promise<ActivityEv
       body: payload.body,
       tags: payload.tags ?? [],
       visibility: payload.visibility,
+      status: payload.status ?? 'published',
       scope_type: payload.scope_type,
       scope_id: payload.scope_id ?? undefined,
       media: payload.media ?? [],
     },
   });
   return mapActivityEvent(data);
+}
+
+export async function fetchNews(newsId: string): Promise<ActivityEvent> {
+  const data = await request<ActivityEventApi>(`/activity/news/${newsId}`);
+  return mapActivityEvent(data);
+}
+
+export async function listDraftNews(limit = 20): Promise<ActivityEvent[]> {
+  const data = await request<ActivityEventApi[]>(`/activity/news/drafts?limit=${limit}`);
+  return data.map(mapActivityEvent);
 }
 
 export async function updateNews(newsId: string, payload: NewsUpdatePayload): Promise<ActivityEvent> {
@@ -218,6 +236,7 @@ export async function updateNews(newsId: string, payload: NewsUpdatePayload): Pr
       body: payload.body ?? undefined,
       tags: payload.tags ?? undefined,
       visibility: payload.visibility ?? undefined,
+      status: payload.status ?? undefined,
       media: payload.media ?? undefined,
     },
   });
@@ -231,8 +250,8 @@ export async function deleteNews(newsId: string): Promise<void> {
 export async function reactToNews(
   newsId: string,
   payload: { emoji: string; action?: 'add' | 'remove' },
-): Promise<{ emoji: string; count: number }[]> {
-  return request<{ emoji: string; count: number }[]>(`/activity/news/${newsId}/reactions`, {
+): Promise<NewsReactionSummary[]> {
+  return request<NewsReactionSummary[]>(`/activity/news/${newsId}/reactions`, {
     method: 'POST',
     body: {
       emoji: payload.emoji,
@@ -246,12 +265,25 @@ export type NewsReactionDetail = {
   user_id: string;
   emoji: string;
   created_at: string;
+  user_profile?: ActivityActorProfile | null;
 };
 
 export async function listNewsReactions(newsId: string, limit = 200): Promise<NewsReactionDetail[]> {
   return request<NewsReactionDetail[]>(
     `/activity/news/${newsId}/reactions?limit=${limit}`,
   );
+}
+
+export type NewsViewResponse = {
+  views_count: number;
+  counted: boolean;
+};
+
+export async function recordNewsView(newsId: string): Promise<NewsViewResponse> {
+  return request<NewsViewResponse>(`/activity/news/${newsId}/views`, {
+    method: 'POST',
+    body: {},
+  });
 }
 
 export type NewsCommentDetail = {
@@ -264,6 +296,10 @@ export type NewsCommentDetail = {
   likes_count?: number;
   my_liked?: boolean;
   replies_count?: number;
+  user_profile?: ActivityActorProfile | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
+  can_reply?: boolean;
 };
 
 export type NewsCommentsPage = {
@@ -311,6 +347,15 @@ export async function createNewsComment(
     },
   );
 }
+
+export type FeedLiveEvent =
+  | { type: 'ready'; timestamp?: string }
+  | { type: 'heartbeat'; timestamp?: string }
+  | { type: 'close'; reason?: string; message?: string }
+  | { type: 'news-upsert'; news_id: string; changed?: string[]; timestamp?: string }
+  | { type: 'news-delete'; news_id: string; timestamp?: string };
+
+export const buildFeedLiveUrl = () => `${apiBaseUrl}/activity/feed/live`;
 
 export async function deleteNewsComment(newsId: string, commentId: number): Promise<NewsCommentDetail> {
   return request<NewsCommentDetail>(`/activity/news/${newsId}/comments/${commentId}`, {

@@ -4,6 +4,7 @@ import { Loader, Card } from '@gravity-ui/uikit';
 import { useEvent } from '../../../features/events';
 import { EventForm } from '../../../features/events/components';
 import type { EventWithCounts } from '../../../features/events';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
 
 export const EditEventPage: React.FC = () => {
@@ -12,6 +13,7 @@ export const EditEventPage: React.FC = () => {
     const routeBase = useRouteBase();
 
     const { data: event, isLoading, isError } = useEvent(id || '');
+    useDocumentTitle(event ? `${event.title} · Редактирование события` : 'Редактирование события');
 
     const handleSuccess = (updatedEvent: EventWithCounts) => {
         navigate(`${routeBase}/events/${updatedEvent.id}`);

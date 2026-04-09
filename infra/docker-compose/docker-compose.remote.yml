@@ -110,7 +110,7 @@ services:
   bff:
     build:
       context: ../../services/bff
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8080 --reload --workers 4 --timeout 120
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8080 --reload --workers 4 --worker-class gthread --threads 8 --timeout 120
     volumes:
       - ../../services/bff/src:/app/src
     ports:
@@ -136,7 +136,6 @@ services:
       # Local domains
       - BFF_TENANT_HOST_SUFFIX=localhost
       - BFF_DEV_AUTO_TENANT=true
-      - BFF_COOKIE_DOMAIN=.aef.localhost
       # Internal trust
       - BFF_INTERNAL_HMAC_SECRET=dev-internal-hmac
       - BFF_UPDSPACEID_CALLBACK_SECRET=${BFF_UPDSPACEID_CALLBACK_SECRET:?BFF_UPDSPACEID_CALLBACK_SECRET is required}
@@ -158,7 +157,7 @@ services:
     labels:
       - traefik.enable=true
       # Serve API from both api.<tenant>.localhost and <tenant>.localhost for same-origin dev
-      - traefik.http.routers.bff.rule=(Host(`api.aef.localhost`) || Host(`aef.localhost`)) && PathPrefix(`/api/v1`)
+      - traefik.http.routers.bff.rule=(Host(`api.aef.localhost`) || Host(`aef.localhost`) || Host(`portal.localhost`)) && PathPrefix(`/api/v1`)
       - traefik.http.routers.bff.entrypoints=web
       - traefik.http.services.bff.loadbalancer.server.port=8080
 
@@ -254,7 +253,7 @@ services:
   activity:
     build:
       context: ../../services/activity
-    command: gunicorn app.wsgi:application --bind 0.0.0.0:8006 --reload
+    command: gunicorn app.wsgi:application --bind 0.0.0.0:8006 --reload --workers 2 --worker-class gthread --threads 4 --timeout 120
     volumes:
       - ../../services/activity/src:/app/src
     ports:
@@ -288,8 +287,8 @@ services:
 
   frontend:
     build:
-      context: ../../web/portal-frontend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: web/portal-frontend/Dockerfile
       target: dev
     volumes:
       - ../../web/portal-frontend:/app
@@ -306,8 +305,12 @@ services:
       - bff
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`aef.localhost`)
-      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.routers.frontend-aef.rule=Host(`aef.localhost`)
+      - traefik.http.routers.frontend-aef.entrypoints=web
+      - traefik.http.routers.frontend-aef.service=frontend
+      - traefik.http.routers.frontend-portal.rule=Host(`portal.localhost`)
+      - traefik.http.routers.frontend-portal.entrypoints=web
+      - traefik.http.routers.frontend-portal.service=frontend
       - traefik.http.services.frontend.loadbalancer.server.port=5173
 
 volumes:
