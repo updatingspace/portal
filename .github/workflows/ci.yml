@@ -204,6 +204,7 @@ jobs:
   docker-build-validate:
     name: Build image (${{ matrix.image }})
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     needs:
       - python-services-check
       - ydb-schema-check
