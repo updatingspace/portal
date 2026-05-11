@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
-import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+
+from .cloud_runtime import build_database_settings, build_ydb_migration_modules
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -94,23 +95,17 @@ MIDDLEWARE = [
 ROOT_URLCONF = "app.urls"
 WSGI_APPLICATION = "app.wsgi.application"
 
-DATABASE_URL = read_env("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-        )
-    }
-elif ALLOW_SQLITE:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
-else:
-    raise ImproperlyConfigured(SQLITE_FALLBACK_HINT)
+DB_DRIVER, DATABASES = build_database_settings(
+    base_dir=BASE_DIR,
+    read_env=read_env,
+    allow_sqlite=ALLOW_SQLITE,
+    sqlite_fallback_hint=SQLITE_FALLBACK_HINT,
+)
+if DB_DRIVER == "ydb":
+    MIGRATION_MODULES = build_ydb_migration_modules(
+        "activity",
+        "core",
+    )
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
@@ -159,6 +154,14 @@ ACTIVITY_RETENTION_PROCESSED_OUTBOX_DAYS = int(
     os.getenv("ACTIVITY_RETENTION_PROCESSED_OUTBOX_DAYS", "14")
 )
 ACTIVITY_RETENTION_AUDIT_DAYS = int(os.getenv("ACTIVITY_RETENTION_AUDIT_DAYS", "365"))
+
+# Cache is local-only; do not rely on shared Redis state in production.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "activity-local-cache",
+    }
+}
 
 # ============================================================================
 # News Media Configuration

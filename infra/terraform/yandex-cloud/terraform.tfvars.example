@@ -1,0 +1,44 @@
+cloud_id  = "b1gxxxxxxxxxxxxxxx"
+folder_id = "b1gxxxxxxxxxxxxxxx"
+
+name_prefix   = "updspace-portal-prod"
+public_zone   = "updspace.com"
+manage_dns_zone = false
+certificate_id  = "fpqxxxxxxxxxxxxxxx"
+
+id_public_base_url = "https://id.updspace.com"
+id_internal_api_url = "https://id-internal.updspace.com/api/v1"
+
+container_image_tags = {
+  access       = "2026.04.09-1"
+  activity     = "2026.04.09-1"
+  bff          = "2026.04.09-1"
+  events       = "2026.04.09-1"
+  featureflags = "2026.04.09-1"
+  gamification = "2026.04.09-1"
+  portal       = "2026.04.09-1"
+  voting       = "2026.04.09-1"
+}
+
+service_environment = {
+  access = {}
+  portal = {}
+  featureflags = {}
+  activity = {
+    STEAM_API_KEY = "replace-me"
+  }
+  events = {}
+  gamification = {}
+  voting = {}
+  bff = {
+    BFF_OIDC_CLIENT_ID = "portal-prod-client"
+  }
+}
+
+lockbox_secret_entries = {
+  DJANGO_SECRET_KEY              = "replace-me-django-secret"
+  BFF_INTERNAL_HMAC_SECRET       = "replace-me-hmac-secret"
+  BFF_UPDSPACEID_CALLBACK_SECRET = "replace-me-callback-secret"
+  BFF_OIDC_CLIENT_SECRET         = "replace-me-oidc-client-secret"
+  ACTIVITY_DATA_ENCRYPTION_KEY   = "replace-me-activity-encryption-key"
+}

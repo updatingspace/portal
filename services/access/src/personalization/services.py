@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 
 from .models import UserPreference
@@ -10,6 +11,10 @@ from .models import UserPreference
 
 class UserPreferenceService:
     """Business logic for user preferences."""
+
+    @staticmethod
+    def _is_ydb_mode() -> bool:
+        return getattr(settings, "DB_DRIVER", "postgres") == "ydb"
 
     @staticmethod
     def get_preferences(user_id: uuid.UUID, tenant_id: uuid.UUID) -> UserPreference:
@@ -42,9 +47,12 @@ class UserPreferenceService:
         Returns:
             Updated UserPreference instance
         """
-        preference = UserPreference.objects.select_for_update().get(
-            user_id=user_id, tenant_id=tenant_id
-        )
+        preference, _ = UserPreference.get_or_create_for_user(user_id, tenant_id)
+        if not UserPreferenceService._is_ydb_mode():
+            preference = UserPreference.objects.select_for_update().get(
+                user_id=user_id,
+                tenant_id=tenant_id,
+            )
 
         # Flatten nested updates to model fields
         flat_updates = {}

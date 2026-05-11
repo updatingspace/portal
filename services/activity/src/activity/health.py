@@ -40,9 +40,7 @@ def _check_database() -> CheckResult:
     """Check database connectivity and performance."""
     start = time.perf_counter()
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
+        connection.ensure_connection()
         latency = (time.perf_counter() - start) * 1000
 
         # Check for pending outbox events (sign of processing issues)

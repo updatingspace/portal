@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Callable, Iterable, Mapping
 from urllib.parse import urlparse
 
@@ -7,6 +9,9 @@ import httpx
 from django.conf import settings
 
 from .security import sign_internal_request
+
+_TOKEN_LOCK = threading.Lock()
+_TOKEN_CACHE: dict[str, str | float] = {"token": "", "expires_at": 0.0}
 
 
 def _filtered_request_headers(
@@ -39,6 +44,57 @@ def get_httpx_client(timeout: float | None = None) -> httpx.Client:
     return httpx.Client(timeout=timeout, follow_redirects=False)
 
 
+def _normalize_base_url(url: str) -> str:
+    return url.rstrip("/")
+
+
+def _requires_private_invoke_auth(upstream_base_url: str) -> bool:
+    private_upstreams = {
+        _normalize_base_url(url)
+        for url in getattr(settings, "BFF_PRIVATE_INVOKE_UPSTREAMS", ())
+    }
+    return _normalize_base_url(upstream_base_url) in private_upstreams
+
+
+def _get_iam_token() -> str:
+    static_token = str(getattr(settings, "YC_IAM_TOKEN", "") or "").strip()
+    if static_token:
+        return static_token
+
+    now = time.time()
+    cached_token = str(_TOKEN_CACHE.get("token", "") or "").strip()
+    cached_expiry = float(_TOKEN_CACHE.get("expires_at", 0.0) or 0.0)
+    if cached_token and cached_expiry > now + 60:
+        return cached_token
+
+    with _TOKEN_LOCK:
+        now = time.time()
+        cached_token = str(_TOKEN_CACHE.get("token", "") or "").strip()
+        cached_expiry = float(_TOKEN_CACHE.get("expires_at", 0.0) or 0.0)
+        if cached_token and cached_expiry > now + 60:
+            return cached_token
+
+        metadata_url = str(getattr(settings, "YC_IAM_TOKEN_URL", "") or "").strip()
+        if not metadata_url:
+            raise RuntimeError("YC_IAM_TOKEN_URL is not configured")
+
+        response = httpx.get(
+            metadata_url,
+            headers={"Metadata-Flavor": "Google"},
+            timeout=3.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        token = str(payload.get("access_token") or "").strip()
+        if not token:
+            raise RuntimeError("Metadata service did not return access_token")
+
+        expires_in = float(payload.get("expires_in") or 300)
+        _TOKEN_CACHE["token"] = token
+        _TOKEN_CACHE["expires_at"] = time.time() + expires_in
+        return token
+
+
 def proxy_request(
     *,
     upstream_base_url: str,
@@ -58,6 +114,8 @@ def proxy_request(
 
     headers = _filtered_request_headers(incoming_headers)
     headers.update(context_headers)
+    if _requires_private_invoke_auth(upstream_base_url):
+        headers["Authorization"] = f"Bearer {_get_iam_token()}"
 
     # signed_path must match the actual path that the target service sees.
     # Extract the path portion from the URL we're actually sending.

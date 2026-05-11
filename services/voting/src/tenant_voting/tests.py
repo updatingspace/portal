@@ -710,3 +710,46 @@ class VotingDsarApiTests(TestCase):
 
         self.assertFalse(OutboxMessage.objects.filter(id=old_item.id).exists())
         self.assertTrue(OutboxMessage.objects.filter(id=recent_item.id).exists())
+
+    @patch("tenant_voting.management.commands.publish_outbox.httpx.Client")
+    def test_publish_outbox_dry_run_clears_claim(self, _mock_client):
+        message = OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="voting.vote.cast",
+            payload={},
+        )
+
+        call_command(
+            "publish_outbox",
+            "--batch-size=10",
+            "--lease-seconds=60",
+            "--dry-run",
+            stdout=StringIO(),
+        )
+
+        message.refresh_from_db()
+        self.assertIsNone(message.published_at)
+        self.assertIsNone(message.claimed_at)
+        self.assertIsNone(message.claim_token)
+
+    @patch("tenant_voting.management.commands.publish_outbox.httpx.Client")
+    def test_publish_outbox_reclaims_expired_claim(self, _mock_client):
+        message = OutboxMessage.objects.create(
+            tenant_id=self.tenant_id,
+            event_type="voting.vote.cast",
+            payload={},
+            claimed_at=timezone.now() - timedelta(minutes=10),
+        )
+
+        call_command(
+            "publish_outbox",
+            "--batch-size=10",
+            "--lease-seconds=60",
+            "--dry-run",
+            stdout=StringIO(),
+        )
+
+        message.refresh_from_db()
+        self.assertIsNone(message.published_at)
+        self.assertIsNone(message.claimed_at)
+        self.assertIsNone(message.claim_token)

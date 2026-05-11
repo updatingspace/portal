@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
-import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+
+from .cloud_runtime import build_database_settings, build_ydb_migration_modules
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -104,20 +105,19 @@ MIDDLEWARE = [
 ROOT_URLCONF = "app.urls"
 WSGI_APPLICATION = "app.wsgi.application"
 
-DATABASE_URL = read_env("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
-    }
-elif ALLOW_SQLITE:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
-else:
-    raise ImproperlyConfigured(SQLITE_FALLBACK_HINT)
+DB_DRIVER, DATABASES = build_database_settings(
+    base_dir=BASE_DIR,
+    read_env=read_env,
+    allow_sqlite=ALLOW_SQLITE,
+    sqlite_fallback_hint=SQLITE_FALLBACK_HINT,
+)
+if DB_DRIVER == "ydb":
+    MIGRATION_MODULES = build_ydb_migration_modules(
+        "core",
+        "nominations",
+        "tenant_voting",
+        "votings",
+    )
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"

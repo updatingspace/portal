@@ -11,7 +11,7 @@ export const useDocumentTitle = (pageTitle?: string | null) => {
   const { user } = useAuth();
   const { activeTenant } = useTenantContext();
 
-  const tenantSlug = useMemo(() => {
+  const tenantSlug = (() => {
     if (routeTenantSlug?.trim()) {
       return routeTenantSlug.trim();
     }
@@ -29,7 +29,7 @@ export const useDocumentTitle = (pageTitle?: string | null) => {
     }
 
     return getTenantAliasFromHost(window.location.host)?.slug ?? null;
-  }, [activeTenant?.tenant_slug, routeTenantSlug, user?.tenant?.slug]);
+  })();
 
   const title = useMemo(
     () => buildDocumentTitle({ pageTitle, tenantSlug }),

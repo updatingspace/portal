@@ -378,6 +378,8 @@ class Outbox(models.Model):
     payload_json = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
     processed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claimed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claim_token = models.UUIDField(null=True, blank=True, db_index=True)
     error_message = models.TextField(blank=True, null=True)
     retry_count = models.PositiveSmallIntegerField(default=0)
 

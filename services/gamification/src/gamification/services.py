@@ -11,6 +11,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import Achievement, AchievementGrant, OutboxMessage
+from core.ymq import schedule_outbox_wakeup
 
 
 def _encode_cursor(dt: datetime, row_id: UUID) -> str:
@@ -70,11 +71,21 @@ def paginate_queryset(
 
 @transaction.atomic
 def create_outbox_event(*, tenant_id: str, event_type: str, payload: dict[str, Any]) -> OutboxMessage:
-    return OutboxMessage.objects.create(
+    outbox = OutboxMessage.objects.create(
         tenant_id=tenant_id,
         event_type=event_type,
         payload=payload,
     )
+    schedule_outbox_wakeup(
+        service_name="gamification",
+        event_type=event_type,
+        tenant_id=tenant_id,
+        payload={
+            "outbox_id": str(outbox.id),
+            "payload": payload,
+        },
+    )
+    return outbox
 
 
 @transaction.atomic

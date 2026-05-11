@@ -14,7 +14,7 @@ description: Backend For Frontend — API Gateway платформы
 
 ## Ключевые функции
 
-1. **Session Management** — HttpOnly cookie, хранение в Redis
+1. **Session Management** — HttpOnly cookie, хранение в DB/YDB
 2. **Tenant Resolution** — определение tenant по subdomain
 3. **Proxy** — проксирование запросов в микросервисы
 4. **Context Injection** — добавление X-Headers с контекстом
@@ -48,8 +48,8 @@ graph LR
     end
 
     subgraph "Session Storage"
-        Redis[(Redis)]
-        Postgres[(Postgres)]
+        DB[(YDB / Postgres)]
+        LocalCache[(LocMemCache)]
     end
 
     subgraph "Services"
@@ -63,8 +63,8 @@ graph LR
     Browser --> Traefik
     Traefik -->|/api/v1/*| BFF
     
-    BFF --> Redis
-    BFF -.->|fallback| Postgres
+    BFF --> DB
+    BFF -.->|opt.| LocalCache
     
     BFF -->|auth| ID
     BFF -->|proxy| Portal
@@ -106,26 +106,7 @@ MIDDLEWARE = [
 
 ## Session Storage
 
-### Redis (Primary)
-
-```python
-class RedisSessionStore:
-    prefix = "bff:session:"
-    ttl = 14 * 24 * 60 * 60  # 14 days
-    
-    def get(self, session_id: str) -> Optional[Session]:
-        data = redis.get(f"{self.prefix}{session_id}")
-        return Session.parse(data) if data else None
-    
-    def set(self, session: Session):
-        redis.setex(
-            f"{self.prefix}{session.session_id}",
-            self.ttl,
-            session.serialize()
-        )
-```
-
-### Postgres (Fallback)
+### DB-backed sessions
 
 ```python
 class Session(models.Model):
@@ -133,6 +114,10 @@ class Session(models.Model):
     user_id = models.UUIDField()
     tenant_id = models.UUIDField()
     master_flags = models.JSONField()
+    active_tenant_id = models.UUIDField(null=True, blank=True)
+    active_tenant_slug = models.CharField(max_length=64, blank=True, default="")
+    active_tenant_set_at = models.DateTimeField(null=True, blank=True)
+    last_tenant_slug = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField()
     expires_at = models.DateTimeField()
 ```
@@ -245,9 +230,6 @@ CORS_ALLOW_CREDENTIALS = True
 ```bash
 # Database
 DATABASE_URL=postgres://user:pass@db_bff:5432/bff
-
-# Redis
-REDIS_URL=redis://redis:6379/1
 
 # Session
 SESSION_TTL=1209600  # 14 days in seconds

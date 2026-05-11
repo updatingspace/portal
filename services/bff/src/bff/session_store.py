@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -42,6 +41,24 @@ def _pending_apps_cache_key(user_id: str) -> str:
 
 
 class SessionStore:
+    @staticmethod
+    def _to_session_data(session: BffSession) -> SessionData:
+        return SessionData(
+            session_id=str(session.id),
+            tenant_id=str(session.tenant_id),
+            user_id=str(session.user_id),
+            master_flags=session.master_flags or {},
+            expires_at=session.expires_at.isoformat(),
+            active_tenant_id=str(session.active_tenant_id) if session.active_tenant_id else "",
+            active_tenant_slug=session.active_tenant_slug or "",
+            active_tenant_set_at=(
+                session.active_tenant_set_at.isoformat()
+                if session.active_tenant_set_at
+                else ""
+            ),
+            last_tenant_slug=session.last_tenant_slug or "",
+        )
+
     def create(
         self,
         *,
@@ -65,12 +82,6 @@ class SessionStore:
             "active_tenant_set_at": "",
             "last_tenant_slug": "",
         }
-
-        cache.set(
-            _cache_key(session_id),
-            payload,
-            timeout=int(ttl.total_seconds()),
-        )
 
         tenant = Tenant.objects.get(id=tenant_id)
         BffSession.objects.create(
@@ -101,42 +112,18 @@ class SessionStore:
         return SessionData(**payload)
 
     def get(self, session_id: str) -> SessionData | None:
-        payload = cache.get(_cache_key(session_id))
-        if payload:
-            # Ensure backwards compat with sessions created before active_tenant fields
-            payload.setdefault("active_tenant_id", "")
-            payload.setdefault("active_tenant_slug", "")
-            payload.setdefault("active_tenant_set_at", "")
-            payload.setdefault("last_tenant_slug", "")
-            return SessionData(**payload)
-
-        if not getattr(settings, "BFF_SESSION_DB_FALLBACK", False):
-            return None
-
         db = (
-            BffSession.objects.filter(id=session_id, revoked_at__isnull=True)
+            BffSession.objects.filter(
+                id=session_id,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            )
             .select_related("tenant")
             .first()
         )
         if not db:
             return None
-        if db.expires_at <= timezone.now():
-            return None
-
-        ttl_seconds = int((db.expires_at - timezone.now()).total_seconds())
-        payload = {
-            "session_id": str(db.id),
-            "tenant_id": str(db.tenant_id),
-            "user_id": str(db.user_id),
-            "master_flags": db.master_flags or {},
-            "expires_at": db.expires_at.isoformat(),
-            "active_tenant_id": "",
-            "active_tenant_slug": "",
-            "active_tenant_set_at": "",
-            "last_tenant_slug": "",
-        }
-        cache.set(_cache_key(session_id), payload, timeout=max(ttl_seconds, 1))
-        return SessionData(**payload)
+        return self._to_session_data(db)
 
     def set_active_tenant(
         self,
@@ -146,64 +133,38 @@ class SessionStore:
         tenant_slug: str,
     ) -> SessionData | None:
         """Set the active tenant in an existing session (path-based tenancy)."""
-        payload = cache.get(_cache_key(session_id))
-        if not payload:
-            return None
-
-        payload.setdefault("active_tenant_id", "")
-        payload.setdefault("active_tenant_slug", "")
-        payload.setdefault("active_tenant_set_at", "")
-        payload.setdefault("last_tenant_slug", "")
-
         now = timezone.now()
-        payload["active_tenant_id"] = tenant_id
-        payload["active_tenant_slug"] = tenant_slug
-        payload["active_tenant_set_at"] = now.isoformat()
-        payload["last_tenant_slug"] = tenant_slug
-
-        # Preserve remaining TTL
-        expires_at_str = payload.get("expires_at", "")
-        try:
-            from datetime import datetime
-
-            expires_at = datetime.fromisoformat(expires_at_str)
-            if timezone.is_naive(expires_at):
-                from zoneinfo import ZoneInfo
-
-                expires_at = expires_at.replace(tzinfo=ZoneInfo("UTC"))
-            ttl_seconds = max(int((expires_at - now).total_seconds()), 1)
-        except Exception:
-            ttl_seconds = int(timedelta(days=14).total_seconds())
-
-        cache.set(_cache_key(session_id), payload, timeout=ttl_seconds)
-        return SessionData(**payload)
+        updated = BffSession.objects.filter(
+            id=session_id,
+            revoked_at__isnull=True,
+            expires_at__gt=now,
+        ).update(
+            active_tenant_id=tenant_id,
+            active_tenant_slug=tenant_slug,
+            active_tenant_set_at=now,
+            last_tenant_slug=tenant_slug,
+        )
+        if not updated:
+            return None
+        session = BffSession.objects.select_related("tenant").filter(id=session_id).first()
+        return self._to_session_data(session) if session else None
 
     def clear_active_tenant(self, session_id: str) -> SessionData | None:
         """Clear the active tenant from session (return to tenantless state)."""
-        payload = cache.get(_cache_key(session_id))
-        if not payload:
+        now = timezone.now()
+        updated = BffSession.objects.filter(
+            id=session_id,
+            revoked_at__isnull=True,
+            expires_at__gt=now,
+        ).update(
+            active_tenant_id=None,
+            active_tenant_slug="",
+            active_tenant_set_at=None,
+        )
+        if not updated:
             return None
-
-        payload["active_tenant_id"] = ""
-        payload["active_tenant_slug"] = ""
-        payload["active_tenant_set_at"] = ""
-
-        expires_at_str = payload.get("expires_at", "")
-        try:
-            from datetime import datetime
-
-            expires_at = datetime.fromisoformat(expires_at_str)
-            now = timezone.now()
-            if timezone.is_naive(expires_at):
-                from zoneinfo import ZoneInfo
-
-                expires_at = expires_at.replace(tzinfo=ZoneInfo("UTC"))
-            ttl_seconds = max(int((expires_at - now).total_seconds()), 1)
-        except Exception:
-            ttl_seconds = int(timedelta(days=14).total_seconds())
-
-        cache.set(_cache_key(session_id), payload, timeout=ttl_seconds)
-        return SessionData(**payload)
+        session = BffSession.objects.select_related("tenant").filter(id=session_id).first()
+        return self._to_session_data(session) if session else None
 
     def cache_user_tenants(
         self,
@@ -262,8 +223,6 @@ class SessionStore:
             cache.delete(_pending_apps_cache_key(user_id))
 
     def revoke(self, session_id: str) -> None:
-        cache.delete(_cache_key(session_id))
-
         # Look up session to get tenant/user for audit before revoking
         session_row = BffSession.objects.filter(
             id=session_id,
@@ -277,6 +236,9 @@ class SessionStore:
             )
             .update(revoked_at=timezone.now())
         )
+
+        if session_row:
+            self.invalidate_user_tenants_cache(str(session_row.user_id))
 
         # Audit: session revocation (PII-safe)
         if session_row:

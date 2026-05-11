@@ -34,6 +34,7 @@ from activity.models import (
 )
 from activity.privacy import safe_exception_label
 from activity.audit import log_audit_event as _log_audit
+from core.ymq import schedule_outbox_wakeup
 from core.errors import error_payload
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ def require_not_suspended(ctx) -> None:
 # ============================================================================
 
 
+@transaction.atomic
 def publish_outbox_event(
     *,
     tenant_id: UUID,
@@ -79,18 +81,25 @@ def publish_outbox_event(
     aggregate_id: str,
     payload: dict[str, Any],
 ) -> Outbox:
-    """
-    Create an outbox event for cross-service communication.
-
-    Should be called within a transaction to ensure atomicity.
-    """
-    return Outbox.objects.create(
+    """Create an outbox event for cross-service communication."""
+    outbox = Outbox.objects.create(
         tenant_id=tenant_id,
         event_type=event_type,
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
         payload_json=payload,
     )
+    schedule_outbox_wakeup(
+        service_name="activity",
+        event_type=event_type,
+        tenant_id=str(tenant_id),
+        payload={
+            "aggregate_type": aggregate_type,
+            "aggregate_id": aggregate_id,
+            "payload": payload,
+        },
+    )
+    return outbox
 
 
 def get_unread_count(*, tenant_id: UUID, user_id: UUID) -> int:
@@ -213,7 +222,7 @@ def _unread_cache_key(tenant_id: UUID, user_id: UUID) -> str:
 
 def _invalidate_user_feed_cache(tenant_id: UUID, user_id: UUID) -> None:
     """Invalidate all feed caches for a user (called when new events arrive)."""
-    # For Django's default cache (memcached/redis), we'd use pattern delete
+    # For any shared cache layer, we'd use pattern delete.
     # For now, we invalidate the unread count cache
     cache.delete(_unread_cache_key(tenant_id, user_id))
 

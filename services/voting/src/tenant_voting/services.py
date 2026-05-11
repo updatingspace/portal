@@ -20,6 +20,7 @@ from .models import (
     PollInviteStatus,
     ResultsVisibility,
 )
+from core.ymq import schedule_outbox_wakeup
 from .schemas import (
     ResultOptionOut,
     ResultNominationOut,
@@ -39,6 +40,32 @@ class VotingServiceError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
+
+
+@transaction.atomic
+def emit_outbox_message(
+    *,
+    tenant_id: str,
+    event_type: str,
+    payload: dict,
+    occurred_at=None,
+) -> OutboxMessage:
+    outbox = OutboxMessage.objects.create(
+        tenant_id=tenant_id,
+        event_type=event_type,
+        payload=payload,
+        occurred_at=occurred_at or timezone.now(),
+    )
+    schedule_outbox_wakeup(
+        service_name="voting",
+        event_type=event_type,
+        tenant_id=tenant_id,
+        payload={
+            "outbox_id": str(outbox.id),
+            "payload": payload,
+        },
+    )
+    return outbox
 
 
 def get_user_role(poll: Poll, user_id: str) -> str | None:
@@ -125,7 +152,7 @@ def cast_vote(
             )
             metrics.VOTES_SUBMITTED.labels(tenant=tenant_id, poll=str(poll.id)).inc()
 
-            OutboxMessage.objects.create(
+            emit_outbox_message(
                 tenant_id=tenant_id,
                 event_type="voting.vote.cast",
                 payload={
@@ -146,6 +173,7 @@ def cast_vote(
         ) from exc
 
 
+@transaction.atomic
 def delete_vote(
     *,
     tenant_id: str,
@@ -171,7 +199,7 @@ def delete_vote(
         raise VotingServiceError(code="POLL_ENDED", message="Poll has ended", status=409)
 
     vote.delete()
-    OutboxMessage.objects.create(
+    emit_outbox_message(
         tenant_id=tenant_id,
         event_type="voting.vote.revoked",
         payload={

@@ -43,10 +43,18 @@ class OutboxMessage(models.Model):
     payload = models.JSONField(default=dict)
     occurred_at = models.DateTimeField(default=timezone.now)
     published_at = models.DateTimeField(null=True, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claim_token = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "feature_flag_outbox"
         indexes = [
-            models.Index(fields=["event_type", "occurred_at"], name="ff_outbox_type_occ_idx"),
-            models.Index(fields=["published_at"], name="ff_outbox_pub_idx"),
+            models.Index(
+                fields=["event_type", "occurred_at"],
+                name="ff_outbox_type_occ_idx",
+            ),
+            models.Index(
+                fields=["published_at"],
+                name="ff_outbox_pub_idx",
+            ),
         ]
