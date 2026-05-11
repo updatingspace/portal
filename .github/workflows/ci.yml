@@ -142,7 +142,14 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -e .
       - name: YDB local smoke
-        run: docker exec ydb-local sh -lc 'ydb -e grpc://localhost:2136 -d /local scheme ls'
+        run: |
+          docker exec ydb-local sh -lc '
+            if command -v ydb >/dev/null 2>&1; then
+              ydb -e grpc://localhost:2136 -d /local scheme ls
+            else
+              /ydb -e grpc://localhost:2136 -d /local scheme ls
+            fi
+          '
       - name: Run migrate_ydb dry-run
         run: python src/manage.py migrate_ydb --dry-run
 
@@ -157,10 +164,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.12.0'
-      - name: Enable corepack
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.28.2 --activate
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
