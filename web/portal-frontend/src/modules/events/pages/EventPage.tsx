@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import { Button, Card, Icon, Label, Loader, Text } from '@gravity-ui/uikit';
 import { Calendar as CalendarIcon, Clock, MapPin, Pencil, Eye, Person } from '@gravity-ui/icons';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -28,10 +30,11 @@ const SCOPE_LABELS: Record<string, string> = {
     TEAM: 'Команда',
 };
 
-const formatDateTime = (value: string, locale: string) => {
+const formatDateTimeWithLocale = (value: string, locale: string, timezone: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Дата уточняется';
     return new Intl.DateTimeFormat(locale, {
+        timeZone: timezone,
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -41,10 +44,10 @@ const formatDateTime = (value: string, locale: string) => {
     }).format(date);
 };
 
-const formatTime = (value: string, locale: string) => {
+const formatTimeWithLocale = (value: string, locale: string, timezone: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return null;
-    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(date);
 };
 
 const formatDuration = (start: string, end: string) => {
@@ -75,8 +78,8 @@ export const EventPage: React.FC = () => {
     const navigate = useNavigate();
     const routeBase = useRouteBase();
     const { user } = useAuth();
-
-    const locale = user?.language?.toLowerCase().startsWith('ru') ? 'ru-RU' : 'en-US';
+    const { intlLocale, timezone } = useFormatters();
+    const locale = intlLocale;
 
     const {
         data: event,
@@ -89,6 +92,7 @@ export const EventPage: React.FC = () => {
 
     const canManage = can(user, 'events.event.manage');
     const canRsvp = can(user, 'events.rsvp.set');
+    useDocumentTitle(event ? `${event.title} · Событие` : 'Событие');
 
     const visibility = event ? (VISIBILITY_LABELS[event.visibility] ?? { label: event.visibility, theme: 'normal' }) : null;
 
@@ -191,8 +195,8 @@ export const EventPage: React.FC = () => {
         );
     }
 
-    const startTime = formatTime(event.startsAt, locale);
-    const endTime = formatTime(event.endsAt, locale);
+    const startTime = formatTimeWithLocale(event.startsAt, locale, timezone);
+    const endTime = formatTimeWithLocale(event.endsAt, locale, timezone);
 
     return (
         <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
@@ -266,11 +270,11 @@ export const EventPage: React.FC = () => {
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div>
                                     <Text variant="caption-2" color="secondary">Начало</Text>
-                                    <Text variant="subheader-1">{formatDateTime(event.startsAt, locale)}</Text>
+                                    <Text variant="subheader-1">{formatDateTimeWithLocale(event.startsAt, locale, timezone)}</Text>
                                 </div>
                                 <div>
                                     <Text variant="caption-2" color="secondary">Окончание</Text>
-                                    <Text variant="subheader-1">{formatDateTime(event.endsAt, locale)}</Text>
+                                    <Text variant="subheader-1">{formatDateTimeWithLocale(event.endsAt, locale, timezone)}</Text>
                                 </div>
                                 {(startTime || endTime) && (
                                     <div>

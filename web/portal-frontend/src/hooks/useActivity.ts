@@ -22,6 +22,8 @@ import {
   fetchSubscriptions,
   updateSubscriptions,
   createNews,
+  fetchNews,
+  listDraftNews,
 } from '../api/activity';
 import type {
   ActivityEvent,
@@ -31,6 +33,7 @@ import type {
   SubscriptionPayload,
   NewsPayload,
 } from '../types/activity';
+import { formatDate } from '@/shared/lib/formatters';
 
 // ============================================================================
 // Query Keys
@@ -46,6 +49,8 @@ export const activityKeys = {
   sources: () => [...activityKeys.all, 'sources'] as const,
   subscriptions: () => [...activityKeys.all, 'subscriptions'] as const,
   news: () => [...activityKeys.all, 'news'] as const,
+  newsById: (newsId: string) => [...activityKeys.news(), newsId] as const,
+  drafts: () => [...activityKeys.news(), 'drafts'] as const,
 };
 
 // ============================================================================
@@ -127,10 +132,7 @@ export function useMarkFeedAsRead() {
   return useMutation({
     mutationFn: markFeedAsRead,
     onSuccess: () => {
-      // Reset unread count
       queryClient.setQueryData(activityKeys.unreadCount(), 0);
-      // Invalidate feed to refresh
-      queryClient.invalidateQueries({ queryKey: activityKeys.feed() });
     },
   });
 }
@@ -139,14 +141,13 @@ export function useMarkFeedAsRead() {
  * Hook for creating news posts
  */
 export function useCreateNews() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (payload: {
       title?: string | null;
       body: string;
       tags?: string[];
       visibility: 'public' | 'community' | 'team' | 'private';
+      status?: NewsPayload['status'];
       scopeType?: 'TENANT' | 'COMMUNITY' | 'TEAM';
       scopeId?: string | null;
       media?: NewsPayload['media'];
@@ -156,14 +157,29 @@ export function useCreateNews() {
         body: payload.body,
         tags: payload.tags ?? [],
         visibility: payload.visibility,
+        status: payload.status ?? 'published',
         scope_type: payload.scopeType,
         scope_id: payload.scopeId ?? undefined,
         media: payload.media ?? [],
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: activityKeys.feed() });
-      queryClient.invalidateQueries({ queryKey: activityKeys.unreadCount() });
-    },
+  });
+}
+
+export function useNews(newsId: string | null | undefined) {
+  return useQuery({
+    queryKey: newsId ? activityKeys.newsById(newsId) : [...activityKeys.news(), 'missing'],
+    queryFn: () => fetchNews(newsId!),
+    enabled: Boolean(newsId),
+    staleTime: 10_000,
+  });
+}
+
+export function useDraftNews(limit = 20, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...activityKeys.drafts(), limit] as const,
+    queryFn: () => listDraftNews(limit),
+    enabled: options?.enabled ?? true,
+    staleTime: 10_000,
   });
 }
 
@@ -318,7 +334,7 @@ export function groupFeedByDate(items: ActivityEvent[]): Map<string, ActivityEve
 
   items.forEach((item) => {
     const parsed = new Date(item.occurredAt);
-    const date = Number.isNaN(parsed.getTime()) ? 'Без даты' : parsed.toLocaleDateString();
+    const date = Number.isNaN(parsed.getTime()) ? 'Без даты' : formatDate(parsed);
     const existing = groups.get(date) ?? [];
     groups.set(date, [...existing, item]);
   });

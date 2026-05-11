@@ -29,6 +29,7 @@ class UserPreferenceModelTests(TestCase):
         )
 
         self.assertEqual(pref.theme, "auto")
+        self.assertEqual(pref.theme_source, "portal")
         self.assertEqual(pref.accent_color, "#007AFF")
         self.assertEqual(pref.font_size, "medium")
         self.assertEqual(pref.language, "en")
@@ -92,6 +93,7 @@ class UserPreferenceApiTests(TestCase):
         self.assertEqual(data["user_id"], self.user_id)
         self.assertEqual(data["tenant_id"], self.tenant_id)
         self.assertEqual(data["appearance"]["theme"], "auto")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "en")
 
     def test_get_preferences_returns_existing(self):
@@ -111,6 +113,7 @@ class UserPreferenceApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "ru")
 
     def test_get_preferences_requires_context(self):
@@ -135,6 +138,7 @@ class UserPreferenceApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "dark")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         # Other fields should remain default
         self.assertEqual(data["appearance"]["font_size"], "medium")
 
@@ -205,6 +209,7 @@ class UserPreferenceApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["appearance"]["theme"], "auto")
+        self.assertEqual(data["appearance"]["theme_source"], "portal")
         self.assertEqual(data["localization"]["language"], "en")
         self.assertEqual(data["privacy"]["profile_visibility"], "members")
 

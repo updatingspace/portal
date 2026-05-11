@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 // Base schemas for individual types
 export const themeSchema = z.enum(['light', 'dark', 'auto']);
+export const themeSourceSchema = z.enum(['portal', 'id']);
 export const languageSchema = z.enum(['en', 'ru']);
 export const fontSizeSchema = z.enum(['small', 'medium', 'large']);
 export const profileVisibilitySchema = z.enum(['public', 'members', 'private']);
@@ -33,6 +34,7 @@ export const timeFormatSchema = z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9
 // Appearance settings schema
 export const appearanceSettingsSchema = z.object({
   theme: themeSchema.optional(),
+  theme_source: themeSourceSchema.optional(),
   accent_color: hexColorSchema.optional(),
   font_size: fontSizeSchema.optional(),
   high_contrast: z.boolean().optional(),
@@ -129,6 +131,7 @@ export const userPreferencesSchema = z.object({
   tenant_id: z.string().uuid(),
   appearance: z.object({
     theme: themeSchema,
+    theme_source: themeSourceSchema,
     accent_color: hexColorSchema,
     font_size: fontSizeSchema,
     high_contrast: z.boolean(),

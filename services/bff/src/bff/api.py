@@ -28,7 +28,12 @@ from .errors import error_response
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
-from .tenant import resolve_tenant_by_slug, validate_tenant_slug
+from .tenant import (
+    get_or_create_global_tenant,
+    resolve_tenant_by_slug,
+    tenant_slug_from_host,
+    validate_tenant_slug,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -61,6 +66,49 @@ def _require_auth(request: HttpRequest):
             status=401,
         )
     return ctx, None
+
+
+def _resolve_auth_tenant(request: HttpRequest):
+    tenant = getattr(request, "tenant", None)
+    if tenant:
+        return tenant
+
+    requested_slug = tenant_slug_from_host(request.get_host())
+    if requested_slug:
+        return None
+
+    return get_or_create_global_tenant()
+
+
+def _sanitize_next_path(next_path: str | None, *, default: str = "/choose-tenant") -> str:
+    candidate = str(next_path or "").strip()
+    if not candidate:
+        return default
+    if (
+        candidate.startswith("http://")
+        or candidate.startswith("https://")
+        or candidate.startswith("//")
+    ):
+        return default
+    if not candidate.startswith("/"):
+        return default
+    return candidate
+
+
+def _auth_error_redirect(
+    request: HttpRequest,
+    *,
+    code: str,
+    next_path: str | None = None,
+) -> HttpResponseRedirect:
+    params: dict[str, str] = {
+        "next": _sanitize_next_path(next_path),
+        "auth_error": code,
+    }
+    request_id = getattr(request, "request_id", None)
+    if request_id:
+        params["request_id"] = str(request_id)
+    return HttpResponseRedirect(f"/login?{urlencode(params)}")
 
 
 def _resolve_access_check_path(upstream: str) -> str:
@@ -788,6 +836,8 @@ def session_me(request: HttpRequest):
     if err:
         return err
 
+    tenant_selected = bool(str(ctx.tenant_slug or "").strip())
+
     # MVP aggregation: user + portal profile (optional)
     upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "")
     portal_profile: dict[str, Any] | None = None
@@ -795,7 +845,7 @@ def session_me(request: HttpRequest):
     tenant_membership: dict[str, Any] | None = None
     available_tenants: list[dict[str, str]] = []
     active_tenant: dict[str, str] | None = None
-    if upstream:
+    if upstream and tenant_selected:
         resp = proxy_request(
             upstream_base_url=upstream,
             upstream_path="portal/me",
@@ -881,7 +931,7 @@ def session_me(request: HttpRequest):
         return payload or None
 
     # Best-effort sync: if portal profile has no name, use ID profile names
-    if upstream and id_profile:
+    if upstream and tenant_selected and id_profile:
         try:
             id_user = id_profile.get("user") if isinstance(id_profile, dict) else None
             if isinstance(id_user, dict):
@@ -915,14 +965,19 @@ def session_me(request: HttpRequest):
     else:
         id_frontend_base_url = None
 
-    capabilities, roles = _load_effective_access_snapshot(request, ctx)
-    feature_flags, experiments = _load_rollout_snapshot(request, ctx)
-    if not feature_flags:
-        feature_flags = _load_feature_flags_snapshot(request, ctx)
+    if tenant_selected:
+        capabilities, roles = _load_effective_access_snapshot(request, ctx)
+        feature_flags, experiments = _load_rollout_snapshot(request, ctx)
+        if not feature_flags:
+            feature_flags = _load_feature_flags_snapshot(request, ctx)
+    else:
+        capabilities, roles = [], []
+        feature_flags, experiments = {}, {}
 
     # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
     if (
         getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
+        and tenant_selected
         and isinstance(id_profile, dict)
         and tenant_membership is None
         and available_tenants
@@ -988,6 +1043,47 @@ def entry_tenant_applications(request: HttpRequest):
     if err:
         return err
 
+    payload = _decode_json_body(request.body or b"{}")
+    if payload is None:
+        return error_response(
+            code="BAD_REQUEST",
+            message="Invalid JSON body",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    requested_slug = str(payload.get("slug") or "").strip().lower()
+    if not validate_tenant_slug(requested_slug):
+        return error_response(
+            code="INVALID_SLUG",
+            message="Invalid tenant slug",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
+    routing_tenant_slug = str(ctx.tenant_slug or "").strip().lower()
+    routing_tenant_id = str(ctx.tenant_id or "").strip()
+    if not routing_tenant_slug:
+        resolved_tenant = resolve_tenant_by_slug(requested_slug)
+        routing_tenant_slug = resolved_tenant.slug if resolved_tenant else requested_slug
+        routing_tenant_id = resolved_tenant.id if resolved_tenant else ""
+
+    requested_email = str(payload.get("email") or "").strip()
+    if not requested_email:
+        id_profile, _memberships = _load_id_me_payload(request, ctx)
+        if isinstance(id_profile, dict):
+            user_payload = id_profile.get("user")
+            if isinstance(user_payload, dict):
+                requested_email = str(user_payload.get("email") or "").strip()
+
+    if not requested_email:
+        return error_response(
+            code="EMAIL_REQUIRED",
+            message="Application email is required",
+            request_id=getattr(request, "request_id", None),
+            status=400,
+        )
+
     upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
     if not upstream:
         return error_response(
@@ -997,19 +1093,35 @@ def entry_tenant_applications(request: HttpRequest):
             status=502,
         )
 
-    body = request.body or b"{}"
+    application_payload = {
+        "tenant_slug": routing_tenant_slug,
+        "payload_json": {
+            "name": str(payload.get("name") or requested_slug).strip() or requested_slug,
+            "description": str(payload.get("description") or "").strip(),
+            "email": requested_email,
+            "requested_by_user_id": ctx.user_id,
+            "requested_slug": requested_slug,
+        },
+    }
+
+    context_headers: dict[str, str] = {
+        "X-Request-Id": request.request_id,
+        "X-User-Id": ctx.user_id,
+        "X-Tenant-Slug": routing_tenant_slug,
+        "Content-Type": "application/json",
+    }
+    if routing_tenant_id:
+        context_headers["X-Tenant-Id"] = routing_tenant_id
+
     try:
         resp = proxy_request(
             upstream_base_url=upstream,
-            upstream_path="tenant-applications",
+            upstream_path="applications",
             method="POST",
             query_string="",
-            body=body,
+            body=json.dumps(application_payload, separators=(",", ":")).encode("utf-8"),
             incoming_headers=request.headers,
-            context_headers={
-                **_tenantless_id_context_headers(request, ctx),
-                "Content-Type": "application/json",
-            },
+            context_headers=context_headers,
             request_id=request.request_id,
         )
     except Exception:
@@ -1020,10 +1132,39 @@ def entry_tenant_applications(request: HttpRequest):
             status=502,
         )
 
-    return HttpResponse(
-        resp.content,
+    try:
+        response_payload = resp.json()
+    except Exception:
+        response_payload = {
+            "slug": requested_slug,
+            "status": "pending",
+        }
+
+    if resp.status_code < 400:
+        pending_entry = {
+            "id": response_payload.get("id") if isinstance(response_payload, dict) else None,
+            "slug": requested_slug,
+            "status": (
+                response_payload.get("status")
+                if isinstance(response_payload, dict)
+                else None
+            )
+            or "pending",
+        }
+        store = SessionStore()
+        existing_pending = store.get_cached_pending_applications(ctx.user_id) or []
+        deduped_pending = [
+            item
+            for item in existing_pending
+            if str(item.get("slug") or "").strip().lower() != requested_slug
+        ]
+        deduped_pending.append(pending_entry)
+        store.cache_pending_applications(ctx.user_id, deduped_pending)
+
+    return JsonResponse(
+        response_payload,
         status=resp.status_code,
-        content_type=resp.headers.get("content-type", "application/json"),
+        safe=isinstance(response_payload, dict),
     )
 
 
@@ -1075,7 +1216,7 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     Initiates OIDC login flow by redirecting to ID.UpdSpace.
     After user authenticates, they are redirected back to /auth/callback.
     """
-    tenant = getattr(request, "tenant", None)
+    tenant = _resolve_auth_tenant(request)
     if not tenant:
         return error_response(
             code="TENANT_NOT_FOUND",
@@ -1114,10 +1255,7 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     import secrets
     state = secrets.token_urlsafe(32)
 
-    next_path = next if next else "/"
-    # Prevent open redirects
-    if next_path.startswith("http://") or next_path.startswith("https://") or next_path.startswith("//"):
-        next_path = "/"
+    next_path = _sanitize_next_path(next, default="/")
     BffOauthState.objects.create(
         state=state,
         tenant_id=tenant.id,
@@ -1147,47 +1285,30 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     OIDC callback handler. Exchanges authorization code for tokens and creates session.
     """
     if error:
-        return error_response(
-            code="OAUTH_ERROR",
-            message=f"Authorization denied: {error}",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
+        return _auth_error_redirect(request, code="OAUTH_ERROR")
 
     if not code or not state:
-        return error_response(
-            code="BAD_REQUEST",
-            message="Missing code or state parameter",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
+        return _auth_error_redirect(request, code="BAD_REQUEST")
 
     state_row = BffOauthState.objects.filter(state=state).first()
     if not state_row or state_row.expires_at <= timezone.now():
         if state_row:
             state_row.delete()
-        return error_response(
-            code="INVALID_STATE",
-            message="Invalid or expired state",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-    tenant = getattr(request, "tenant", None)
+        return _auth_error_redirect(request, code="INVALID_STATE")
+    tenant = _resolve_auth_tenant(request)
     if not tenant:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TENANT_NOT_FOUND",
-            message="Unknown tenant",
-            request_id=getattr(request, "request_id", None),
-            status=404,
+            next_path=state_row.next_path,
         )
 
     state_tenant_id = str(state_row.tenant_id or "").strip()
     if state_tenant_id and state_tenant_id != str(tenant.id):
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TENANT_MISMATCH",
-            message="OAuth state tenant does not match current tenant",
-            request_id=getattr(request, "request_id", None),
-            status=400,
+            next_path=state_row.next_path,
         )
 
     BffOauthState.objects.filter(state=state).delete()
@@ -1198,11 +1319,10 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     # We need to construct the base URL without the /api/v1 suffix
     id_url = getattr(settings, "BFF_UPSTREAM_ID_URL", "") or getattr(settings, "ID_BASE_URL", "")
     if not id_url:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_NOT_CONFIGURED",
-            message="ID upstream is not configured",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     # Strip /api/v1 suffix to get base URL for OAuth endpoints
@@ -1234,20 +1354,17 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             timeout=10.0,
         )
     except Exception:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable during token exchange",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     if token_resp.status_code != 200:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="TOKEN_EXCHANGE_FAILED",
-            message="Failed to exchange authorization code",
-            request_id=getattr(request, "request_id", None),
-            status=401,
-            details={"upstream_status": token_resp.status_code},
+            next_path=next_path,
         )
 
     tokens = token_resp.json()
@@ -1262,30 +1379,27 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             timeout=10.0,
         )
     except Exception:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable during userinfo fetch",
-            request_id=getattr(request, "request_id", None),
-            status=502,
+            next_path=next_path,
         )
 
     if userinfo_resp.status_code != 200:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="USERINFO_FAILED",
-            message="Failed to fetch user info",
-            request_id=getattr(request, "request_id", None),
-            status=401,
+            next_path=next_path,
         )
 
     userinfo = userinfo_resp.json()
     user_id = userinfo.get("sub") or userinfo.get("user_id")
 
     if not user_id:
-        return error_response(
+        return _auth_error_redirect(
+            request,
             code="INVALID_USERINFO",
-            message="User ID not found in userinfo",
-            request_id=getattr(request, "request_id", None),
-            status=401,
+            next_path=next_path,
         )
 
     # Create BFF session

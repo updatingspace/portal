@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@gravity-ui/uikit';
 
+import { formatDate } from '@/shared/lib/formatters';
 import { formatDeadline, formatTimeLeft } from '../utils';
 import type { DecoratedVoting } from '../types';
 
@@ -20,7 +21,7 @@ export const VotingCard: React.FC<VotingCardProps> = ({ item, nowTs, onOpen }) =
   const deadlineLabel = formatDeadline(item.deadline);
   const timeLeftLabel = formatTimeLeft(item.deadline, item.status, nowTs);
   const shortDeadline = item.deadline
-    ? item.deadline.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' })
+    ? formatDate(item.deadline, {}, { month: 'short', day: 'numeric' })
     : 'без даты';
   const truncatedDescription = item.description
     ? item.description.length > 140

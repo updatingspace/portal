@@ -4,7 +4,9 @@ import type { Locale } from '@/shared/lib/locale';
 
 export type I18nContextValue = {
   locale: Locale;
+  timezone: string;
   changeLocale: (next: Locale) => void;
+  changeTimezone: (next: string) => void;
 };
 
 export const I18nContext = createContext<I18nContextValue | undefined>(undefined);

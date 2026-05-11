@@ -949,40 +949,40 @@ class OidcAuthCallbackTests(TestCase):
         self.host = "aef.updspace.com"
 
     def test_callback_without_code_returns_error(self):
-        """GET /auth/callback without code param returns 400."""
+        """GET /auth/callback without code param redirects with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?state=abc123",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "BAD_REQUEST")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=BAD_REQUEST", resp["Location"])
 
     def test_callback_without_state_returns_error(self):
-        """GET /auth/callback without state param returns 400."""
+        """GET /auth/callback without state param redirects with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?code=abc123",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "BAD_REQUEST")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=BAD_REQUEST", resp["Location"])
 
     def test_callback_with_invalid_state_returns_error(self):
-        """GET /auth/callback with invalid/expired state returns 400."""
+        """GET /auth/callback with invalid/expired state redirects with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?code=abc123&state=invalid-state",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "INVALID_STATE")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=INVALID_STATE", resp["Location"])
 
     def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(self):
         """GET /auth/callback rejects state created for another tenant."""
@@ -1002,22 +1002,23 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "TENANT_MISMATCH")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=TENANT_MISMATCH", resp["Location"])
+        self.assertIn("next=%2Fdashboard", resp["Location"])
         self.assertTrue(BffOauthState.objects.filter(state=state).exists())
 
     def test_callback_with_oauth_error_returns_error(self):
-        """GET /auth/callback with error param returns 400."""
+        """GET /auth/callback with error param redirects with auth_error."""
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
             resp = self.client.get(
                 "/api/v1/auth/callback?error=access_denied",
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 400)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "OAUTH_ERROR")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=OAUTH_ERROR", resp["Location"])
 
     @patch("httpx.post")
     @patch("httpx.get")
@@ -1088,7 +1089,7 @@ class OidcAuthCallbackTests(TestCase):
 
     @patch("httpx.post")
     def test_callback_token_exchange_failure_returns_error(self, mock_post):
-        """Failed token exchange returns 401."""
+        """Failed token exchange redirects to login with auth_error."""
         state = "valid-state-456"
         BffOauthState.objects.create(
             state=state,
@@ -1113,14 +1114,15 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 401)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "TOKEN_EXCHANGE_FAILED")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
+        self.assertIn("next=%2F", resp["Location"])
 
     @patch("httpx.post")
     @patch("httpx.get")
     def test_callback_userinfo_failure_returns_error(self, mock_get, mock_post):
-        """Failed userinfo fetch returns 401."""
+        """Failed userinfo fetch redirects to login with auth_error."""
         state = "valid-state-789"
         BffOauthState.objects.create(
             state=state,
@@ -1149,9 +1151,10 @@ class OidcAuthCallbackTests(TestCase):
                 HTTP_HOST=self.host,
             )
 
-        self.assertEqual(resp.status_code, 401)
-        payload = resp.json()
-        self.assertEqual(payload["error"]["code"], "USERINFO_FAILED")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login?", resp["Location"])
+        self.assertIn("auth_error=USERINFO_FAILED", resp["Location"])
+        self.assertIn("next=%2F", resp["Location"])
 
 
 class OidcAuthIntegrationTests(TestCase):

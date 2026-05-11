@@ -1,3 +1,10 @@
+import {
+  getPortalHostForTenantAlias,
+  getTenantAliasFromHost,
+  getTenantAppRootPath,
+  toCanonicalTenantPath,
+} from '../../shared/lib/tenant';
+
 const rawLoginPath = (import.meta.env.VITE_LOGIN_PATH as string | undefined) ?? '__VITE_LOGIN_PATH__';
 const rawIdLoginUrl = (import.meta.env.VITE_ID_LOGIN_URL as string | undefined) ?? '__VITE_ID_LOGIN_URL__';
 
@@ -18,7 +25,33 @@ export const ID_LOGIN_URL = (() => {
   return v;
 })();
 
+const buildPortalHostedLoginUrl = (nextPath: string | null): string | null => {
+  if (typeof window === 'undefined') return null;
+
+  const tenantAlias = getTenantAliasFromHost(window.location.host);
+  const portalHost = getPortalHostForTenantAlias(window.location.host);
+  if (!tenantAlias || !portalHost) {
+    return null;
+  }
+
+  const canonicalNext = toCanonicalTenantPath(
+    nextPath,
+    tenantAlias.slug,
+  ) || getTenantAppRootPath(tenantAlias.slug);
+  const url = new URL(
+    LOGIN_PATH.startsWith('/') ? LOGIN_PATH : `/${LOGIN_PATH}`,
+    `${window.location.protocol}//${portalHost}`,
+  );
+  url.searchParams.set('next', canonicalNext);
+  return url.toString();
+};
+
 const buildLoginUrl = (nextPath: string | null) => {
+  const portalHostedUrl = buildPortalHostedLoginUrl(nextPath);
+  if (portalHostedUrl) {
+    return portalHostedUrl;
+  }
+
   if (LOGIN_PATH.startsWith('http://') || LOGIN_PATH.startsWith('https://')) {
     const u = new URL(LOGIN_PATH);
     if (nextPath) u.searchParams.set('next', nextPath);

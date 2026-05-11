@@ -16,6 +16,13 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE_LOCAL="$PROJECT_ROOT/infra/docker-compose/docker-compose.dev.yml"
 COMPOSE_FILE_REMOTE="$PROJECT_ROOT/infra/docker-compose/docker-compose.remote.yml"
 
+if [[ -z "${COMPOSE_PROJECT_NAME:-}" ]]; then
+    PROJECT_SLUG="$(basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+    PROJECT_HASH="$(printf '%s' "$PROJECT_ROOT" | shasum | cut -c1-8)"
+    COMPOSE_PROJECT_NAME="updspace-${PROJECT_SLUG}-${PROJECT_HASH}"
+    export COMPOSE_PROJECT_NAME
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,6 +39,8 @@ ID_MODE="local"
 BFF_OIDC_CLIENT_SECRET="${BFF_OIDC_CLIENT_SECRET:-}"
 BFF_OIDC_CLIENT_ID="${BFF_OIDC_CLIENT_ID:-}"
 BFF_UPDSPACEID_CALLBACK_SECRET="${BFF_UPDSPACEID_CALLBACK_SECRET:-}"
+PORTAL_DEV_REDIRECT_ORIGINS="${PORTAL_DEV_REDIRECT_ORIGINS:-http://portal.localhost,http://aef.localhost,http://aef.updspace.local}"
+PORTAL_DEV_REDIRECT_PORTS="${PORTAL_DEV_REDIRECT_PORTS:-5173,5174,5176,4173}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -126,6 +135,7 @@ check_prerequisites() {
     fi
     
     log_success "Prerequisites OK"
+    log_info "Docker Compose project: $COMPOSE_PROJECT_NAME"
 }
 
 # Wait for a service to be healthy
@@ -253,22 +263,36 @@ setup_oidc_client() {
         log_warn "Portal OIDC client setup skipped (may already exist)"
     fi
 
-    # Add portal.localhost redirect URIs for path-based multi-tenancy
-    log_info "Registering portal.localhost redirect URIs..."
+    # Register common local portal origins for both path-based and subdomain-based flows.
+    log_info "Registering local portal redirect URIs..."
     docker compose -f "$compose_file" exec -T updspaceid python src/manage.py shell -c "
 from idp.models import OidcClient
 try:
     c = OidcClient.objects.get(client_id='portal-dev-client')
     uris = c.redirect_uris or []
-    for u in ['http://portal.localhost/api/v1/auth/callback','http://portal.localhost/api/v1/session/callback','http://portal.localhost/callback']:
-        if u not in uris:
-            uris.append(u)
+    desired_name = '${PORTAL_OIDC_CLIENT_NAME:-Portal UpdatingSpace}'.strip()
+    if desired_name:
+        c.name = desired_name
+        c.description = 'Main portal application for UpdSpace communities'
+    origins = [origin.strip().rstrip('/') for origin in '${PORTAL_DEV_REDIRECT_ORIGINS}'.split(',') if origin.strip()]
+    ports = [port.strip() for port in '${PORTAL_DEV_REDIRECT_PORTS}'.split(',') if port.strip()]
+    redirect_paths = ['/api/v1/auth/callback', '/api/v1/session/callback', '/callback']
+
+    for origin in origins:
+        origin_variants = {origin}
+        if origin.startswith('http://') and ':' not in origin[7:]:
+            origin_variants.update({f'{origin}:{port}' for port in ports})
+        for origin_variant in origin_variants:
+            for path in redirect_paths:
+                uri = f'{origin_variant}{path}'
+                if uri not in uris:
+                    uris.append(uri)
     c.redirect_uris = uris
     c.save()
     print('OK')
 except Exception as e:
     print(f'SKIP: {e}')
-" 2>/dev/null && log_success "portal.localhost redirect URIs registered" || log_warn "redirect URI registration skipped"
+" 2>/dev/null && log_success "local portal redirect URIs registered" || log_warn "redirect URI registration skipped"
 }
 
 # Health check all services

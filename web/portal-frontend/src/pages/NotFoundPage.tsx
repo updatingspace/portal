@@ -1,9 +1,11 @@
 import React from 'react';
 import { Button } from '@gravity-ui/uikit';
 import { Link, useLocation } from 'react-router-dom';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 
 export const NotFoundPage: React.FC = () => {
   const location = useLocation();
+  useDocumentTitle('Страница не найдена');
 
   return (
     <div className="page-section">

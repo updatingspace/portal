@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from '@gravity-ui/uikit';
+import { useI18n } from '@/app/providers/i18nContext';
 
 import {
   fetchHomePageModals,
   trackModalAnalyticsEvent,
   type HomePageModal,
 } from '../api/personalization';
-import { getLocale } from '../shared/lib/locale';
 import { notifyApiError } from '../utils/apiErrorHandling';
 
 const STORAGE_KEY = 'aef-homepage-modals-shown';
@@ -58,6 +58,7 @@ const shouldShowModal = (modal: HomePageModal, shownModals: ShownModalsRecord): 
 };
 
 export const HomePageModalDisplay: React.FC = () => {
+  const { locale } = useI18n();
   const [modals, setModals] = useState<HomePageModal[]>([]);
   const [currentModalIndex, setCurrentModalIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -76,14 +77,14 @@ export const HomePageModalDisplay: React.FC = () => {
       } catch (error) {
         notifyApiError(
           error,
-          getLocale() === 'ru' ? 'Не удалось загрузить уведомления' : 'Failed to load notifications',
+          locale === 'ru' ? 'Не удалось загрузить уведомления' : 'Failed to load notifications',
         );
       }
     };
 
     const timer = setTimeout(loadModals, 1000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     const modal = modals[currentModalIndex];
@@ -98,7 +99,6 @@ export const HomePageModalDisplay: React.FC = () => {
   }, [isOpen, modals, currentModalIndex]);
 
   const currentModal = modals[currentModalIndex];
-  const locale = getLocale();
   const translated = currentModal?.translations?.[locale];
   const title = translated?.title || currentModal?.title || '';
   const content = translated?.content || currentModal?.content || '';

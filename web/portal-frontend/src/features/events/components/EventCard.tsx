@@ -4,6 +4,7 @@ import { Pencil, MapPin, Person, Eye, Clock, ArrowRight, Calendar } from '@gravi
 import { Link } from 'react-router-dom';
 import type { EventWithCounts } from '../../../features/events';
 import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 
 type Variant = 'list' | 'tile';
 
@@ -54,9 +55,9 @@ export const EventCard: React.FC<EventCardProps> = ({
     variant = 'list',
 }) => {
     const routeBase = useRouteBase();
+    const { intlLocale, timezone } = useFormatters();
     const startsAt = useMemo(() => getSafeDate(event.startsAt), [event.startsAt]);
     const endsAt = useMemo(() => getSafeDate(event.endsAt), [event.endsAt]);
-    const locale = typeof navigator !== 'undefined' ? navigator.language : 'ru-RU';
 
     const dateFmt = useMemo(() => {
         if (!startsAt) {
@@ -64,8 +65,8 @@ export const EventCard: React.FC<EventCardProps> = ({
         }
 
         const day = startsAt.getDate();
-        const month = new Intl.DateTimeFormat(locale, { month: 'short' }).format(startsAt).toUpperCase();
-        const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(startsAt);
+        const month = new Intl.DateTimeFormat(intlLocale, { month: 'short', timeZone: timezone }).format(startsAt).toUpperCase();
+        const time = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit', timeZone: timezone }).format(startsAt);
 
         const today = startOfDay(new Date());
         const d0 = startOfDay(startsAt);
@@ -76,18 +77,18 @@ export const EventCard: React.FC<EventCardProps> = ({
                 ? 'Сегодня'
                 : diffDays === 1
                     ? 'Завтра'
-                    : new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' }).format(startsAt);
+                    : new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'long', timeZone: timezone }).format(startsAt);
 
         return { day, month, time, dayLabel };
-    }, [locale, startsAt]);
+    }, [intlLocale, startsAt, timezone]);
 
     const timeRange = useMemo(() => {
         if (!startsAt) return null;
-        const startLabel = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(startsAt);
+        const startLabel = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit', timeZone: timezone }).format(startsAt);
         if (!endsAt) return startLabel;
-        const endLabel = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(endsAt);
+        const endLabel = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit', timeZone: timezone }).format(endsAt);
         return `${startLabel}–${endLabel}`;
-    }, [endsAt, locale, startsAt]);
+    }, [endsAt, intlLocale, startsAt, timezone]);
 
     const visibility = VISIBILITY_CONFIG[event.visibility] || { theme: 'normal' as const, label: event.visibility, accent: 'bg-slate-400' };
     const totalAttendees = (event.rsvpCounts?.going || 0) + (event.rsvpCounts?.interested || 0);

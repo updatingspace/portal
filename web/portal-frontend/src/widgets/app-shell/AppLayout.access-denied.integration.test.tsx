@@ -4,7 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AccessDeniedError, emitAccessDenied } from '../../api/accessDenied';
+import { I18nProvider } from '../../app/providers/I18nProvider';
 import { AuthProvider } from '../../contexts/AuthContext';
+import { TenantProvider } from '../../contexts/TenantContext';
 import { AppLayout } from './AppLayout';
 import { AuthInitializer } from '../../test/test-utils';
 
@@ -16,6 +18,14 @@ vi.mock('@gravity-ui/navigation', () => ({
 
 vi.mock('./AppHeader', () => ({
   AppHeader: () => <div data-testid="app-header" />,
+}));
+
+vi.mock('../../app/providers/RouteDocumentTitle', () => ({
+  RouteDocumentTitle: () => null,
+}));
+
+vi.mock('../../features/personalization/runtime/PersonalizationRuntime', () => ({
+  PersonalizationRuntime: () => null,
 }));
 
 const BASE_USER = {
@@ -32,14 +42,18 @@ const BASE_USER = {
 function renderAppLayout(userOverrides: Partial<typeof BASE_USER> = {}) {
   return render(
     <MemoryRouter initialEntries={['/app/feed']}>
-      <AuthProvider bootstrap={false}>
-        <AuthInitializer user={{ ...BASE_USER, ...userOverrides }} />
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/app/feed" element={<div>Feed Content</div>} />
-          </Route>
-        </Routes>
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider bootstrap={false}>
+          <TenantProvider>
+            <AuthInitializer user={{ ...BASE_USER, ...userOverrides }} />
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/app/feed" element={<div>Feed Content</div>} />
+              </Route>
+            </Routes>
+          </TenantProvider>
+        </AuthProvider>
+      </I18nProvider>
     </MemoryRouter>,
   );
 }

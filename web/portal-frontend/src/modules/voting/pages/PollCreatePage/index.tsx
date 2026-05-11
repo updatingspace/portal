@@ -7,6 +7,29 @@ import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
 import type { PollCreatePayload, PollTemplate, PollUpdatePayload, ResultsVisibility } from '../../../../features/voting/types';
 
+const pageShellStyle: React.CSSProperties = {
+  minHeight: 'calc(100vh - 64px)',
+  backgroundColor: 'var(--g-color-base-background)',
+};
+
+const centeredPageShellStyle: React.CSSProperties = {
+  ...pageShellStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const pageContentStyle: React.CSSProperties = {
+  maxWidth: 1120,
+  margin: '0 auto',
+};
+
+const templateFormGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 24,
+  gridTemplateColumns: 'minmax(0, 1.6fr) minmax(320px, 1fr)',
+};
+
 const creationSteps = [
   {
     title: 'Выберите старт',
@@ -119,17 +142,22 @@ export const PollCreatePage: React.FC = () => {
 
   if (templatesLoading) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
-        <Loader size="l" />
+      <div style={centeredPageShellStyle}>
+        <div className="flex flex-col items-center gap-3">
+          <Loader size="l" />
+          <Text variant="body-2" color="secondary">
+            Загружаем шаблоны опросов…
+          </Text>
+        </div>
       </div>
     );
   }
 
   if (showForm) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+      <div style={pageShellStyle}>
         <div className="bg-white border-b border-slate-200">
-          <div className="container max-w-6xl mx-auto px-4 py-6">
+          <div className="container px-4 py-6" style={pageContentStyle}>
             <Text variant="header-1" className="text-slate-900">
               {selectedTemplate ? `Создание по шаблону «${selectedTemplate.title}»` : 'Новый опрос'}
             </Text>
@@ -139,7 +167,7 @@ export const PollCreatePage: React.FC = () => {
           </div>
         </div>
 
-        <div className="container max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1.6fr,1fr]">
+        <div className="container px-4 py-6" style={{ ...pageContentStyle, ...templateFormGridStyle }}>
           <Card className="p-6">
             <PollForm
               initialData={
@@ -160,7 +188,7 @@ export const PollCreatePage: React.FC = () => {
             />
           </Card>
 
-          <div className="space-y-4">
+          <div className="d-grid gap-4">
             <Card className="p-5 border border-dashed border-slate-200">
               <Text variant="subheader-2">Шаблон</Text>
               <Text variant="body-2" color="secondary" className="mt-2">
@@ -201,9 +229,9 @@ export const PollCreatePage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+    <div style={pageShellStyle}>
       <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6">
+        <div className="container px-4 py-6" style={pageContentStyle}>
           <Text variant="header-1" className="text-slate-900">
             Создание опроса
           </Text>
@@ -213,7 +241,7 @@ export const PollCreatePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <div className="container px-4 py-6 d-grid gap-4" style={pageContentStyle}>
         <Card className="p-5">
           <Text variant="subheader-2">Как это работает</Text>
           <ol className="mt-3 space-y-3 list-decimal list-inside text-sm text-slate-600">
@@ -287,7 +315,15 @@ export const PollCreatePage: React.FC = () => {
                     <span className="rounded-full border border-slate-200 px-3 py-1">{template.visibility}</span>
                     <span className="rounded-full border border-slate-200 px-3 py-1">{template.questions?.length ?? 0} вопросов</span>
                   </div>
-                  <Button view="normal" width="max" className="mt-4">
+                  <Button
+                    view="normal"
+                    width="max"
+                    className="mt-4"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleTemplateSelect(template);
+                    }}
+                  >
                     Использовать шаблон
                   </Button>
                 </Card>

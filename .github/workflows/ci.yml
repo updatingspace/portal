@@ -69,7 +69,7 @@ jobs:
       DJANGO_DEBUG: 'True'
       DJANGO_SECRET_KEY: ci-test-secret
       DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
-      ALLOWED_HOSTS: .updspace.com,.updating.space,testserver,localhost,127.0.0.1,.yandexcloud.net,bff,access,portal,voting,events,gamification,activity,featureflags
+      ALLOWED_HOSTS: .updspace.com,.updating.space,.localhost,testserver,localhost,127.0.0.1,.yandexcloud.net,bff,access,portal,voting,events,gamification,activity,featureflags
       DATABASE_URL: sqlite:///db.sqlite3
       BFF_INTERNAL_HMAC_SECRET: ci-internal-hmac
       BFF_UPDSPACEID_CALLBACK_SECRET: ci-callback-secret
@@ -113,7 +113,7 @@ jobs:
       DJANGO_DEBUG: 'True'
       DJANGO_SECRET_KEY: ci-test-secret
       DJANGO_ALLOW_INSECURE_DEFAULTS: '1'
-      ALLOWED_HOSTS: .updspace.com,.updating.space,testserver,localhost,127.0.0.1,.yandexcloud.net,bff,access,portal,voting,events,gamification,activity,featureflags
+      ALLOWED_HOSTS: .updspace.com,.updating.space,.localhost,testserver,localhost,127.0.0.1,.yandexcloud.net,bff,access,portal,voting,events,gamification,activity,featureflags
       BFF_INTERNAL_HMAC_SECRET: ci-internal-hmac
       BFF_UPDSPACEID_CALLBACK_SECRET: ci-callback-secret
       ACTIVITY_DATA_ENCRYPTION_KEY: ci-activity-encryption-key

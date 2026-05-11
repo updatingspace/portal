@@ -22,8 +22,10 @@ REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 # Endpoints that work without any tenant context (tenantless mode)
 TENANTLESS_PREFIXES = (
     "/api/v1/entry/",
+    "/api/v1/session/me",
     "/api/v1/session/switch-tenant",
     "/api/v1/session/tenants",
+    "/api/v1/csrf",
 )
 
 # Endpoints that don't require authentication
@@ -221,14 +223,30 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
         if not request.path.startswith("/api/v1/session/"):
             return None
 
-        limit = int(getattr(settings, "BFF_SESSION_RATE_LIMIT_PER_MIN", 60))
+        base_limit = int(getattr(settings, "BFF_SESSION_RATE_LIMIT_PER_MIN", 60))
+        if request.path == "/api/v1/session/me":
+            limit = int(
+                getattr(
+                    settings,
+                    "BFF_SESSION_ME_RATE_LIMIT_PER_MIN",
+                    max(base_limit, 240),
+                )
+            )
+        else:
+            limit = base_limit
         if limit <= 0:
             return None
 
-        ident = request.META.get("REMOTE_ADDR", "unknown")
+        remote_addr = request.META.get("REMOTE_ADDR", "unknown")
+        cookie_name = getattr(
+            settings,
+            "BFF_SESSION_COOKIE_NAME",
+            "updspace_session",
+        )
+        session_id = request.COOKIES.get(cookie_name)
         now = timezone.now()
         window_start = now.replace(second=0, microsecond=0)
-        bucket_key = ident
+        bucket_key = f"{request.path}:{remote_addr}:{session_id or 'anon'}"
         expires_at = window_start + timedelta(minutes=1)
 
         for _ in range(3):

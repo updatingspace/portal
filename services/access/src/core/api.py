@@ -63,6 +63,7 @@ def _preferences_to_dict(pref: UserPreference) -> dict[str, Any]:
         "tenant_id": str(pref.tenant_id),
         "appearance": {
             "theme": pref.theme,
+            "theme_source": pref.theme_source,
             "accent_color": pref.accent_color,
             "font_size": pref.font_size,
             "high_contrast": pref.high_contrast,
@@ -93,6 +94,7 @@ def _get_default_preferences() -> dict[str, Any]:
     return {
         "appearance": {
             "theme": "auto",
+            "theme_source": "portal",
             "accent_color": "#007AFF",
             "font_size": "medium",
             "high_contrast": False,
@@ -124,6 +126,17 @@ def _get_default_preferences() -> dict[str, Any]:
             "recommendations_enabled": True,
         },
     }
+
+
+def _normalize_layout_config(layout_config: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(layout_config, dict):
+        return {"version": 1, "breakpoints": {}}
+
+    normalized = dict(layout_config)
+    normalized.setdefault("version", 1)
+    if not isinstance(normalized.get("breakpoints"), dict):
+        normalized["breakpoints"] = {}
+    return normalized
 
 
 @router.get("/preferences", response=UserPreferencesOut, tags=["preferences"])
@@ -166,6 +179,8 @@ def update_preferences(request: HttpRequest, payload: UserPreferencesIn):
         appearance = payload.appearance.model_dump(exclude_none=True)
         if "theme" in appearance:
             pref.theme = appearance["theme"]
+        if "theme_source" in appearance:
+            pref.theme_source = appearance["theme_source"]
         if "accent_color" in appearance:
             pref.accent_color = appearance["accent_color"]
         if "font_size" in appearance:
@@ -236,6 +251,7 @@ def reset_preferences(request: HttpRequest):
         tenant_id=tenant_id,
         defaults={
             "theme": defaults["appearance"]["theme"],
+            "theme_source": defaults["appearance"]["theme_source"],
             "accent_color": defaults["appearance"]["accent_color"],
             "font_size": defaults["appearance"]["font_size"],
             "high_contrast": defaults["appearance"]["high_contrast"],
@@ -763,7 +779,10 @@ def admin_list_dashboard_layouts(
     include_deleted: bool = False,
 ):
     user_id, tenant_id = _get_user_context(request)
-    query = DashboardLayout.objects.filter(tenant_id=UUID(tenant_id))
+    query = DashboardLayout.objects.filter(
+        tenant_id=UUID(tenant_id),
+        user_id=UUID(user_id),
+    )
     if not include_deleted:
         query = query.filter(deleted_at__isnull=True)
     return list(query.order_by("-is_default", "-updated_at"))
@@ -789,7 +808,7 @@ def admin_create_dashboard_layout(
         user_id=UUID(user_id),
         tenant_id=UUID(tenant_id),
         layout_name=data["layout_name"],
-        layout_config=data.get("layout_config", {}),
+        layout_config=_normalize_layout_config(data.get("layout_config", {})),
         is_default=data.get("is_default", False),
     )
     return layout
@@ -820,7 +839,7 @@ def admin_update_dashboard_layout(
         ).exclude(id=layout.id).update(is_default=False)
 
     layout.layout_name = data["layout_name"]
-    layout.layout_config = data.get("layout_config", layout.layout_config)
+    layout.layout_config = _normalize_layout_config(data.get("layout_config", layout.layout_config))
     layout.is_default = data.get("is_default", layout.is_default)
     layout.save()
     return layout
@@ -880,17 +899,35 @@ def admin_create_dashboard_widget(
         deleted_at__isnull=True,
     )
     data = payload.model_dump()
-    widget = DashboardWidget.objects.create(
-        layout=layout,
-        tenant_id=UUID(tenant_id),
-        widget_key=data["widget_key"],
-        position_x=data.get("position_x", 0),
-        position_y=data.get("position_y", 0),
-        width=data.get("width", 4),
-        height=data.get("height", 3),
-        settings=data.get("settings", {}),
-        is_visible=data.get("is_visible", True),
+    defaults = {
+        "tenant_id": UUID(tenant_id),
+        "position_x": data.get("position_x", 0),
+        "position_y": data.get("position_y", 0),
+        "width": data.get("width", 4),
+        "height": data.get("height", 3),
+        "settings": data.get("settings", {}),
+        "is_visible": data.get("is_visible", True),
+    }
+    widget = (
+        DashboardWidget.objects.filter(
+            layout=layout,
+            widget_key=data["widget_key"],
+            deleted_at__isnull=True,
+        )
+        .first()
+        or DashboardWidget.objects.filter(layout=layout, widget_key=data["widget_key"]).first()
     )
+    if widget is None:
+        widget = DashboardWidget.objects.create(
+            layout=layout,
+            widget_key=data["widget_key"],
+            **defaults,
+        )
+    else:
+        for attr, value in defaults.items():
+            setattr(widget, attr, value)
+        widget.deleted_at = None
+        widget.save()
     return widget
 
 

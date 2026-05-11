@@ -18,6 +18,7 @@ Portal - это доменный сервис, который хранит socia
 | --- | --- |
 | `/portal/me` | own profile read/update |
 | `/portal/profiles` | tenant profile listing and lookup |
+| `/portal/internal/profiles` | internal profile summary lookup for other services |
 | `/portal/modules` | enabled portal modules |
 | `/communities` | communities CRUD-lite |
 | `/teams` | teams CRUD-lite |

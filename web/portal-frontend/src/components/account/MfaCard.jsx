@@ -26,7 +26,7 @@ const headerStyle = {
   gap: 12,
 };
 
-export default function MfaCard({ profile }) {
+export default function MfaCard({ profile = null }) {
   const toaster = useToaster();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
@@ -287,8 +287,4 @@ MfaCard.propTypes = {
   profile: PropTypes.shape({
     has_2fa: PropTypes.bool,
   }),
-};
-
-MfaCard.defaultProps = {
-  profile: null,
 };

@@ -5,6 +5,9 @@ export type SessionMe = {
   tenant: { id: string; slug: string };
   portal_profile?: Record<string, unknown> | null;
   id_profile?: Record<string, unknown> | null;
+  id_defaults?: {
+    theme?: 'light' | 'dark' | 'auto' | null;
+  } | null;
   tenant_membership?: Record<string, unknown> | null;
   available_tenants?: Array<{ id: string; slug: string }>;
   id_frontend_base_url?: string | null;

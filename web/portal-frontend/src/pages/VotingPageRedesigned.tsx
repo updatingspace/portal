@@ -18,6 +18,7 @@ import { ArrowLeft, ArrowRotateRight, Clock } from '@gravity-ui/icons';
 import { useVotingSession } from '@/features/voting/hooks/useVotingUnified';
 import { VotingAlerts, createVotingAlerts } from '@/features/voting/components/VotingAlerts';
 import type { VotingAlert } from '@/features/voting/components/VotingAlerts';
+import { formatDateTime } from '@/shared/lib/formatters';
 
 // ============================================================================
 // Types
@@ -33,11 +34,8 @@ const formatDeadline = (value?: string | null) => {
   if (!value) return null;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
-  
-  return parsed.toLocaleString('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+
+  return formatDateTime(parsed);
 };
 
 const getTimeRemaining = (endsAt?: string | null): string | null => {
@@ -290,6 +288,7 @@ export const VotingPageRedesigned: React.FC = () => {
                     disabled={isFetching}
                   >
                     <Icon data={ArrowRotateRight} size={16} />
+                    <span className="ms-1">Обновить</span>
                   </Button>
                 </div>
               </div>

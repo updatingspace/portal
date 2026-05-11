@@ -3,19 +3,18 @@
  */
 import type { LabelProps } from '@gravity-ui/uikit';
 import type { ModalType, WidgetType } from './types';
+import { getLocale } from '@/shared/lib/locale';
+import {
+  formatDate as formatSharedDate,
+  formatDateTime as formatSharedDateTime,
+} from '@/shared/lib/formatters';
 
 /**
  * Format date for display
  */
 export function formatDate(dateString: string | null): string {
   if (!dateString) return '—';
-
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  return formatSharedDate(dateString);
 }
 
 /**
@@ -23,15 +22,7 @@ export function formatDate(dateString: string | null): string {
  */
 export function formatDateTime(dateString: string | null): string {
   if (!dateString) return '—';
-
-  const date = new Date(dateString);
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatSharedDateTime(dateString);
 }
 
 /**
@@ -53,12 +44,20 @@ export function getModalTypeColor(
  * Get display label for modal type
  */
 export function getModalTypeLabel(modalType: ModalType): string {
-  const labels: Record<ModalType, string> = {
-    info: 'Info',
-    warning: 'Warning',
-    success: 'Success',
-    promo: 'Promo',
-  };
+  const isRu = getLocale() === 'ru';
+  const labels: Record<ModalType, string> = isRu
+    ? {
+        info: 'Информация',
+        warning: 'Предупреждение',
+        success: 'Успех',
+        promo: 'Промо',
+      }
+    : {
+        info: 'Info',
+        warning: 'Warning',
+        success: 'Success',
+        promo: 'Promo',
+      };
   return labels[modalType] || modalType;
 }
 
@@ -81,12 +80,20 @@ export function getWidgetTypeColor(
  * Get display label for widget type
  */
 export function getWidgetTypeLabel(widgetType: WidgetType): string {
-  const labels: Record<WidgetType, string> = {
-    banner: 'Banner',
-    announcement: 'Announcement',
-    promotion: 'Promotion',
-    notification: 'Notification',
-  };
+  const isRu = getLocale() === 'ru';
+  const labels: Record<WidgetType, string> = isRu
+    ? {
+        banner: 'Баннер',
+        announcement: 'Объявление',
+        promotion: 'Промо',
+        notification: 'Уведомление',
+      }
+    : {
+        banner: 'Banner',
+        announcement: 'Announcement',
+        promotion: 'Promotion',
+        notification: 'Notification',
+      };
   return labels[widgetType] || widgetType;
 }
 

@@ -1,4 +1,5 @@
 import type { NominationKind, PollScopeType, PollStatus, PollVisibility, ResultsVisibility } from '../types';
+import { formatDate as formatSharedDate, formatDateTime as formatSharedDateTime } from '@/shared/lib/formatters';
 
 type LabelTheme = 'normal' | 'info' | 'success' | 'warning' | 'danger' | 'utility';
 
@@ -85,13 +86,6 @@ export const NOMINATION_KIND_LABELS: Record<NominationKind, string> = {
   custom: 'Свой вариант',
 };
 
-const normalizeLocale = (locale?: string | null) => {
-  if (!locale) return 'ru-RU';
-  if (locale === 'ru') return 'ru-RU';
-  if (locale === 'en') return 'en-US';
-  return locale;
-};
-
 const parseIsoDate = (value?: string | Date | null): Date | null => {
   if (!value) return null;
   if (value instanceof Date) {
@@ -104,18 +98,13 @@ const parseIsoDate = (value?: string | Date | null): Date | null => {
 export const formatDate = (value?: string | Date | null, locale?: string | null) => {
   const date = parseIsoDate(value);
   if (!date) return null;
-  const formatter = new Intl.DateTimeFormat(normalizeLocale(locale), { dateStyle: 'medium' });
-  return formatter.format(date);
+  return formatSharedDate(date, { locale: locale ?? undefined });
 };
 
 export const formatDateTime = (value?: string | Date | null, locale?: string | null) => {
   const date = parseIsoDate(value);
   if (!date) return null;
-  const formatter = new Intl.DateTimeFormat(normalizeLocale(locale), {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-  return formatter.format(date);
+  return formatSharedDateTime(date, { locale: locale ?? undefined });
 };
 
 export const getScheduleMeta = (startsAt?: string | null, endsAt?: string | null) => {

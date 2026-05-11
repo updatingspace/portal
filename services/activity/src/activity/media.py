@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import mimetypes
 import re
+import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.core import signing
 
 
 _FILENAME_SAFE_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+_LOCAL_UPLOAD_TOKEN_SALT = "activity.news-media.upload"
+_LOCAL_DOWNLOAD_TOKEN_SALT = "activity.news-media.download"
 
 
 @dataclass(frozen=True)
@@ -17,6 +23,13 @@ class UploadUrl:
     upload_url: str
     upload_headers: dict[str, str]
     expires_in: int
+
+
+@dataclass(frozen=True)
+class LocalMediaToken:
+    key: str
+    content_type: str | None
+    expires_at: int
 
 
 def _s3_client():
@@ -49,6 +62,112 @@ def _safe_filename(filename: str) -> str:
     return cleaned or "upload"
 
 
+def _local_media_enabled() -> bool:
+    return bool(getattr(settings, "DEBUG", False) and not getattr(settings, "NEWS_MEDIA_BUCKET", ""))
+
+
+def _local_media_public_prefix() -> str:
+    prefix = getattr(settings, "NEWS_MEDIA_LOCAL_PUBLIC_PREFIX", "/api/v1/activity") or "/api/v1/activity"
+    return prefix.rstrip("/")
+
+
+def _local_media_storage_root() -> Path:
+    root = Path(
+        getattr(
+            settings,
+            "NEWS_MEDIA_LOCAL_STORAGE_ROOT",
+            "/tmp/updspace-activity-news-media",
+        )
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _resolve_local_media_path(key: str) -> Path:
+    parts = [part for part in key.split("/") if part and part not in {".", ".."}]
+    if not parts:
+        raise ValueError("Invalid media key")
+
+    root = _local_media_storage_root().resolve()
+    path = root.joinpath(*parts).resolve()
+    if path != root and root not in path.parents:
+        raise ValueError("Media key escapes storage root")
+    return path
+
+
+def _build_signed_token(*, key: str, content_type: str | None, expires_in: int, salt: str) -> str:
+    payload = {
+        "key": key,
+        "content_type": content_type,
+        "expires_at": int(time.time()) + int(expires_in),
+    }
+    return signing.dumps(payload, salt=salt)
+
+
+def _parse_signed_token(token: str, *, salt: str, default_max_age: int) -> LocalMediaToken:
+    payload = signing.loads(token, salt=salt, max_age=max(1, default_max_age))
+    if not isinstance(payload, dict):
+        raise signing.BadSignature("Invalid media token payload")
+
+    key = payload.get("key")
+    expires_at = payload.get("expires_at")
+    content_type = payload.get("content_type")
+    if not isinstance(key, str) or not key:
+        raise signing.BadSignature("Invalid media token key")
+    if not isinstance(expires_at, int):
+        raise signing.BadSignature("Invalid media token expiry")
+    if expires_at < int(time.time()):
+        raise signing.SignatureExpired("Media token expired")
+    if content_type is not None and not isinstance(content_type, str):
+        raise signing.BadSignature("Invalid media token content_type")
+    return LocalMediaToken(key=key, content_type=content_type, expires_at=expires_at)
+
+
+def build_local_upload_token(*, key: str, content_type: str, expires_in: int | None = None) -> str:
+    ttl = int(expires_in or getattr(settings, "NEWS_MEDIA_UPLOAD_TTL_SECONDS", 900))
+    return _build_signed_token(
+        key=key,
+        content_type=content_type,
+        expires_in=ttl,
+        salt=_LOCAL_UPLOAD_TOKEN_SALT,
+    )
+
+
+def parse_local_upload_token(token: str) -> LocalMediaToken:
+    ttl = int(getattr(settings, "NEWS_MEDIA_UPLOAD_TTL_SECONDS", 900))
+    return _parse_signed_token(token, salt=_LOCAL_UPLOAD_TOKEN_SALT, default_max_age=ttl)
+
+
+def build_local_download_token(*, key: str, expires_in: int | None = None) -> str:
+    ttl = int(expires_in or getattr(settings, "NEWS_MEDIA_URL_TTL_SECONDS", 604800))
+    return _build_signed_token(
+        key=key,
+        content_type=None,
+        expires_in=ttl,
+        salt=_LOCAL_DOWNLOAD_TOKEN_SALT,
+    )
+
+
+def parse_local_download_token(token: str) -> LocalMediaToken:
+    ttl = int(getattr(settings, "NEWS_MEDIA_URL_TTL_SECONDS", 604800))
+    return _parse_signed_token(token, salt=_LOCAL_DOWNLOAD_TOKEN_SALT, default_max_age=ttl)
+
+
+def save_local_media_file(*, key: str, content: bytes) -> Path:
+    path = _resolve_local_media_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def load_local_media_file(*, key: str) -> tuple[Path, str]:
+    path = _resolve_local_media_path(key)
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(key)
+    guessed_type, _ = mimetypes.guess_type(path.name)
+    return path, guessed_type or "application/octet-stream"
+
+
 def build_news_media_key(*, tenant_id: str, filename: str) -> str:
     prefix = getattr(settings, "NEWS_MEDIA_PREFIX", "news").strip("/")
     safe = _safe_filename(filename)
@@ -57,6 +176,16 @@ def build_news_media_key(*, tenant_id: str, filename: str) -> str:
 
 def generate_upload_url(*, key: str, content_type: str) -> UploadUrl:
     bucket = getattr(settings, "NEWS_MEDIA_BUCKET", "")
+    if not bucket and _local_media_enabled():
+        expires_in = int(getattr(settings, "NEWS_MEDIA_UPLOAD_TTL_SECONDS", 900))
+        token = build_local_upload_token(key=key, content_type=content_type, expires_in=expires_in)
+        prefix = _local_media_public_prefix()
+        return UploadUrl(
+            key=key,
+            upload_url=f"{prefix}/news/media/upload/{token}",
+            upload_headers={"Content-Type": content_type},
+            expires_in=expires_in,
+        )
     if not bucket:
         raise RuntimeError("NEWS_MEDIA_BUCKET is not configured")
     expires_in = int(getattr(settings, "NEWS_MEDIA_UPLOAD_TTL_SECONDS", 900))
@@ -82,6 +211,9 @@ def generate_upload_url(*, key: str, content_type: str) -> UploadUrl:
 
 def generate_download_url(*, key: str) -> str:
     bucket = getattr(settings, "NEWS_MEDIA_BUCKET", "")
+    if not bucket and _local_media_enabled():
+        token = build_local_download_token(key=key)
+        return f"{_local_media_public_prefix()}/news/media/file/{token}"
     if not bucket:
         raise RuntimeError("NEWS_MEDIA_BUCKET is not configured")
     expires_in = int(getattr(settings, "NEWS_MEDIA_URL_TTL_SECONDS", 604800))

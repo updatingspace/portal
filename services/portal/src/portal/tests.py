@@ -19,8 +19,10 @@ from django.test import Client, SimpleTestCase, TestCase
 from django.utils import timezone
 from ninja.errors import HttpError
 
+from portal.context import PortalContext
 from portal.enums import TeamStatus, Visibility
 from portal.models import Community, CommunityMembership, PortalProfile, Post, Team, TeamMembership, Tenant
+from portal.services import ensure_tenant
 from core.errors import error_payload
 
 
@@ -53,6 +55,40 @@ def _host_headers(
         "HTTP_X_UPDSPACE_TIMESTAMP": ts,
         "HTTP_X_UPDSPACE_SIGNATURE": signature,
     }
+
+
+class PortalEnsureTenantTests(TestCase):
+    def test_reuses_existing_tenant_by_slug_when_context_tenant_id_differs(self):
+        existing = Tenant.objects.create(slug="aef", name="AEF")
+        ctx = PortalContext(
+            request_id="rid-1",
+            tenant_id=uuid.uuid4(),
+            tenant_slug="aef",
+            user_id=uuid.uuid4(),
+            master_flags=frozenset(),
+        )
+
+        tenant = ensure_tenant(ctx)
+
+        self.assertEqual(tenant.id, existing.id)
+        self.assertEqual(Tenant.objects.filter(slug="aef").count(), 1)
+
+    def test_updates_existing_tenant_by_id_when_slug_changes(self):
+        tenant_id = uuid.uuid4()
+        Tenant.objects.create(id=tenant_id, slug="old-slug", name="Old Name")
+        ctx = PortalContext(
+            request_id="rid-2",
+            tenant_id=tenant_id,
+            tenant_slug="new-slug",
+            user_id=uuid.uuid4(),
+            master_flags=frozenset(),
+        )
+
+        tenant = ensure_tenant(ctx)
+
+        self.assertEqual(tenant.id, tenant_id)
+        self.assertEqual(tenant.slug, "new-slug")
+        self.assertEqual(tenant.name, "new-slug")
 
 
 @mock.patch.dict("os.environ", {}, clear=False)
@@ -470,6 +506,23 @@ class PortalProfilesApiTests(TestCase):
         data = resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["user_id"], str(self.alice_id))
+
+    def test_internal_profiles_list_returns_requested_profiles_without_rbac_check(self):
+        with mock.patch("portal.api.AccessService.check") as mock_check:
+            path = f"/api/v1/portal/internal/profiles?user_ids={self.bob_id},{self.alice_id}"
+            resp = self.client.get(
+                path,
+                **_host_headers(
+                    path=path,
+                    tenant_id=self.tenant_id,
+                    slug="aef",
+                    user_id=self.user_id,
+                ),
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual([item["user_id"] for item in data], [str(self.bob_id), str(self.alice_id)])
+        mock_check.assert_not_called()
 
 
 @mock.patch.dict("os.environ", {}, clear=False)

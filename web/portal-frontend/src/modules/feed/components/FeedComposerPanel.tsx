@@ -1,8 +1,6 @@
 import React from 'react';
-import { Button, Card, Icon, Select, Text } from '@gravity-ui/uikit';
-import { MarkdownEditorView } from '@gravity-ui/markdown-editor';
-import { Plus } from '@gravity-ui/icons';
-import type { ToolbarsPreset } from '@gravity-ui/markdown-editor';
+import { Card, Icon, Loader, Select, Text } from '@gravity-ui/uikit';
+import { ArrowUpRightFromSquare, Plus } from '@gravity-ui/icons';
 
 import type { NewsMediaItem } from '../../../types/activity';
 
@@ -10,45 +8,67 @@ type FeedComposerPanelProps = {
   canCreateNews: boolean;
   composerOpen: boolean;
   setComposerOpen: (open: boolean) => void;
-  emptyToolbarsPreset: ToolbarsPreset;
-  editor: unknown;
+  composerValue: string;
+  setComposerValue: (value: string) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleImageUpload: (files: FileList | null) => void;
   detectedTags: string[];
-  composerError: string | null;
-  newsVisibility: 'public' | 'private';
-  setNewsVisibility: (value: 'public' | 'private') => void;
+  publishMode: 'public' | 'private' | 'draft';
+  setPublishMode: (value: 'public' | 'private' | 'draft') => void;
   isCreatingNews: boolean;
   uploading: boolean;
-  composerHasText: boolean;
-  composerHasMedia: boolean;
+  canPublishNews: boolean;
   handlePublishNews: () => void;
-  handleComposerKeyDown: React.KeyboardEventHandler<'div'>;
+  handleComposerKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
   newsMedia: NewsMediaItem[];
   handleRemoveMedia: (index: number) => void;
 };
+
+const MIN_COMPACT_HEIGHT = 72;
+const MIN_EXPANDED_HEIGHT = 120;
+const MAX_COMPOSER_HEIGHT = 260;
 
 export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
   canCreateNews,
   composerOpen,
   setComposerOpen,
-  emptyToolbarsPreset,
-  editor,
+  composerValue,
+  setComposerValue,
   fileInputRef,
   handleImageUpload,
   detectedTags,
-  composerError,
-  newsVisibility,
-  setNewsVisibility,
+  publishMode,
+  setPublishMode,
   isCreatingNews,
   uploading,
-  composerHasText,
-  composerHasMedia,
+  canPublishNews,
   handlePublishNews,
   handleComposerKeyDown,
   newsMedia,
   handleRemoveMedia,
 }) => {
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = '0px';
+    const minHeight = composerOpen ? MIN_EXPANDED_HEIGHT : MIN_COMPACT_HEIGHT;
+    const nextHeight = Math.min(
+      Math.max(textarea.scrollHeight, minHeight),
+      MAX_COMPOSER_HEIGHT,
+    );
+    textarea.style.height = `${nextHeight}px`;
+  }, [composerOpen, composerValue]);
+
+  const submitLabel =
+    publishMode === 'draft'
+      ? 'Сохранить черновик'
+      : publishMode === 'private'
+        ? 'Опубликовать приватно'
+        : 'Опубликовать публично';
+
   if (!canCreateNews) {
     return (
       <Card view="filled" className="feed-empty" data-qa="feed-composer-locked">
@@ -63,10 +83,11 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
   return (
     <Card
       view="filled"
-      className={['feed-composer', composerOpen ? 'feed-composer--expanded' : ''].filter(Boolean).join(' ')}
+      className={['feed-composer', composerOpen ? 'feed-composer--expanded' : '']
+        .filter(Boolean)
+        .join(' ')}
       data-qa="feed-composer"
       aria-label="Композер новостей"
-      onKeyDown={handleComposerKeyDown}
     >
       <div className="feed-composer__header">
         <Text variant="subheader-2">Что происходит?</Text>
@@ -75,37 +96,25 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
         </Text>
       </div>
 
-      <div className="feed-composer__editor" onClick={() => setComposerOpen(true)}>
-        <MarkdownEditorView
-          editor={editor as never}
-          stickyToolbar={false}
-          settingsVisible={false}
-          toolbarsPreset={emptyToolbarsPreset}
+      <div
+        className="feed-composer__shell"
+        onClick={() => {
+          setComposerOpen(true);
+          textareaRef.current?.focus();
+        }}
+      >
+        <textarea
+          ref={textareaRef}
+          className="feed-composer__textarea"
+          value={composerValue}
+          onChange={(event) => setComposerValue(event.target.value)}
+          onFocus={() => setComposerOpen(true)}
+          onKeyDown={handleComposerKeyDown}
+          placeholder="Поделитесь новостью, коротким обновлением или ссылкой на YouTube"
+          aria-label="Текст новости"
+          rows={1}
         />
-      </div>
 
-      <div className="feed-composer__footer">
-        <div className="feed-composer__media-bar">
-          <button
-            type="button"
-            className="feed-composer__media-button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Добавить изображения"
-          >
-            <Icon data={Plus} />
-          </button>
-          <Text variant="caption-2" color="secondary">
-            Добавьте изображения (только картинки)
-          </Text>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(event) => handleImageUpload(event.target.files)}
-            aria-label="Загрузка изображений"
-          />
-        </div>
         {detectedTags.length > 0 && (
           <div className="feed-composer__tags">
             {detectedTags.map((tag) => (
@@ -115,33 +124,73 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
             ))}
           </div>
         )}
-        {composerError && (
-          <Text variant="caption-2" color="danger">
-            {composerError}
-          </Text>
-        )}
-        <div className="feed-composer__actions">
-          <Select
-            value={[newsVisibility]}
-            onUpdate={(values) => {
-              const next = values[0] as 'public' | 'private' | undefined;
-              if (next) setNewsVisibility(next);
-            }}
-            options={[
-              { value: 'public', content: 'Публично' },
-              { value: 'private', content: 'Только мне' },
-            ]}
-          />
-          <Button
-            view="action"
-            size="m"
-            loading={isCreatingNews || uploading}
-            disabled={!composerHasText || !composerHasMedia}
-            onClick={handlePublishNews}
-            aria-label="Опубликовать новость"
-          >
-            Опубликовать
-          </Button>
+
+        <div className="feed-composer__controls">
+          <div className="feed-composer__controls-left">
+            <button
+              type="button"
+              className="feed-composer__media-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              aria-label="Добавить изображения"
+            >
+              <Icon data={Plus} />
+            </button>
+            <Text variant="caption-2" color="secondary" className="feed-composer__hint">
+              Добавьте изображения при необходимости
+            </Text>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => handleImageUpload(event.target.files)}
+              aria-label="Загрузка изображений"
+            />
+          </div>
+
+          <div className="feed-composer__controls-right">
+            <div className="feed-composer__visibility">
+              <Select
+                value={[publishMode]}
+                onUpdate={(values) => {
+                  const next = values[0] as 'public' | 'private' | 'draft' | undefined;
+                  if (next) setPublishMode(next);
+                }}
+                options={[
+                  { value: 'public', content: 'Опубликовать публично' },
+                  { value: 'private', content: 'Опубликовать приватно' },
+                  { value: 'draft', content: 'Сохранить черновик' },
+                ]}
+              />
+            </div>
+
+            <button
+              type="button"
+              className={[
+                'feed-composer__submit',
+                canPublishNews ? 'feed-composer__submit--ready' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              disabled={!canPublishNews}
+              onClick={(event) => {
+                event.stopPropagation();
+                handlePublishNews();
+              }}
+              aria-label={submitLabel}
+              title={submitLabel}
+              data-qa="composer-submit"
+            >
+              {isCreatingNews || uploading ? (
+                <Loader size="s" />
+              ) : (
+                <Icon data={ArrowUpRightFromSquare} />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -150,9 +199,13 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
           {newsMedia.map((media, index) => (
             <div key={`${media.type}-${index}`} className="feed-composer__media-item">
               {media.type === 'image' && media.url ? <img src={media.url} alt="preview" /> : null}
-              <Button view="flat" size="xs" onClick={() => handleRemoveMedia(index)}>
+              <button
+                type="button"
+                className="feed-composer__media-remove"
+                onClick={() => handleRemoveMedia(index)}
+              >
                 Удалить
-              </Button>
+              </button>
             </div>
           ))}
         </div>

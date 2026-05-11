@@ -3,6 +3,7 @@ import { Alert, Button, Card, Icon, Label, Text } from '@gravity-ui/uikit';
 import { Clock } from '@gravity-ui/icons';
 
 import type { Session } from '../../../../api/account';
+import { formatDateTime } from '@/shared/lib/formatters';
 
 type SessionsSectionProps = {
   sessions: Session[];
@@ -67,7 +68,7 @@ export const SessionsSection: React.FC<SessionsSectionProps> = ({
                 )}
               </div>
               <Text variant="body-1" color="secondary">
-                {session.ip || 'Unknown IP'} • {formatDate(session.last_used_at || session.created_at)}
+                {session.ip || 'Unknown IP'} • {formatDateTime(session.last_used_at || session.created_at)}
               </Text>
             </div>
             {!session.is_current && (
@@ -92,18 +93,4 @@ function truncateUserAgent(ua: string): string {
   const match = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)\/[\d.]+/);
   if (match) return match[0];
   return `${ua.slice(0, 47)}...`;
-}
-
-function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return dateString;
-  }
 }

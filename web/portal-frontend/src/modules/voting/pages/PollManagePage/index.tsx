@@ -46,8 +46,37 @@ import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
 import type { NominationCreatePayload, NominationUpdatePayload, PollUpdatePayload } from '../../../../features/voting/types';
 import { POLL_STATUS_META, RESULTS_VISIBILITY_META, SCOPE_LABELS, VISIBILITY_META, formatDateTime, NOMINATION_KIND_LABELS } from '../../../../features/voting/utils/pollMeta';
-import { getLocale } from '@/shared/lib/locale';
-import { useAuth } from '../../../../contexts/AuthContext';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
+import { useFormatters } from '@/shared/hooks/useFormatters';
+
+const pageShellStyle: React.CSSProperties = {
+  minHeight: 'calc(100vh - 64px)',
+  backgroundColor: 'var(--g-color-base-background)',
+};
+
+const centeredPageShellStyle: React.CSSProperties = {
+  ...pageShellStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const pageContentStyle: React.CSSProperties = {
+  maxWidth: 1120,
+  margin: '0 auto',
+};
+
+const settingsColumnsStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 24,
+  gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)',
+};
+
+const participantCreateGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 12,
+  gridTemplateColumns: 'minmax(0, 1fr) 200px auto',
+};
 
 const VISIBILITY_OPTIONS = [
   { value: 'public', content: 'Публичный' },
@@ -73,9 +102,9 @@ export const PollManagePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { intlLocale } = useFormatters();
   const pollId = id ?? '';
-  const locale = user?.language ?? getLocale();
+  const locale = intlLocale;
   const [liveUpdates, setLiveUpdates] = useState(true);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
 
@@ -180,6 +209,7 @@ export const PollManagePage: React.FC = () => {
   const statusMeta = poll ? POLL_STATUS_META[poll.status] : null;
   const visibilityMeta = poll ? VISIBILITY_META[poll.visibility] : null;
   const resultsMeta = poll ? RESULTS_VISIBILITY_META[poll.results_visibility] : null;
+  useDocumentTitle(poll ? `${poll.title} · Управление опросом` : 'Управление опросом');
 
   const isDraft = poll?.status === 'draft';
   const isActive = poll?.status === 'active';
@@ -208,7 +238,7 @@ export const PollManagePage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
+      <div style={centeredPageShellStyle}>
         <Loader size="l" />
       </div>
     );
@@ -216,7 +246,7 @@ export const PollManagePage: React.FC = () => {
 
   if (isError || !pollInfo) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+      <div className="p-4" style={centeredPageShellStyle}>
         <Card className="max-w-md w-full p-6 text-center">
           <Text variant="subheader-2" className="mb-2">Не удалось загрузить опрос</Text>
           <Text variant="body-2" color="secondary" className="mb-4">
@@ -541,9 +571,9 @@ export const PollManagePage: React.FC = () => {
   ] as const;
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+    <div style={pageShellStyle}>
       <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6">
+        <div className="container px-4 py-6" style={pageContentStyle}>
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -611,7 +641,7 @@ export const PollManagePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <div className="container px-4 py-6 d-grid gap-4" style={pageContentStyle}>
         <Card className="p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="text-sm text-slate-600">
@@ -619,7 +649,7 @@ export const PollManagePage: React.FC = () => {
               {liveUpdates ? 'включено (15-20с)' : 'выключено'}
               {' · '}
               <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
-              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+              {formatDateTime(lastRefreshAt)}
             </div>
             <Checkbox
               checked={liveUpdates}
@@ -637,10 +667,14 @@ export const PollManagePage: React.FC = () => {
           />
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Разделы управления опросом">
           {tabItems.map((tab) => (
             <Button
               key={tab.id}
+              role="tab"
+              id={`poll-manage-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`poll-manage-panel-${tab.id}`}
               view={activeTab === tab.id ? 'action' : 'outlined'}
               size="s"
               onClick={() => setActiveTab(tab.id)}
@@ -651,7 +685,12 @@ export const PollManagePage: React.FC = () => {
         </div>
 
         {activeTab === 'settings' && settingsDraft && (
-          <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
+          <div
+            role="tabpanel"
+            id="poll-manage-panel-settings"
+            aria-labelledby="poll-manage-tab-settings"
+            style={settingsColumnsStyle}
+          >
             <Card className="p-6 space-y-5">
               <div>
                 <Text variant="subheader-2">Настройки опроса</Text>
@@ -816,7 +855,12 @@ export const PollManagePage: React.FC = () => {
         )}
 
         {activeTab === 'questions' && (
-          <div className="space-y-6">
+          <div
+            className="space-y-6"
+            role="tabpanel"
+            id="poll-manage-panel-questions"
+            aria-labelledby="poll-manage-tab-questions"
+          >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <Text variant="subheader-2">Вопросы</Text>
@@ -938,28 +982,33 @@ export const PollManagePage: React.FC = () => {
           </div>
         )}
 
-              {activeTab === 'participants' && (
-          <div className="space-y-6">
+        {activeTab === 'participants' && (
+          <div
+            className="space-y-6"
+            role="tabpanel"
+            id="poll-manage-panel-participants"
+            aria-labelledby="poll-manage-tab-participants"
+          >
             <Card className="p-6">
               <Text variant="subheader-2">Участники и роли</Text>
               <Text variant="body-2" color="secondary" className="mt-1">
                 Используйте для приватных опросов или выдачи ролей модераторов.
               </Text>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-[1fr,200px,auto]">
-                <TextInput
-                  placeholder="UUID пользователя"
-                  value={participantUserId}
-                  onUpdate={setParticipantUserId}
-                />
-                <Select
-                  value={[participantRole]}
-                  onUpdate={(value) => setParticipantRole((value[0] ?? 'participant') as PollRole)}
-                  options={PARTICIPANT_OPTIONS}
-                />
-                <Button view="action" onClick={addParticipant} loading={addParticipantMutation.isPending}>
-                  Добавить
-                </Button>
+              <div className="mt-4" style={participantCreateGridStyle}>
+                  <TextInput
+                    placeholder="UUID пользователя"
+                    value={participantUserId}
+                    onUpdate={setParticipantUserId}
+                  />
+                  <Select
+                    value={[participantRole]}
+                    onUpdate={(value) => setParticipantRole((value[0] ?? 'participant') as PollRole)}
+                    options={PARTICIPANT_OPTIONS}
+                  />
+                  <Button view="action" onClick={addParticipant} loading={addParticipantMutation.isPending}>
+                    Добавить
+                  </Button>
               </div>
             </Card>
 

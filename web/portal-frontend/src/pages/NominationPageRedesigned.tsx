@@ -19,6 +19,7 @@ import { ArrowLeft, ArrowRotateRight, Check, Eye, EyeSlash } from '@gravity-ui/i
 import { useNomination, useCastVoteUnified } from '@/features/voting/hooks/useVotingUnified';
 import { NominationCard, type VotingMode } from '@/features/voting/components/NominationCard';
 import { VotingAlerts, createVotingAlerts, type VotingAlert } from '@/features/voting/components/VotingAlerts';
+import { formatDateTime } from '@/shared/lib/formatters';
 import { toaster } from '@/toaster';
 
 // ============================================================================
@@ -105,22 +106,16 @@ export const NominationPageRedesigned: React.FC = () => {
   const deadlineLabel = useMemo(() => {
     const deadline = nominationData?.votingDeadline;
     if (!deadline) return null;
-    
-    const parsed = new Date(deadline);
-    if (Number.isNaN(parsed.getTime())) return null;
-    
-    return parsed.toLocaleString('ru-RU', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+
+    return formatDateTime(deadline);
   }, [nominationData]);
   
   // Initialize selected option from user vote
   useEffect(() => {
+    const hasValidSelection = selectedOptionId ? options.some((opt) => opt.id === selectedOptionId) : false;
+    if (hasValidSelection) return;
     if (userVote && options.some((opt) => opt.id === userVote)) {
       setSelectedOptionId(userVote);
-    } else if (options.length > 0 && !selectedOptionId) {
-      // Don't auto-select first option - let user choose
     }
   }, [userVote, options, selectedOptionId]);
   
@@ -350,6 +345,7 @@ export const NominationPageRedesigned: React.FC = () => {
                     disabled={isFetching}
                   >
                     <Icon data={ArrowRotateRight} size={16} />
+                    <span className="ms-1">Обновить</span>
                   </Button>
                 </div>
               </div>

@@ -31,6 +31,7 @@ import '@diplodoc/transform/dist/js/yfm.js';
 import type {EventWithCounts} from '../../types';
 import {renderYfmHtml} from '../../utils/yfm';
 import {EventRsvpCounts} from '../../components/EventRsvpCounts';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 
 type RsvpValue = 'going' | 'interested' | 'not_going';
 
@@ -84,14 +85,19 @@ function safeDate(value?: string | null) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatRange(startsAt?: string | null, endsAt?: string | null, locale = 'ru-RU') {
+function formatRange(
+  startsAt?: string | null,
+  endsAt?: string | null,
+  locale = 'en-US',
+  timeZone?: string,
+) {
   const s = safeDate(startsAt);
   const e = safeDate(endsAt);
   if (!s) return null;
 
-  const date = new Intl.DateTimeFormat(locale, {day: 'numeric', month: 'long', year: 'numeric'}).format(s);
-  const st = new Intl.DateTimeFormat(locale, {hour: '2-digit', minute: '2-digit'}).format(s);
-  const et = e ? new Intl.DateTimeFormat(locale, {hour: '2-digit', minute: '2-digit'}).format(e) : null;
+  const date = new Intl.DateTimeFormat(locale, {day: 'numeric', month: 'long', year: 'numeric', timeZone}).format(s);
+  const st = new Intl.DateTimeFormat(locale, {hour: '2-digit', minute: '2-digit', timeZone}).format(s);
+  const et = e ? new Intl.DateTimeFormat(locale, {hour: '2-digit', minute: '2-digit', timeZone}).format(e) : null;
 
   return et ? `${date} · ${st}–${et}` : `${date} · ${st}`;
 }
@@ -147,12 +153,15 @@ export const EventRsvpPage: React.FC<Props> = ({
   shareUrl,
 }) => {
   const {add} = useToaster();
+  const { intlLocale, timezone } = useFormatters();
   const [descOpen, setDescOpen] = useState(false);
 
   const visibility = VISIBILITY[event.visibility] ?? {theme: 'normal', label: String(event.visibility ?? '—')};
-  const locale = typeof navigator !== 'undefined' ? navigator.language : 'ru-RU';
 
-  const when = useMemo(() => formatRange(event.startsAt, event.endsAt, locale), [event.endsAt, event.startsAt, locale]);
+  const when = useMemo(
+    () => formatRange(event.startsAt, event.endsAt, intlLocale, timezone),
+    [event.endsAt, event.startsAt, intlLocale, timezone],
+  );
   const duration = useMemo(() => formatDuration(event.startsAt, event.endsAt), [event.endsAt, event.startsAt]);
 
   const editor = useMarkdownEditor({

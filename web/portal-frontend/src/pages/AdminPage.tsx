@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRouteBase } from '../shared/hooks/useRouteBase';
 import { AsideHeader, type MenuItem } from '@gravity-ui/navigation';
@@ -40,6 +40,7 @@ import {
   type HomePageModal,
   type HomePageModalInput,
 } from '../api/personalization';
+import { formatDateTime } from '@/shared/lib/formatters';
 import { fetchGames } from '../api/games';
 import { useAuth } from '../contexts/AuthContext';
 import { NotFoundPage } from './NotFoundPage';
@@ -58,6 +59,7 @@ import { GameModal } from '../components/admin/GameModal';
 import { NominationPreviewDialog } from '../components/admin/NominationPreviewDialog';
 import { VotingImportDialog } from '../components/admin/VotingImportDialog';
 import { logger } from '../utils/logger';
+import { can } from '../features/rbac/can';
 import { AdminHistoryCard } from './admin/components/AdminHistoryCard';
 import { DashboardSection } from './admin/components/DashboardSection';
 import { NominationEditorDialog } from './admin/components/NominationEditorDialog';
@@ -325,10 +327,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return '—';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '—';
-  return parsed.toLocaleString('ru-RU', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return formatDateTime(parsed);
 };
 
 const formatDeadline = (value?: string | null) => {
@@ -420,6 +419,7 @@ export const AdminPage: React.FC = () => {
   const routeBase = useRouteBase();
   const location = useLocation();
   const { user, isInitialized, isLoading, refreshProfile } = useAuth();
+  const canManagePersonalizationContent = can(user, 'personalization.content.manage');
   const commandHistory = useMemo(() => new CommandHistory(30), []);
   const historyState = useCommandHistoryState(commandHistory);
   const serializer = useMemo(() => new CommandSerializerVisitor(), []);
@@ -530,6 +530,7 @@ export const AdminPage: React.FC = () => {
   const [modalEditorMode, setModalEditorMode] = useState<'create' | 'edit'>('create');
   const [modalDraft, setModalDraft] = useState<Partial<HomePageModalInput>>({});
   const [isSavingModal, setIsSavingModal] = useState(false);
+  const profileRefreshAttemptedRef = useRef(false);
 
   const parseImportJson = useCallback((): VotingImportPayload | null => {
     if (!importJson.trim()) {
@@ -569,8 +570,9 @@ export const AdminPage: React.FC = () => {
     if (!isInitialized || isLoading) {
       return;
     }
-    if (!user) {
-      refreshProfile();
+    if (!user && !profileRefreshAttemptedRef.current) {
+      profileRefreshAttemptedRef.current = true;
+      void refreshProfile();
     }
   }, [isInitialized, isLoading, user, refreshProfile]);
 
@@ -2132,6 +2134,7 @@ export const AdminPage: React.FC = () => {
                   isLoading={isModalsLoading}
                   error={modalsError}
                   selectedModalId={selectedModalId}
+                  showAnalytics={canManagePersonalizationContent}
                   onSelectModal={setSelectedModalId}
                   onCreateModal={handleCreateModal}
                   onEditModal={handleEditModal}

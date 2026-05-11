@@ -26,7 +26,8 @@ title: BFF Session Lifecycle
 - активный tenant;
 - `portal_profile`, если он доступен;
 - `id_profile` и membership-related сведения;
-- capability probes для основных модулей.
+- `id_defaults`, если identity provider умеет отдавать portal-safe theme hint;
+- capability probes для основных модулей, включая personalization.
 
 ### Tenant switch
 

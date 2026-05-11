@@ -145,14 +145,27 @@ export const PollForm: React.FC<PollFormProps> = ({
           </div>
 
           <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Название *</div>
-            <TextInput value={title} onUpdate={setTitle} placeholder="Например: Лучшие проекты года" />
+            <label className="text-sm font-medium text-gray-700" htmlFor="poll-form-title">Название *</label>
+            <TextInput
+              id="poll-form-title"
+              aria-label="Название"
+              value={title}
+              onUpdate={setTitle}
+              placeholder="Например: Лучшие проекты года"
+            />
             {touched && !titleValid && <p className="text-xs text-amber-600">Укажите название опроса.</p>}
           </div>
 
           <div className="space-y-1">
-            <div className="text-sm font-medium text-gray-700">Описание</div>
-            <TextArea value={description} onUpdate={setDescription} rows={3} placeholder="Контекст, правила или призы" />
+            <label className="text-sm font-medium text-gray-700" htmlFor="poll-form-description">Описание</label>
+            <TextArea
+              id="poll-form-description"
+              aria-label="Описание"
+              value={description}
+              onUpdate={setDescription}
+              rows={3}
+              placeholder="Контекст, правила или призы"
+            />
           </div>
 
           {templates.length > 0 && (

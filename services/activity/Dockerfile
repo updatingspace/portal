@@ -38,4 +38,4 @@ RUN chmod +x /app/bin/serverless-task.sh
 USER appuser
 
 EXPOSE 8006
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8006", "--workers", "2", "--access-logfile", "-"]
+CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:8006", "--workers", "2", "--worker-class", "gthread", "--threads", "4", "--timeout", "0", "--access-logfile", "-"]

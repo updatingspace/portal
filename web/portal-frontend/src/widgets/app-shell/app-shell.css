@@ -1,7 +1,21 @@
 .app-shell {
+  --portal-accent-color: var(--user-accent-color, var(--g-color-base-brand, #2f6edb));
+  --portal-accent-border: color-mix(
+    in srgb,
+    var(--portal-accent-color) 34%,
+    var(--g-color-line-generic, rgba(0, 0, 0, 0.12))
+  );
+  --portal-accent-soft: color-mix(in srgb, var(--portal-accent-color) 12%, transparent);
+  --portal-accent-surface: color-mix(
+    in srgb,
+    var(--portal-accent-color) 7%,
+    var(--g-color-base-background, #f7f7f7)
+  );
   min-height: 100vh;
   height: 100vh;
-  background: var(--g-color-base-background, #f7f7f7);
+  background:
+    radial-gradient(1100px circle at 100% 0%, color-mix(in srgb, var(--portal-accent-color) 11%, transparent), transparent 54%),
+    linear-gradient(180deg, var(--portal-accent-surface), var(--portal-surface-contrast, var(--g-color-base-background, #f7f7f7)));
 }
 
 .app-shell__aside {
@@ -35,8 +49,9 @@
   height: var(--gn-aside-header-height, 64px);
   min-height: var(--gn-aside-header-height, 64px);
   padding: 0 24px;
-  border-bottom: 1px solid var(--g-color-line-generic, rgba(0, 0, 0, 0.08));
-  background: var(--g-color-base-background, #ffffff);
+  border-bottom: 1px solid var(--portal-accent-border);
+  background: var(--portal-surface-contrast, var(--g-color-base-background, #ffffff));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--portal-accent-color) 22%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -63,27 +78,59 @@
 .app-shell__content {
   flex: 1;
   padding: 24px;
-  background: var(--g-color-base-background, #ffffff);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--portal-accent-color) 2%, var(--portal-surface-contrast, var(--g-color-base-background, #ffffff))),
+      var(--portal-surface-contrast, var(--g-color-base-background, #ffffff))
+    );
   overflow: auto;
 }
 
 .app-shell__user-button {
-  border: 1px solid var(--g-color-line-generic, rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--portal-accent-border);
   border-radius: 999px;
   padding: 4px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  background: transparent;
+  background: color-mix(in srgb, var(--portal-accent-color) 5%, transparent);
   cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-shell__user-button:hover,
+.app-shell__user-button:focus-visible {
+  border-color: color-mix(in srgb, var(--portal-accent-color) 60%, var(--g-color-line-generic, rgba(0, 0, 0, 0.12)));
+  background: color-mix(in srgb, var(--portal-accent-color) 9%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--portal-accent-color) 12%, transparent);
 }
 
 .app-shell__user-name {
   font-weight: 600;
 }
 
+.app-shell__theme-select {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--portal-accent-border);
+  background: color-mix(in srgb, var(--portal-accent-color) 7%, transparent);
+}
+
 .app-shell__theme-select button {
   min-width: 72px;
+}
+
+[data-high-contrast='true'] .app-shell__header,
+[data-high-contrast='true'] .app-shell__theme-select,
+[data-high-contrast='true'] .app-shell__user-button {
+  border-width: 2px;
+}
+
+[data-high-contrast='true'] .app-shell__content {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-accent-color) 20%, #111);
 }
 
 @media (max-width: 960px) {

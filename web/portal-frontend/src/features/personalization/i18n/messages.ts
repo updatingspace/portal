@@ -42,11 +42,14 @@ export const personalizationMessages = {
       labels: {
         colorScheme: 'Color scheme',
         colorSchemeDescription: 'Select light, dark, or follow your system settings',
+        themeSource: 'Theme source',
+        themeSourceDescription: 'Use a portal-specific theme or inherit the choice from ID for this portal',
         fontSize: 'Font size',
         highContrast: 'High contrast',
         highContrastDescription: 'Increase contrast for better visibility',
         reduceMotion: 'Reduce motion',
         reduceMotionDescription: 'Minimize animations and transitions',
+        accentPreviewDescription: 'The accent color drives shell borders, active tabs, and placeholder outlines across the portal',
         interfaceLanguage: 'Interface language',
         timezone: 'Timezone',
         timezoneDescription: 'Used for displaying dates and event times',
@@ -56,6 +59,10 @@ export const personalizationMessages = {
       light: { label: 'Light', description: 'Always use light theme' },
       dark: { label: 'Dark', description: 'Always use dark theme' },
       auto: { label: 'Auto', description: 'Follow system preference' },
+      source: {
+        portal: { label: 'Portal only', description: 'Store a separate theme for this portal' },
+        id: { label: 'Inherit from ID', description: 'Follow the color scheme from ID until you detach here' },
+      },
       aria: {
         group: 'Theme selection',
         option: 'theme',
@@ -216,11 +223,14 @@ export const personalizationMessages = {
       labels: {
         colorScheme: 'Цветовая схема',
         colorSchemeDescription: 'Светлая, тёмная или системная тема',
+        themeSource: 'Источник темы',
+        themeSourceDescription: 'Использовать отдельную тему портала или наследовать выбор из ID только для этого портала',
         fontSize: 'Размер шрифта',
         highContrast: 'Высокий контраст',
         highContrastDescription: 'Повышает контраст для лучшей читаемости',
         reduceMotion: 'Уменьшение анимации',
         reduceMotionDescription: 'Снижает количество анимаций и переходов',
+        accentPreviewDescription: 'Акцентный цвет управляет окантовкой shell, активными вкладками и плейсхолдерами по всему порталу',
         interfaceLanguage: 'Язык интерфейса',
         timezone: 'Часовой пояс',
         timezoneDescription: 'Используется для отображения дат и времени событий',
@@ -230,6 +240,10 @@ export const personalizationMessages = {
       light: { label: 'Светлая', description: 'Всегда использовать светлую тему' },
       dark: { label: 'Тёмная', description: 'Всегда использовать тёмную тему' },
       auto: { label: 'Авто', description: 'Следовать системной теме' },
+      source: {
+        portal: { label: 'Только портал', description: 'Хранить отдельную тему именно для этого портала' },
+        id: { label: 'Наследовать из ID', description: 'Следовать цветовой схеме из ID, пока вы не отвяжетесь здесь' },
+      },
       aria: {
         group: 'Выбор темы',
         option: 'тема',

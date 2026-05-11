@@ -5,12 +5,32 @@ import { ArrowDownToLine, ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { ResultsChart } from '../../../../features/voting/components/ResultsChart';
 import { usePollInfo, usePollResults } from '../../../../features/voting';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
+import { useFormatters } from '@/shared/hooks/useFormatters';
+
+const pageShellStyle: React.CSSProperties = {
+  minHeight: 'calc(100vh - 64px)',
+  backgroundColor: 'var(--g-color-base-background)',
+};
+
+const centeredPageShellStyle: React.CSSProperties = {
+  ...pageShellStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const pageContentStyle: React.CSSProperties = {
+  maxWidth: 1120,
+  margin: '0 auto',
+};
 
 export const PollResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const pollId = id ?? '';
   const [liveUpdates, setLiveUpdates] = useState(true);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
+  const { formatTime } = useFormatters();
 
   const {
     data: pollInfo,
@@ -34,6 +54,7 @@ export const PollResultsPage: React.FC = () => {
     refetchInterval: liveUpdates ? 15_000 : false,
     refetchIntervalInBackground: true,
   });
+  useDocumentTitle(pollInfo ? `${pollInfo.poll.title} · Результаты опроса` : 'Результаты опроса');
 
   const nominationsWithTotals = useMemo(() => {
     if (!results) return [];
@@ -78,7 +99,7 @@ export const PollResultsPage: React.FC = () => {
 
   if (isPollLoading || isResultsLoading) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center">
+      <div style={centeredPageShellStyle}>
         <Loader size="l" />
       </div>
     );
@@ -86,14 +107,14 @@ export const PollResultsPage: React.FC = () => {
 
   if (isPollError || !pollInfo) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+      <div className="p-4" style={centeredPageShellStyle}>
         <Card className="max-w-md w-full p-6 text-center">
           <Text variant="subheader-2" className="mb-2">Не удалось загрузить опрос</Text>
           <Text variant="body-2" color="secondary" className="mb-4">
             {pollError instanceof Error ? pollError.message : 'Проверьте соединение и попробуйте снова.'}
           </Text>
-          <Button onClick={() => window.location.reload()} view="action" width="max">
-            Обновить
+          <Button onClick={() => refetchPollInfo()} view="action" width="max">
+            Повторить
           </Button>
         </Card>
       </div>
@@ -105,7 +126,7 @@ export const PollResultsPage: React.FC = () => {
 
     if (errorCode === 'RESULTS_HIDDEN') {
       return (
-        <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+        <div className="p-4" style={centeredPageShellStyle}>
           <Card className="max-w-md w-full p-6 text-center">
             <Text variant="subheader-2" className="mb-2">Результаты пока скрыты</Text>
             <Text variant="body-2" color="secondary" className="mb-4">
@@ -122,14 +143,14 @@ export const PollResultsPage: React.FC = () => {
     }
 
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+      <div className="p-4" style={centeredPageShellStyle}>
         <Card className="max-w-md w-full p-6 text-center">
           <Text variant="subheader-2" className="mb-2">Не удалось загрузить результаты</Text>
           <Text variant="body-2" color="secondary" className="mb-4">
             {resultsError instanceof Error ? resultsError.message : 'Проверьте соединение и попробуйте снова.'}
           </Text>
-          <Button onClick={() => window.location.reload()} view="action" width="max">
-            Обновить
+          <Button onClick={handleRefresh} view="action" width="max">
+            Повторить
           </Button>
         </Card>
       </div>
@@ -140,7 +161,7 @@ export const PollResultsPage: React.FC = () => {
 
   if (!results) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex items-center justify-center p-4">
+      <div className="p-4" style={centeredPageShellStyle}>
         <Card className="max-w-md w-full p-6 text-center">
           <Text variant="subheader-2" className="mb-2">Результатов пока нет</Text>
           <Text variant="body-2" color="secondary">
@@ -163,9 +184,9 @@ export const PollResultsPage: React.FC = () => {
     .sort((a, b) => b.votes - a.votes)[0];
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-slate-50">
+    <div style={pageShellStyle}>
       <div className="bg-white border-b border-slate-200">
-        <div className="container max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="container px-4 py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between" style={pageContentStyle}>
           <div>
             <Text variant="header-1" className="text-slate-900">Результаты опроса</Text>
             <Text variant="body-2" color="secondary" className="mt-1">
@@ -196,7 +217,7 @@ export const PollResultsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <div className="container px-4 py-6 space-y-6" style={pageContentStyle}>
         <Card className="p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="text-sm text-slate-600">
@@ -204,7 +225,7 @@ export const PollResultsPage: React.FC = () => {
               {liveUpdates ? 'включено (15с)' : 'выключено'}
               {' · '}
               <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
-              {lastRefreshAt.toLocaleTimeString('ru-RU')}
+              {formatTime(lastRefreshAt)}
             </div>
             <Checkbox checked={liveUpdates} onUpdate={setLiveUpdates} content="Автообновление результатов" />
           </div>

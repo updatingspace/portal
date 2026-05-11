@@ -34,56 +34,59 @@ import { AuthUIProvider } from './contexts/AuthUIContext';
 import { TenantProvider } from './contexts/TenantContext';
 import { I18nProvider } from './app/providers/I18nProvider';
 import { ThemeModeProvider } from './app/providers/ThemeModeProvider';
+import { applyLegacyTenantAliasRedirect } from './app/bootstrap/legacyTenantAlias';
 import { createAppRouter } from './app/routes';
 import { AuthLoadingGuard } from './app/guards/AuthLoadingGuard';
 import { PortalRouter } from './app/PortalRouter';
 
-const queryClient = new QueryClient({
-  queryCache: new QueryCache({
-    onError: (error) => {
-      const deniedError = toAccessDeniedError(error, { source: 'api' });
-      if (deniedError) {
-        emitAccessDenied(deniedError);
-      }
+if (!applyLegacyTenantAliasRedirect()) {
+  const queryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error) => {
+        const deniedError = toAccessDeniedError(error, { source: 'api' });
+        if (deniedError) {
+          emitAccessDenied(deniedError);
+        }
+      },
+    }),
+    mutationCache: new MutationCache({
+      onError: (error) => {
+        const deniedError = toAccessDeniedError(error, { source: 'api' });
+        if (deniedError) {
+          emitAccessDenied(deniedError);
+        }
+      },
+    }),
+    defaultOptions: {
+      queries: {
+        staleTime: 1000 * 60 * 5, // 5 minutes
+        retry: 1,
+      },
     },
-  }),
-  mutationCache: new MutationCache({
-    onError: (error) => {
-      const deniedError = toAccessDeniedError(error, { source: 'api' });
-      if (deniedError) {
-        emitAccessDenied(deniedError);
-      }
-    },
-  }),
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 1,
-    },
-  },
-});
+  });
 
-const router = createAppRouter();
+  const router = createAppRouter();
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <ThemeModeProvider>
-      <I18nProvider>
-        <QueryClientProvider client={queryClient}>
-          <ToasterProvider toaster={toaster}>
-            <AuthProvider>
-              <TenantProvider>
-                <AuthUIProvider>
-                  <AuthLoadingGuard>
-                    <PortalRouter router={router} />
-                  </AuthLoadingGuard>
-                  <ToasterComponent />
-                </AuthUIProvider>
-              </TenantProvider>
-            </AuthProvider>
-          </ToasterProvider>
-        </QueryClientProvider>
-      </I18nProvider>
-    </ThemeModeProvider>
-  </React.StrictMode>,
-);
+  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <React.StrictMode>
+      <ThemeModeProvider>
+        <I18nProvider>
+          <QueryClientProvider client={queryClient}>
+            <ToasterProvider toaster={toaster}>
+              <AuthProvider>
+                <TenantProvider>
+                  <AuthUIProvider>
+                    <AuthLoadingGuard>
+                      <PortalRouter router={router} />
+                    </AuthLoadingGuard>
+                    <ToasterComponent />
+                  </AuthUIProvider>
+                </TenantProvider>
+              </AuthProvider>
+            </ToasterProvider>
+          </QueryClientProvider>
+        </I18nProvider>
+      </ThemeModeProvider>
+    </React.StrictMode>,
+  );
+}

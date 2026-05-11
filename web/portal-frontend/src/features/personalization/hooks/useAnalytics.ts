@@ -8,7 +8,7 @@ import {
   fetchModalAnalytics,
   fetchAnalyticsReport,
 } from '../api/contentApi';
-import type { AnalyticsEventType, AnalyticsReport, ModalAnalytics } from '../types';
+import type { AnalyticsEventType } from '../types';
 
 const ANALYTICS_QUERY_KEY = 'modal-analytics';
 
@@ -123,14 +123,18 @@ export function useModalTracking() {
  */
 export function useModalAnalytics(days: number = 30) {
   const {
-    data: analytics = [],
+    data: analyticsResult,
     isLoading,
     error,
     refetch,
-  } = useQuery<ModalAnalytics[]>({
+  } = useQuery({
     queryKey: [ANALYTICS_QUERY_KEY, 'modals', days],
     queryFn: () => fetchModalAnalytics(days),
+    retry: false,
   });
+
+  const analytics = analyticsResult?.status === 'ok' ? analyticsResult.data : [];
+  const isForbidden = analyticsResult?.status === 'forbidden';
 
   // Sort helpers
   const sortedByViews = [...analytics].sort(
@@ -152,6 +156,7 @@ export function useModalAnalytics(days: number = 30) {
     mostViewed,
     isLoading,
     error,
+    isForbidden,
     refetch,
   };
 }
@@ -161,19 +166,24 @@ export function useModalAnalytics(days: number = 30) {
  */
 export function useAnalyticsReport(days: number = 30) {
   const {
-    data: report,
+    data: reportResult,
     isLoading,
     error,
     refetch,
-  } = useQuery<AnalyticsReport>({
+  } = useQuery({
     queryKey: [ANALYTICS_QUERY_KEY, 'report', days],
     queryFn: () => fetchAnalyticsReport(days),
+    retry: false,
   });
+
+  const report = reportResult?.status === 'ok' ? reportResult.data : undefined;
+  const isForbidden = reportResult?.status === 'forbidden';
 
   return {
     report,
     isLoading,
     error,
+    isForbidden,
     refetch,
   };
 }

@@ -2,9 +2,13 @@ from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
-from activity.api import router as activity_router
+from activity.api import (
+    news_media_download_file,
+    news_media_upload_file,
+    router as activity_router,
+)
 from activity.health import liveness_check, readiness_check, metrics_endpoint
-from activity.sse import sse_unread_count
+from activity.sse import sse_feed_live, sse_unread_count
 
 
 def _error_response(request, *, status: int, code: str, message: str, details: dict | None = None):
@@ -43,8 +47,13 @@ def on_http_error(request, exc: HttpError):
 api.add_router("", activity_router)
 
 urlpatterns = [
+    path("api/v1/news/media/upload/<str:token>", news_media_upload_file),
+    path("api/v1/news/media/file/<path:token_or_key>", news_media_download_file),
+    path("api/v1/activity/news/media/upload/<str:token>", news_media_upload_file),
+    path("api/v1/activity/news/media/file/<path:token_or_key>", news_media_download_file),
     path("api/v1/", api.urls),
     path("api/v1/feed/sse", sse_unread_count),  # SSE outside ninja for streaming
+    path("api/v1/feed/live", sse_feed_live),
     path("health", liveness_check),
     path("readiness", readiness_check),
     path("metrics", metrics_endpoint),

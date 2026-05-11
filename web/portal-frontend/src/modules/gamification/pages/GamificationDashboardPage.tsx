@@ -21,6 +21,7 @@ import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
 import { useAchievementsList, useCategories, useUpdateAchievement } from '../../../hooks/useGamification';
 import type { Achievement, AchievementStatus } from '../../../types/gamification';
+import { formatDateTime } from '@/shared/lib/formatters';
 import './gamification.css';
 
 type StatusFilter = 'all' | AchievementStatus;
@@ -44,7 +45,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
+  return formatDateTime(date);
 };
 
 const getAchievementTitle = (achievement: Achievement) =>
@@ -148,7 +149,7 @@ export const GamificationDashboardPage: React.FC = () => {
       {
         id: 'actions',
         name: '',
-        align: 'right',
+        align: 'end',
         template: (item) => {
           const actions: DropdownMenuItem[] = [
             {

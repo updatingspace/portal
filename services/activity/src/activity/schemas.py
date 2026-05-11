@@ -221,6 +221,15 @@ class ActivityEventType(str, Enum):
     MINECRAFT_SESSION = "minecraft.session"
 
 
+class ActorProfileOut(Schema):
+    user_id: UUID
+    username: str | None = None
+    display_name: str | None = None
+    first_name: str = ""
+    last_name: str = ""
+    avatar_url: str | None = None
+
+
 class ActivityEventOut(Schema):
     """Activity event in the feed."""
 
@@ -236,6 +245,7 @@ class ActivityEventOut(Schema):
     scope_type: str
     scope_id: str
     source_ref: str
+    actor_profile: "ActorProfileOut | None" = None
 
 
 class FeedOut(Schema):
@@ -351,6 +361,7 @@ class NewsCreateIn(Schema):
     body: str
     tags: list[str] = []
     visibility: str
+    status: Literal["published", "draft"] = "published"
     scope_type: str | None = None
     scope_id: str | None = None
     media: list[NewsMediaIn] = []
@@ -361,6 +372,7 @@ class NewsUpdateIn(Schema):
     body: str | None = None
     tags: list[str] | None = None
     visibility: str | None = None
+    status: Literal["published", "draft"] | None = None
     media: list[NewsMediaIn] | None = None
 
 
@@ -385,6 +397,7 @@ class NewsReactionIn(Schema):
 class NewsReactionOut(Schema):
     emoji: str
     count: int
+    my_reacted: bool = False
 
 
 class NewsReactionDetailOut(Schema):
@@ -392,6 +405,7 @@ class NewsReactionDetailOut(Schema):
     user_id: UUID
     emoji: str
     created_at: datetime
+    user_profile: ActorProfileOut | None = None
 
 
 class NewsCommentIn(Schema):
@@ -409,6 +423,10 @@ class NewsCommentOut(Schema):
     likes_count: int = 0
     my_liked: bool = False
     replies_count: int = 0
+    user_profile: ActorProfileOut | None = None
+    can_edit: bool = False
+    can_delete: bool = False
+    can_reply: bool = False
 
 
 class NewsCommentPageOut(Schema):
@@ -425,6 +443,11 @@ class NewsCommentLikeIn(Schema):
 class NewsCommentLikeOut(Schema):
     likes_count: int
     my_liked: bool
+
+
+class NewsViewOut(Schema):
+    views_count: int
+    counted: bool = False
 
 
 # ============================================================================

@@ -9,7 +9,9 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import models, transaction
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.core import signing
 from ninja import Body, Router
 from ninja.errors import HttpError
 
@@ -17,7 +19,7 @@ from activity import schemas
 from activity.connectors import install_connectors
 from activity.context import require_activity_context
 from activity.dsar import erase_user_data, export_user_data
-from activity.enums import ScopeType, Visibility
+from activity.enums import NewsStatus, ScopeType, Visibility
 from activity.audit import log_audit_event as _log_audit
 from activity.models import (
     AccountLink,
@@ -25,15 +27,21 @@ from activity.models import (
     NewsComment,
     NewsCommentReaction,
     NewsPost,
+    NewsPostView,
     NewsReaction,
     Source,
     Subscription,
     uuid_from_str,
 )
 from activity.permissions import Permissions, has_permission, require_permission
+from activity.portal_client import portal_client
 from activity.privacy import mask_for_api, mask_identifier
 from activity.media import (
     build_news_media_key,
+    load_local_media_file,
+    parse_local_download_token,
+    parse_local_upload_token,
+    save_local_media_file,
     generate_download_url,
     generate_upload_url,
     is_news_media_key_allowed,
@@ -57,6 +65,8 @@ from activity.services import (
     require_not_suspended,
     get_unread_count_cached,
     get_unread_count_fresh,
+    publish_outbox_event,
+    update_last_seen,
 )
 from core.schemas import ErrorOut
 from core.errors import error_payload
@@ -65,6 +75,8 @@ router = Router(tags=["Activity"], auth=None)
 REQUIRED_BODY = Body(...)
 
 SYSTEM_USER_ID = uuid.UUID(int=0)
+NEWS_CHANGE_UPSERT = "activity.news.changed"
+NEWS_CHANGE_DELETE = "activity.news.deleted"
 
 NEWS_ALLOWED_IMAGE_TYPES = {
     "image/jpeg",
@@ -72,6 +84,304 @@ NEWS_ALLOWED_IMAGE_TYPES = {
     "image/webp",
     "image/gif",
 }
+
+
+def _error_json_response(
+    request,
+    *,
+    status: int,
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> JsonResponse:
+    request_id = request.headers.get("X-Request-Id")
+    return JsonResponse(
+        {
+            "error": {
+                "code": code,
+                "message": message,
+                "details": details or {},
+                "request_id": request_id,
+            }
+        },
+        status=status,
+    )
+
+
+def _synthetic_news_event_id(news_id: UUID) -> int:
+    return -int(news_id.hex[:8], 16)
+
+
+def _news_title(post: NewsPost) -> str:
+    title = (post.title or "").strip()
+    if title:
+        return title
+    body = (post.body or "").strip()
+    return body[:120].strip() or "Новость"
+
+
+def _news_source_ref(post: NewsPost) -> str:
+    return f"news:{post.id}"
+
+
+def _find_news_event(post: NewsPost) -> ActivityEvent | None:
+    return ActivityEvent.objects.filter(
+        tenant_id=post.tenant_id,
+        type="news.posted",
+        payload_json__news_id=str(post.id),
+    ).first()
+
+
+def _build_news_payload(
+    post: NewsPost,
+    ctx,
+    *,
+    include_reactions: bool = True,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "news_id": str(post.id),
+        "title": post.title or None,
+        "body": post.body,
+        "tags": list(post.tags_json or []),
+        "media": list(post.media_json or []),
+        "comments_count": post.comments_count,
+        "reactions_count": post.reactions_count,
+        "status": post.status,
+        "permalink": {
+            "news_id": str(post.id),
+            "path": f"/feed/{post.id}",
+        },
+    }
+    payload["views_count"] = NewsPostView.objects.filter(
+        tenant_id=ctx.tenant_id,
+        post=post,
+    ).count()
+
+    if include_reactions:
+        reaction_rows = list(
+            NewsReaction.objects.filter(tenant_id=ctx.tenant_id, post=post)
+            .values("emoji")
+            .annotate(count=models.Count("id"))
+            .order_by("-count", "emoji")
+        )
+        payload["reaction_counts"] = [
+            {"emoji": row["emoji"], "count": row["count"]}
+            for row in reaction_rows
+        ]
+        if ctx.user_id:
+            payload["my_reactions"] = list(
+                NewsReaction.objects.filter(
+                    tenant_id=ctx.tenant_id,
+                    post=post,
+                    user_id=ctx.user_id,
+                )
+                .order_by("emoji")
+                .values_list("emoji", flat=True)
+            )
+
+    media = payload.get("media")
+    if isinstance(media, list):
+        hydrated: list[dict[str, Any]] = []
+        for entry in media:
+            if not isinstance(entry, dict):
+                continue
+            kind = (entry.get("type") or "").lower()
+            if kind == "image":
+                key = entry.get("key")
+                url = None
+                if isinstance(key, str) and key:
+                    try:
+                        url = generate_download_url(key=key)
+                    except Exception:
+                        url = None
+                hydrated.append({**entry, "url": url})
+            else:
+                hydrated.append(entry)
+        payload["media"] = hydrated
+
+    return payload
+
+
+def _build_news_activity_event(post: NewsPost) -> ActivityEvent:
+    event = _find_news_event(post)
+    if event:
+        return event
+    return ActivityEvent(
+        id=_synthetic_news_event_id(post.id),
+        tenant_id=post.tenant_id,
+        actor_user_id=post.author_user_id,
+        target_user_id=None,
+        type="news.posted",
+        occurred_at=post.created_at,
+        title=_news_title(post),
+        payload_json={},
+        visibility=post.visibility,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+        source_ref=_news_source_ref(post),
+    )
+
+
+def _can_read_news(ctx, post: NewsPost) -> bool:
+    if post.status == NewsStatus.DRAFT:
+        return bool(ctx.user_id and ctx.user_id == post.author_user_id) or _can_manage_news(ctx, post)
+    if post.visibility == Visibility.PRIVATE:
+        return bool(ctx.user_id and ctx.user_id == post.author_user_id) or _can_manage_news(ctx, post)
+    try:
+        require_permission(
+            ctx=ctx,
+            permission_key=Permissions.FEED_READ,
+            scope_type=post.scope_type,
+            scope_id=post.scope_id,
+        )
+    except HttpError:
+        return False
+    return True
+
+
+def _ensure_news_readable(ctx, post: NewsPost) -> None:
+    if not _can_read_news(ctx, post):
+        raise HttpError(403, error_payload("FORBIDDEN", "Insufficient permissions"))
+
+
+def _serialize_news_post(
+    post: NewsPost,
+    ctx,
+    *,
+    actor_profiles: dict[str, dict[str, Any]] | None = None,
+) -> schemas.ActivityEventOut:
+    actor_profile = None
+    if post.author_user_id and actor_profiles:
+        actor_profile = _coerce_actor_profile(actor_profiles.get(str(post.author_user_id)))
+    payload = _build_news_payload(post, ctx)
+    event = _build_news_activity_event(post)
+    event.title = _news_title(post)
+    event.payload_json = payload
+    event.visibility = post.visibility
+    event.scope_type = post.scope_type
+    event.scope_id = post.scope_id
+    event.source_ref = _news_source_ref(post)
+    return schemas.ActivityEventOut(
+        id=event.id or _synthetic_news_event_id(post.id),
+        tenant_id=post.tenant_id,
+        actor_user_id=post.author_user_id,
+        target_user_id=None,
+        type="news.posted",
+        occurred_at=post.created_at,
+        title=event.title,
+        payload_json=payload,
+        visibility=post.visibility,
+        scope_type=post.scope_type,
+        scope_id=post.scope_id,
+        source_ref=event.source_ref,
+        actor_profile=actor_profile,
+    )
+
+
+def _publish_news_change(
+    post: NewsPost,
+    *,
+    kind: str,
+    changed: list[str] | None = None,
+) -> None:
+    event_type = NEWS_CHANGE_DELETE if kind == "delete" else NEWS_CHANGE_UPSERT
+    publish_outbox_event(
+        tenant_id=post.tenant_id,
+        event_type=event_type,
+        aggregate_type="news",
+        aggregate_id=str(post.id),
+        payload={
+            "news_id": str(post.id),
+            "kind": kind,
+            "status": post.status,
+            "visibility": post.visibility,
+            "scope_type": post.scope_type,
+            "scope_id": post.scope_id,
+            "author_user_id": str(post.author_user_id),
+            "changed": changed or [],
+        },
+    )
+
+
+def _sync_news_activity_event(post: NewsPost) -> ActivityEvent | None:
+    event = _find_news_event(post)
+    if post.status == NewsStatus.DRAFT:
+        if event:
+            event.delete()
+        return None
+
+    defaults = {
+        "tenant_id": post.tenant_id,
+        "actor_user_id": post.author_user_id,
+        "target_user_id": None,
+        "type": "news.posted",
+        "occurred_at": post.created_at,
+        "title": _news_title(post),
+        "payload_json": {
+            "news_id": str(post.id),
+            "title": post.title or None,
+            "body": post.body,
+            "tags": list(post.tags_json or []),
+            "media": list(post.media_json or []),
+            "comments_count": post.comments_count,
+            "reactions_count": post.reactions_count,
+            "status": post.status,
+            "permalink": {
+                "news_id": str(post.id),
+                "path": f"/feed/{post.id}",
+            },
+        },
+        "visibility": post.visibility,
+        "scope_type": post.scope_type,
+        "scope_id": post.scope_id,
+        "source_ref": _news_source_ref(post),
+    }
+    if event:
+        for field, value in defaults.items():
+            setattr(event, field, value)
+        event.save(
+            update_fields=[
+                "tenant_id",
+                "actor_user_id",
+                "target_user_id",
+                "type",
+                "occurred_at",
+                "title",
+                "payload_json",
+                "visibility",
+                "scope_type",
+                "scope_id",
+                "source_ref",
+            ]
+        )
+        return event
+    return ActivityEvent.objects.create(**defaults)
+
+
+def _resolve_news_scope(
+    *,
+    ctx,
+    visibility: str,
+    scope_type_raw: str | None,
+    scope_id_raw: str | None,
+) -> tuple[str, str]:
+    scope_type = scope_type_raw.upper() if scope_type_raw else None
+    scope_id = scope_id_raw
+    if not scope_type:
+        if visibility == Visibility.COMMUNITY:
+            scope_type = ScopeType.COMMUNITY
+        elif visibility == Visibility.TEAM:
+            scope_type = ScopeType.TEAM
+        else:
+            scope_type = ScopeType.TENANT
+    if scope_type not in {ScopeType.TENANT, ScopeType.COMMUNITY, ScopeType.TEAM}:
+        raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid scope_type"))
+    if not scope_id:
+        if scope_type == ScopeType.TENANT:
+            scope_id = str(ctx.tenant_id)
+        else:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "scope_id is required"))
+    return str(scope_type), str(scope_id)
 
 
 def _ensure_dsar_subject(ctx, target_user_id: UUID) -> None:
@@ -89,34 +399,46 @@ def _parse_uuid(value: str, *, code: str, message: str) -> UUID:
         raise HttpError(400, error_payload(code, message)) from exc
 
 
-def _serialize_event(item, tenant_id: uuid.UUID) -> schemas.ActivityEventOut:
+def _coerce_actor_profile(profile: dict[str, Any] | None) -> schemas.ActorProfileOut | None:
+    if not profile:
+        return None
+    user_id = profile.get("user_id")
+    if not user_id:
+        return None
+    try:
+        parsed_user_id = UUID(str(user_id))
+    except Exception:
+        return None
+    return schemas.ActorProfileOut(
+        user_id=parsed_user_id,
+        username=profile.get("username"),
+        display_name=profile.get("display_name"),
+        first_name=str(profile.get("first_name") or ""),
+        last_name=str(profile.get("last_name") or ""),
+        avatar_url=profile.get("avatar_url"),
+    )
+
+
+def _fetch_actor_profiles(ctx, user_ids: list[str]) -> dict[str, dict[str, Any]]:
+    return portal_client.list_profiles(ctx, user_ids)
+
+
+def _serialize_event(
+    item,
+    ctx,
+    *,
+    actor_profiles: dict[str, dict[str, Any]] | None = None,
+) -> schemas.ActivityEventOut:
     payload = dict(item.payload_json or {})
     if item.type == "news.posted":
         news_id = payload.get("news_id")
         if news_id:
-            post = NewsPost.objects.filter(id=news_id, tenant_id=tenant_id).first()
+            post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
             if post:
-                payload["comments_count"] = post.comments_count
-                payload["reactions_count"] = post.reactions_count
-        media = payload.get("media")
-        if isinstance(media, list):
-            hydrated: list[dict[str, Any]] = []
-            for entry in media:
-                if not isinstance(entry, dict):
-                    continue
-                kind = (entry.get("type") or "").lower()
-                if kind == "image":
-                    key = entry.get("key")
-                    url = None
-                    if isinstance(key, str) and key:
-                        try:
-                            url = generate_download_url(key=key)
-                        except Exception:
-                            url = None
-                    hydrated.append({**entry, "url": url})
-                else:
-                    hydrated.append(entry)
-            payload["media"] = hydrated
+                return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
+    actor_profile = None
+    if item.actor_user_id and actor_profiles:
+        actor_profile = _coerce_actor_profile(actor_profiles.get(str(item.actor_user_id)))
     return schemas.ActivityEventOut(
         id=item.id,
         tenant_id=item.tenant_id,
@@ -130,6 +452,7 @@ def _serialize_event(item, tenant_id: uuid.UUID) -> schemas.ActivityEventOut:
         scope_type=item.scope_type,
         scope_id=item.scope_id,
         source_ref=item.source_ref,
+        actor_profile=actor_profile,
     )
 
 
@@ -220,7 +543,11 @@ def feed_get(
         filters=flt,
         limit=min(200, max(1, limit)),
     )
-    return {"items": [_serialize_event(item, ctx.tenant_id) for item in items]}
+    actor_profiles = _fetch_actor_profiles(
+        ctx,
+        [str(item.actor_user_id) for item in items if item.actor_user_id],
+    )
+    return {"items": [_serialize_event(item, ctx, actor_profiles=actor_profiles) for item in items]}
 
 
 @router.get(
@@ -236,6 +563,20 @@ def feed_unread_count(request):
     require_permission(ctx=ctx, permission_key=Permissions.FEED_READ)
     count = get_unread_count_cached(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
     return {"count": count}
+
+
+@router.post(
+    "/feed/mark-read",
+    response={204: None, 401: ErrorOut, 403: ErrorOut},
+    summary="Mark feed as read",
+    operation_id="activity_feed_mark_read",
+)
+def feed_mark_read(request):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+    require_permission(ctx=ctx, permission_key=Permissions.FEED_READ)
+    update_last_seen(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
+    return 204, None
 
 
 @router.get(
@@ -338,6 +679,120 @@ def news_media_upload_url(request, payload: schemas.NewsMediaUploadIn = REQUIRED
     )
 
 
+def news_media_upload_file(request, token: str):
+    if request.method != "PUT":
+        return HttpResponse(status=405)
+
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.NEWS_CREATE,
+        scope_type=ScopeType.TENANT,
+        scope_id=str(ctx.tenant_id),
+    )
+
+    try:
+        parsed = parse_local_upload_token(token)
+    except signing.SignatureExpired:
+        return _error_json_response(request, status=403, code="MEDIA_TOKEN_EXPIRED", message="Upload token expired")
+    except signing.BadSignature:
+        return _error_json_response(request, status=403, code="MEDIA_TOKEN_INVALID", message="Upload token is invalid")
+
+    if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=parsed.key):
+        return _error_json_response(request, status=403, code="FORBIDDEN", message="media key not allowed")
+
+    body = request.body or b""
+    if not body:
+        return _error_json_response(request, status=400, code="EMPTY_UPLOAD", message="Upload body is empty")
+    max_size = getattr(settings, "NEWS_MEDIA_MAX_IMAGE_BYTES", 10 * 1024 * 1024)
+    if len(body) > max_size:
+        return _error_json_response(
+            request,
+            status=400,
+            code="FILE_TOO_LARGE",
+            message="Image is слишком большой",
+            details={"max_bytes": max_size},
+        )
+
+    if parsed.content_type and parsed.content_type not in NEWS_ALLOWED_IMAGE_TYPES:
+        return _error_json_response(request, status=400, code="INVALID_MEDIA_TYPE", message="Only images are allowed")
+
+    save_local_media_file(key=parsed.key, content=body)
+    return HttpResponse(status=204)
+
+
+def news_media_download_file(request, token_or_key: str):
+    if request.method != "GET":
+        return HttpResponse(status=405)
+
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    try:
+        parsed = parse_local_download_token(token_or_key)
+        key = parsed.key
+    except signing.SignatureExpired:
+        return _error_json_response(request, status=403, code="MEDIA_TOKEN_EXPIRED", message="Media link expired")
+    except signing.BadSignature:
+        key = token_or_key
+
+    if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=key):
+        return _error_json_response(request, status=403, code="FORBIDDEN", message="media key not allowed")
+
+    try:
+        path, content_type = load_local_media_file(key=key)
+    except FileNotFoundError:
+        return _error_json_response(request, status=404, code="NOT_FOUND", message="Media file not found")
+    except ValueError:
+        return _error_json_response(request, status=400, code="INVALID_MEDIA_KEY", message="Invalid media key")
+
+    response = FileResponse(path.open("rb"), content_type=content_type)
+    response["Cache-Control"] = "private, max-age=60"
+    return response
+
+
+@router.get(
+    "/news/drafts",
+    response={200: list[schemas.ActivityEventOut], 401: ErrorOut, 403: ErrorOut},
+    summary="List current user's draft news posts",
+    operation_id="activity_news_drafts_list",
+)
+def news_drafts_list(request, limit: int = 20):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    drafts = list(
+        NewsPost.objects.filter(
+            tenant_id=ctx.tenant_id,
+            author_user_id=ctx.user_id,
+            status=NewsStatus.DRAFT,
+        )
+        .order_by("-updated_at", "-created_at")[: min(50, max(1, limit))]
+    )
+    actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
+    return [_serialize_news_post(post, ctx, actor_profiles=actor_profiles) for post in drafts]
+
+
+@router.get(
+    "/news/{news_id}",
+    response={200: schemas.ActivityEventOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Get single news post",
+    operation_id="activity_news_get",
+)
+def news_get(request, news_id: str):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+    _ensure_news_readable(ctx, post)
+    actor_profiles = _fetch_actor_profiles(ctx, [str(post.author_user_id)])
+    return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
+
+
 @router.post(
     "/news",
     response={200: schemas.ActivityEventOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut},
@@ -385,23 +840,16 @@ def news_create(request, payload: schemas.NewsCreateIn = REQUIRED_BODY):
     visibility = payload.visibility
     if visibility not in {v.value for v in Visibility}:
         raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid visibility"))
+    status = payload.status
+    if status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
+        raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid status"))
 
-    scope_type = payload.scope_type.upper() if payload.scope_type else None
-    scope_id = payload.scope_id
-    if not scope_type:
-        if visibility == Visibility.COMMUNITY:
-            scope_type = ScopeType.COMMUNITY
-        elif visibility == Visibility.TEAM:
-            scope_type = ScopeType.TEAM
-        else:
-            scope_type = ScopeType.TENANT
-    if scope_type not in {ScopeType.TENANT, ScopeType.COMMUNITY, ScopeType.TEAM}:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid scope_type"))
-    if not scope_id:
-        if scope_type == ScopeType.TENANT:
-            scope_id = str(ctx.tenant_id)
-        else:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "scope_id is required"))
+    scope_type, scope_id = _resolve_news_scope(
+        ctx=ctx,
+        visibility=visibility,
+        scope_type_raw=payload.scope_type,
+        scope_id_raw=payload.scope_id,
+    )
 
     require_permission(
         ctx=ctx,
@@ -409,10 +857,6 @@ def news_create(request, payload: schemas.NewsCreateIn = REQUIRED_BODY):
         scope_type=scope_type,
         scope_id=str(scope_id),
     )
-
-    title = (payload.title or "").strip()
-    if not title:
-        title = body[:120].strip() or "Новость"
 
     post = NewsPost.objects.create(
         tenant_id=ctx.tenant_id,
@@ -422,35 +866,17 @@ def news_create(request, payload: schemas.NewsCreateIn = REQUIRED_BODY):
         tags_json=tags,
         media_json=media,
         visibility=visibility,
+        status=status,
         scope_type=scope_type,
         scope_id=str(scope_id),
         created_at=timezone.now(),
         updated_at=timezone.now(),
     )
+    _sync_news_activity_event(post)
+    _publish_news_change(post, kind="upsert", changed=["body", "status", "visibility", "media", "tags"])
 
-    event = ActivityEvent.objects.create(
-        tenant_id=ctx.tenant_id,
-        actor_user_id=ctx.user_id,
-        target_user_id=None,
-        type="news.posted",
-        occurred_at=timezone.now(),
-        title=title,
-        payload_json={
-            "news_id": str(post.id),
-            "title": payload.title,
-            "body": body,
-            "tags": tags,
-            "media": media,
-            "comments_count": post.comments_count,
-            "reactions_count": post.reactions_count,
-        },
-        visibility=visibility,
-        scope_type=scope_type,
-        scope_id=str(scope_id),
-        source_ref=f"news:{uuid.uuid4().hex}",
-    )
-
-    return _serialize_event(event, ctx.tenant_id)
+    actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
+    return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
 
 
 @router.post(
@@ -466,13 +892,7 @@ def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUI
     post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
     if not post:
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     emoji = payload.emoji.strip()
     if not emoji or len(emoji) > 32:
@@ -500,13 +920,31 @@ def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUI
             post.reactions_count += 1
             post.save(update_fields=["reactions_count"])
 
+    post.updated_at = timezone.now()
+    post.save(update_fields=["updated_at"])
+    _publish_news_change(post, kind="upsert", changed=["reactions"])
+
     rows = (
         NewsReaction.objects.filter(tenant_id=ctx.tenant_id, post=post)
         .values("emoji")
         .order_by("emoji")
         .annotate(count=models.Count("id"))
     )
-    return [schemas.NewsReactionOut(emoji=r["emoji"], count=r["count"]) for r in rows]
+    my_reactions = set(
+        NewsReaction.objects.filter(
+            tenant_id=ctx.tenant_id,
+            post=post,
+            user_id=ctx.user_id,
+        ).values_list("emoji", flat=True)
+    )
+    return [
+        schemas.NewsReactionOut(
+            emoji=r["emoji"],
+            count=r["count"],
+            my_reacted=r["emoji"] in my_reactions,
+        )
+        for r in rows
+    ]
 
 
 @router.get(
@@ -522,18 +960,16 @@ def list_news_reactions(request, news_id: str, limit: int = 50, offset: int = 0)
     post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
     if not post:
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     reactions = (
         NewsReaction.objects.filter(tenant_id=ctx.tenant_id, post=post)
         .order_by("-created_at")
         [offset:offset + limit]
+    )
+    actor_profiles = _fetch_actor_profiles(
+        ctx,
+        [str(reaction.user_id) for reaction in reactions],
     )
     return [
         schemas.NewsReactionDetailOut(
@@ -541,9 +977,51 @@ def list_news_reactions(request, news_id: str, limit: int = 50, offset: int = 0)
             user_id=r.user_id,
             emoji=r.emoji,
             created_at=r.created_at,
+            user_profile=_coerce_actor_profile(actor_profiles.get(str(r.user_id))),
         )
         for r in reactions
     ]
+
+
+@router.post(
+    "/news/{news_id}/views",
+    response={200: schemas.NewsViewOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Track unique view for a news post",
+    operation_id="activity_news_views_track",
+)
+def news_track_view(request, news_id: str):
+    ctx = require_activity_context(request, require_user=True)
+    require_not_suspended(ctx)
+
+    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+    if not post:
+        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+    _ensure_news_readable(ctx, post)
+
+    counted = False
+    if ctx.user_id != post.author_user_id:
+        _, counted = NewsPostView.objects.get_or_create(
+            tenant_id=ctx.tenant_id,
+            post=post,
+            user_id=ctx.user_id,
+            defaults={
+                "first_viewed_at": timezone.now(),
+                "last_viewed_at": timezone.now(),
+            },
+        )
+        if not counted:
+            NewsPostView.objects.filter(
+                tenant_id=ctx.tenant_id,
+                post=post,
+                user_id=ctx.user_id,
+            ).update(last_viewed_at=timezone.now())
+        if counted:
+            post.updated_at = timezone.now()
+            post.save(update_fields=["updated_at"])
+            _publish_news_change(post, kind="upsert", changed=["views"])
+
+    views_count = NewsPostView.objects.filter(tenant_id=ctx.tenant_id, post=post).count()
+    return schemas.NewsViewOut(views_count=views_count, counted=counted)
 
 
 def _can_manage_news(ctx, post: NewsPost) -> bool:
@@ -624,58 +1102,25 @@ def news_update(request, news_id: str, payload: schemas.NewsUpdateIn = REQUIRED_
         if payload.visibility not in {v.value for v in Visibility}:
             raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid visibility"))
         visibility = payload.visibility
+    status = post.status
+    if payload.status is not None:
+        if payload.status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid status"))
+        status = payload.status
 
     post.title = title
     post.body = body
     post.tags_json = tags
     post.media_json = media
     post.visibility = visibility
+    post.status = status
     post.updated_at = timezone.now()
-    post.save(update_fields=["title", "body", "tags_json", "media_json", "visibility", "updated_at"])
+    post.save(update_fields=["title", "body", "tags_json", "media_json", "visibility", "status", "updated_at"])
 
-    event = ActivityEvent.objects.filter(
-        tenant_id=ctx.tenant_id,
-        type="news.posted",
-        payload_json__news_id=str(post.id),
-    ).first()
-    if event:
-        event.title = title
-        event.payload_json = {
-            "news_id": str(post.id),
-            "title": title,
-            "body": body,
-            "tags": tags,
-            "media": media,
-            "comments_count": post.comments_count,
-            "reactions_count": post.reactions_count,
-        }
-        event.visibility = visibility
-        event.save(update_fields=["title", "payload_json", "visibility"])
-        return _serialize_event(event, ctx.tenant_id)
-
-    fallback = ActivityEvent(
-        id=0,
-        tenant_id=ctx.tenant_id,
-        actor_user_id=ctx.user_id,
-        target_user_id=None,
-        type="news.posted",
-        occurred_at=post.created_at,
-        title=title,
-        payload_json={
-            "news_id": str(post.id),
-            "title": title,
-            "body": body,
-            "tags": tags,
-            "media": media,
-            "comments_count": post.comments_count,
-            "reactions_count": post.reactions_count,
-        },
-        visibility=visibility,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-        source_ref=f"news:{post.id}",
-    )
-    return _serialize_event(fallback, ctx.tenant_id)
+    _sync_news_activity_event(post)
+    _publish_news_change(post, kind="upsert", changed=["body", "status", "visibility", "media", "tags"])
+    actor_profiles = _fetch_actor_profiles(ctx, [str(post.author_user_id)])
+    return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
 
 
 @router.delete(
@@ -695,6 +1140,7 @@ def news_delete(request, news_id: str):
     if not _can_manage_news(ctx, post):
         raise HttpError(403, error_payload("FORBIDDEN", "Permission denied"))
 
+    _publish_news_change(post, kind="delete", changed=["deleted"])
     ActivityEvent.objects.filter(
         tenant_id=ctx.tenant_id,
         type="news.posted",
@@ -702,6 +1148,47 @@ def news_delete(request, news_id: str):
     ).delete()
     post.delete()
     return 204, None
+
+
+def _comment_capabilities(ctx, post: NewsPost, comment: NewsComment) -> tuple[bool, bool, bool]:
+    is_author = bool(ctx.user_id and comment.user_id and ctx.user_id == comment.user_id)
+    can_manage = _can_manage_news(ctx, post)
+    is_deleted = comment.deleted_at is not None
+    can_edit = (is_author or can_manage) and not is_deleted
+    can_delete = (is_author or can_manage) and not is_deleted
+    can_reply = not is_deleted
+    return can_edit, can_delete, can_reply
+
+
+def _serialize_comment(
+    ctx,
+    post: NewsPost,
+    comment: NewsComment,
+    *,
+    likes_count: int = 0,
+    my_liked: bool = False,
+    replies_count: int = 0,
+    actor_profiles: dict[str, dict[str, Any]] | None = None,
+) -> schemas.NewsCommentOut:
+    can_edit, can_delete, can_reply = _comment_capabilities(ctx, post, comment)
+    user_profile = None
+    if comment.user_id and actor_profiles:
+        user_profile = _coerce_actor_profile(actor_profiles.get(str(comment.user_id)))
+    return schemas.NewsCommentOut(
+        id=comment.id,
+        user_id=None if comment.deleted_at else comment.user_id,
+        body=comment.body,
+        created_at=comment.created_at,
+        parent_id=comment.parent_id,
+        deleted=comment.deleted_at is not None,
+        likes_count=likes_count,
+        my_liked=my_liked,
+        replies_count=replies_count,
+        user_profile=None if comment.deleted_at else user_profile,
+        can_edit=can_edit,
+        can_delete=can_delete,
+        can_reply=can_reply,
+    )
 
 
 @router.get(
@@ -721,27 +1208,25 @@ def news_comments_list(
     post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
     if not post:
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     limit = min(100, max(1, limit))
-    qs = (
-        NewsComment.objects.filter(tenant_id=ctx.tenant_id, post=post, deleted_at__isnull=True)
+    comments = list(
+        NewsComment.objects.filter(tenant_id=ctx.tenant_id, post=post)
         .order_by("created_at", "id")[:limit]
     )
+    actor_profiles = _fetch_actor_profiles(
+        ctx,
+        [str(comment.user_id) for comment in comments if comment.user_id and comment.deleted_at is None],
+    )
     return [
-        schemas.NewsCommentOut(
-            id=c.id,
-            user_id=c.user_id,
-            body=c.body,
-            created_at=c.created_at,
+        _serialize_comment(
+            ctx,
+            post,
+            comment,
+            actor_profiles=actor_profiles,
         )
-        for c in qs
+        for comment in comments
     ]
 
 
@@ -764,19 +1249,12 @@ def news_comments_page(
     post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
     if not post:
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     limit = min(100, max(1, limit))
     qs = NewsComment.objects.filter(
         tenant_id=ctx.tenant_id,
         post=post,
-        deleted_at__isnull=True,
     )
     if parent_id is None:
         qs = qs.filter(parent__isnull=True)
@@ -820,24 +1298,27 @@ def news_comments_page(
             NewsComment.objects.filter(
                 tenant_id=ctx.tenant_id,
                 parent_id__in=comment_ids,
-                deleted_at__isnull=True,
             )
             .values("parent_id")
             .annotate(count=models.Count("id"))
         )
         replies_by_comment_id = {r["parent_id"]: r["count"] for r in replies_rows}
 
+    actor_profiles = _fetch_actor_profiles(
+        ctx,
+        [str(comment.user_id) for comment in items if comment.user_id and comment.deleted_at is None],
+    )
+
     return schemas.NewsCommentPageOut(
         items=[
-            schemas.NewsCommentOut(
-                id=c.id,
-                user_id=c.user_id,
-                body=c.body,
-                created_at=c.created_at,
-                parent_id=c.parent_id,
+            _serialize_comment(
+                ctx,
+                post,
+                c,
                 likes_count=likes_by_comment_id.get(c.id, 0),
                 my_liked=c.id in my_likes,
                 replies_count=replies_by_comment_id.get(c.id, 0),
+                actor_profiles=actor_profiles,
             )
             for c in items
         ],
@@ -860,13 +1341,7 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
     post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
     if not post:
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     body = payload.body.strip()
     if not body:
@@ -891,15 +1366,11 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
         created_at=timezone.now(),
     )
     post.comments_count += 1
-    post.save(update_fields=["comments_count"])
-
-    return schemas.NewsCommentOut(
-        id=comment.id,
-        user_id=comment.user_id,
-        body=comment.body,
-        created_at=comment.created_at,
-        parent_id=comment.parent_id,
-    )
+    post.updated_at = timezone.now()
+    post.save(update_fields=["comments_count", "updated_at"])
+    _publish_news_change(post, kind="upsert", changed=["comments"])
+    actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
+    return _serialize_comment(ctx, post, comment, actor_profiles=actor_profiles)
 
 
 @router.post(
@@ -929,13 +1400,7 @@ def news_comment_like(
     ).first()
     if not comment:
         raise HttpError(404, error_payload("NOT_FOUND", "Comment not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
 
     if payload.action == "remove":
         NewsCommentReaction.objects.filter(
@@ -957,6 +1422,9 @@ def news_comment_like(
         tenant_id=ctx.tenant_id,
         comment=comment,
     ).count()
+    post.updated_at = timezone.now()
+    post.save(update_fields=["updated_at"])
+    _publish_news_change(post, kind="upsert", changed=["comments"])
     return schemas.NewsCommentLikeOut(likes_count=likes_count, my_liked=my_liked)
 
 
@@ -982,19 +1450,16 @@ def news_comment_delete(request, news_id: str, comment_id: int):
     ).first()
     if not comment:
         raise HttpError(404, error_payload("NOT_FOUND", "Comment not found"))
-
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.FEED_READ,
-        scope_type=post.scope_type,
-        scope_id=post.scope_id,
-    )
+    _ensure_news_readable(ctx, post)
     if ctx.user_id != comment.user_id and not _can_manage_news(ctx, post):
         raise HttpError(403, error_payload("FORBIDDEN", "Insufficient permissions"))
 
     comment.deleted_at = timezone.now()
     comment.body = "Комментарий удалён"
     comment.save(update_fields=["deleted_at", "body", "updated_at"])
+    post.updated_at = timezone.now()
+    post.save(update_fields=["updated_at"])
+    _publish_news_change(post, kind="upsert", changed=["comments"])
 
     likes_count = NewsCommentReaction.objects.filter(
         tenant_id=ctx.tenant_id,
@@ -1005,13 +1470,10 @@ def news_comment_delete(request, news_id: str, comment_id: int):
         parent=comment,
         deleted_at__isnull=True,
     ).count()
-    return schemas.NewsCommentOut(
-        id=comment.id,
-        user_id=None,
-        body=comment.body,
-        created_at=comment.created_at,
-        parent_id=comment.parent_id,
-        deleted=True,
+    return _serialize_comment(
+        ctx,
+        post,
+        comment,
         likes_count=likes_count,
         my_liked=False,
         replies_count=replies_count,
@@ -1090,8 +1552,12 @@ def feed_get_v2(
         limit=min(100, max(1, limit)),
         cursor=cursor,
     )
+    actor_profiles = _fetch_actor_profiles(
+        ctx,
+        [str(item.actor_user_id) for item in result.items if item.actor_user_id],
+    )
     return {
-        "items": [_serialize_event(item, ctx.tenant_id) for item in result.items],
+        "items": [_serialize_event(item, ctx, actor_profiles=actor_profiles) for item in result.items],
         "next_cursor": result.next_cursor,
         "has_more": result.has_more,
     }

@@ -17,6 +17,12 @@ class ThemeEnum(str, Enum):
     AUTO = "auto"
 
 
+class ThemeSourceEnum(str, Enum):
+    """Available theme source options."""
+    PORTAL = "portal"
+    ID = "id"
+
+
 class LanguageEnum(str, Enum):
     """Supported interface languages."""
     EN = "en"
@@ -145,6 +151,7 @@ class NotificationSettingsSchema(Schema):
 class AppearanceSchema(Schema):
     """User appearance/theme preferences."""
     theme: ThemeEnum = ThemeEnum.AUTO
+    theme_source: ThemeSourceEnum = ThemeSourceEnum.PORTAL
     accent_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#8B5CF6"
     font_size: FontSizeEnum = FontSizeEnum.MEDIUM
     high_contrast: bool = False

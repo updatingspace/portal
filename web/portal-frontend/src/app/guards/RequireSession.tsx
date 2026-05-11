@@ -8,7 +8,7 @@ export const RequireSession: React.FC = () => {
   const { user, isInitialized, isLoading, sessionIssue } = useAuth();
   const location = useLocation();
 
-  if (!isInitialized || isLoading) {
+  if (!isInitialized || (isLoading && !user)) {
     return null;
   }
 

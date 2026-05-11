@@ -1,11 +1,10 @@
 /**
  * Tests for UserSettingsPanel component
  */
-import { render, screen, fireEvent } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { I18nProvider } from '@/app/providers/I18nProvider';
+import { renderWithProviders, screen } from '@/test/test-utils';
 import { UserSettingsPanel } from '../components/UserSettingsPanel';
 
 // Mock the personalization API
@@ -16,6 +15,7 @@ vi.mock('../api/personalizationApi', () => ({
     tenant_id: 'tenant-456',
     appearance: {
       theme: 'light',
+      theme_source: 'portal',
       accent_color: '#007AFF',
       font_size: 'medium',
       high_contrast: false,
@@ -52,40 +52,30 @@ vi.mock('../api/personalizationApi', () => ({
 // Mock CSS imports
 vi.mock('../components/settings/settings.css', () => ({}));
 
-const createWrapper = () => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-  
-  return function TestWrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <I18nProvider>{children}</I18nProvider>
-      </QueryClientProvider>
-    );
-  };
+const authUser = {
+  id: 'user-1',
+  username: 'member',
+  email: 'member@example.com',
+  displayName: 'Portal Member',
+  isSuperuser: false,
+  isStaff: false,
+  idTheme: 'dark' as const,
 };
 
 describe('UserSettingsPanel', () => {
-  let wrapper: ReturnType<typeof createWrapper>;
-
   beforeEach(() => {
     window.localStorage.setItem('portal_locale_v1', 'en');
-    wrapper = createWrapper();
     vi.clearAllMocks();
   });
 
   it('renders loading state initially', () => {
-    render(<UserSettingsPanel />, { wrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
     
     expect(screen.getByText('Loading preferences...')).toBeInTheDocument();
   });
 
   it('renders tabs after loading', async () => {
-    render(<UserSettingsPanel />, { wrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
     
     // Wait for preferences to load
     await screen.findByText('Personalization');
@@ -97,7 +87,7 @@ describe('UserSettingsPanel', () => {
   });
 
   it('switches between tabs correctly', async () => {
-    render(<UserSettingsPanel />, { wrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
     
     // Wait for loading
     await screen.findByText('Personalization');
@@ -116,7 +106,7 @@ describe('UserSettingsPanel', () => {
   });
 
   it('shows save status correctly', async () => {
-    render(<UserSettingsPanel />, { wrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
     
     // Wait for loading
     await screen.findByText('Personalization');
@@ -126,7 +116,7 @@ describe('UserSettingsPanel', () => {
   });
 
   it('displays reset button', async () => {
-    render(<UserSettingsPanel />, { wrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
     
     // Wait for loading
     await screen.findByText('Personalization');
@@ -137,8 +127,7 @@ describe('UserSettingsPanel', () => {
 
   it('renders russian translations when locale is ru', async () => {
     window.localStorage.setItem('portal_locale_v1', 'ru');
-    const ruWrapper = createWrapper();
-    render(<UserSettingsPanel />, { wrapper: ruWrapper });
+    renderWithProviders(<UserSettingsPanel />, { authUser });
 
     await screen.findByText('Персонализация');
     expect(screen.getByText('Внешний вид')).toBeInTheDocument();

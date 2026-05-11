@@ -21,14 +21,18 @@ export function useDashboards(includeDeleted: boolean = false) {
   const queryClient = useQueryClient();
 
   const {
-    data: layouts = [],
+    data: layoutsResult,
     isLoading,
     error,
     refetch,
   } = useQuery({
     queryKey: [DASHBOARDS_QUERY_KEY, includeDeleted],
     queryFn: () => fetchDashboardLayouts(includeDeleted),
+    retry: false,
   });
+
+  const layouts = layoutsResult?.status === 'ok' ? layoutsResult.data : [];
+  const isForbidden = layoutsResult?.status === 'forbidden';
 
   const createLayoutMutation = useMutation({
     mutationFn: createDashboardLayout,
@@ -57,6 +61,7 @@ export function useDashboards(includeDeleted: boolean = false) {
     layouts,
     isLoading,
     error,
+    isForbidden,
     refetch,
     createLayout: createLayoutMutation.mutateAsync,
     updateLayout: (layoutId: string, payload: DashboardLayoutInput) =>
@@ -66,19 +71,30 @@ export function useDashboards(includeDeleted: boolean = false) {
   };
 }
 
-export function useDashboardWidgets(layoutId: string | null, includeDeleted: boolean = false) {
+export function useDashboardWidgets(
+  layoutId: string | null,
+  includeDeleted: boolean = false,
+  enabled: boolean = true,
+) {
   const queryClient = useQueryClient();
 
   const {
-    data: widgets = [],
+    data: widgetsResult,
     isLoading,
     error,
     refetch,
   } = useQuery({
     queryKey: [DASHBOARDS_QUERY_KEY, 'widgets', layoutId, includeDeleted],
-    queryFn: () => (layoutId ? fetchDashboardWidgets(layoutId, includeDeleted) : []),
-    enabled: !!layoutId,
+    queryFn: () =>
+      layoutId
+        ? fetchDashboardWidgets(layoutId, includeDeleted)
+        : Promise.resolve({ status: 'ok' as const, data: [] }),
+    enabled: enabled && !!layoutId,
+    retry: false,
   });
+
+  const widgets = widgetsResult?.status === 'ok' ? widgetsResult.data : [];
+  const isForbidden = widgetsResult?.status === 'forbidden';
 
   const createWidgetMutation = useMutation({
     mutationFn: ({ targetLayoutId, payload }: { targetLayoutId: string; payload: DashboardWidgetInput }) =>
@@ -108,6 +124,7 @@ export function useDashboardWidgets(layoutId: string | null, includeDeleted: boo
     widgets,
     isLoading,
     error,
+    isForbidden,
     refetch,
     createWidget: (payload: DashboardWidgetInput) => {
       if (!layoutId) {

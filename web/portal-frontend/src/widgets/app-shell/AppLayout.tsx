@@ -6,16 +6,20 @@ import {
   type AccessDeniedError,
   subscribeAccessDenied,
 } from '../../api/accessDenied';
+import { RouteDocumentTitle } from '../../app/providers/RouteDocumentTitle';
+import { useI18n } from '../../app/providers/i18nContext';
 import { buildAsideMenuItems } from '../../features/navigation/menu';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantContext } from '../../contexts/TenantContext';
 import { AccessDeniedScreen } from '../../features/access-denied';
 import { TenantSwitcher } from '../../components/TenantSwitcher';
+import { PersonalizationRuntime } from '../../features/personalization/runtime/PersonalizationRuntime';
 import { AppHeader } from './AppHeader';
 import './app-shell.css';
 
 export const AppLayout: React.FC = () => {
   const { user } = useAuth();
+  const { locale } = useI18n();
   const { activeTenant, availableTenants } = useTenantContext();
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,11 +52,12 @@ export const AppLayout: React.FC = () => {
     () =>
       buildAsideMenuItems({
         user,
+        locale,
         currentPath: location.pathname,
         onNavigate: (to) => navigate(to),
         routeBase,
       }),
-    [location.pathname, navigate, user, routeBase],
+    [location.pathname, navigate, user, routeBase, locale],
   );
 
   const logoText = activeTenant?.tenant_slug
@@ -63,6 +68,7 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="app-shell">
+      <RouteDocumentTitle />
       <AsideHeader
         className="app-shell__aside"
         compact={isAsideCompact}
@@ -74,6 +80,7 @@ export const AppLayout: React.FC = () => {
         menuItems={menuItems}
         renderContent={() => (
           <div className="app-shell__content-shell">
+            <PersonalizationRuntime />
             <AppHeader showBrand={false} tenantSwitcher={
               availableTenants.length > 1
                 ? <TenantSwitcher />

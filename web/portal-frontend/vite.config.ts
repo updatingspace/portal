@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const directDevHostPattern = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -36,7 +37,7 @@ export default defineConfig({
             // and will fall back to session-based active_tenant.
             // For aef.localhost (legacy subdomain mode), BFF resolves tenant from host.
             const originalHost = req.headers.host || '';
-            if (originalHost.includes('localhost:5173') || originalHost.includes('127.0.0.1')) {
+            if (directDevHostPattern.test(originalHost)) {
               // Direct Vite dev access — use portal.localhost (path-based mode)
               proxyReq.setHeader('Host', 'portal.localhost');
             } else {

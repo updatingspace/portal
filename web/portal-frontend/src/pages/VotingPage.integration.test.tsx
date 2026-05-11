@@ -1,26 +1,70 @@
 import React from 'react';
 
 import { ApiError } from '../api/client';
-import { nominationsApiMock } from '../test/mocks/api';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useParams } from 'react-router-dom';
+import { describe, expect, test, vi } from 'vitest';
+
+vi.mock('@gravity-ui/uikit', async () => {
+  const actual = await vi.importActual<typeof import('@gravity-ui/uikit')>('@gravity-ui/uikit');
+
+  const BreadcrumbsStub = ({ children }: { children?: React.ReactNode }) => <nav>{children}</nav>;
+  BreadcrumbsStub.Item = ({ children, href }: { children?: React.ReactNode; href?: string }) => <a href={href}>{children}</a>;
+
+  return {
+    ...actual,
+    Breadcrumbs: BreadcrumbsStub,
+  };
+});
+
+vi.mock('@/features/voting/hooks/useVotingUnified', async () => {
+  const actual = await vi.importActual<typeof import('@/features/voting/hooks/useVotingUnified')>(
+    '@/features/voting/hooks/useVotingUnified',
+  );
+
+  return {
+    ...actual,
+    useVotingSession: vi.fn(),
+  };
+});
 
 import { renderWithProviders, screen, userEvent } from '../test/test-utils';
 import { VotingPage } from './VotingPage';
 import { withMockedDate } from '../test/time';
+import * as votingUnifiedHooks from '@/features/voting/hooks/useVotingUnified';
 
-const LOADER_TEXT = 'Загружаем номинации...';
 const NOMINATION_TITLE = 'Лучшая графика';
 const SECOND_NOMINATION_TITLE = 'Лучший геймплей';
 const ACTIVE_STATUS_LABEL = 'Активно';
-const RETRY_BUTTON_LABEL = 'Попробовать еще раз';
+const RETRY_BUTTON_LABEL = 'Попробовать ещё раз';
 const VOTING_ROUTE = '/votings/vote-active';
 const VOTING_ROUTE_PATH = '/votings/:votingId';
-const FIRST_NOMINATION_LINK = '/nominations/nom-1';
+
+const refetchVotingSession = vi.fn();
+
+const votingSession = {
+  id: 'vote-active',
+  title: 'Витринное голосование',
+  description: 'Тестовое голосование для проверки навигации.',
+  status: 'active',
+  created_at: '2025-02-01T12:00:00Z',
+  ends_at: '2030-02-10T12:00:00Z',
+  questions: [
+    { id: 'nom-1', title: NOMINATION_TITLE },
+    { id: 'nom-2', title: SECOND_NOMINATION_TITLE },
+  ],
+};
+
+const NominationProbe: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+
+  return <div>{`nomination:${id}`}</div>;
+};
 
 function renderVotingPage() {
   renderWithProviders(
     <Routes>
       <Route path={VOTING_ROUTE_PATH} element={<VotingPage />} />
+      <Route path="/nominations/:id" element={<NominationProbe />} />
     </Routes>,
     { route: VOTING_ROUTE },
   );
@@ -28,27 +72,51 @@ function renderVotingPage() {
 
 describe('VotingPage integration', () => {
   test('shows loading indicator before nominations are rendered', withMockedDate(async () => {
+    vi.mocked(votingUnifiedHooks.useVotingSession).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: refetchVotingSession,
+      isFetching: false,
+    } as ReturnType<typeof votingUnifiedHooks.useVotingSession>);
+
     renderVotingPage();
 
-    expect(screen.getByText(LOADER_TEXT)).toBeInTheDocument();
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(document.querySelectorAll('.g-skeleton').length).toBeGreaterThan(0);
   }));
 
   test('renders nominations and first nomination link after loading', withMockedDate(async () => {
+    vi.mocked(votingUnifiedHooks.useVotingSession).mockReturnValue({
+      data: votingSession,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchVotingSession,
+      isFetching: false,
+    } as ReturnType<typeof votingUnifiedHooks.useVotingSession>);
+
     renderVotingPage();
 
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: votingSession.title })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Открыть номинацию: ${NOMINATION_TITLE}` })).toBeInTheDocument();
     expect(screen.getByText(SECOND_NOMINATION_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(ACTIVE_STATUS_LABEL)).toBeInTheDocument();
+    expect(screen.getByText(ACTIVE_STATUS_LABEL, { exact: false })).toBeInTheDocument();
 
-    const firstLink = screen.getByRole('link', { name: NOMINATION_TITLE });
-    expect(firstLink).toHaveAttribute('href', FIRST_NOMINATION_LINK);
+    await userEvent.click(screen.getByRole('button', { name: `Открыть номинацию: ${NOMINATION_TITLE}` }));
+    expect(await screen.findByText('nomination:nom-1')).toBeInTheDocument();
   }));
 
   test('retries nominations fetch when user clicks retry', withMockedDate(async () => {
-    nominationsApiMock.fetchNominations.mockRejectedValueOnce(
-      new ApiError('fail', { kind: 'server', status: 500 }),
-    );
+    refetchVotingSession.mockClear();
+    vi.mocked(votingUnifiedHooks.useVotingSession).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError('fail', { kind: 'server', status: 500 }),
+      refetch: refetchVotingSession,
+      isFetching: false,
+    } as ReturnType<typeof votingUnifiedHooks.useVotingSession>);
 
     renderVotingPage();
 
@@ -56,7 +124,6 @@ describe('VotingPage integration', () => {
     expect(retryButton).toBeEnabled();
     await userEvent.click(retryButton);
 
-    expect(nominationsApiMock.fetchNominations).toHaveBeenCalledTimes(2);
-    expect(await screen.findByText(NOMINATION_TITLE)).toBeInTheDocument();
+    expect(refetchVotingSession).toHaveBeenCalledTimes(1);
   }));
 });

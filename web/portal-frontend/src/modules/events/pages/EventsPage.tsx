@@ -18,6 +18,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useEventsList } from '../../../features/events';
 import { EventsTimeline } from '../../../features/events/components';
 import { can } from '../../../features/rbac/can';
+import { useFormatters } from '@/shared/hooks/useFormatters';
 import type { EventVisibility, EventWithCounts, RsvpStatus } from '../../../features/events';
 
 const PAGE_SIZE = 20;
@@ -69,14 +70,15 @@ const getSafeDate = (value: string | null | undefined) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const formatDateFull = (date: Date, locale: string) =>
+const formatDateFull = (date: Date, locale: string, timeZone?: string) =>
     new Intl.DateTimeFormat(locale, {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
+        timeZone,
     }).format(date);
 
-const formatRelativeDateLabel = (date: Date, locale: string) => {
+const formatRelativeDateLabel = (date: Date, locale: string, timeZone?: string) => {
     const today = startOfDay(new Date());
     const target = startOfDay(date);
     const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
@@ -90,7 +92,7 @@ const formatRelativeDateLabel = (date: Date, locale: string) => {
                     ? 'Вчера'
                     : null;
 
-    const formatted = formatDateFull(date, locale);
+    const formatted = formatDateFull(date, locale, timeZone);
     return prefix ? `${prefix}, ${formatted}` : formatted;
 };
 
@@ -130,10 +132,9 @@ export const EventsPage: React.FC = () => {
     const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>('all');
     const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('all');
     const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('all');
+    const { locale, intlLocale, timezone } = useFormatters();
 
-    const rawLocale = user?.language ?? 'ru';
-    const locale = rawLocale.toLowerCase().startsWith('ru') ? 'ru-RU' : 'en-US';
-    const calendarLocale = rawLocale.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+    const calendarLocale = locale;
 
     React.useEffect(() => {
         settings.loadLocale(calendarLocale).catch(() => undefined);
@@ -258,7 +259,7 @@ export const EventsPage: React.FC = () => {
         ownershipFilter !== 'all';
 
     const listTitle = selectedDate
-        ? formatRelativeDateLabel(selectedDate, locale)
+        ? formatRelativeDateLabel(selectedDate, intlLocale, timezone)
         : activeTab === 'past'
             ? 'Прошедшие мероприятия'
             : 'Предстоящие мероприятия';
@@ -464,7 +465,7 @@ export const EventsPage: React.FC = () => {
                             {selectedDate && (
                                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                                     <Text variant="body-2" color="secondary">
-                                        Выбрано: {formatRelativeDateLabel(selectedDate, locale)}
+                                        Выбрано: {formatRelativeDateLabel(selectedDate, intlLocale, timezone)}
                                     </Text>
                                 </div>
                             )}

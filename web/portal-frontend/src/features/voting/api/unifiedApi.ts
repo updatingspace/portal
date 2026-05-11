@@ -34,6 +34,7 @@ import type {
 
 import type {
   LegacyVotingSession,
+  LegacyVotingSessionWithQuestions,
   VotingSessionWithQuestions,
   LegacyVotingQuestion,
   ApiConfig,
@@ -117,7 +118,15 @@ export async function fetchVotingSessionDetail(
     if (!voting) {
       throw new Error(`Voting session with ID ${id} not found`);
     }
-    return adaptLegacyVotingToPoll(voting);
+    const legacyVoting = adaptLegacyVotingToPoll(voting);
+    return {
+      ...legacyVoting,
+      questions: [],
+      meta: {
+        has_voted: false,
+        can_vote: legacyVoting.isOpen,
+      },
+    } satisfies LegacyVotingSessionWithQuestions;
   }
   
   return fetchVotingSessionDetailModern(id);

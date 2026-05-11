@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatDateTime } from '@/shared/lib/formatters';
 
 // ============================================================================
 // Constants
@@ -347,15 +348,8 @@ function getVotePluralForm(count: number): string {
  */
 export function formatTimeForScreenReader(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  
-  return d.toLocaleString('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+
+  return formatDateTime(d);
 }
 
 /**

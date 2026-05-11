@@ -24,6 +24,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { StatusView } from '../../modules/portal/components/StatusView';
 import { can } from '../../features/rbac/can';
 import { toaster } from '../../toaster';
+import { formatDateTime } from '../../shared/lib/formatters';
 import { notifyApiError } from '../../utils/apiErrorHandling';
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue';
 import {
@@ -145,7 +146,7 @@ const getInitials = (member?: TenantMember | null) => {
   return letters || member.user_id.slice(0, 2).toUpperCase();
 };
 
-const formatIsoDate = (value?: string | null) => (value ? new Date(value).toLocaleString() : '—');
+const formatIsoDate = (value?: string | null) => (value ? formatDateTime(value) : '—');
 
 const hashString = (value: string) =>
   Array.from(value).reduce((acc, char) => acc + char.charCodeAt(0), 0);

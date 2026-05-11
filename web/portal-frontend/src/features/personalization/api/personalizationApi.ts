@@ -15,7 +15,9 @@ const PREFERENCES_BASE = '/personalization/preferences';
  * Creates default preferences if they don't exist
  */
 export async function fetchPreferences(): Promise<UserPreferences> {
-  return request<UserPreferences>(PREFERENCES_BASE);
+  return request<UserPreferences>(PREFERENCES_BASE, {
+    noRetry: true,
+  });
 }
 
 /**
@@ -27,6 +29,7 @@ export async function updatePreferences(
   return request<UserPreferences>(PREFERENCES_BASE, {
     method: 'PUT',
     body: payload,
+    noRetry: true,
   });
 }
 
@@ -34,7 +37,9 @@ export async function updatePreferences(
  * Get default preferences structure
  */
 export async function fetchDefaultPreferences(): Promise<DefaultPreferences> {
-  return request<DefaultPreferences>(`${PREFERENCES_BASE}/defaults`);
+  return request<DefaultPreferences>(`${PREFERENCES_BASE}/defaults`, {
+    noRetry: true,
+  });
 }
 
 /**
@@ -43,6 +48,7 @@ export async function fetchDefaultPreferences(): Promise<DefaultPreferences> {
 export async function resetPreferences(): Promise<UserPreferences> {
   return request<UserPreferences>(`${PREFERENCES_BASE}/reset`, {
     method: 'POST',
+    noRetry: true,
   });
 }
 
@@ -87,7 +93,9 @@ export async function updatePrivacy(
  * Useful for initial app load
  */
 export async function tryFetchPreferences(): Promise<UserPreferences | null> {
-  const result = await requestResult<UserPreferences>(PREFERENCES_BASE);
+  const result = await requestResult<UserPreferences>(PREFERENCES_BASE, {
+    noRetry: true,
+  });
   if (result.ok) {
     return result.data;
   }

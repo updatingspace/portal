@@ -22,6 +22,7 @@ import {
   useCreateCategory,
   useUpdateAchievement,
 } from '../../../hooks/useGamification';
+import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 import type { Achievement, AchievementImageSet, AchievementStatus } from '../../../types/gamification';
 import './gamification.css';
 
@@ -357,6 +358,14 @@ export const AchievementFormPage: React.FC = () => {
   const canEditAchievement = isEdit ? canEdit : canCreate;
 
   const { data: achievement, isLoading } = useAchievement(id);
+  const achievementTitle = achievement?.nameI18n.ru ?? achievement?.nameI18n.en ?? null;
+  useDocumentTitle(
+    isEdit
+      ? achievementTitle
+        ? `${achievementTitle} · Редактирование ачивки`
+        : 'Редактирование ачивки'
+      : 'Новая ачивка',
+  );
   const { data: categoriesData } = useCategories();
   const { mutateAsync: createAchievement, isPending: isCreating } = useCreateAchievement();
   const { mutateAsync: updateAchievement, isPending: isUpdating } = useUpdateAchievement();

@@ -16,6 +16,7 @@ describe('Validation schemas', () => {
     it('validates correct appearance data', () => {
       const validData = {
         theme: 'light',
+        theme_source: 'portal',
         accent_color: '#007AFF',
         font_size: 'medium',
         high_contrast: false,
@@ -44,14 +45,13 @@ describe('Validation schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('accepts valid hex colors', () => {
-      const validColors = ['#000000', '#FFFFFF', '#007AFF', '#ff0000'];
-      
-      for (const color of validColors) {
+    it.each(['#000000', '#FFFFFF', '#007AFF', '#ff0000'])(
+      'accepts valid hex color %s',
+      (color) => {
         const result = appearanceSettingsSchema.safeParse({ accent_color: color });
         expect(result.success).toBe(true);
-      }
-    });
+      },
+    );
   });
 
   describe('localizationSettingsSchema', () => {
@@ -146,6 +146,7 @@ describe('Validation schemas', () => {
       const validData = {
         appearance: {
           theme: 'dark',
+          theme_source: 'id',
           font_size: 'large',
         },
         privacy: {

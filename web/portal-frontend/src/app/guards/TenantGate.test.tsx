@@ -106,19 +106,18 @@ describe('TenantGate', () => {
       setState: setTenantStateMock,
     });
 
-    // Render at a path without :tenantSlug param
     render(
-      <MemoryRouter initialEntries={['/t/']}>
+      <MemoryRouter initialEntries={['/t']}>
         <Routes>
-          <Route path="/t/" element={<TenantGate />} />
+          <Route path="/t" element={<TenantGate />} />
           <Route path="/choose-tenant" element={<div data-testid="choose-tenant">Choose</div>} />
         </Routes>
       </MemoryRouter>,
     );
 
-    // TenantGate sets tenantSlug = undefined → navigates to /choose-tenant
-    // But since /t/ doesn't match /t/:tenantSlug, it won't even mount TenantGate.
-    // Let's test the actual route match.
+    await waitFor(() => {
+      expect(screen.getByTestId('choose-tenant')).toBeInTheDocument();
+    });
   });
 
   // ----------------------------------------------------------------
@@ -306,7 +305,7 @@ describe('TenantGate', () => {
   // Already switched to same slug → no re-switch
   // ----------------------------------------------------------------
 
-  it('does not re-switch when activeTenant already matches slug & state is ready', () => {
+  it('does not re-switch when activeTenant already matches slug', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u1', username: 'test', displayName: 'Test', isSuperuser: false, isStaff: false, email: null },
       refreshProfile: refreshProfileMock,
@@ -318,13 +317,12 @@ describe('TenantGate', () => {
       setState: setTenantStateMock,
     });
 
-    // We need gateState = 'ready' — but TenantGate manages internal state.
-    // On first render with activeTenant matching slug, it will still attempt
-    // a switch because gateState starts as 'idle'. This is by design.
     renderGate('/t/aef');
 
-    // The gate will call doSwitchTenant on first mount because gateState='idle'
-    // This is expected behavior.
+    await waitFor(() => {
+      expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    });
+    expect(doSwitchTenantMock).not.toHaveBeenCalled();
   });
 
   // ----------------------------------------------------------------

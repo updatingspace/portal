@@ -14,6 +14,7 @@ from pydantic import field_validator
 class AppearanceSettingsSchema(Schema):
     """Schema for appearance settings"""
     theme: str | None = None
+    theme_source: str | None = None
     accent_color: str | None = None
     font_size: str | None = None
     high_contrast: bool | None = None
@@ -24,6 +25,13 @@ class AppearanceSettingsSchema(Schema):
     def validate_theme(cls, v: str | None) -> str | None:
         if v is not None and v not in ("light", "dark", "auto"):
             raise ValueError("theme must be 'light', 'dark', or 'auto'")
+        return v
+
+    @field_validator("theme_source")
+    @classmethod
+    def validate_theme_source(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("portal", "id"):
+            raise ValueError("theme_source must be 'portal' or 'id'")
         return v
 
     @field_validator("font_size")

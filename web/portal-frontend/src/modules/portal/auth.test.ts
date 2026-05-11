@@ -21,12 +21,7 @@ describe('Auth module', () => {
 
   const loadAuthModule = () => import('./auth');
   const getAssignedUrl = () => String(mockAssign.mock.calls[0][0]);
-
-  beforeEach(() => {
-    originalLocation = window.location;
-    mockAssign = vi.fn();
-
-    // Mock window.location
+  const setMockLocation = (overrides: Partial<Location> = {}) => {
     Object.defineProperty(window, 'location', {
       value: {
         ...originalLocation,
@@ -34,9 +29,18 @@ describe('Auth module', () => {
         pathname: '/current-page',
         search: '?foo=bar',
         origin: 'http://localhost:5173',
+        protocol: 'http:',
+        host: 'localhost:5173',
+        ...overrides,
       },
       writable: true,
     });
+  };
+
+  beforeEach(() => {
+    originalLocation = window.location;
+    mockAssign = vi.fn();
+    setMockLocation();
   });
 
   afterEach(() => {
@@ -104,6 +108,43 @@ describe('Auth module', () => {
 
       expect(url.pathname).toBe('/api/v1/auth/login');
       expect(url.searchParams.get('next')).toBe('/app');
+    });
+
+    it('uses portal-host auth endpoint for tenant alias hosts', async () => {
+      setMockLocation({
+        pathname: '/login',
+        search: '',
+        origin: 'http://aef.localhost:5173',
+        host: 'aef.localhost:5173',
+      });
+
+      const { redirectToLogin } = await loadAuthModule();
+
+      redirectToLogin('/app/events/42?tab=details');
+
+      expect(mockAssign).toHaveBeenCalledTimes(1);
+      const url = new URL(getAssignedUrl());
+      expect(url.origin).toBe('http://portal.localhost:5173');
+      expect(url.pathname).toBe('/api/v1/auth/login');
+      expect(url.searchParams.get('next')).toBe('/t/aef/events/42?tab=details');
+    });
+
+    it('defaults alias-host login redirect to the tenant root', async () => {
+      setMockLocation({
+        pathname: '/login',
+        search: '',
+        origin: 'http://aef.localhost:5173',
+        host: 'aef.localhost:5173',
+      });
+
+      const { redirectToLogin } = await loadAuthModule();
+
+      redirectToLogin();
+
+      expect(mockAssign).toHaveBeenCalledTimes(1);
+      const url = new URL(getAssignedUrl());
+      expect(url.origin).toBe('http://portal.localhost:5173');
+      expect(url.searchParams.get('next')).toBe('/t/aef/');
     });
   });
 });

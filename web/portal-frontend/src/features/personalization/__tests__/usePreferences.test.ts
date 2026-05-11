@@ -36,6 +36,7 @@ const mockPreferences = {
   tenant_id: 'tenant-456',
   appearance: {
     theme: 'light' as const,
+    theme_source: 'portal' as const,
     accent_color: '#007AFF',
     font_size: 'medium' as const,
     high_contrast: false,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Card } from "@gravity-ui/uikit";
 import { toaster } from "@gravity-ui/uikit/toaster-singleton";
 import { me, sessionMe, type AccountProfile, type SessionMe } from "../services/api";
 import { logger } from "../utils/logger";
@@ -7,7 +8,6 @@ import AvatarCard from "../components/account/AvatarCard";
 import ProfileCard from "../components/account/ProfileCard";
 import EmailCard from "../components/account/EmailCard";
 import PasswordCard from "../components/account/PasswordCard";
-import SessionsCard from "../components/account/SessionsCard";
 import MfaCard from "../components/account/MfaCard";
 import PasskeysCard from "../components/account/PasskeysCard";
 import OauthCard from "../components/account/OauthCard";
@@ -239,9 +239,29 @@ export default function ProfilePage() {
       <EmailCard />
       <PasswordCard />
       <MfaCard profile={profile} />
-      {isSystemAdmin ? <PasskeysCard profile={profile} isSystemAdmin={isSystemAdmin} /> : null}
+      {isSystemAdmin ? <PasskeysCard isSystemAdmin={isSystemAdmin} /> : null}
       <OauthCard />
-      <SessionsCard />
+      <Card
+        view="filled"
+        className="p-4"
+        style={{ display: "grid", gap: 8, borderRadius: 12 }}
+      >
+        <h3 className="h5 mb-0">Сессии и безопасность</h3>
+        <div className="text-muted">
+          Управление сессиями перенесено в Identity. Портал больше не держит локальную
+          сессионную логику.
+        </div>
+        <div>
+          <a
+            className="btn btn-outline-primary"
+            href={idAccountUrl ?? DEFAULT_ID_FRONTEND}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Открыть настройки в ID
+          </a>
+        </div>
+      </Card>
     </div>
   );
 }
