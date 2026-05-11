@@ -61,6 +61,20 @@ const BREAKPOINT_COLUMNS: Record<DashboardBreakpoint, number> = {
 const EDITOR_GRID_GAP_PX = 16;
 const EDITOR_ROW_HEIGHT_PX = 112;
 const DEFAULT_LAYOUT_NAME = 'My dashboard';
+const DEMO_ACTIVITY_ITEMS = [
+  { title: 'Patch notes synced', at: new Date('2026-01-15T12:00:00.000Z') },
+  { title: 'Moderator approved a request', at: new Date('2026-01-15T11:00:00.000Z') },
+  { title: 'Feed digest refreshed', at: new Date('2026-01-15T10:00:00.000Z') },
+] as const;
+const DEMO_UPCOMING_EVENTS = [
+  { title: 'Raid planning', at: new Date('2026-01-15T14:00:00.000Z') },
+  { title: 'Recruitment interview', at: new Date('2026-01-15T19:00:00.000Z') },
+] as const;
+const DEMO_ACTIVE_POLLS = [
+  { title: 'Officer rotation vote', at: new Date('2026-01-15T14:00:00.000Z') },
+  { title: 'New raid slot poll', at: new Date('2026-01-15T16:00:00.000Z') },
+  { title: 'Community feedback', at: new Date('2026-01-15T18:00:00.000Z') },
+] as const;
 
 const WIDGET_DEFINITIONS: WidgetDefinition[] = [
   {
@@ -599,9 +613,13 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     if (!isEditing && lastSyncedServerStateRef.current !== serverStateSignature) {
       lastSyncedServerStateRef.current = serverStateSignature;
-      setDraftWidgets(serverDraftWidgets);
-      setLayoutName(selectedLayout?.layout_name ?? DEFAULT_LAYOUT_NAME);
-      setDeletedWidgets([]);
+      const nextLayoutName = selectedLayout?.layout_name ?? DEFAULT_LAYOUT_NAME;
+      const syncId = window.setTimeout(() => {
+        setDraftWidgets(serverDraftWidgets);
+        setLayoutName(nextLayoutName);
+        setDeletedWidgets([]);
+      }, 0);
+      return () => window.clearTimeout(syncId);
     }
   }, [isEditing, selectedLayout?.layout_name, serverDraftWidgets, serverStateSignature]);
 
@@ -1001,11 +1019,11 @@ export const DashboardPage: React.FC = () => {
         return (
           <WidgetSurface title={title} description={description}>
             <div className="dashboard-list">
-              {['Patch notes synced', 'Moderator approved a request', 'Feed digest refreshed'].map((item, index) => (
-                <div key={item} className="dashboard-list__item">
-                  <Text variant="body-2">{item}</Text>
+              {DEMO_ACTIVITY_ITEMS.map((item) => (
+                <div key={item.title} className="dashboard-list__item">
+                  <Text variant="body-2">{item.title}</Text>
                   <Text variant="caption-1" color="secondary">
-                    {formatRelativeTime(new Date(Date.now() - index * 60 * 60 * 1000))}
+                    {formatRelativeTime(item.at)}
                   </Text>
                 </div>
               ))}
@@ -1016,10 +1034,7 @@ export const DashboardPage: React.FC = () => {
         return (
           <WidgetSurface title={title} description={description}>
             <div className="dashboard-list">
-              {[
-                { title: 'Raid planning', at: new Date(Date.now() + 2 * 60 * 60 * 1000) },
-                { title: 'Recruitment interview', at: new Date(Date.now() + 7 * 60 * 60 * 1000) },
-              ].map((item) => (
+              {DEMO_UPCOMING_EVENTS.map((item) => (
                 <div key={item.title} className="dashboard-list__item">
                   <Text variant="body-2">{item.title}</Text>
                   <Text variant="caption-1" color="secondary">
@@ -1034,11 +1049,11 @@ export const DashboardPage: React.FC = () => {
         return (
           <WidgetSurface title={title} description={description}>
             <div className="dashboard-list">
-              {['Officer rotation vote', 'New raid slot poll', 'Community feedback'].map((item, index) => (
-                <div key={item} className="dashboard-list__item">
-                  <Text variant="body-2">{item}</Text>
+              {DEMO_ACTIVE_POLLS.map((item) => (
+                <div key={item.title} className="dashboard-list__item">
+                  <Text variant="body-2">{item.title}</Text>
                   <Label theme="warning" size="xs">
-                    {formatRelativeTime(new Date(Date.now() + (index + 1) * 2 * 60 * 60 * 1000))}
+                    {formatRelativeTime(item.at)}
                   </Label>
                 </div>
               ))}

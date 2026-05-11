@@ -19,31 +19,31 @@ extract_container_block() {
   " "${tf_file}"
 }
 
-if rg -n 'force_destroy\\s*=\\s*true' "${tf_file}" >/dev/null 2>&1; then
+if grep -En 'force_destroy[[:space:]]*=[[:space:]]*true' "${tf_file}" >/dev/null 2>&1; then
   fail "Object Storage buckets must not hardcode force_destroy=true"
 fi
 
-if extract_container_block "access" | rg -n 'S3_ACCESS_KEY_ID|S3_SECRET_ACCESS_KEY' >/dev/null 2>&1; then
+if extract_container_block "access" | grep -E 'S3_ACCESS_KEY_ID|S3_SECRET_ACCESS_KEY' >/dev/null 2>&1; then
   fail "Access container must not receive S3/YMQ static credentials"
 fi
 
-if extract_container_block "portal" | rg -n 'S3_ACCESS_KEY_ID|S3_SECRET_ACCESS_KEY' >/dev/null 2>&1; then
+if extract_container_block "portal" | grep -E 'S3_ACCESS_KEY_ID|S3_SECRET_ACCESS_KEY' >/dev/null 2>&1; then
   fail "Portal container must not receive S3/YMQ static credentials"
 fi
 
-if rg -n 'ci\\s*=\\s*yandex_iam_service_account\\.ci\\.id' "${tf_file}" >/dev/null 2>&1; then
+if grep -En 'ci[[:space:]]*=[[:space:]]*yandex_iam_service_account\.ci\.id' "${tf_file}" >/dev/null 2>&1; then
   fail "CI service account must not be granted folder editor by default"
 fi
 
-if ! rg -n 'Strict-Transport-Security' "${smoke_file}" >/dev/null 2>&1; then
+if ! grep -n 'Strict-Transport-Security' "${smoke_file}" >/dev/null 2>&1; then
   fail "Public smoke script must verify Strict-Transport-Security"
 fi
 
-if ! rg -n 'X-Frame-Options' "${smoke_file}" >/dev/null 2>&1; then
+if ! grep -n 'X-Frame-Options' "${smoke_file}" >/dev/null 2>&1; then
   fail "Public smoke script must verify X-Frame-Options"
 fi
 
-if ! rg -n 'Cache-Control' "${smoke_file}" >/dev/null 2>&1; then
+if ! grep -n 'Cache-Control' "${smoke_file}" >/dev/null 2>&1; then
   fail "Public smoke script must verify frontend cache headers"
 fi
 

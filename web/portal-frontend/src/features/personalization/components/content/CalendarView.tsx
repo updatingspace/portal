@@ -227,7 +227,7 @@ export function CalendarView({
         </div>
       </div>
     );
-  }, [getModalsForDay, isCurrentMonth, isToday, viewMode, renderModalItem]);
+  }, [getModalsForDay, isCurrentMonth, isToday, viewMode, renderModalItem, t, weekdayLabels]);
 
   // Render month title
   const title = useMemo(() => {
