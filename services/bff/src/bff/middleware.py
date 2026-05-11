@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
 from .errors import error_response
+from .models import BffRateLimitWindow
 from .session_store import SessionStore
 from .tenant import resolve_tenant
 
@@ -212,12 +217,6 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
 
 
 class SessionRateLimitMiddleware(MiddlewareMixin):
-    def __init__(self, get_response):
-        super().__init__(get_response)
-        from django.core.cache import cache
-
-        self.cache = cache
-
     def process_request(self, request: HttpRequest):
         if not request.path.startswith("/api/v1/session/"):
             return None
@@ -227,19 +226,49 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
             return None
 
         ident = request.META.get("REMOTE_ADDR", "unknown")
-        key = f"bff:rl:session:{ident}"
-        current = self.cache.get(key)
-        if current is None:
-            self.cache.set(key, 1, timeout=60)
-            return None
+        now = timezone.now()
+        window_start = now.replace(second=0, microsecond=0)
+        bucket_key = f"{ident}:{window_start.isoformat()}"
+        expires_at = window_start + timedelta(minutes=1)
 
-        if int(current) >= limit:
-            return error_response(
-                code="RATE_LIMITED",
-                message="Too many requests",
-                request_id=getattr(request, "request_id", None),
-                status=429,
-            )
+        for _ in range(2):
+            try:
+                with transaction.atomic():
+                    window, created = BffRateLimitWindow.objects.get_or_create(
+                        bucket_key=bucket_key,
+                        defaults={
+                            "count": 1,
+                            "window_started_at": window_start,
+                            "expires_at": expires_at,
+                        },
+                    )
+                    if created:
+                        return None
 
-        self.cache.incr(key)
-        return None
+                    if window.count >= limit:
+                        return error_response(
+                            code="RATE_LIMITED",
+                            message="Too many requests",
+                            request_id=getattr(request, "request_id", None),
+                            status=429,
+                        )
+
+                    updated = BffRateLimitWindow.objects.filter(
+                        bucket_key=bucket_key,
+                        count__lt=limit,
+                    ).update(
+                        count=F("count") + 1,
+                        updated_at=now,
+                        expires_at=expires_at,
+                    )
+                    if updated:
+                        return None
+            except IntegrityError:
+                continue
+
+        return error_response(
+            code="RATE_LIMITED",
+            message="Too many requests",
+            request_id=getattr(request, "request_id", None),
+            status=429,
+        )

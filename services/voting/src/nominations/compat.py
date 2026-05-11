@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.utils import timezone
@@ -13,12 +14,12 @@ from tenant_voting.context import InternalContext
 from tenant_voting.models import (
     Nomination as TenantNomination,
     Option,
-    OutboxMessage,
     Poll,
     PollScopeType,
     PollStatus,
     Vote,
 )
+from tenant_voting.services import emit_outbox_message
 
 
 class NominationNotFoundError(LookupError):
@@ -48,6 +49,10 @@ NOMINATIONS_PREFETCH = Prefetch(
         .prefetch_related(OPTIONS_PREFETCH)
     ),
 )
+
+
+def _is_ydb_mode() -> bool:
+    return getattr(settings, "DB_DRIVER", "postgres") == "ydb"
 
 
 def is_global_admin(ctx: InternalContext) -> bool:
@@ -456,16 +461,16 @@ def record_vote(
         raise VotingClosedError(nomination.poll.ends_at)
 
     with transaction.atomic():
-        existing_votes = list(
-            Vote.objects.select_for_update()
-            .filter(
-                tenant_id=ctx.tenant_id,
-                poll=nomination.poll,
-                nomination=nomination,
-                user_id=ctx.user_id,
-            )
-            .order_by("created_at", "id")
+        existing_votes_qs = Vote.objects.filter(
+            tenant_id=ctx.tenant_id,
+            poll=nomination.poll,
+            nomination=nomination,
+            user_id=ctx.user_id,
         )
+        if not _is_ydb_mode():
+            existing_votes_qs = existing_votes_qs.select_for_update()
+
+        existing_votes = list(existing_votes_qs.order_by("created_at", "id"))
 
         unchanged = (
             len(existing_votes) == 1
@@ -484,7 +489,7 @@ def record_vote(
                 user_id=ctx.user_id,
                 created_at=timezone.now(),
             )
-            OutboxMessage.objects.create(
+            emit_outbox_message(
                 tenant_id=ctx.tenant_id,
                 event_type="voting.vote.cast",
                 payload={

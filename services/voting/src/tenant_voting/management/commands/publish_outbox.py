@@ -21,12 +21,14 @@ Usage:
 import logging
 import signal
 import time
+import uuid
 from datetime import timedelta
 
 import httpx
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import models, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from tenant_voting.models import OutboxMessage
@@ -77,6 +79,12 @@ class Command(BaseCommand):
             action="store_true",
             help="Show what would be published without actually sending",
         )
+        parser.add_argument(
+            "--lease-seconds",
+            type=int,
+            default=300,
+            help="How long an outbox claim stays valid before another worker may retry it",
+        )
     
     def handle(self, *args, **options):
         batch_size = options["batch_size"]
@@ -85,6 +93,7 @@ class Command(BaseCommand):
         retry_failed = options["retry_failed"]
         retry_age = options["retry_age"]
         dry_run = options["dry_run"]
+        lease_seconds = options["lease_seconds"]
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -111,6 +120,7 @@ class Command(BaseCommand):
                     retry_failed=retry_failed,
                     retry_age=retry_age,
                     dry_run=dry_run,
+                    lease_seconds=lease_seconds,
                 )
                 
                 if count == 0 and not daemon:
@@ -143,24 +153,14 @@ class Command(BaseCommand):
         retry_failed: bool,
         retry_age: int,
         dry_run: bool,
+        lease_seconds: int,
     ) -> int:
         """Process a batch of outbox messages. Returns count processed."""
-        
-        # Build query for unpublished messages
-        queryset = OutboxMessage.objects.filter(published_at__isnull=True)
-        
-        if retry_failed:
-            # Also include old published messages that might have failed downstream
-            cutoff = timezone.now() - timedelta(seconds=retry_age)
-            queryset = OutboxMessage.objects.filter(
-                models.Q(published_at__isnull=True) |
-                models.Q(published_at__lt=cutoff, occurred_at__gt=cutoff)
-            )
-        
-        # Order by occurred_at to maintain event ordering
-        messages = list(
-            queryset.order_by("occurred_at")[:batch_size]
-            .select_for_update(skip_locked=True)
+        messages = self._claim_batch(
+            batch_size=batch_size,
+            retry_failed=retry_failed,
+            retry_age=retry_age,
+            lease_seconds=lease_seconds,
         )
         
         if not messages:
@@ -175,6 +175,9 @@ class Command(BaseCommand):
                         self.stdout.write(
                             f"  [DRY RUN] Would publish {msg.event_type} ({msg.id})"
                         )
+                        msg.claimed_at = None
+                        msg.claim_token = None
+                        msg.save(update_fields=["claimed_at", "claim_token"])
                         continue
                     
                     self._publish_message(
@@ -197,6 +200,41 @@ class Command(BaseCommand):
                     )
         
         return len(messages)
+
+    def _claim_batch(
+        self,
+        *,
+        batch_size: int,
+        retry_failed: bool,
+        retry_age: int,
+        lease_seconds: int,
+    ) -> list[OutboxMessage]:
+        now = timezone.now()
+        lease_cutoff = now - timedelta(seconds=lease_seconds)
+        claimable_filter = Q(claimed_at__isnull=True) | Q(claimed_at__lt=lease_cutoff)
+        queryset = OutboxMessage.objects.filter(published_at__isnull=True)
+        if retry_failed:
+            cutoff = now - timedelta(seconds=retry_age)
+            queryset = OutboxMessage.objects.filter(
+                models.Q(published_at__isnull=True)
+                | models.Q(published_at__lt=cutoff, occurred_at__gt=cutoff)
+            )
+        candidate_ids = list(
+            queryset.filter(claimable_filter)
+            .order_by("occurred_at")
+            .values_list("id", flat=True)[:batch_size]
+        )
+        if not candidate_ids:
+            return []
+
+        claim_token = uuid.uuid4()
+        queryset.filter(id__in=candidate_ids).filter(claimable_filter).update(
+            claimed_at=now,
+            claim_token=claim_token,
+        )
+        return list(
+            OutboxMessage.objects.filter(claim_token=claim_token).order_by("occurred_at")
+        )
     
     def _publish_message(
         self,
@@ -250,7 +288,9 @@ class Command(BaseCommand):
         # Mark as published
         with transaction.atomic():
             message.published_at = timezone.now()
-            message.save(update_fields=["published_at"])
+            message.claimed_at = None
+            message.claim_token = None
+            message.save(update_fields=["published_at", "claimed_at", "claim_token"])
         
         logger.info(
             f"Published event {message.event_type}",

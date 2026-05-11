@@ -491,6 +491,51 @@ class OutboxPatternTests(TestCase):
         )
         self.assertEqual(outbox_events.count(), 1)
 
+    def test_process_outbox_dry_run_clears_claim_and_marks_processed(self):
+        event = Outbox.objects.create(
+            tenant_id=self.tenant_id,
+            event_type=OutboxEventType.FEED_UPDATED,
+            aggregate_type="activity_event",
+            aggregate_id="dry-run",
+            payload_json={"event_id": 1},
+        )
+
+        call_command(
+            "process_outbox",
+            "--batch-size=10",
+            "--lease-seconds=60",
+            "--dry-run",
+            stdout=StringIO(),
+        )
+
+        event.refresh_from_db()
+        self.assertIsNotNone(event.processed_at)
+        self.assertIsNone(event.claimed_at)
+        self.assertIsNone(event.claim_token)
+
+    def test_process_outbox_reclaims_expired_claim(self):
+        event = Outbox.objects.create(
+            tenant_id=self.tenant_id,
+            event_type=OutboxEventType.FEED_UPDATED,
+            aggregate_type="activity_event",
+            aggregate_id="expired-claim",
+            payload_json={"event_id": 2},
+            claimed_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+        )
+
+        call_command(
+            "process_outbox",
+            "--batch-size=10",
+            "--lease-seconds=60",
+            "--dry-run",
+            stdout=StringIO(),
+        )
+
+        event.refresh_from_db()
+        self.assertIsNotNone(event.processed_at)
+        self.assertIsNone(event.claimed_at)
+        self.assertIsNone(event.claim_token)
+
 
 class FeedLastSeenTests(TestCase):
     """Tests for feed last_seen tracking and unread count."""

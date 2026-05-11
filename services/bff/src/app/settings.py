@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
-import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+
+from .cloud_runtime import build_database_settings, build_ydb_migration_modules
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -130,7 +131,6 @@ CSRF_COOKIE_PATH = "/"
 CSRF_COOKIE_HTTPONLY = False
 CSRF_FAILURE_VIEW = "bff.csrf.csrf_failure"
 
-BFF_SESSION_DB_FALLBACK = read_env_flag("BFF_SESSION_DB_FALLBACK", False)
 BFF_INTERNAL_HMAC_SECRET = require_env(
     "BFF_INTERNAL_HMAC_SECRET",
     insecure_default="bff-internal-hmac-secret",
@@ -140,15 +140,68 @@ BFF_UPDSPACEID_CALLBACK_SECRET = require_env(
     insecure_default="bff-callback-secret",
 )
 
-BFF_UPSTREAM_PORTAL_URL = read_env("BFF_UPSTREAM_PORTAL_URL", "")
-BFF_UPSTREAM_VOTING_URL = read_env("BFF_UPSTREAM_VOTING_URL", "")
-BFF_UPSTREAM_EVENTS_URL = read_env("BFF_UPSTREAM_EVENTS_URL", "")
-BFF_UPSTREAM_FEED_URL = read_env("BFF_UPSTREAM_FEED_URL", "")
-BFF_UPSTREAM_GAMIFICATION_URL = read_env("BFF_UPSTREAM_GAMIFICATION_URL", "")
-BFF_UPSTREAM_FEATUREFLAGS_URL = read_env("BFF_UPSTREAM_FEATUREFLAGS_URL", "")
+BFF_UPSTREAM_PORTAL_INVOKE_URL = read_env("BFF_UPSTREAM_PORTAL_INVOKE_URL", "")
+BFF_UPSTREAM_VOTING_INVOKE_URL = read_env("BFF_UPSTREAM_VOTING_INVOKE_URL", "")
+BFF_UPSTREAM_EVENTS_INVOKE_URL = read_env("BFF_UPSTREAM_EVENTS_INVOKE_URL", "")
+BFF_UPSTREAM_FEED_INVOKE_URL = read_env("BFF_UPSTREAM_FEED_INVOKE_URL", "")
+BFF_UPSTREAM_GAMIFICATION_INVOKE_URL = read_env(
+    "BFF_UPSTREAM_GAMIFICATION_INVOKE_URL",
+    "",
+)
+BFF_UPSTREAM_FEATUREFLAGS_INVOKE_URL = read_env(
+    "BFF_UPSTREAM_FEATUREFLAGS_INVOKE_URL",
+    "",
+)
+BFF_UPSTREAM_ACCESS_INVOKE_URL = read_env("BFF_UPSTREAM_ACCESS_INVOKE_URL", "")
+
+BFF_UPSTREAM_PORTAL_URL = BFF_UPSTREAM_PORTAL_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_PORTAL_URL",
+    "",
+)
+BFF_UPSTREAM_VOTING_URL = BFF_UPSTREAM_VOTING_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_VOTING_URL",
+    "",
+)
+BFF_UPSTREAM_EVENTS_URL = BFF_UPSTREAM_EVENTS_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_EVENTS_URL",
+    "",
+)
+BFF_UPSTREAM_FEED_URL = BFF_UPSTREAM_FEED_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_FEED_URL",
+    "",
+)
+BFF_UPSTREAM_GAMIFICATION_URL = BFF_UPSTREAM_GAMIFICATION_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_GAMIFICATION_URL",
+    "",
+)
+BFF_UPSTREAM_FEATUREFLAGS_URL = BFF_UPSTREAM_FEATUREFLAGS_INVOKE_URL or read_env(
+    "BFF_UPSTREAM_FEATUREFLAGS_URL",
+    "",
+)
 BFF_UPSTREAM_ID_URL = read_env("ID_BASE_URL", "")
 ID_PUBLIC_BASE_URL = read_env("ID_PUBLIC_BASE_URL", "")
-BFF_UPSTREAM_ACCESS_URL = read_env("ACCESS_BASE_URL", "")
+BFF_UPSTREAM_ACCESS_URL = BFF_UPSTREAM_ACCESS_INVOKE_URL or read_env(
+    "ACCESS_BASE_URL",
+    "",
+)
+BFF_PRIVATE_INVOKE_UPSTREAMS = tuple(
+    upstream
+    for upstream in (
+        BFF_UPSTREAM_ACCESS_INVOKE_URL,
+        BFF_UPSTREAM_PORTAL_INVOKE_URL,
+        BFF_UPSTREAM_VOTING_INVOKE_URL,
+        BFF_UPSTREAM_EVENTS_INVOKE_URL,
+        BFF_UPSTREAM_FEED_INVOKE_URL,
+        BFF_UPSTREAM_GAMIFICATION_INVOKE_URL,
+        BFF_UPSTREAM_FEATUREFLAGS_INVOKE_URL,
+    )
+    if upstream
+)
+YC_IAM_TOKEN = read_env("YC_IAM_TOKEN", "")
+YC_IAM_TOKEN_URL = read_env(
+    "YC_IAM_TOKEN_URL",
+    "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+)
 BFF_RETENTION_SESSION_DAYS = int(os.getenv("BFF_RETENTION_SESSION_DAYS", "30"))
 BFF_RETENTION_AUDIT_DAYS = int(os.getenv("BFF_RETENTION_AUDIT_DAYS", "365"))
 
@@ -188,23 +241,14 @@ WSGI_APPLICATION = "app.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 # Use separate DB for BFF Sessions
-DATABASE_URL = read_env("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-        )
-    }
-elif ALLOW_SQLITE:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
-else:
-    raise ImproperlyConfigured(SQLITE_FALLBACK_HINT)
+DB_DRIVER, DATABASES = build_database_settings(
+    base_dir=BASE_DIR,
+    read_env=read_env,
+    allow_sqlite=ALLOW_SQLITE,
+    sqlite_fallback_hint=SQLITE_FALLBACK_HINT,
+)
+if DB_DRIVER == "ydb":
+    MIGRATION_MODULES = build_ydb_migration_modules("bff")
 
 
 # Password validation
@@ -238,24 +282,13 @@ X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_SECURE = read_env_flag("DJANGO_SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = read_env_flag("DJANGO_CSRF_COOKIE_SECURE", not DEBUG)
 
-# Cache for Sessions
-REDIS_URL = os.getenv("REDIS_URL")
-if REDIS_URL:
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": REDIS_URL,
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            }
-        }
+# Local-only cache for non-critical read-through data. Do not rely on it for
+# shared production state.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
-else:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        }
-    }
+}
 
 LOGGING = {
     "version": 1,

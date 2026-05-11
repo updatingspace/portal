@@ -6,14 +6,15 @@ requires-python = ">=3.10"
 dependencies = [
     "django>=5.2",
     "django-ninja>=1.0",
+    "django-ydb-backend==0.0.1b1",
     "django-cors-headers",
     "gunicorn",
     "httpx",
     "uvicorn",
     "psycopg[binary]",
     "dj-database-url",
-    "redis",
-    "django-redis",
+    "ydb==3.28.0",
+    "ydb-dbapi==0.1.20",
 ]
 
 [project.optional-dependencies]

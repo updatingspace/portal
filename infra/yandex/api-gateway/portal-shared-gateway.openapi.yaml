@@ -13,7 +13,7 @@ x-yc-apigateway:
       default: replace-me-gateway-sa
 
 paths:
-  /api/{proxy+}:
+  /api/v1/{proxy+}:
     x-yc-apigateway-any-method:
       parameters:
         - name: proxy

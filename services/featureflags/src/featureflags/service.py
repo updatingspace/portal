@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import FeatureFlag, FeatureFlagAuditEvent, OutboxMessage
+from core.ymq import schedule_outbox_wakeup
 
 
 def _normalize_flag_key(key: str) -> str:
@@ -67,9 +68,19 @@ def create_or_update_flag(
         flag_key=flag.key,
         metadata=metadata,
     )
-    OutboxMessage.objects.create(
+    outbox = OutboxMessage.objects.create(
         event_type=action,
         payload={"flag_key": flag.key, **metadata},
+    )
+    schedule_outbox_wakeup(
+        service_name="featureflags",
+        event_type=action,
+        tenant_id="global",
+        payload={
+            "outbox_id": str(outbox.id),
+            "flag_key": flag.key,
+            **metadata,
+        },
     )
 
     return flag, action
@@ -115,9 +126,19 @@ def patch_flag(
         flag_key=flag.key,
         metadata=metadata,
     )
-    OutboxMessage.objects.create(
+    outbox = OutboxMessage.objects.create(
         event_type="feature_flag.updated",
         payload={"flag_key": flag.key, **metadata},
+    )
+    schedule_outbox_wakeup(
+        service_name="featureflags",
+        event_type="feature_flag.updated",
+        tenant_id="global",
+        payload={
+            "outbox_id": str(outbox.id),
+            "flag_key": flag.key,
+            **metadata,
+        },
     )
 
     return flag

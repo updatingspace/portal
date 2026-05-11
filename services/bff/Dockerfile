@@ -11,6 +11,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml ./
+COPY bin ./bin
 COPY src ./src
 
 RUN pip install .
@@ -29,7 +30,10 @@ WORKDIR /app
 RUN useradd --create-home --shell /usr/sbin/nologin appuser
 
 COPY --from=builder /opt/venv /opt/venv
+COPY --chown=appuser:appuser bin ./bin
 COPY --chown=appuser:appuser src ./src
+
+RUN chmod +x /app/bin/serverless-task.sh
 
 USER appuser
 

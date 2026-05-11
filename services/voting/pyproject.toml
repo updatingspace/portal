@@ -6,12 +6,16 @@ requires-python = ">=3.10"
 dependencies = [
     "django>=5.2",
     "django-ninja>=1.0",
+    "django-ydb-backend==0.0.1b1",
     "django-cors-headers>=4.0",
+    "boto3>=1.34",
     "httpx",
     "psycopg[binary]",
     "dj-database-url",
     "gunicorn",
     "prometheus_client",
+    "ydb==3.28.0",
+    "ydb-dbapi==0.1.20",
 ]
 
 [build-system]
@@ -26,4 +30,3 @@ DJANGO_SETTINGS_MODULE = "app.settings"
 pythonpath = ["src"]
 testpaths = ["src"]
 python_files = ["test_*.py", "*_test.py"]
-

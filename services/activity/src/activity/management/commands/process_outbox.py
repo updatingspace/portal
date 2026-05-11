@@ -10,9 +10,12 @@ from __future__ import annotations
 import logging
 import signal
 import time
+import uuid
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from activity.models import Outbox, OutboxEventType
@@ -56,6 +59,12 @@ class Command(BaseCommand):
             action="store_true",
             help="Process events without actually publishing",
         )
+        parser.add_argument(
+            "--lease-seconds",
+            type=int,
+            default=300,
+            help="How long an outbox claim stays valid before another worker may retry it",
+        )
 
     def handle(self, *args, **options):
         batch_size = options["batch_size"]
@@ -63,6 +72,7 @@ class Command(BaseCommand):
         poll_interval = options["poll_interval"]
         max_retries = options["max_retries"]
         dry_run = options["dry_run"]
+        lease_seconds = options["lease_seconds"]
 
         if daemon:
             signal.signal(signal.SIGTERM, self._handle_signal)
@@ -80,6 +90,7 @@ class Command(BaseCommand):
                 batch_size=batch_size,
                 max_retries=max_retries,
                 dry_run=dry_run,
+                lease_seconds=lease_seconds,
             )
             total_processed += processed
 
@@ -107,16 +118,10 @@ class Command(BaseCommand):
         batch_size: int,
         max_retries: int,
         dry_run: bool,
+        lease_seconds: int,
     ) -> int:
         """Process a batch of pending outbox events."""
-        events = list(
-            Outbox.objects.filter(
-                processed_at__isnull=True,
-                retry_count__lt=max_retries,
-            )
-            .order_by("created_at")[:batch_size]
-            .select_for_update(skip_locked=True)
-        )
+        events = self._claim_batch(batch_size=batch_size, max_retries=max_retries, lease_seconds=lease_seconds)
 
         processed = 0
         for event in events:
@@ -129,11 +134,16 @@ class Command(BaseCommand):
 
                     if success:
                         event.processed_at = timezone.now()
-                        event.save(update_fields=["processed_at"])
+                        event.claimed_at = None
+                        event.claim_token = None
+                        event.error_message = None
+                        event.save(update_fields=["processed_at", "claimed_at", "claim_token", "error_message"])
                         processed += 1
                     else:
                         event.retry_count += 1
-                        event.save(update_fields=["retry_count"])
+                        event.claimed_at = None
+                        event.claim_token = None
+                        event.save(update_fields=["retry_count", "claimed_at", "claim_token"])
 
             except Exception as exc:
                 logger.error(
@@ -148,9 +158,46 @@ class Command(BaseCommand):
                 with transaction.atomic():
                     event.retry_count += 1
                     event.error_message = str(exc)[:1000]
-                    event.save(update_fields=["retry_count", "error_message"])
+                    event.claimed_at = None
+                    event.claim_token = None
+                    event.save(update_fields=["retry_count", "error_message", "claimed_at", "claim_token"])
 
         return processed
+
+    def _claim_batch(
+        self,
+        *,
+        batch_size: int,
+        max_retries: int,
+        lease_seconds: int,
+    ) -> list[Outbox]:
+        now = timezone.now()
+        lease_cutoff = now - timedelta(seconds=lease_seconds)
+        claim_token = uuid.uuid4()
+        claimable_filter = Q(claimed_at__isnull=True) | Q(claimed_at__lt=lease_cutoff)
+        candidate_ids = list(
+            Outbox.objects.filter(
+                processed_at__isnull=True,
+                retry_count__lt=max_retries,
+            )
+            .filter(claimable_filter)
+            .order_by("created_at")
+            .values_list("id", flat=True)[:batch_size]
+        )
+        if not candidate_ids:
+            return []
+
+        Outbox.objects.filter(
+            id__in=candidate_ids,
+            processed_at__isnull=True,
+            retry_count__lt=max_retries,
+        ).filter(claimable_filter).update(
+            claimed_at=now,
+            claim_token=claim_token,
+        )
+        return list(
+            Outbox.objects.filter(claim_token=claim_token).order_by("created_at")
+        )
 
     def _publish_event(self, event: Outbox, *, dry_run: bool) -> bool:
         """

@@ -4,13 +4,11 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 
 from bff.audit import BffAuditEvent
-from bff.models import BffSession
-from bff.session_store import _cache_key
+from bff.models import BffOauthState, BffRateLimitWindow, BffSession
 
 
 def _iso(value) -> str | None:
@@ -68,9 +66,6 @@ def erase_user_data(*, tenant_id: UUID | str, user_id: UUID | str) -> dict[str, 
     )
     now = timezone.now()
     session_ids = [str(item.id) for item in sessions]
-    for session_id in session_ids:
-        cache.delete(_cache_key(session_id))
-
     BffSession.objects.filter(id__in=session_ids, revoked_at__isnull=True).update(revoked_at=now)
 
     return {
@@ -95,9 +90,9 @@ def purge_retention(*, session_days: int, audit_days: int) -> dict[str, Any]:
         ).order_by("id")
     )
     session_ids = [str(item.id) for item in sessions]
-    for session_id in session_ids:
-        cache.delete(_cache_key(session_id))
     sessions_deleted, _ = BffSession.objects.filter(id__in=session_ids).delete() if session_ids else (0, {})
+    oauth_states_deleted, _ = BffOauthState.objects.filter(expires_at__lt=now).delete()
+    rate_limit_deleted, _ = BffRateLimitWindow.objects.filter(expires_at__lt=now).delete()
     audit_events_deleted, _ = BffAuditEvent.objects.filter(created_at__lt=audit_cutoff).delete()
 
     return {
@@ -109,6 +104,8 @@ def purge_retention(*, session_days: int, audit_days: int) -> dict[str, Any]:
         },
         "counts": {
             "sessions_deleted": sessions_deleted,
+            "oauth_states_deleted": oauth_states_deleted,
+            "rate_limit_windows_deleted": rate_limit_deleted,
             "audit_events_deleted": audit_events_deleted,
         },
     }

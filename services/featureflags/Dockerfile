@@ -5,9 +5,11 @@ ENV PYTHONPATH=/app/src
 
 RUN pip install --upgrade pip
 COPY pyproject.toml .
+COPY bin ./bin
 RUN pip install .
 
 COPY src/ src/
+RUN chmod +x /app/bin/serverless-task.sh
 
 RUN useradd -m appuser
 USER appuser

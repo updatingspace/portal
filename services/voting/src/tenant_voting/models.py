@@ -239,6 +239,8 @@ class OutboxMessage(models.Model):
 
     occurred_at = models.DateTimeField(default=timezone.now)
     published_at = models.DateTimeField(null=True, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claim_token = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "voting_outbox"

@@ -23,9 +23,7 @@ def _check_database() -> dict[str, Any]:
     """Check database connectivity."""
     start = time.time()
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
+        connection.ensure_connection()
         duration_ms = (time.time() - start) * 1000
         return {
             "status": "healthy",

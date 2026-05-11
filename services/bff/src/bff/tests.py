@@ -9,7 +9,7 @@ import sys
 import uuid
 from datetime import timedelta
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 from django.conf import settings
@@ -19,7 +19,9 @@ from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from bff.models import BffSession, Tenant
+from bff import proxy as proxy_module
+from bff.models import BffOauthState, BffRateLimitWindow, BffSession, Tenant
+from bff.proxy import proxy_request
 from bff.security import require_internal_signature, sign_internal_request
 from bff.session_store import SessionStore
 
@@ -882,9 +884,8 @@ class OidcAuthLoginTests(TestCase):
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "OIDC_NOT_CONFIGURED")
 
-    def test_auth_login_stores_state_in_cache(self):
-        """GET /auth/login should store state→next mapping in cache."""
-        from django.core.cache import cache
+    def test_auth_login_stores_state_in_db(self):
+        """GET /auth/login should store state→next mapping in DB."""
 
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
@@ -906,16 +907,14 @@ class OidcAuthLoginTests(TestCase):
         self.assertIsNotNone(match)
         state = match.group(1)
 
-        # Verify state is in cache
-        cached = cache.get(f"oauth_state:{state}")
-        self.assertIsNotNone(cached)
-        self.assertEqual(cached["next"], "/dashboard")
-        self.assertEqual(cached["tenant_id"], str(self.tenant.id))
+        row = BffOauthState.objects.filter(state=state).first()
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row.next_path, "/dashboard")
+        self.assertEqual(str(row.tenant_id), str(self.tenant.id))
 
     def test_auth_login_prevents_open_redirect(self):
         """GET /auth/login should not allow external URLs in next param."""
-        from django.core.cache import cache
-
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             ID_PUBLIC_BASE_URL="http://id.localhost",
@@ -934,9 +933,11 @@ class OidcAuthLoginTests(TestCase):
         match = re.search(r"state=([^&]+)", location)
         state = match.group(1)
 
-        cached = cache.get(f"oauth_state:{state}")
+        row = BffOauthState.objects.filter(state=state).first()
+        self.assertIsNotNone(row)
+        assert row is not None
         # next should be sanitized to "/"
-        self.assertEqual(cached["next"], "/")
+        self.assertEqual(row.next_path, "/")
 
 
 class OidcAuthCallbackTests(TestCase):
@@ -985,14 +986,14 @@ class OidcAuthCallbackTests(TestCase):
 
     def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(self):
         """GET /auth/callback rejects state created for another tenant."""
-        from django.core.cache import cache
 
         other_tenant = Tenant.objects.create(slug="other")
         state = "tenant-mismatch-state"
-        cache.set(
-            f"oauth_state:{state}",
-            {"next": "/dashboard", "tenant_id": str(other_tenant.id)},
-            timeout=600,
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=other_tenant.id,
+            next_path="/dashboard",
+            expires_at=timezone.now() + timedelta(minutes=10),
         )
 
         with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
@@ -1004,7 +1005,7 @@ class OidcAuthCallbackTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "TENANT_MISMATCH")
-        self.assertIsNotNone(cache.get(f"oauth_state:{state}"))
+        self.assertTrue(BffOauthState.objects.filter(state=state).exists())
 
     def test_callback_with_oauth_error_returns_error(self):
         """GET /auth/callback with error param returns 400."""
@@ -1024,14 +1025,14 @@ class OidcAuthCallbackTests(TestCase):
         self, mock_get, mock_post
     ):
         """Successful callback creates session and redirects to next."""
-        from django.core.cache import cache
 
-        # Setup state in cache
+        # Setup state in DB
         state = "valid-state-123"
-        cache.set(
-            f"oauth_state:{state}",
-            {"next": "/dashboard", "tenant_id": str(self.tenant.id)},
-            timeout=600,
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/dashboard",
+            expires_at=timezone.now() + timedelta(minutes=10),
         )
 
         # Mock token exchange response
@@ -1082,19 +1083,18 @@ class OidcAuthCallbackTests(TestCase):
         self.assertEqual(session_data.user_id, "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         self.assertEqual(session_data.tenant_id, str(self.tenant.id))
 
-        # Verify state was consumed (deleted from cache)
-        self.assertIsNone(cache.get(f"oauth_state:{state}"))
+        # Verify state was consumed (deleted from DB)
+        self.assertFalse(BffOauthState.objects.filter(state=state).exists())
 
     @patch("httpx.post")
     def test_callback_token_exchange_failure_returns_error(self, mock_post):
         """Failed token exchange returns 401."""
-        from django.core.cache import cache
-
         state = "valid-state-456"
-        cache.set(
-            f"oauth_state:{state}",
-            {"next": "/", "tenant_id": str(self.tenant.id)},
-            timeout=600,
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
         )
 
         mock_post.return_value = httpx.Response(
@@ -1121,13 +1121,12 @@ class OidcAuthCallbackTests(TestCase):
     @patch("httpx.get")
     def test_callback_userinfo_failure_returns_error(self, mock_get, mock_post):
         """Failed userinfo fetch returns 401."""
-        from django.core.cache import cache
-
         state = "valid-state-789"
-        cache.set(
-            f"oauth_state:{state}",
-            {"next": "/", "tenant_id": str(self.tenant.id)},
-            timeout=600,
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
         )
 
         mock_post.return_value = httpx.Response(
@@ -1167,7 +1166,6 @@ class OidcAuthIntegrationTests(TestCase):
     @patch("httpx.get")
     def test_full_auth_flow(self, mock_get, mock_post):
         """Test complete login → callback → session flow."""
-        from django.core.cache import cache
 
         # Step 1: Initiate login
         with self.settings(
@@ -1193,8 +1191,10 @@ class OidcAuthIntegrationTests(TestCase):
         state = match.group(1)
 
         # Verify state was stored
-        cached = cache.get(f"oauth_state:{state}")
-        self.assertEqual(cached["next"], "/voting")
+        row = BffOauthState.objects.filter(state=state).first()
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row.next_path, "/voting")
 
         # Step 2: Simulate IdP callback (mock token + userinfo)
         mock_post.return_value = httpx.Response(
@@ -1812,6 +1812,18 @@ class BffRetentionCommandTests(TestCase):
             target_id=str(fresh_session.session_id),
             metadata={},
         )
+        expired_oauth_state = BffOauthState.objects.create(
+            state="expired-state",
+            tenant_id=self.tenant.id,
+            next_path="/dashboard",
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        expired_rate_limit = BffRateLimitWindow.objects.create(
+            bucket_key="127.0.0.1:2026-04-10T00:00:00+03:00",
+            count=3,
+            window_started_at=timezone.now() - timedelta(minutes=2),
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
 
         call_command(
             "purge_retention",
@@ -1822,5 +1834,163 @@ class BffRetentionCommandTests(TestCase):
 
         self.assertFalse(BffSession.objects.filter(id=old_session.session_id).exists())
         self.assertTrue(BffSession.objects.filter(id=fresh_session.session_id).exists())
+        self.assertFalse(BffOauthState.objects.filter(state=expired_oauth_state.state).exists())
+        self.assertFalse(
+            BffRateLimitWindow.objects.filter(bucket_key=expired_rate_limit.bucket_key).exists()
+        )
         self.assertFalse(BffAuditEvent.objects.filter(id=old_audit.id).exists())
         self.assertTrue(BffAuditEvent.objects.filter(id=fresh_audit.id).exists())
+
+
+class BffPrivateInvokeProxyTests(SimpleTestCase):
+    def test_private_invoke_uses_bearer_token(self):
+        response = httpx.Response(
+            200,
+            request=httpx.Request("GET", "https://invoke.example/internal/health"),
+            json={"ok": True},
+        )
+        client = MagicMock()
+        client.request.return_value = response
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+
+        with (
+            self.settings(
+                BFF_PRIVATE_INVOKE_UPSTREAMS=("https://invoke.example",),
+                YC_IAM_TOKEN="iam-token",
+            ),
+            patch("bff.proxy.get_httpx_client", return_value=client),
+        ):
+            resp = proxy_request(
+                upstream_base_url="https://invoke.example",
+                upstream_path="/internal/health",
+                method="GET",
+                query_string="",
+                body=b"",
+                incoming_headers={"Accept": "application/json"},
+                context_headers={},
+                request_id="req-1",
+            )
+
+        _, kwargs = client.request.call_args
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer iam-token")
+        self.assertIn("X-Updspace-Signature", kwargs["headers"])
+        self.assertIn("X-Updspace-Timestamp", kwargs["headers"])
+
+    def test_public_upstream_skips_bearer_token(self):
+        response = httpx.Response(
+            200,
+            request=httpx.Request("GET", "https://public.example/health"),
+            json={"ok": True},
+        )
+        client = MagicMock()
+        client.request.return_value = response
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+
+        with (
+            self.settings(BFF_PRIVATE_INVOKE_UPSTREAMS=(), YC_IAM_TOKEN="iam-token"),
+            patch("bff.proxy.get_httpx_client", return_value=client),
+        ):
+            proxy_request(
+                upstream_base_url="https://public.example",
+                upstream_path="/health",
+                method="GET",
+                query_string="",
+                body=b"",
+                incoming_headers={"Accept": "application/json"},
+                context_headers={},
+                request_id="req-2",
+            )
+
+        _, kwargs = client.request.call_args
+        self.assertNotIn("Authorization", kwargs["headers"])
+
+    def test_private_invoke_fetches_iam_token_from_metadata_once(self):
+        response = httpx.Response(
+            200,
+            request=httpx.Request("GET", "https://invoke.example/internal/health"),
+            json={"ok": True},
+        )
+        client = MagicMock()
+        client.request.return_value = response
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        metadata_response = httpx.Response(
+            200,
+            request=httpx.Request("GET", "http://metadata/token"),
+            json={"access_token": "metadata-token", "expires_in": 600},
+        )
+
+        proxy_module._TOKEN_CACHE["token"] = ""
+        proxy_module._TOKEN_CACHE["expires_at"] = 0.0
+        self.addCleanup(
+            proxy_module._TOKEN_CACHE.update,
+            {"token": "", "expires_at": 0.0},
+        )
+
+        with (
+            self.settings(
+                BFF_PRIVATE_INVOKE_UPSTREAMS=("https://invoke.example",),
+                YC_IAM_TOKEN="",
+                YC_IAM_TOKEN_URL="http://metadata/token",
+            ),
+            patch("bff.proxy.get_httpx_client", return_value=client),
+            patch("bff.proxy.httpx.get", return_value=metadata_response) as mock_get,
+        ):
+            proxy_request(
+                upstream_base_url="https://invoke.example",
+                upstream_path="/internal/health",
+                method="GET",
+                query_string="",
+                body=b"",
+                incoming_headers={"Accept": "application/json"},
+                context_headers={},
+                request_id="req-3",
+            )
+            proxy_request(
+                upstream_base_url="https://invoke.example",
+                upstream_path="/internal/health",
+                method="GET",
+                query_string="",
+                body=b"",
+                incoming_headers={"Accept": "application/json"},
+                context_headers={},
+                request_id="req-4",
+            )
+
+        self.assertEqual(mock_get.call_count, 1)
+        _, kwargs = client.request.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer metadata-token")
+
+
+class BffSessionFallbackTests(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(slug="aef")
+        self.session = SessionStore().create(
+            tenant_id=str(self.tenant.id),
+            user_id=str(uuid.uuid4()),
+            master_flags={"email_verified": True},
+            ttl=timedelta(minutes=10),
+        )
+
+    def test_session_get_reads_db_authoritatively(self):
+        restored = SessionStore().get(self.session.session_id)
+
+        self.assertIsNotNone(restored)
+        assert restored is not None
+        self.assertEqual(restored.session_id, self.session.session_id)
+        self.assertEqual(restored.tenant_id, str(self.tenant.id))
+        self.assertEqual(restored.user_id, self.session.user_id)
+
+    def test_session_get_reflects_db_tenant_switch(self):
+        SessionStore().set_active_tenant(
+            self.session.session_id,
+            tenant_id=str(self.tenant.id),
+            tenant_slug="aef",
+        )
+        restored = SessionStore().get(self.session.session_id)
+        self.assertIsNotNone(restored)
+        assert restored is not None
+        self.assertEqual(restored.active_tenant_slug, "aef")

@@ -1,15 +1,36 @@
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from .models import Attendance, Event, EventVisibility, OutboxMessage, RSVP
+from core.ymq import schedule_outbox_wakeup
 
 
+def _is_ydb_mode() -> bool:
+    return getattr(settings, "DB_DRIVER", "postgres") == "ydb"
+
+
+@transaction.atomic
 def _emit_outbox(*, tenant_id, event_type: str, payload: dict) -> None:
-    OutboxMessage.objects.create(tenant_id=tenant_id, event_type=event_type, payload=payload)
+    outbox = OutboxMessage.objects.create(
+        tenant_id=tenant_id,
+        event_type=event_type,
+        payload=payload,
+    )
+    schedule_outbox_wakeup(
+        service_name="events",
+        event_type=event_type,
+        tenant_id=str(tenant_id),
+        payload={
+            "outbox_id": str(outbox.id),
+            "payload": payload,
+        },
+    )
 
 
+@transaction.atomic
 def create_event(*, tenant_id, created_by, data: dict) -> Event:
     event = Event.objects.create(
         tenant_id=tenant_id,
@@ -31,21 +52,22 @@ def create_event(*, tenant_id, created_by, data: dict) -> Event:
         payload={
             "event_id": str(event.id),
             "tenant_id": str(tenant_id),
-        "scope_type": event.scope_type,
-        "scope_id": event.scope_id,
-        "created_by": str(created_by),
-        "created_at": event.created_at.isoformat(),
-    },
-)
+            "scope_type": event.scope_type,
+            "scope_id": event.scope_id,
+            "created_by": str(created_by),
+            "created_at": event.created_at.isoformat(),
+        },
+    )
     return event
 
 
+@transaction.atomic
 def update_event(*, event: Event, data: dict) -> Event:
     updates: dict[str, object | None] = {}
     if "title" in data and data["title"] is not None:
         updates["title"] = data["title"]
     if "description" in data:
-        updates["description"] = (data["description"] or "")
+        updates["description"] = data["description"] or ""
     if "starts_at" in data and data["starts_at"] is not None:
         updates["starts_at"] = data["starts_at"]
     if "ends_at" in data and data["ends_at"] is not None:
@@ -84,7 +106,11 @@ def update_event(*, event: Event, data: dict) -> Event:
 
 @transaction.atomic
 def set_rsvp(*, tenant_id, event: Event, user_id, status: str) -> RSVP:
-    rsvp, created = RSVP.objects.select_for_update().get_or_create(
+    queryset = RSVP.objects
+    if not _is_ydb_mode():
+        queryset = queryset.select_for_update()
+
+    rsvp, created = queryset.get_or_create(
         tenant_id=tenant_id,
         event=event,
         user_id=user_id,
@@ -111,7 +137,11 @@ def set_rsvp(*, tenant_id, event: Event, user_id, status: str) -> RSVP:
 
 @transaction.atomic
 def mark_attendance(*, tenant_id, event: Event, user_id, marked_by) -> Attendance:
-    att, _ = Attendance.objects.select_for_update().get_or_create(
+    queryset = Attendance.objects
+    if not _is_ydb_mode():
+        queryset = queryset.select_for_update()
+
+    att, _ = queryset.get_or_create(
         tenant_id=tenant_id,
         event=event,
         user_id=user_id,

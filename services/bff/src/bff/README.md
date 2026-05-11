@@ -18,8 +18,9 @@ All frontend calls go through:
 
 - Cookie: HttpOnly session cookie (default `updspace_session`)
 - Stored as: `session_id -> tenant_id, user_id, master_flags, expires_at`
-- Primary: Django cache (configure Redis backend for production)
-- Optional fallback: Postgres (`BFF_SESSION_DB_FALLBACK=1`)
+- Primary: DB row in `bff_session` (works in Postgres and YDB)
+- Active tenant state is persisted in the same session row
+- Only local in-process cache may be used for non-critical read-through data
 
 ## BFF endpoints
 
@@ -65,5 +66,4 @@ METHOD\nPATH\nSHA256(body)\nREQUEST_ID\nTIMESTAMP
 - `BFF_INTERNAL_HMAC_SECRET` (required for proxy signing)
 - `BFF_UPDSPACEID_CALLBACK_SECRET` (required for `/internal/session/establish`)
 - `BFF_UPSTREAM_PORTAL_URL`, `BFF_UPSTREAM_VOTING_URL`, `BFF_UPSTREAM_EVENTS_URL`, `BFF_UPSTREAM_FEED_URL`
-- `BFF_SESSION_DB_FALLBACK` (default 0)
 - `BFF_SESSION_RATE_LIMIT_PER_MIN` (default 60)
