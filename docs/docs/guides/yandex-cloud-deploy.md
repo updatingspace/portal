@@ -37,7 +37,7 @@ title: Yandex Cloud Deploy
 - `serverless-task.sh` entrypoint во всех service images;
 - BFF transport для private invoke URL + IAM token из metadata;
 - YDB-safe fallback для hot-path, где использовались `select_for_update`;
-- Terraform scaffold в [`infra/terraform/yandex-cloud`](/Users/mihhailmatvejev/updspace-portal/portal/infra/terraform/yandex-cloud);
+- Terraform scaffold в [`infra/terraform/yandex-cloud`](/infra/terraform/yandex-cloud);
 - GitHub Actions workflow для Yandex Cloud deploy;
 - smoke script для публичного gateway.
 
@@ -55,8 +55,6 @@ title: Yandex Cloud Deploy
 - `YDB_SERVICE_ACCOUNT_JSON`
 - `DJANGO_SECRET_KEY`
 - `BFF_INTERNAL_HMAC_SECRET`
-- `object_storage_force_destroy=false`
-
 ### BFF env
 
 - `BFF_UPSTREAM_ACCESS_INVOKE_URL`
@@ -96,11 +94,11 @@ title: Yandex Cloud Deploy
 
 ## Terraform
 
-Главный source of truth лежит в [`infra/terraform/yandex-cloud`](/Users/mihhailmatvejev/updspace-portal/portal/infra/terraform/yandex-cloud).
+Главный source of truth лежит в [`infra/terraform/yandex-cloud`](/infra/terraform/yandex-cloud).
 
 ### Bootstrap
 
-1. Скопировать [`terraform.tfvars.example`](/Users/mihhailmatvejev/updspace-portal/portal/infra/terraform/yandex-cloud/terraform.tfvars.example) в локальный `.tfvars` файл.
+1. Скопировать [`terraform.tfvars.example`](/infra/terraform/yandex-cloud/terraform.tfvars.example) в локальный `.tfvars` файл.
 2. Заполнить:
    - `cloud_id`
    - `folder_id`
@@ -110,7 +108,7 @@ title: Yandex Cloud Deploy
    - `container_image_tags`
    - `service_environment`
    - `lockbox_secret_entries`
-   - `object_storage_force_destroy=false`
+   - `object_storage_force_destroy=false` как Terraform variable, не runtime env
 3. Выполнить:
 
 ```bash
@@ -135,7 +133,7 @@ terraform -chdir=infra/terraform/yandex-cloud apply
 
 Репозиторий использует два workflow'а:
 
-- [`ci.yml`](/Users/mihhailmatvejev/updspace-portal/portal/.github/workflows/ci.yml)
+- [`ci.yml`](/.github/workflows/ci.yml)
   Что делает:
   - Python lint/tests по сервисам
   - YDB-local smoke и `migrate_ydb --dry-run`
@@ -207,7 +205,7 @@ python src/manage.py migrate_ydb
 
 ## Smoke checks
 
-Публичный smoke script: [`scripts/ci/smoke-yc-gateway.sh`](/Users/mihhailmatvejev/updspace-portal/portal/scripts/ci/smoke-yc-gateway.sh)
+Публичный smoke script: [`scripts/ci/smoke-yc-gateway.sh`](/scripts/ci/smoke-yc-gateway.sh)
 
 Он проверяет:
 

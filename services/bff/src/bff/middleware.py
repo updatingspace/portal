@@ -206,7 +206,7 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
 
         request.auth_ctx = AuthContext(
             session_id=session.session_id,
-            tenant_id=session.tenant_id,
+            tenant_id=effective_tenant_id,
             tenant_slug=effective_tenant_slug,
             user_id=session.user_id,
             master_flags=session.master_flags,
@@ -228,10 +228,10 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
         ident = request.META.get("REMOTE_ADDR", "unknown")
         now = timezone.now()
         window_start = now.replace(second=0, microsecond=0)
-        bucket_key = f"{ident}:{window_start.isoformat()}"
+        bucket_key = ident
         expires_at = window_start + timedelta(minutes=1)
 
-        for _ in range(2):
+        for _ in range(3):
             try:
                 with transaction.atomic():
                     window, created = BffRateLimitWindow.objects.get_or_create(
@@ -245,6 +245,20 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
                     if created:
                         return None
 
+                    if window.expires_at <= now or window.window_started_at < window_start:
+                        reset = BffRateLimitWindow.objects.filter(
+                            bucket_key=bucket_key,
+                            expires_at=window.expires_at,
+                        ).update(
+                            count=1,
+                            window_started_at=window_start,
+                            expires_at=expires_at,
+                            updated_at=now,
+                        )
+                        if reset:
+                            return None
+                        continue
+
                     if window.count >= limit:
                         return error_response(
                             code="RATE_LIMITED",
@@ -255,6 +269,7 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
 
                     updated = BffRateLimitWindow.objects.filter(
                         bucket_key=bucket_key,
+                        expires_at=window.expires_at,
                         count__lt=limit,
                     ).update(
                         count=F("count") + 1,

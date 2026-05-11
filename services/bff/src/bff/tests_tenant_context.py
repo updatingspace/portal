@@ -11,7 +11,7 @@ from unittest.mock import patch
 import httpx
 from django.test import Client, TestCase
 
-from bff.models import Tenant
+from bff.models import BffRateLimitWindow, Tenant
 from bff.session_store import SessionStore
 from bff.tenant import (
     resolve_tenant_by_slug,
@@ -941,6 +941,40 @@ class RateLimitTests(TestCase):
         self.assertEqual(resp.status_code, 429)
         self.assertEqual(resp.json()["error"]["code"], "RATE_LIMITED")
 
+    def test_rate_limit_reuses_single_bucket_row_for_same_ip(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+
+        memberships = [
+            {
+                "tenant_id": str(self.tenant.id),
+                "tenant_slug": "rl-test",
+                "status": "active",
+                "base_role": "owner",
+                "display_name": "RL",
+            },
+        ]
+
+        def _mocked(**kwargs):
+            if kwargs.get("upstream_path") == "me" and kwargs.get("method") == "GET":
+                return httpx.Response(200, json={"memberships": memberships})
+            return httpx.Response(200, json={})
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_SESSION_RATE_LIMIT_PER_MIN=10,
+        ):
+            with patch("bff.api.proxy_request", side_effect=_mocked):
+                for _ in range(3):
+                    self.client.get(
+                        "/api/v1/session/tenants",
+                        HTTP_HOST="portal.updating.space",
+                    )
+
+        self.assertEqual(BffRateLimitWindow.objects.count(), 1)
+        window = BffRateLimitWindow.objects.get()
+        self.assertEqual(window.bucket_key, "127.0.0.1")
+
 
 class SwitchTenantEdgeCaseTests(TestCase):
     """Edge case tests for switch-tenant endpoint."""
@@ -978,6 +1012,27 @@ class SwitchTenantEdgeCaseTests(TestCase):
             HTTP_X_CSRF_TOKEN=self.CSRF_TOKEN,
             **kwargs,
         )
+
+    def test_active_tenant_updates_auth_context_tenant_id(self):
+        other_tenant = Tenant.objects.create(slug="beta")
+        self.store.set_active_tenant(
+            self.session.session_id,
+            tenant_id=str(other_tenant.id),
+            tenant_slug=other_tenant.slug,
+        )
+        self.client.cookies[self.cookie_name] = self.session.session_id
+
+        with self.settings(BFF_TENANT_HOST_SUFFIX="updspace.com"):
+            response = self.client.get(
+                "/api/v1/session/tenants",
+                HTTP_HOST="portal.updating.space",
+            )
+
+        self.assertNotEqual(response.status_code, 403)
+        auth_ctx = getattr(response.wsgi_request, "auth_ctx", None)
+        self.assertIsNotNone(auth_ctx)
+        self.assertEqual(auth_ctx.tenant_id, str(other_tenant.id))
+        self.assertEqual(auth_ctx.active_tenant_id, str(other_tenant.id))
 
     def test_switch_to_same_tenant_succeeds(self):
         """Switching to the same slug that's already active should still succeed."""
