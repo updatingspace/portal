@@ -102,7 +102,7 @@ jobs:
   terraform-apply:
     name: Terraform plan/apply
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     needs:
       - build-push-images
       - generate-build-id
@@ -147,12 +147,12 @@ jobs:
       - name: Terraform plan
         run: terraform -chdir=infra/terraform/yandex-cloud plan -out=tfplan
       - name: Terraform apply
-        if: github.event_name != 'pull_request' && secrets.YC_TERRAFORM_AUTO_APPLY == 'true'
+        if: secrets.YC_TERRAFORM_AUTO_APPLY == 'true'
         run: terraform -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
       - name: Export apply status
         id: status
         run: |
-          if [[ '${{ github.event_name }}' != 'pull_request' && '${{ secrets.YC_TERRAFORM_AUTO_APPLY }}' == 'true' ]]; then
+          if [[ '${{ secrets.YC_TERRAFORM_AUTO_APPLY }}' == 'true' ]]; then
             echo 'applied=true' >> "$GITHUB_OUTPUT"
           else
             echo 'applied=false' >> "$GITHUB_OUTPUT"

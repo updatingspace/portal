@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+from django.db.utils import NotSupportedError
 
 
 def _require(name: str, read_env: Callable[[str, str | None], str | None]) -> str:
@@ -26,6 +27,31 @@ def _parse_endpoint(endpoint: str) -> tuple[str, int]:
     return host, port
 
 
+def _normalize_database_version(version):
+    if version in (None, ("main",), "main"):
+        return ("main",) if version == "main" else version
+
+    if isinstance(version, str):
+        numeric_parts = re.findall(r"\d+", version)
+        return tuple(int(part) for part in numeric_parts) if numeric_parts else (version,)
+
+    normalized: list[int | str] = []
+    for part in version:
+        if isinstance(part, int):
+            normalized.append(part)
+            continue
+        if isinstance(part, str):
+            if part == "main":
+                return ("main",)
+            numeric_parts = re.findall(r"\d+", part)
+            if numeric_parts:
+                normalized.extend(int(item) for item in numeric_parts)
+            continue
+        normalized.append(part)
+
+    return tuple(normalized) if normalized else version
+
+
 def _patch_ydb_version_check() -> None:
     try:
         from ydb_backend.backend import base as ydb_base
@@ -36,32 +62,37 @@ def _patch_ydb_version_check() -> None:
         return
 
     original_get_database_version = ydb_base.DatabaseWrapper.get_database_version
+    original_check_database_version_supported = (
+        ydb_base.DatabaseWrapper.check_database_version_supported
+    )
 
     def _normalized_get_database_version(self):
-        version = original_get_database_version(self)
-        if version in (None, ("main",)):
-            return version
-        if isinstance(version, str):
-            numeric_parts = re.findall(r"\d+", version)
-            return tuple(int(part) for part in numeric_parts) if numeric_parts else (version,)
+        return _normalize_database_version(original_get_database_version(self))
 
-        normalized: list[int | str] = []
-        for part in version:
-            if isinstance(part, int):
-                normalized.append(part)
-                continue
-            if isinstance(part, str):
-                if part == "main":
-                    return ("main",)
-                numeric_parts = re.findall(r"\d+", part)
-                if numeric_parts:
-                    normalized.extend(int(item) for item in numeric_parts)
-                continue
-            normalized.append(part)
+    def _normalized_check_database_version_supported(self):
+        version = _normalize_database_version(original_get_database_version(self))
+        minimum_version = _normalize_database_version(
+            self.features.minimum_database_version
+        )
+        if (
+            minimum_version is not None
+            and version != ("main",)
+            and version < minimum_version
+        ):
+            db_version = ".".join(map(str, version))
+            min_db_version = ".".join(map(str, minimum_version))
+            error_msg = (
+                f"{self.display_name} {min_db_version} or later is required "
+                f"(found {db_version})."
+            )
+            raise NotSupportedError(error_msg)
 
-        return tuple(normalized) if normalized else version
+        return original_check_database_version_supported(self)
 
     ydb_base.DatabaseWrapper.get_database_version = _normalized_get_database_version
+    ydb_base.DatabaseWrapper.check_database_version_supported = (
+        _normalized_check_database_version_supported
+    )
     ydb_base.DatabaseWrapper._updspace_version_patch = True
 
 
