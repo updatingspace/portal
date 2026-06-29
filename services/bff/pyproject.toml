@@ -13,7 +13,7 @@ dependencies = [
     "uvicorn",
     "psycopg[binary]",
     "dj-database-url",
-    "ydb==3.28.0",
+    "ydb[yc]==3.28.0",
     "ydb-dbapi==0.1.20",
 ]
 

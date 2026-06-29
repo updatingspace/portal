@@ -18,13 +18,14 @@ def _require(name: str, read_env: Callable[[str, str | None], str | None]) -> st
     return value
 
 
-def _parse_endpoint(endpoint: str) -> tuple[str, int]:
+def _parse_endpoint(endpoint: str) -> tuple[str, int, str]:
     parsed = urlparse(endpoint if "://" in endpoint else f"grpc://{endpoint}")
     host = parsed.hostname
     port = parsed.port or 2136
     if not host:
         raise ImproperlyConfigured("YDB_ENDPOINT must be host:port or grpc[s]://host:port")
-    return host, port
+    protocol = parsed.scheme or "grpc"
+    return host, port, protocol
 
 
 def _normalize_database_version(version):
@@ -141,7 +142,7 @@ def build_database_settings(
     ydb_endpoint = _require("YDB_ENDPOINT", read_env)
     ydb_database = _require("YDB_DATABASE", read_env)
     ydb_name = read_env("YDB_NAME", "default") or "default"
-    host, port = _parse_endpoint(ydb_endpoint)
+    host, port, protocol = _parse_endpoint(ydb_endpoint)
 
     database_settings: dict[str, object] = {
         "ENGINE": "ydb_backend.backend",
@@ -149,6 +150,7 @@ def build_database_settings(
         "HOST": host,
         "PORT": str(port),
         "DATABASE": ydb_database,
+        "OPTIONS": {"protocol": protocol},
     }
 
     credentials_mode = (read_env("YDB_CREDENTIALS_MODE", "metadata") or "metadata").strip().lower()

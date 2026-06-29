@@ -11,7 +11,7 @@ dependencies = [
     "boto3>=1.34",
     "psycopg[binary]",
     "gunicorn",
-    "ydb==3.28.0",
+    "ydb[yc]==3.28.0",
     "ydb-dbapi==0.1.20",
 ]
 
