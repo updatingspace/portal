@@ -70,10 +70,6 @@ def _patch_ydb_version_check() -> None:
         return
 
     original_get_database_version = ydb_base.DatabaseWrapper.get_database_version
-    original_check_database_version_supported = (
-        ydb_base.DatabaseWrapper.check_database_version_supported
-    )
-
     def _normalized_get_database_version(self):
         return _normalize_database_version(original_get_database_version(self))
 
