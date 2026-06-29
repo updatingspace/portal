@@ -52,6 +52,14 @@ def _normalize_database_version(version):
     return tuple(normalized) if normalized else version
 
 
+def _can_compare_database_versions(version, minimum_version) -> bool:
+    if version in (None, ("main",)) or minimum_version is None:
+        return False
+    return all(isinstance(part, int) for part in version) and all(
+        isinstance(part, int) for part in minimum_version
+    )
+
+
 def _patch_ydb_version_check() -> None:
     try:
         from ydb_backend.backend import base as ydb_base
@@ -75,8 +83,7 @@ def _patch_ydb_version_check() -> None:
             self.features.minimum_database_version
         )
         if (
-            minimum_version is not None
-            and version != ("main",)
+            _can_compare_database_versions(version, minimum_version)
             and version < minimum_version
         ):
             db_version = ".".join(map(str, version))
@@ -87,7 +94,7 @@ def _patch_ydb_version_check() -> None:
             )
             raise NotSupportedError(error_msg)
 
-        return original_check_database_version_supported(self)
+        return None
 
     ydb_base.DatabaseWrapper.get_database_version = _normalized_get_database_version
     ydb_base.DatabaseWrapper.check_database_version_supported = (
