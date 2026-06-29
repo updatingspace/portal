@@ -116,6 +116,7 @@ jobs:
       TF_VAR_cloud_id: ${{ secrets.YC_CLOUD_ID }}
       TF_VAR_folder_id: ${{ secrets.YC_FOLDER_ID }}
       TF_VAR_id_public_base_url: ${{ secrets.YC_ID_PUBLIC_BASE_URL }}
+      YC_TERRAFORM_AUTO_APPLY: ${{ secrets.YC_TERRAFORM_AUTO_APPLY }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -147,12 +148,12 @@ jobs:
       - name: Terraform plan
         run: terraform -chdir=infra/terraform/yandex-cloud plan -out=tfplan
       - name: Terraform apply
-        if: secrets.YC_TERRAFORM_AUTO_APPLY == 'true'
+        if: env.YC_TERRAFORM_AUTO_APPLY == 'true'
         run: terraform -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
       - name: Export apply status
         id: status
         run: |
-          if [[ '${{ secrets.YC_TERRAFORM_AUTO_APPLY }}' == 'true' ]]; then
+          if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' ]]; then
             echo 'applied=true' >> "$GITHUB_OUTPUT"
           else
             echo 'applied=false' >> "$GITHUB_OUTPUT"
