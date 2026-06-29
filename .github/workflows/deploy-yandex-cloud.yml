@@ -33,11 +33,58 @@ jobs:
           BUILD_ID="${BUILD_DATE}-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
           echo "BUILD_ID=${BUILD_ID}" >> "$GITHUB_OUTPUT"
 
+  validate-deploy-secrets:
+    name: Validate deploy secrets
+    runs-on: ubuntu-latest
+    env:
+      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+      YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      YC_CONTAINER_REGISTRY_ID: ${{ secrets.YC_CONTAINER_REGISTRY_ID }}
+      YC_FRONTEND_BUCKET_NAME: ${{ secrets.YC_FRONTEND_BUCKET_NAME }}
+      YC_TF_VARS_B64: ${{ secrets.YC_TF_VARS_B64 }}
+      YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
+      YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+      YC_SMOKE_HOST: ${{ secrets.YC_SMOKE_HOST }}
+    steps:
+      - name: Validate required deploy secrets
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            echo "PR validation path skips production deploy secrets."
+            exit 0
+          fi
+
+          missing=()
+          for name in \
+            YC_SERVICE_ACCOUNT_KEY_JSON \
+            YC_CLOUD_ID \
+            YC_FOLDER_ID \
+            YC_CONTAINER_REGISTRY_ID \
+            YC_FRONTEND_BUCKET_NAME \
+            YC_TF_VARS_B64 \
+            YC_OBJECT_STORAGE_ACCESS_KEY_ID \
+            YC_OBJECT_STORAGE_SECRET_ACCESS_KEY \
+            YC_SMOKE_HOST
+          do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            {
+              echo "Missing required GitHub Actions secrets for Yandex Cloud deploy:"
+              printf ' - %s\n' "${missing[@]}"
+            } >&2
+            exit 1
+          fi
+
   build-push-images:
     name: Build image (${{ matrix.image }})
     runs-on: ubuntu-latest
     needs:
       - generate-build-id
+      - validate-deploy-secrets
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +153,7 @@ jobs:
     needs:
       - build-push-images
       - generate-build-id
+      - validate-deploy-secrets
     outputs:
       applied: ${{ steps.status.outputs.applied }}
       ydb_endpoint: ${{ steps.outputs.outputs.ydb_endpoint }}
