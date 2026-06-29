@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
@@ -40,15 +41,25 @@ def _patch_ydb_version_check() -> None:
         version = original_get_database_version(self)
         if version in (None, ("main",)):
             return version
+        if isinstance(version, str):
+            numeric_parts = re.findall(r"\d+", version)
+            return tuple(int(part) for part in numeric_parts) if numeric_parts else (version,)
+
         normalized: list[int | str] = []
         for part in version:
             if isinstance(part, int):
                 normalized.append(part)
-            elif isinstance(part, str) and part.isdigit():
-                normalized.append(int(part))
-            else:
-                normalized.append(part)
-        return tuple(normalized)
+                continue
+            if isinstance(part, str):
+                if part == "main":
+                    return ("main",)
+                numeric_parts = re.findall(r"\d+", part)
+                if numeric_parts:
+                    normalized.extend(int(item) for item in numeric_parts)
+                continue
+            normalized.append(part)
+
+        return tuple(normalized) if normalized else version
 
     ydb_base.DatabaseWrapper.get_database_version = _normalized_get_database_version
     ydb_base.DatabaseWrapper._updspace_version_patch = True
