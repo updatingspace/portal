@@ -142,7 +142,8 @@ terraform -chdir=infra/terraform/yandex-cloud apply
   - docker build validation
 - `deploy-yandex-cloud.yml`
   Что делает:
-  - build/push service images в `Yandex Container Registry`
+  - на `pull_request` в `main/master`: build service images без push + production-like `terraform plan`
+  - на `push` в `main/master` и `workflow_dispatch`: build/push service images в `Yandex Container Registry`
   - frontend publish в `Object Storage`
   - `terraform plan` / `terraform apply`
   - one-shot YDB migration bootstrap against target YDB
@@ -161,6 +162,11 @@ terraform -chdir=infra/terraform/yandex-cloud apply
 - `YC_PUBLIC_BASE_URL`
 - `YC_SMOKE_HOST`
 - optional: `YC_TERRAFORM_AUTO_APPLY=true`
+
+Примечание:
+
+- preview `terraform plan` в `pull_request` режиме выполняется только для PR из этого же репозитория, где workflow имеет доступ к нужным secrets;
+- фактический `terraform apply`, frontend publish, YDB migrations и public smoke на PR не запускаются намеренно.
 
 ## Migrations и schema bootstrap
 
