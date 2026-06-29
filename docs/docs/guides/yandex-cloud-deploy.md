@@ -142,7 +142,7 @@ terraform -chdir=infra/terraform/yandex-cloud apply
   - docker build validation
 - `deploy-yandex-cloud.yml`
   Что делает:
-  - на `pull_request` в `main/master`: build service images без push + production-like `terraform plan`
+  - на `pull_request` в `main/master`: build service images без push и без доступа к production YC secrets
   - на `push` в `main/master` и `workflow_dispatch`: build/push service images в `Yandex Container Registry`
   - frontend publish в `Object Storage`
   - `terraform plan` / `terraform apply`
@@ -165,7 +165,7 @@ terraform -chdir=infra/terraform/yandex-cloud apply
 
 Примечание:
 
-- preview `terraform plan` в `pull_request` режиме выполняется только для PR из этого же репозитория, где workflow имеет доступ к нужным secrets;
+- `terraform plan` с production secret'ами не запускается из `pull_request` workflow path;
 - фактический `terraform apply`, frontend publish, YDB migrations и public smoke на PR не запускаются намеренно.
 
 ## Migrations и schema bootstrap
