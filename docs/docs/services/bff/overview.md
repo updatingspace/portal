@@ -10,12 +10,12 @@ description: Backend For Frontend — API Gateway платформы
 
 - **Path**: `services/bff`
 - **Port**: 8080
-- **URL**: `aef.updspace.com/api/v1/*` (через Traefik)
+- **URL**: `portal.updspace.com/api/v1/*` for the portal app; direct tenant hosts such as `aef.t.updspace.com/api/v1/*` are an additional addressing surface.
 
 ## Ключевые функции
 
 1. **Session Management** — HttpOnly cookie, хранение в DB/YDB
-2. **Tenant Resolution** — определение tenant по subdomain
+2. **Tenant Resolution** — определение tenant по session/UI context или direct tenant host
 3. **Proxy** — проксирование запросов в микросервисы
 4. **Context Injection** — добавление X-Headers с контекстом
 5. **HMAC Signing** — подпись запросов для service-to-service
@@ -203,7 +203,7 @@ CSRF_HEADER_NAME = "HTTP_X_CSRF_TOKEN"
 
 ```python
 CORS_ALLOWED_ORIGINS = [
-    "https://aef.updspace.com",
+    "https://aef.t.updspace.com",
     "https://id.updspace.com",
 ]
 

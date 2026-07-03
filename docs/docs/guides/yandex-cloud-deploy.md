@@ -225,8 +225,8 @@ python src/manage.py migrate_ydb
 Пример:
 
 ```bash
-SMOKE_BASE_URL=https://aef.updspace.com \
-SMOKE_HOST_HEADER=aef.updspace.com \
+SMOKE_BASE_URL=https://aef.t.updspace.com \
+SMOKE_HOST_HEADER=aef.t.updspace.com \
 ./scripts/ci/smoke-yc-gateway.sh
 ```
 
@@ -245,7 +245,7 @@ SMOKE_HOST_HEADER=aef.updspace.com \
 - session state и rate-limit state находятся в DB/YDB, Redis не нужен.
 - YMQ triggers в статусе `ACTIVE`.
 - nightly retention timers в статусе `ACTIVE`.
-- smoke script проходит по tenant domain.
+- smoke script проходит по tenant wildcard domain (`*.t.updspace.com`).
 
 ## Security hardening
 

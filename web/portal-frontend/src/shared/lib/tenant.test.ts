@@ -57,4 +57,17 @@ describe('tenant host helpers', () => {
     });
     expect(getPortalHostForTenantAlias('aef.localhost:5173')).toBe('portal.localhost:5173');
   });
+
+  it('canonicalizes public tenant aliases to the exact portal app host', () => {
+    expect(getPortalHostForTenantAlias('aef.t.updspace.com')).toBe('portal.updspace.com');
+    expect(
+      getLegacyTenantAliasRedirectUrl({
+        protocol: 'https:',
+        host: 'aef.t.updspace.com',
+        pathname: '/login',
+        search: '?next=%2Fapp%2Ffeed',
+        hash: '',
+      }),
+    ).toBe('https://portal.updspace.com/login?next=%2Ft%2Faef%2Ffeed');
+  });
 });

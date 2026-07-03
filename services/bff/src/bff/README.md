@@ -1,14 +1,20 @@
-# UpdSpace BFF (AEF portal)
+# UpdSpace BFF
 
 ## Entry point
 
-All frontend calls go through:
+Portal users can enter through the exact app domain (`portal.updspace.com`) and
+work with their available tenants there. Tenant wildcard hosts such as
+`aef.t.updspace.com` are a direct addressing surface for a specific tenant, not
+the only way to access tenant data.
+
+All API calls go through:
 
 - `/api/v1/*`
 
 ## Tenant resolution
 
-- Tenant is resolved from `Host` (subdomain): `aef.updspace.com` → `tenant_slug=aef`
+- For tenant wildcard hosts, tenant is resolved from `Host`: `aef.t.updspace.com` -> `tenant_slug=aef`
+- For the exact portal app domain, active tenant can come from session/UI flow instead of the host name.
 - BFF maps `tenant_slug` → `tenant_id` (DB `bff_tenant`)
 - For internal requests BFF adds:
   - `X-Tenant-Id`
@@ -55,13 +61,13 @@ METHOD\nPATH\nSHA256(body)\nREQUEST_ID\nTIMESTAMP
 
 ## Security
 
-- CORS should allow only `*.updspace.com` (default via `CORS_ALLOWED_ORIGIN_REGEXES`)
+- CORS should allow the tenant wildcard `*.t.updspace.com` plus separately managed exact app domains such as `portal.updspace.com` (default via `CORS_ALLOWED_ORIGIN_REGEXES`)
 - CSRF for cookie-auth API: Django `CsrfViewMiddleware` + `csrf_protect`, host-only CSRF cookie (`updspace_csrf` by default), `X-CSRF-Token` header
 - Rate limit: `/api/v1/session/*`
 
 ## Settings
 
-- `BFF_TENANT_HOST_SUFFIX` (default `updspace.com`)
+- `BFF_TENANT_HOST_SUFFIX` (production Terraform sets `t.updspace.com`)
 - `BFF_COOKIE_DOMAIN` (recommended `.updspace.com`)
 - `BFF_CSRF_COOKIE_DOMAIN` (default unset → host-only CSRF cookie)
 - `BFF_INTERNAL_HMAC_SECRET` (required for proxy signing)

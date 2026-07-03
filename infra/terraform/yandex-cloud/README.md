@@ -20,14 +20,16 @@
 - task containers для `outbox_process` и `purge_retention`
 - YMQ queues + triggers для `activity`, `events`, `featureflags`, `gamification`, `voting`
 - shared API Gateway
-- optional public DNS zone + wildcard record
+- optional public DNS zone + tenant wildcard record
 
 ## Важные допущения
 
 - `Object Storage` buckets по умолчанию не `force_destroy`; удаление непустых bucket'ов нужно включать явно через `object_storage_force_destroy=true`.
 - `ci` service account не получает folder-level `editor`, пока не появится реальный use case.
 - Terraform всё ещё даёт runtime/gateway/trigger/automation service accounts роль `editor` на каталог. Это baseline для reproducible rollout, но перед production hardening роли нужно сузить.
-- Wildcard certificate ожидается как уже выпущенный `certificate_id`. Сертификат можно bootstrap'нуть отдельно в Certificate Manager и затем передать его ID сюда.
+- Exact app domain `portal.updspace.com` обрабатывается отдельно от tenant wildcard и остаётся общей точкой входа в portal app.
+- Tenant hosts используют `*.t.updspace.com` by default (`*.${tenant_wildcard_subdomain}.${public_zone}`) как direct addressing surface для конкретного tenant, чтобы exact service domains вроде `id.updspace.com` могли жить на отдельных gateways.
+- Wildcard certificate для tenant hosts ожидается как уже выпущенный `certificate_id`. Сертификат должен покрывать `*.t.updspace.com` при production default `tenant_wildcard_subdomain = "t"`. Сертификат можно bootstrap'нуть отдельно в Certificate Manager и затем передать его ID сюда.
 - `UpdSpaceID` живёт вне этого репозитория. Для BFF указываются `id_public_base_url` и при необходимости `id_internal_api_url`.
 - Один serverless YDB database используется всеми сервисами; разделение идёт по именам таблиц и сервисным migration job'ам.
 
