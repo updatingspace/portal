@@ -1192,6 +1192,22 @@ class RateLimitTests(TestCase):
             f"/api/v1/session/tenants:127.0.0.1:{self.session.session_id}",
         )
 
+    def test_anonymous_session_me_skips_rate_limit(self):
+        self.client.cookies.pop(self.cookie_name, None)
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_SESSION_RATE_LIMIT_PER_MIN=3,
+        ):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST="portal.updating.space",
+            )
+
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.json()["error"]["code"], "UNAUTHENTICATED")
+        self.assertEqual(BffRateLimitWindow.objects.count(), 0)
+
 
 class SwitchTenantEdgeCaseTests(TestCase):
     """Edge case tests for switch-tenant endpoint."""

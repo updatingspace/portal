@@ -223,6 +223,9 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
         if not request.path.startswith("/api/v1/session/"):
             return None
 
+        if getattr(request, "auth_ctx", None) is None:
+            return None
+
         base_limit = int(getattr(settings, "BFF_SESSION_RATE_LIMIT_PER_MIN", 60))
         if request.path == "/api/v1/session/me":
             limit = int(
