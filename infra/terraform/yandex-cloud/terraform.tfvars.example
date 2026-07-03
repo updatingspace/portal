@@ -1,10 +1,11 @@
 cloud_id  = "b1gxxxxxxxxxxxxxxx"
 folder_id = "b1gxxxxxxxxxxxxxxx"
 
-name_prefix   = "updspace-portal-prod"
-public_zone   = "updspace.com"
-manage_dns_zone = false
-certificate_id  = "fpqxxxxxxxxxxxxxxx"
+name_prefix               = "updspace-portal-prod"
+public_zone               = "updspace.com"
+tenant_wildcard_subdomain = "t"
+manage_dns_zone           = false
+certificate_id            = "fpqxxxxxxxxxxxxxxx"
 
 id_public_base_url = "https://id.updspace.com"
 id_internal_api_url = "https://id-internal.updspace.com/api/v1"

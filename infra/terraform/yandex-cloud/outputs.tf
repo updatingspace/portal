@@ -9,8 +9,8 @@ output "api_gateway_invoke_domain" {
 }
 
 output "public_gateway_domain" {
-  description = "Configured wildcard domain when a certificate is attached, otherwise the default invoke domain."
-  value       = var.certificate_id != "" ? "*.${var.public_zone}" : yandex_api_gateway.portal.domain
+  description = "Configured tenant wildcard domain when a certificate is attached, otherwise the default invoke domain."
+  value       = var.certificate_id != "" ? local.tenant_gateway_domain : yandex_api_gateway.portal.domain
 }
 
 output "frontend_bucket_name" {

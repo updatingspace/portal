@@ -841,13 +841,13 @@ resource "yandex_function_trigger" "retention" {
 
 resource "yandex_api_gateway" "portal" {
   name        = "${local.name_prefix}-gateway"
-  description = "Portal shared gateway for wildcard tenant routing and Object Storage frontend delivery"
+  description = "Portal shared gateway for tenant wildcard routing and Object Storage frontend delivery"
   spec        = local.api_gateway_spec
 
   dynamic "custom_domains" {
     for_each = var.certificate_id != "" ? [1] : []
     content {
-      fqdn           = "*.${var.public_zone}"
+      fqdn           = local.tenant_gateway_domain
       certificate_id = var.certificate_id
     }
   }
@@ -866,7 +866,7 @@ resource "yandex_dns_recordset" "gateway_wildcard" {
   count = var.manage_dns_zone && var.certificate_id != "" ? 1 : 0
 
   zone_id = yandex_dns_zone.public[0].id
-  name    = "*.${var.public_zone}."
+  name    = "${local.tenant_gateway_domain}."
   type    = "CNAME"
   ttl     = 300
   data    = [yandex_api_gateway.portal.domain]

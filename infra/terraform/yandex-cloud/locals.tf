@@ -14,8 +14,10 @@ locals {
 
   default_allowed_hosts = ".${var.public_zone},.yandexcloud.net,localhost,127.0.0.1"
 
-  frontend_bucket_name = var.frontend_bucket_name != "" ? var.frontend_bucket_name : "${local.name_prefix}-${substr(md5("${var.folder_id}-frontend"), 0, 8)}"
-  media_bucket_name    = var.media_bucket_name != "" ? var.media_bucket_name : "${local.name_prefix}-media-${substr(md5("${var.folder_id}-media"), 0, 8)}"
+  frontend_bucket_name  = var.frontend_bucket_name != "" ? var.frontend_bucket_name : "${local.name_prefix}-${substr(md5("${var.folder_id}-frontend"), 0, 8)}"
+  media_bucket_name     = var.media_bucket_name != "" ? var.media_bucket_name : "${local.name_prefix}-media-${substr(md5("${var.folder_id}-media"), 0, 8)}"
+  tenant_host_suffix    = "${var.tenant_wildcard_subdomain}.${var.public_zone}"
+  tenant_gateway_domain = "*.${local.tenant_host_suffix}"
 
   image_tags = merge({
     for service in local.all_services : service => "latest"
@@ -144,7 +146,7 @@ locals {
     local.common_service_env,
     {
       BFF_COOKIE_DOMAIN                    = ".${var.public_zone}"
-      BFF_TENANT_HOST_SUFFIX               = var.public_zone
+      BFF_TENANT_HOST_SUFFIX               = local.tenant_host_suffix
       BFF_UPSTREAM_ACCESS_INVOKE_URL       = local.access_api_url
       BFF_UPSTREAM_EVENTS_INVOKE_URL       = local.events_api_url
       BFF_UPSTREAM_FEATUREFLAGS_INVOKE_URL = local.featureflags_api_url
@@ -155,7 +157,7 @@ locals {
       BFF_SESSION_RATE_LIMIT_PER_MIN       = "60"
       ID_BASE_URL                          = local.id_internal_api_url
       ID_PUBLIC_BASE_URL                   = local.id_public_base_url
-      YC_API_GATEWAY_DOMAIN                = "*.${var.public_zone}"
+      YC_API_GATEWAY_DOMAIN                = local.tenant_gateway_domain
       YC_CERTIFICATE_ID                    = var.certificate_id
       YC_LOCKBOX_SECRET_RUNTIME_ID         = yandex_lockbox_secret.runtime.id
       YC_LOCKBOX_SECRET_RUNTIME_VERSION_ID = yandex_lockbox_secret_version.runtime.id

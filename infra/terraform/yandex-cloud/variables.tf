@@ -27,19 +27,25 @@ variable "name_prefix" {
 }
 
 variable "public_zone" {
-  description = "Public DNS zone used for tenant wildcard routing."
+  description = "Public DNS zone used for exact app domains and the tenant wildcard subdomain."
   type        = string
   default     = "updspace.com"
 }
 
+variable "tenant_wildcard_subdomain" {
+  description = "Subdomain label reserved for tenant wildcard hosts. With the default value, tenants use *.t.updspace.com and exact app domains such as portal.updspace.com remain separate."
+  type        = string
+  default     = "t"
+}
+
 variable "manage_dns_zone" {
-  description = "Create and manage a public Cloud DNS zone plus wildcard record in this stack."
+  description = "Create and manage a public Cloud DNS zone plus tenant wildcard record in this stack."
   type        = bool
   default     = false
 }
 
 variable "certificate_id" {
-  description = "Existing wildcard certificate ID from Certificate Manager for *.public_zone."
+  description = "Existing wildcard certificate ID from Certificate Manager for *.tenant_wildcard_subdomain.public_zone."
   type        = string
   default     = ""
 }
