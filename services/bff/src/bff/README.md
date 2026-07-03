@@ -1,14 +1,20 @@
-# UpdSpace BFF (AEF portal)
+# UpdSpace BFF
 
 ## Entry point
 
-All frontend calls go through:
+Portal users can enter through the exact app domain (`portal.updspace.com`) and
+work with their available tenants there. Tenant wildcard hosts such as
+`aef.t.updspace.com` are a direct addressing surface for a specific tenant, not
+the only way to access tenant data.
+
+All API calls go through:
 
 - `/api/v1/*`
 
 ## Tenant resolution
 
-- Tenant is resolved from `Host` (tenant wildcard subdomain): `aef.t.updspace.com` -> `tenant_slug=aef`
+- For tenant wildcard hosts, tenant is resolved from `Host`: `aef.t.updspace.com` -> `tenant_slug=aef`
+- For the exact portal app domain, active tenant can come from session/UI flow instead of the host name.
 - BFF maps `tenant_slug` → `tenant_id` (DB `bff_tenant`)
 - For internal requests BFF adds:
   - `X-Tenant-Id`
