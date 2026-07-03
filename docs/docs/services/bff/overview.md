@@ -10,7 +10,7 @@ description: Backend For Frontend — API Gateway платформы
 
 - **Path**: `services/bff`
 - **Port**: 8080
-- **URL**: `aef.updspace.com/api/v1/*` (через Traefik)
+- **URL**: `aef.t.updspace.com/api/v1/*` (через tenant wildcard; exact `portal.updspace.com` обрабатывается отдельно)
 
 ## Ключевые функции
 
@@ -203,7 +203,7 @@ CSRF_HEADER_NAME = "HTTP_X_CSRF_TOKEN"
 
 ```python
 CORS_ALLOWED_ORIGINS = [
-    "https://aef.updspace.com",
+    "https://aef.t.updspace.com",
     "https://id.updspace.com",
 ]
 
