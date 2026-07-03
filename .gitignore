@@ -225,3 +225,11 @@ coverage/
 
 # Sourcecraft local workspace artifacts
 .sourcecraft/
+
+# Terraform/Yandex Cloud local runtime artifacts
+infra/terraform/**/.terraform/
+*.tfstate
+*.tfstate.backup
+runtime.auto.tfvars
+image-tags.auto.tfvars.json
+yc-sa-key.json

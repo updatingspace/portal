@@ -147,7 +147,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   terraform-apply:
-    name: Terraform plan/apply
+    name: OpenTofu plan/apply
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     needs:
@@ -167,7 +167,7 @@ jobs:
       YC_TERRAFORM_AUTO_APPLY: ${{ secrets.YC_TERRAFORM_AUTO_APPLY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: opentofu/setup-opentofu@v1
       - name: Write YC service account key
         run: |
           printf '%s' '${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}' > "$RUNNER_TEMP/yc-sa-key.json"
@@ -191,29 +191,33 @@ jobs:
             }
           }
           JSON
-      - name: Terraform init
-        run: terraform -chdir=infra/terraform/yandex-cloud init
-      - name: Terraform plan
-        run: terraform -chdir=infra/terraform/yandex-cloud plan -out=tfplan
-      - name: Terraform apply
+      - name: OpenTofu init
+        run: tofu -chdir=infra/terraform/yandex-cloud init
+      - name: OpenTofu plan
+        run: tofu -chdir=infra/terraform/yandex-cloud plan -out=tfplan
+      - name: OpenTofu apply
         if: env.YC_TERRAFORM_AUTO_APPLY == 'true'
-        run: terraform -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
+        run: tofu -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
       - name: Export apply status
         id: status
         run: |
           if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' ]]; then
             echo 'applied=true' >> "$GITHUB_OUTPUT"
+            echo '### OpenTofu apply completed' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Production deploy will continue with frontend publish, YDB migrations, and smoke checks.' >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'applied=false' >> "$GITHUB_OUTPUT"
+            echo '### OpenTofu plan only' >> "$GITHUB_STEP_SUMMARY"
+            echo 'YC_TERRAFORM_AUTO_APPLY is not true, so OpenTofu apply, frontend publish, YDB migrations, and smoke checks are intentionally skipped.' >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Capture Terraform outputs
+      - name: Capture OpenTofu outputs
         id: outputs
         if: steps.status.outputs.applied == 'true'
         run: |
-          echo "ydb_endpoint=$(terraform -chdir=infra/terraform/yandex-cloud output -raw ydb_endpoint)" >> "$GITHUB_OUTPUT"
-          echo "ydb_database=$(terraform -chdir=infra/terraform/yandex-cloud output -raw ydb_database)" >> "$GITHUB_OUTPUT"
-          echo "lockbox_secret_id=$(terraform -chdir=infra/terraform/yandex-cloud output -raw runtime_lockbox_secret_id)" >> "$GITHUB_OUTPUT"
-          echo "lockbox_secret_version_id=$(terraform -chdir=infra/terraform/yandex-cloud output -raw runtime_lockbox_secret_version_id)" >> "$GITHUB_OUTPUT"
+          echo "ydb_endpoint=$(tofu -chdir=infra/terraform/yandex-cloud output -raw ydb_endpoint)" >> "$GITHUB_OUTPUT"
+          echo "ydb_database=$(tofu -chdir=infra/terraform/yandex-cloud output -raw ydb_database)" >> "$GITHUB_OUTPUT"
+          echo "lockbox_secret_id=$(tofu -chdir=infra/terraform/yandex-cloud output -raw runtime_lockbox_secret_id)" >> "$GITHUB_OUTPUT"
+          echo "lockbox_secret_version_id=$(tofu -chdir=infra/terraform/yandex-cloud output -raw runtime_lockbox_secret_version_id)" >> "$GITHUB_OUTPUT"
 
   frontend-publish:
     name: Publish frontend bundle
@@ -260,16 +264,17 @@ jobs:
     if: needs.terraform-apply.outputs.applied == 'true'
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         service:
-          - access
-          - activity
           - bff
+          - access
+          - portal
+          - activity
+          - voting
           - events
           - featureflags
           - gamification
-          - portal
-          - voting
     defaults:
       run:
         working-directory: services/${{ matrix.service }}
@@ -297,7 +302,22 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -e .
       - name: Run migrate_ydb
-        run: python src/manage.py migrate_ydb
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "migrate_ydb attempt ${attempt}"
+            if python src/manage.py migrate_ydb; then
+              exit 0
+            fi
+
+            if [[ "${attempt}" == '5' ]]; then
+              break
+            fi
+
+            echo 'migrate_ydb failed, sleeping 120 seconds before retry'
+            sleep 120
+          done
+
+          exit 1
 
   smoke:
     name: Smoke public gateway

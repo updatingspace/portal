@@ -8,7 +8,7 @@ terraform {
     }
 
     yandex = {
-      source  = "yandex-cloud/yandex"
+      source  = "registry.terraform.io/yandex-cloud/yandex"
       version = "~> 0.196"
     }
   }

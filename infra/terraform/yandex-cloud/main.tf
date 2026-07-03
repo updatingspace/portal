@@ -103,6 +103,12 @@ resource "yandex_ydb_database_serverless" "portal" {
   location_id = var.region
 }
 
+resource "yandex_ydb_database_iam_binding" "runtime_editor" {
+  database_id = yandex_ydb_database_serverless.portal.id
+  role        = "ydb.editor"
+  members     = ["serviceAccount:${yandex_iam_service_account.runtime.id}"]
+}
+
 resource "yandex_serverless_container" "access" {
   name               = "${local.name_prefix}-access"
   description        = "Access service"
@@ -578,7 +584,7 @@ resource "yandex_serverless_container" "bff" {
 }
 
 resource "yandex_serverless_container" "outbox_task" {
-  for_each = local.outbox_services
+  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
 
   name               = "${local.name_prefix}-${each.key}-outbox"
   description        = "Outbox worker for ${each.key}"
@@ -786,7 +792,7 @@ resource "yandex_message_queue" "outbox" {
 }
 
 resource "yandex_function_trigger" "outbox_queue" {
-  for_each = local.outbox_services
+  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
 
   name = "${local.name_prefix}-${each.key}-queue-trigger"
 
@@ -804,7 +810,7 @@ resource "yandex_function_trigger" "outbox_queue" {
 }
 
 resource "yandex_function_trigger" "outbox_sweep" {
-  for_each = local.outbox_services
+  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
 
   name = "${local.name_prefix}-${each.key}-outbox-sweep"
 

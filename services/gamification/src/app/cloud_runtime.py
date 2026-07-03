@@ -162,7 +162,11 @@ def build_database_settings(
             database_settings["CREDENTIALS"] = {"service_account_json": json.loads(raw)}
         except json.JSONDecodeError as exc:
             raise ImproperlyConfigured("YDB_SERVICE_ACCOUNT_JSON must contain valid JSON") from exc
-    elif credentials_mode != "metadata":
+    elif credentials_mode == "metadata":
+        import ydb.iam
+
+        database_settings["CREDENTIALS"] = ydb.iam.MetadataUrlCredentials()
+    else:
         raise ImproperlyConfigured(
             "YDB_CREDENTIALS_MODE must be one of: metadata, token, sa_json"
         )

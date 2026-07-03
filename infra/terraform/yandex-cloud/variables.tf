@@ -216,3 +216,9 @@ variable "lockbox_secret_entries" {
   default     = {}
   sensitive   = true
 }
+
+variable "enable_outbox_task_containers" {
+  description = "Create task-mode outbox containers and triggers. Disable for low-quota bootstrap while keeping YMQ queues."
+  type        = bool
+  default     = true
+}

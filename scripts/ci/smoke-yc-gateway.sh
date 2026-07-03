@@ -23,6 +23,16 @@ curl_status() {
   fi
 }
 
+assert_not_5xx() {
+  local actual="$1"
+  local label="$2"
+  if [[ "${actual}" =~ ^5 ]]; then
+    echo "${label} returned server error: ${actual}" >&2
+    cat "${smoke_body}" >&2 || true
+    return 1
+  fi
+}
+
 capture_headers() {
   local path="$1"
   local output_file="$2"
@@ -70,11 +80,22 @@ spa_status="$(curl_status "/app/non-existent-client-route")"
 assert_status_in "${spa_status}" 200
 echo "SPA fallback OK: ${spa_status}"
 
+csrf_status="$(curl_status "/api/v1/csrf")"
+assert_status_in "${csrf_status}" 200
+echo "BFF CSRF endpoint OK: ${csrf_status}"
+
 session_status="$(curl_status "/api/v1/session/me")"
+assert_not_5xx "${session_status}" "BFF session endpoint"
 assert_status_in "${session_status}" 200 401 403
 echo "BFF session endpoint OK: ${session_status}"
 
+tenants_status="$(curl_status "/api/v1/session/tenants")"
+assert_not_5xx "${tenants_status}" "BFF session tenants endpoint"
+assert_status_in "${tenants_status}" 200 401 403
+echo "BFF session tenants endpoint OK: ${tenants_status}"
+
 login_status="$(curl_status "/api/v1/auth/login")"
+assert_not_5xx "${login_status}" "Login start endpoint"
 assert_status_in "${login_status}" 200 302 303 307 308 401 403
 echo "Login start endpoint OK: ${login_status}"
 

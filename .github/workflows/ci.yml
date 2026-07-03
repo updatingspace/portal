@@ -177,7 +177,7 @@ jobs:
         run: pnpm run build
 
   terraform-check:
-    name: Check Terraform
+    name: Check OpenTofu
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloud_id: dummy-cloud
@@ -185,13 +185,13 @@ jobs:
       TF_VAR_id_public_base_url: https://id.example.com
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - name: Terraform fmt
-        run: terraform fmt -check -recursive infra/terraform/yandex-cloud
-      - name: Terraform init
-        run: terraform -chdir=infra/terraform/yandex-cloud init -backend=false
-      - name: Terraform validate
-        run: terraform -chdir=infra/terraform/yandex-cloud validate
+      - uses: opentofu/setup-opentofu@v1
+      - name: OpenTofu fmt
+        run: tofu fmt -check -recursive infra/terraform/yandex-cloud
+      - name: OpenTofu init
+        run: tofu -chdir=infra/terraform/yandex-cloud init -backend=false
+      - name: OpenTofu validate
+        run: tofu -chdir=infra/terraform/yandex-cloud validate
 
   yc-hardening-audit:
     name: Audit YC hardening
