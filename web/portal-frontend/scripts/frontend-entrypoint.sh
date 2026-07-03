@@ -19,6 +19,7 @@ replace_placeholder() {
 replace_placeholder "VITE_API_BASE_URL" "${VITE_API_BASE_URL:-}"
 replace_placeholder "VITE_TELEGRAM_BOT_NAME" "${VITE_TELEGRAM_BOT_NAME:-}"
 replace_placeholder "VITE_ID_LOGIN_URL" "${VITE_ID_LOGIN_URL:-}"
+replace_placeholder "VITE_PORTAL_HOST" "${VITE_PORTAL_HOST:-}"
 
 # Дополнительно переписываем дефолтный локальный адрес, если плейсхолдер не сработал
 if [ -n "${VITE_API_BASE_URL:-}" ]; then

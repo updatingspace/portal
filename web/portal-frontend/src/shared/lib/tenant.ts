@@ -8,6 +8,10 @@ export type BrowserLocationLike = Pick<Location, 'protocol' | 'host' | 'pathname
 const LOCALHOST_SUFFIX = '.localhost';
 const RESERVED_HOST_SLUGS = new Set(['portal', 'www', 'admin', 'app']);
 const API_HOST_PREFIX = 'api';
+const TENANT_ALIAS_PUBLIC_SUFFIX = 't.updspace.com';
+const DEFAULT_PORTAL_HOST = 'portal.updspace.com';
+const rawPortalHost =
+  (import.meta.env.VITE_PORTAL_HOST as string | undefined) ?? '__VITE_PORTAL_HOST__';
 
 const isLocalhostLike = (host: string) =>
   host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local');
@@ -27,6 +31,19 @@ const splitHostPort = (host: string): { hostname: string; port: string } => {
     }
   }
   return { hostname: normalized, port: '' };
+};
+
+const getConfiguredPortalHost = (): string => {
+  const normalized = rawPortalHost.trim().toLowerCase();
+  if (!normalized || normalized === '__vite_portal_host__') {
+    return DEFAULT_PORTAL_HOST;
+  }
+  try {
+    const url = new URL(normalized.includes('://') ? normalized : `https://${normalized}`);
+    return url.host || DEFAULT_PORTAL_HOST;
+  } catch {
+    return DEFAULT_PORTAL_HOST;
+  }
 };
 
 const extractTenantSlug = (labels: string[]): string | null => {
@@ -86,6 +103,10 @@ export const getPortalHostForTenantAlias = (host: string): string | null => {
   const { hostname, port } = splitHostPort(host);
   if (hostname.endsWith(LOCALHOST_SUFFIX)) {
     return withPort(`portal${LOCALHOST_SUFFIX}`, port);
+  }
+
+  if (hostname.endsWith(`.${TENANT_ALIAS_PUBLIC_SUFFIX}`)) {
+    return getConfiguredPortalHost();
   }
 
   const labels = hostname.split('.').filter(Boolean);
