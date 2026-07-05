@@ -1300,16 +1300,58 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     """
     OIDC callback handler. Exchanges authorization code for tokens and creates session.
     """
+    step = "start"
+    next_path: str | None = None
+
+    def set_step(value: str, candidate_next_path: str | None = None) -> None:
+        nonlocal step, next_path
+        step = value
+        if candidate_next_path is not None:
+            next_path = candidate_next_path
+
+    try:
+        return _auth_callback_impl(
+            request,
+            code=code,
+            state=state,
+            error=error,
+            set_step=set_step,
+        )
+    except Exception:
+        logger.exception(
+            "Unhandled OAuth callback exception",
+            extra={
+                "request_id": getattr(request, "request_id", None),
+                "callback_step": step,
+            },
+        )
+        return _auth_error_redirect(
+            request,
+            code=f"CALLBACK_FAILED_{step.upper()}",
+            next_path=next_path,
+        )
+
+
+def _auth_callback_impl(
+    request: HttpRequest,
+    *,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    set_step,
+):
     if error:
         return _auth_error_redirect(request, code="OAUTH_ERROR")
 
     if not code or not state:
         return _auth_error_redirect(request, code="BAD_REQUEST")
 
+    set_step("state_lookup")
     state_row = BffOauthState.objects.filter(state=state).first()
     if not state_row or state_row.expires_at <= timezone.now():
         return _auth_error_redirect(request, code="INVALID_STATE")
 
+    set_step("tenant_resolve", state_row.next_path)
     tenant = _resolve_auth_tenant(request)
     if not tenant:
         return _auth_error_redirect(
@@ -1327,6 +1369,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
         )
 
     next_path = state_row.next_path or "/"
+    set_step("configuration", next_path)
 
     # Exchange code for tokens
     # BFF_UPSTREAM_ID_URL points to /api/v1, but OAuth endpoints are at /oauth/
@@ -1355,6 +1398,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     import httpx
     token_url = f"{id_base_url}/oauth/token"
 
+    set_step("token_exchange", next_path)
     try:
         token_resp = httpx.post(
             token_url,
@@ -1381,6 +1425,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
+    set_step("token_parse", next_path)
     try:
         tokens = token_resp.json()
     except Exception:
@@ -1399,6 +1444,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
 
     # Get user info
     userinfo_url = f"{id_base_url}/oauth/userinfo"
+    set_step("userinfo_request", next_path)
     try:
         userinfo_resp = httpx.get(
             userinfo_url,
@@ -1419,6 +1465,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
+    set_step("userinfo_parse", next_path)
     try:
         userinfo = userinfo_resp.json()
     except Exception:
@@ -1445,6 +1492,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
         )
 
     # Create BFF session
+    set_step("session_create", next_path)
     master_flags = userinfo.get("master_flags", {})
     if not isinstance(master_flags, dict):
         master_flags = {}
@@ -1468,12 +1516,14 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
+    set_step("state_cleanup", next_path)
     if not _consume_oauth_state(state, state_row.expires_at):
         logger.warning(
             "OAuth callback completed but state cleanup failed",
             extra={"request_id": getattr(request, "request_id", None)},
         )
 
+    set_step("set_cookie", next_path)
     cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
     response = HttpResponseRedirect(next_path)
     response.set_cookie(
