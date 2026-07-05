@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -109,6 +110,21 @@ def _auth_error_redirect(
     if request_id:
         params["request_id"] = str(request_id)
     return HttpResponseRedirect(f"/login?{urlencode(params)}")
+
+
+def _consume_oauth_state(state: str, expires_at) -> bool:
+    """Mark an OAuth state as one-time-used without relying on DELETE support."""
+    consumed_at = timezone.now() - timedelta(seconds=1)
+    try:
+        updated = BffOauthState.objects.filter(
+            state=state,
+            expires_at=expires_at,
+        ).update(expires_at=consumed_at)
+    except Exception:
+        logger.warning("Failed to consume OAuth state", exc_info=True)
+        return False
+
+    return updated == 1
 
 
 def _resolve_access_check_path(upstream: str) -> str:
@@ -1292,9 +1308,8 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
 
     state_row = BffOauthState.objects.filter(state=state).first()
     if not state_row or state_row.expires_at <= timezone.now():
-        if state_row:
-            state_row.delete()
         return _auth_error_redirect(request, code="INVALID_STATE")
+
     tenant = _resolve_auth_tenant(request)
     if not tenant:
         return _auth_error_redirect(
@@ -1311,8 +1326,13 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=state_row.next_path,
         )
 
-    BffOauthState.objects.filter(state=state).delete()
     next_path = state_row.next_path or "/"
+    if not _consume_oauth_state(state, state_row.expires_at):
+        return _auth_error_redirect(
+            request,
+            code="INVALID_STATE",
+            next_path=next_path,
+        )
 
     # Exchange code for tokens
     # BFF_UPSTREAM_ID_URL points to /api/v1, but OAuth endpoints are at /oauth/
@@ -1367,8 +1387,21 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    tokens = token_resp.json()
+    try:
+        tokens = token_resp.json()
+    except Exception:
+        return _auth_error_redirect(
+            request,
+            code="TOKEN_EXCHANGE_FAILED",
+            next_path=next_path,
+        )
     access_token = tokens.get("access_token")
+    if not access_token:
+        return _auth_error_redirect(
+            request,
+            code="TOKEN_EXCHANGE_FAILED",
+            next_path=next_path,
+        )
 
     # Get user info
     userinfo_url = f"{id_base_url}/oauth/userinfo"
@@ -1392,10 +1425,25 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    userinfo = userinfo_resp.json()
+    try:
+        userinfo = userinfo_resp.json()
+    except Exception:
+        return _auth_error_redirect(
+            request,
+            code="USERINFO_FAILED",
+            next_path=next_path,
+        )
     user_id = userinfo.get("sub") or userinfo.get("user_id")
 
     if not user_id:
+        return _auth_error_redirect(
+            request,
+            code="INVALID_USERINFO",
+            next_path=next_path,
+        )
+    try:
+        user_id = str(uuid.UUID(str(user_id)))
+    except (TypeError, ValueError, AttributeError):
         return _auth_error_redirect(
             request,
             code="INVALID_USERINFO",
@@ -1407,12 +1455,24 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     if not isinstance(master_flags, dict):
         master_flags = {}
 
-    session = SessionStore().create(
-        tenant_id=str(tenant.id),
-        user_id=str(user_id),
-        master_flags=master_flags,
-        ttl=timedelta(days=14),
-    )
+    try:
+        session = SessionStore().create(
+            tenant_id=str(tenant.id),
+            user_id=user_id,
+            master_flags=master_flags,
+            ttl=timedelta(days=14),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to create BFF session during OAuth callback",
+            extra={"request_id": getattr(request, "request_id", None)},
+            exc_info=True,
+        )
+        return _auth_error_redirect(
+            request,
+            code="SESSION_CREATE_FAILED",
+            next_path=next_path,
+        )
 
     cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
     response = HttpResponseRedirect(next_path)

@@ -1084,8 +1084,11 @@ class OidcAuthCallbackTests(TestCase):
         self.assertEqual(session_data.user_id, "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         self.assertEqual(session_data.tenant_id, str(self.tenant.id))
 
-        # Verify state was consumed (deleted from DB)
-        self.assertFalse(BffOauthState.objects.filter(state=state).exists())
+        # Verify state was consumed (expired in-place; avoids YDB DELETE on callback)
+        state_row = BffOauthState.objects.filter(state=state).first()
+        self.assertIsNotNone(state_row)
+        assert state_row is not None
+        self.assertLessEqual(state_row.expires_at, timezone.now())
 
     @patch("httpx.post")
     def test_callback_token_exchange_failure_returns_error(self, mock_post):
@@ -1118,6 +1121,50 @@ class OidcAuthCallbackTests(TestCase):
         self.assertIn("/login?", resp["Location"])
         self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
         self.assertIn("next=%2F", resp["Location"])
+        state_row = BffOauthState.objects.filter(state=state).first()
+        self.assertIsNotNone(state_row)
+        assert state_row is not None
+        self.assertLessEqual(state_row.expires_at, timezone.now())
+
+    @patch("httpx.post")
+    def test_callback_token_exchange_failure_does_not_delete_state(self, mock_post):
+        """Callback consumes state via expiry update, avoiding YDB DELETE failures."""
+        state = "valid-state-ydb-safe"
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        mock_post.return_value = httpx.Response(
+            400,
+            json={"error": "invalid_grant"},
+        )
+
+        existing_filter = BffOauthState.objects.filter
+        with patch("bff.api.BffOauthState.objects.filter") as mock_filter:
+
+            def filter_side_effect(*args, **kwargs):
+                queryset = existing_filter(*args, **kwargs)
+                queryset.delete = MagicMock(side_effect=AssertionError("delete not allowed"))
+                return queryset
+
+            mock_filter.side_effect = filter_side_effect
+
+            with self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+                BFF_OIDC_CLIENT_ID="test-client",
+                BFF_OIDC_CLIENT_SECRET="test-secret",
+            ):
+                resp = self.client.get(
+                    f"/api/v1/auth/callback?code=invalid-code&state={state}",
+                    HTTP_HOST=self.host,
+                )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
 
     @patch("httpx.post")
     @patch("httpx.get")
@@ -1155,6 +1202,91 @@ class OidcAuthCallbackTests(TestCase):
         self.assertIn("/login?", resp["Location"])
         self.assertIn("auth_error=USERINFO_FAILED", resp["Location"])
         self.assertIn("next=%2F", resp["Location"])
+
+    @patch("httpx.post")
+    def test_callback_malformed_token_payload_returns_error(self, mock_post):
+        state = "malformed-token-state"
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        mock_post.return_value = httpx.Response(200, content=b"not-json")
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            BFF_OIDC_CLIENT_ID="test-client",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=valid-code&state={state}",
+                HTTP_HOST=self.host,
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
+
+    @patch("httpx.post")
+    @patch("httpx.get")
+    def test_callback_malformed_userinfo_returns_error(self, mock_get, mock_post):
+        state = "malformed-userinfo-state"
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        mock_post.return_value = httpx.Response(200, json={"access_token": "mock-token"})
+        mock_get.return_value = httpx.Response(200, content=b"not-json")
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            BFF_OIDC_CLIENT_ID="test-client",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=valid-code&state={state}",
+                HTTP_HOST=self.host,
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("auth_error=USERINFO_FAILED", resp["Location"])
+
+    @patch("httpx.post")
+    @patch("httpx.get")
+    def test_callback_non_uuid_userinfo_subject_returns_error(self, mock_get, mock_post):
+        state = "non-uuid-userinfo-state"
+        BffOauthState.objects.create(
+            state=state,
+            tenant_id=self.tenant.id,
+            next_path="/",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        mock_post.return_value = httpx.Response(200, json={"access_token": "mock-token"})
+        mock_get.return_value = httpx.Response(
+            200,
+            json={"sub": "opaque-subject", "master_flags": {}},
+        )
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            BFF_OIDC_CLIENT_ID="test-client",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=valid-code&state={state}",
+                HTTP_HOST=self.host,
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("auth_error=INVALID_USERINFO", resp["Location"])
 
 
 class OidcAuthIntegrationTests(TestCase):
