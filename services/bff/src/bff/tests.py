@@ -1124,7 +1124,7 @@ class OidcAuthCallbackTests(TestCase):
         state_row = BffOauthState.objects.filter(state=state).first()
         self.assertIsNotNone(state_row)
         assert state_row is not None
-        self.assertLessEqual(state_row.expires_at, timezone.now())
+        self.assertGreater(state_row.expires_at, timezone.now())
 
     @patch("httpx.post")
     def test_callback_token_exchange_failure_does_not_delete_state(self, mock_post):

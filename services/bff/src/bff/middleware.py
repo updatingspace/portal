@@ -78,6 +78,13 @@ class ErrorMappingMiddleware(MiddlewareMixin):
         if not request.path.startswith("/api/v1/"):
             return None
 
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Unhandled API exception",
+            extra={"request_id": getattr(request, "request_id", None)},
+        )
+
         # Avoid leaking exception details in prod.
         details = None
         if getattr(settings, "DEBUG", False):

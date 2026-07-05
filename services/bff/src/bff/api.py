@@ -1327,12 +1327,6 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
         )
 
     next_path = state_row.next_path or "/"
-    if not _consume_oauth_state(state, state_row.expires_at):
-        return _auth_error_redirect(
-            request,
-            code="INVALID_STATE",
-            next_path=next_path,
-        )
 
     # Exchange code for tokens
     # BFF_UPSTREAM_ID_URL points to /api/v1, but OAuth endpoints are at /oauth/
@@ -1472,6 +1466,12 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             request,
             code="SESSION_CREATE_FAILED",
             next_path=next_path,
+        )
+
+    if not _consume_oauth_state(state, state_row.expires_at):
+        logger.warning(
+            "OAuth callback completed but state cleanup failed",
+            extra={"request_id": getattr(request, "request_id", None)},
         )
 
     cookie_name = getattr(settings, "BFF_SESSION_COOKIE_NAME", "updspace_session")
