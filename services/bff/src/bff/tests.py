@@ -9,10 +9,12 @@ import sys
 import uuid
 from datetime import timedelta
 from io import StringIO
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import MagicMock, patch
 
 import httpx
 from django.conf import settings
+from django.core import signing
 from django.core.management import call_command
 from django.core.exceptions import ImproperlyConfigured
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase
@@ -24,6 +26,12 @@ from bff.models import BffOauthState, BffRateLimitWindow, BffSession, Tenant
 from bff.proxy import proxy_request
 from bff.security import require_internal_signature, sign_internal_request
 from bff.session_store import SessionStore
+
+
+def _extract_oauth_state(authorize_url: str) -> str:
+    values = parse_qs(urlparse(authorize_url).query).get("state")
+    assert values
+    return values[0]
 
 
 class BffTenantIsolationTests(TestCase):
@@ -884,8 +892,8 @@ class OidcAuthLoginTests(TestCase):
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "OIDC_NOT_CONFIGURED")
 
-    def test_auth_login_stores_state_in_db(self):
-        """GET /auth/login should store state→next mapping in DB."""
+    def test_auth_login_signs_state_payload(self):
+        """GET /auth/login should put tenant and next mapping in signed state."""
 
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
@@ -901,17 +909,12 @@ class OidcAuthLoginTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         location = resp["Location"]
 
-        # Extract state from URL
-        import re
-        match = re.search(r"state=([^&]+)", location)
-        self.assertIsNotNone(match)
-        state = match.group(1)
+        state = _extract_oauth_state(location)
+        payload = signing.loads(state, salt="bff.oauth.state", max_age=600)
 
-        row = BffOauthState.objects.filter(state=state).first()
-        self.assertIsNotNone(row)
-        assert row is not None
-        self.assertEqual(row.next_path, "/dashboard")
-        self.assertEqual(str(row.tenant_id), str(self.tenant.id))
+        self.assertEqual(payload["next_path"], "/dashboard")
+        self.assertEqual(payload["tenant_id"], str(self.tenant.id))
+        self.assertFalse(BffOauthState.objects.filter(state=state).exists())
 
     def test_auth_login_prevents_open_redirect(self):
         """GET /auth/login should not allow external URLs in next param."""
@@ -929,15 +932,10 @@ class OidcAuthLoginTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         location = resp["Location"]
 
-        import re
-        match = re.search(r"state=([^&]+)", location)
-        state = match.group(1)
+        state = _extract_oauth_state(location)
+        payload = signing.loads(state, salt="bff.oauth.state", max_age=600)
 
-        row = BffOauthState.objects.filter(state=state).first()
-        self.assertIsNotNone(row)
-        assert row is not None
-        # next should be sanitized to "/"
-        self.assertEqual(row.next_path, "/")
+        self.assertEqual(payload["next_path"], "/")
 
 
 class OidcAuthCallbackTests(TestCase):
@@ -1125,6 +1123,37 @@ class OidcAuthCallbackTests(TestCase):
         self.assertIsNotNone(state_row)
         assert state_row is not None
         self.assertGreater(state_row.expires_at, timezone.now())
+
+    @patch("httpx.post")
+    def test_callback_signed_state_token_exchange_failure_returns_error(self, mock_post):
+        """Signed OAuth state should not require DB lookup on callback."""
+        state = signing.dumps(
+            {
+                "tenant_id": str(self.tenant.id),
+                "next_path": "/",
+            },
+            salt="bff.oauth.state",
+            compress=True,
+        )
+
+        mock_post.return_value = httpx.Response(
+            400,
+            json={"error": "invalid_grant"},
+        )
+
+        with self.settings(
+            BFF_TENANT_HOST_SUFFIX="updspace.com",
+            BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            BFF_OIDC_CLIENT_ID="test-client",
+            BFF_OIDC_CLIENT_SECRET="test-secret",
+        ):
+            resp = self.client.get(
+                f"/api/v1/auth/callback?code=invalid-code&state={state}",
+                HTTP_HOST=self.host,
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", resp["Location"])
 
     @patch("httpx.post")
     def test_callback_token_exchange_failure_does_not_delete_state(self, mock_post):
@@ -1320,16 +1349,9 @@ class OidcAuthIntegrationTests(TestCase):
         self.assertEqual(login_resp.status_code, 302)
         authorize_url = login_resp["Location"]
 
-        # Extract state for callback
-        import re
-        match = re.search(r"state=([^&]+)", authorize_url)
-        state = match.group(1)
-
-        # Verify state was stored
-        row = BffOauthState.objects.filter(state=state).first()
-        self.assertIsNotNone(row)
-        assert row is not None
-        self.assertEqual(row.next_path, "/voting")
+        state = _extract_oauth_state(authorize_url)
+        state_payload = signing.loads(state, salt="bff.oauth.state", max_age=600)
+        self.assertEqual(state_payload["next_path"], "/voting")
 
         # Step 2: Simulate IdP callback (mock token + userinfo)
         mock_post.return_value = httpx.Response(

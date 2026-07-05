@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core import signing
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -55,6 +56,14 @@ SESSION_ME_CAPABILITY_PROBES: tuple[tuple[str, str], ...] = (
 class _LoginPayload:
     email: str
     next: str | None
+
+
+@dataclass(frozen=True)
+class _OAuthStateData:
+    tenant_id: str
+    next_path: str
+    expires_at: Any
+    persistent: bool
 
 
 def _require_auth(request: HttpRequest):
@@ -125,6 +134,55 @@ def _consume_oauth_state(state: str, expires_at) -> bool:
         return False
 
     return updated == 1
+
+
+def _encode_oauth_state(*, tenant_id: str, next_path: str) -> str:
+    return signing.dumps(
+        {
+            "tenant_id": tenant_id,
+            "next_path": next_path,
+        },
+        salt="bff.oauth.state",
+        compress=True,
+    )
+
+
+def _decode_oauth_state(state: str) -> _OAuthStateData | None:
+    try:
+        payload = signing.loads(
+            state,
+            salt="bff.oauth.state",
+            max_age=600,
+        )
+    except signing.BadSignature:
+        payload = None
+
+    if isinstance(payload, dict):
+        tenant_id = str(payload.get("tenant_id") or "").strip()
+        next_path = _sanitize_next_path(str(payload.get("next_path") or ""), default="/")
+        if tenant_id:
+            return _OAuthStateData(
+                tenant_id=tenant_id,
+                next_path=next_path,
+                expires_at=timezone.now() + timedelta(minutes=10),
+                persistent=False,
+            )
+
+    try:
+        state_row = BffOauthState.objects.filter(state=state).first()
+    except Exception:
+        logger.warning("Failed to load persistent OAuth state", exc_info=True)
+        return None
+
+    if not state_row or state_row.expires_at <= timezone.now():
+        return None
+
+    return _OAuthStateData(
+        tenant_id=str(state_row.tenant_id or "").strip(),
+        next_path=state_row.next_path or "/",
+        expires_at=state_row.expires_at,
+        persistent=True,
+    )
 
 
 def _resolve_access_check_path(upstream: str) -> str:
@@ -1267,16 +1325,10 @@ def auth_login_redirect(request: HttpRequest, next: str | None = None):
     host = request.get_host()
     callback_url = f"{scheme}://{host}/api/v1/auth/callback"
 
-    # Store next path in state (we'll use it after callback)
-    import secrets
-    state = secrets.token_urlsafe(32)
-
     next_path = _sanitize_next_path(next, default="/")
-    BffOauthState.objects.create(
-        state=state,
-        tenant_id=tenant.id,
+    state = _encode_oauth_state(
+        tenant_id=str(tenant.id),
         next_path=next_path,
-        expires_at=timezone.now() + timedelta(minutes=10),
     )
 
     # Build authorization URL
@@ -1347,8 +1399,8 @@ def _auth_callback_impl(
         return _auth_error_redirect(request, code="BAD_REQUEST")
 
     set_step("state_lookup")
-    state_row = BffOauthState.objects.filter(state=state).first()
-    if not state_row or state_row.expires_at <= timezone.now():
+    state_row = _decode_oauth_state(state)
+    if not state_row:
         return _auth_error_redirect(request, code="INVALID_STATE")
 
     set_step("tenant_resolve", state_row.next_path)
@@ -1360,7 +1412,7 @@ def _auth_callback_impl(
             next_path=state_row.next_path,
         )
 
-    state_tenant_id = str(state_row.tenant_id or "").strip()
+    state_tenant_id = state_row.tenant_id
     if state_tenant_id and state_tenant_id != str(tenant.id):
         return _auth_error_redirect(
             request,
@@ -1517,7 +1569,7 @@ def _auth_callback_impl(
         )
 
     set_step("state_cleanup", next_path)
-    if not _consume_oauth_state(state, state_row.expires_at):
+    if state_row.persistent and not _consume_oauth_state(state, state_row.expires_at):
         logger.warning(
             "OAuth callback completed but state cleanup failed",
             extra={"request_id": getattr(request, "request_id", None)},
