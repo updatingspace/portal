@@ -813,7 +813,7 @@ def news_create(request, payload: schemas.NewsCreateIn = REQUIRED_BODY):
     if len(tags) > 10:
         raise HttpError(400, error_payload("VALIDATION_ERROR", "too many tags"))
 
-    media = normalize_media_payload([m.dict() for m in payload.media])
+    media = normalize_media_payload([m.model_dump() for m in payload.media])
     max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
     if len(media) > max_media:
         raise HttpError(400, error_payload("VALIDATION_ERROR", "too many media items"))
@@ -1074,7 +1074,7 @@ def news_update(request, news_id: str, payload: schemas.NewsUpdateIn = REQUIRED_
 
     media = post.media_json
     if payload.media is not None:
-        media = normalize_media_payload([m.dict() for m in payload.media])
+        media = normalize_media_payload([m.model_dump() for m in payload.media])
         max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
         if len(media) > max_media:
             raise HttpError(400, error_payload("VALIDATION_ERROR", "too many media items"))
