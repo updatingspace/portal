@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import time
 
 import httpx
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _is_suspended_or_banned(master_flags: dict) -> bool:
@@ -83,6 +86,9 @@ def has_permission(
     try:
         resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
     except Exception:
+        # Fail-closed: при сбое проверки доступа запрещаем, но логируем причину,
+        # чтобы ошибка не была немой.
+        logger.warning("Access check request failed; denying", exc_info=True)
         return False
 
     if resp.status_code != 200:
@@ -90,5 +96,6 @@ def has_permission(
     try:
         data = resp.json()
     except Exception:
+        logger.warning("Access check returned non-JSON; denying", exc_info=True)
         return False
     return bool(data.get("allowed"))

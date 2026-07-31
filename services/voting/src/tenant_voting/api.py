@@ -2,6 +2,7 @@ import uuid
 import hashlib
 import hmac
 import json
+import logging
 import time
 from uuid import UUID
 
@@ -50,6 +51,8 @@ from .templates import get_templates
 
 
 router = Router(tags=["Voting"])
+
+logger = logging.getLogger(__name__)
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -133,6 +136,8 @@ def _access_check_allowed(
     try:
         resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
     except Exception:
+        # Fail-closed: запрещаем при сбое проверки доступа, но логируем причину.
+        logger.warning("Access check request failed; denying", exc_info=True)
         return False
 
     if resp.status_code != 200:
@@ -140,6 +145,7 @@ def _access_check_allowed(
     try:
         data = resp.json()
     except Exception:
+        logger.warning("Access check returned non-JSON; denying", exc_info=True)
         return False
     return bool(data.get("allowed"))
 
