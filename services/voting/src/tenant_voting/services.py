@@ -1,5 +1,6 @@
 import uuid
 from typing import Dict
+from django.conf import settings
 from django.db import transaction, IntegrityError
 from django.db.models import Count
 from django.utils import timezone
@@ -40,6 +41,12 @@ class VotingServiceError(Exception):
         self.message = message
         self.status = status
         super().__init__(message)
+
+
+def _is_ydb_mode() -> bool:
+    # Вне YDB используем пессимистичные блокировки (select_for_update);
+    # на YDB полагаемся на сериализуемость оптимистичных транзакций.
+    return getattr(settings, "DB_DRIVER", "postgres") == "ydb"
 
 
 @transaction.atomic
@@ -125,22 +132,33 @@ def cast_vote(
     except Option.DoesNotExist:
         raise VotingServiceError(code="OPTION_NOT_FOUND", message="Option not found", status=404)
 
-    user_votes = _user_votes_for_nomination(nomination, user_id)
-    if user_votes.filter(option=option).exists():
-        raise VotingServiceError(
-            code="ALREADY_VOTED",
-            message="You have already selected this option",
-            status=409,
-        )
-    if user_votes.count() >= nomination.max_votes:
-        raise VotingServiceError(
-            code="TOO_MANY_VOTES",
-            message="Vote limit reached for this question",
-            status=409,
-        )
-
+    # Проверку лимитов и запись голоса выполняем в одной транзакции, чтобы
+    # исключить гонку check-then-create: параллельные запросы иначе проходят
+    # проверки одновременно и создают дубль голоса за один вариант либо обходят
+    # max_votes. Вне YDB берём пессимистичную блокировку строки номинации, на
+    # YDB полагаемся на сериализуемость (тот же паттерн, что в nominations/compat).
     try:
         with transaction.atomic():
+            nomination_lock = Nomination.objects.filter(id=nomination.id)
+            if not _is_ydb_mode():
+                nomination_lock = nomination_lock.select_for_update()
+            # Материализуем queryset, чтобы взять блокировку до проверок.
+            list(nomination_lock)
+
+            user_votes = list(_user_votes_for_nomination(nomination, user_id))
+            if any(vote.option_id == option.id for vote in user_votes):
+                raise VotingServiceError(
+                    code="ALREADY_VOTED",
+                    message="You have already selected this option",
+                    status=409,
+                )
+            if len(user_votes) >= nomination.max_votes:
+                raise VotingServiceError(
+                    code="TOO_MANY_VOTES",
+                    message="Vote limit reached for this question",
+                    status=409,
+                )
+
             vote = Vote.objects.create(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
