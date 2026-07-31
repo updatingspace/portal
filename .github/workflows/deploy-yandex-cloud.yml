@@ -36,24 +36,23 @@ jobs:
   validate-deploy-secrets:
     name: Validate deploy secrets
     runs-on: ubuntu-latest
-    env:
-      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
-      YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
-      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
-      YC_CONTAINER_REGISTRY_ID: ${{ secrets.YC_CONTAINER_REGISTRY_ID }}
-      YC_FRONTEND_BUCKET_NAME: ${{ secrets.YC_FRONTEND_BUCKET_NAME }}
-      YC_TF_VARS_B64: ${{ secrets.YC_TF_VARS_B64 }}
-      YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
-      YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
-      YC_SMOKE_HOST: ${{ secrets.YC_SMOKE_HOST }}
     steps:
       - name: Validate required deploy secrets
+        # Секреты нужны только для реального деплоя (push/workflow_dispatch).
+        # На pull_request шаг не выполняется, поэтому секреты вообще не
+        # инъектируются в окружение раннера — минимизируем поверхность.
+        if: github.event_name != 'pull_request'
+        env:
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+          YC_CONTAINER_REGISTRY_ID: ${{ secrets.YC_CONTAINER_REGISTRY_ID }}
+          YC_FRONTEND_BUCKET_NAME: ${{ secrets.YC_FRONTEND_BUCKET_NAME }}
+          YC_TF_VARS_B64: ${{ secrets.YC_TF_VARS_B64 }}
+          YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
+          YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+          YC_SMOKE_HOST: ${{ secrets.YC_SMOKE_HOST }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
-            echo "PR validation path skips production deploy secrets."
-            exit 0
-          fi
-
           missing=()
           for name in \
             YC_SERVICE_ACCOUNT_KEY_JSON \
