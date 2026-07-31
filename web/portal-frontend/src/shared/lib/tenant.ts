@@ -79,7 +79,7 @@ const resolveExplicitTenantHost = (host: string): TenantInfo | null => {
   return { slug, host: withPort(hostname, port) };
 };
 
-const sanitizeInternalPath = (path: string | null | undefined, defaultPath: string): string => {
+export const sanitizeInternalPath = (path: string | null | undefined, defaultPath: string): string => {
   const candidate = String(path ?? '').trim();
   if (
     !candidate ||

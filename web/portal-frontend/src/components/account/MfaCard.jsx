@@ -8,6 +8,7 @@ import {
   disableTotp,
   regenerateRecoveryCodes,
 } from "../../services/api";
+import { sanitizeSvg } from "@/shared/lib/sanitizeHtml";
 
 const cardStyle = {
   border: "1px solid #dbe7ff",
@@ -178,7 +179,7 @@ export default function MfaCard({ profile = null }) {
             </div>
             <div
               style={{ background: "#fff", padding: 12, borderRadius: 8 }}
-              dangerouslySetInnerHTML={{ __html: setup.svg }}
+              dangerouslySetInnerHTML={{ __html: sanitizeSvg(setup.svg) }}
             />
             <div style={{ opacity: 0.8, fontSize: 12, marginTop: 6 }}>
               Резервный ключ: <code>{setup.secret}</code>

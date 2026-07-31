@@ -3,11 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card } from '@gravity-ui/uikit';
 
 import { redirectToLogin } from '../../modules/portal/auth';
+import { sanitizeInternalPath } from '../../shared/lib/tenant';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get('next') ?? '/choose-tenant';
+  // Санитизируем next из query, чтобы не пробрасывать open redirect
+  // (внешние URL/схемы отбрасываются на безопасный внутренний путь).
+  const next = sanitizeInternalPath(params.get('next'), '/choose-tenant');
   const authErrorCode = (params.get('auth_error') ?? '').trim().toUpperCase();
   const requestId = (params.get('request_id') ?? '').trim();
 

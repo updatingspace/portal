@@ -2,6 +2,7 @@ import {
   getPortalHostForTenantAlias,
   getTenantAliasFromHost,
   getTenantAppRootPath,
+  sanitizeInternalPath,
   toCanonicalTenantPath,
 } from '../../shared/lib/tenant';
 
@@ -52,15 +53,20 @@ const buildLoginUrl = (nextPath: string | null) => {
     return portalHostedUrl;
   }
 
+  // Вне portal-hosted ветки next не проходит через toCanonicalTenantPath,
+  // поэтому санитизируем его здесь, чтобы исключить open redirect
+  // (http(s)://, //, javascript: и не-'/' пути отбрасываются на дефолт).
+  const safeNext = sanitizeInternalPath(nextPath, '/');
+
   if (LOGIN_PATH.startsWith('http://') || LOGIN_PATH.startsWith('https://')) {
     const u = new URL(LOGIN_PATH);
-    if (nextPath) u.searchParams.set('next', nextPath);
+    if (nextPath) u.searchParams.set('next', safeNext);
     return u.toString();
   }
 
   // Relative or absolute path on same origin
   const u = new URL(LOGIN_PATH.startsWith('/') ? LOGIN_PATH : `/${LOGIN_PATH}`, window.location.origin);
-  if (nextPath) u.searchParams.set('next', nextPath);
+  if (nextPath) u.searchParams.set('next', safeNext);
   return u.toString();
 };
 
