@@ -390,6 +390,23 @@ def create_role_binding(request, payload: RoleBindingIn):
         role=role,
     )
 
+    # Привилегированная system-admin операция — фиксируем в аудите (как в
+    # tenant-admin ветке). Логируем под tenant_id затронутого биндинга.
+    log_tenant_admin_event(
+        tenant_id=rb.tenant_id,
+        performed_by=ctx.user_id,
+        action="binding_created",
+        target_type="binding",
+        target_id=str(rb.id),
+        metadata={
+            "user_id": str(rb.user_id),
+            "role_id": str(rb.role_id),
+            "scope_type": rb.scope_type,
+            "scope_id": rb.scope_id,
+            "via": "system_admin",
+        },
+    )
+
     out = RoleBindingOut(
         id=rb.id,
         tenant_id=rb.tenant_id,
@@ -421,6 +438,21 @@ def delete_role_binding(request, binding_id: int):
     if not rb:
         status, body = _error(request, status=404, code="NOT_FOUND", message="Role binding not found")
         return status, body
+
+    # Привилегированная system-admin операция (кросс-тенант по замыслу) —
+    # фиксируем удаление в аудите под tenant_id затронутого биндинга.
+    log_tenant_admin_event(
+        tenant_id=rb.tenant_id,
+        performed_by=ctx.user_id,
+        action="binding_deleted",
+        target_type="binding",
+        target_id=str(rb.id),
+        metadata={
+            "user_id": str(rb.user_id),
+            "role_id": str(rb.role_id),
+            "via": "system_admin",
+        },
+    )
 
     rb.delete()
     return {"ok": True}
