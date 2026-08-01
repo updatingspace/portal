@@ -18,6 +18,9 @@ locals {
   media_bucket_name     = var.media_bucket_name != "" ? var.media_bucket_name : "${local.name_prefix}-media-${substr(md5("${var.folder_id}-media"), 0, 8)}"
   tenant_host_suffix    = "${var.tenant_wildcard_subdomain}.${var.public_zone}"
   tenant_gateway_domain = "*.${local.tenant_host_suffix}"
+  # Точный домен основного портала (напр. portal.updspace.com), отдельно от
+  # tenant-wildcard. Живёт как самостоятельный custom_domain на gateway.
+  portal_gateway_domain = "portal.${var.public_zone}"
 
   image_tags = merge({
     for service in local.all_services : service => "latest"

@@ -50,6 +50,12 @@ variable "certificate_id" {
   default     = ""
 }
 
+variable "portal_certificate_id" {
+  description = "Certificate ID for the exact main portal domain (portal.<public_zone>). Kept separate from the tenant wildcard so both domains stay attached to the gateway. Leave empty to not manage the main domain here."
+  type        = string
+  default     = ""
+}
+
 variable "id_public_base_url" {
   description = "Public base URL of the external UpdSpaceID deployment, without /api/v1."
   type        = string
