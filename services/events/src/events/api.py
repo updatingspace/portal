@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from typing import Any, cast
 from uuid import UUID
 
@@ -16,10 +17,17 @@ from ninja.errors import HttpError
 
 from .context import InternalContext, require_internal_context
 from .dsar import erase_user_data, export_user_data
-from .models import Event, RSVP, RSVPStatus
+from .models import RSVP, Event, RSVPStatus
 from .permissions import has_permission, has_scope_membership
 from .portal_client import PortalServiceUnavailable, portal_client
-from .schemas import AttendanceMarkIn, EventCreateIn, EventListOut, EventOut, EventUpdateIn, RsvpSetIn
+from .schemas import (
+    AttendanceMarkIn,
+    EventCreateIn,
+    EventListOut,
+    EventOut,
+    EventUpdateIn,
+    RsvpSetIn,
+)
 from .service import create_event, mark_attendance, set_rsvp, update_event
 
 logger = logging.getLogger(__name__)

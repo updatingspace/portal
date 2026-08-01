@@ -1,7 +1,9 @@
 
 from __future__ import annotations
+
 from ninja import Schema
 from pydantic import ConfigDict
+
 
 def _to_camel(string: str) -> str:
     parts = string.split('_')

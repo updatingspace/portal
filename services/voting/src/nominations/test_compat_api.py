@@ -21,7 +21,7 @@ BFF_SRC = Path(__file__).resolve().parents[4] / "services" / "bff" / "src"
 if str(BFF_SRC) not in sys.path:
     sys.path.insert(0, str(BFF_SRC))
 
-from bff.security import sign_internal_request  # noqa: E402
+from bff.security import sign_internal_request
 
 
 def _headers(

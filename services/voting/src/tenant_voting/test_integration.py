@@ -14,24 +14,24 @@ import json
 import sys
 import uuid
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import Client, TestCase, override_settings
 
 from tenant_voting.models import (
     Nomination,
     Option,
+    OutboxMessage,
     Poll,
     PollScopeType,
     PollStatus,
-    OutboxMessage,
 )
 
 BFF_SRC = Path(__file__).resolve().parents[4] / "services" / "bff" / "src"
 if str(BFF_SRC) not in sys.path:
     sys.path.insert(0, str(BFF_SRC))
 
-from bff.security import sign_internal_request  # noqa: E402
+from bff.security import sign_internal_request
 
 
 def _headers(

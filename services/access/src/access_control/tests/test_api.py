@@ -16,8 +16,8 @@ from access_control.models import (
     Permission,
     PolicyOverride,
     Role,
-    RolePermission,
     RoleBinding,
+    RolePermission,
     ScopeType,
     TenantAdminAuditEvent,
 )

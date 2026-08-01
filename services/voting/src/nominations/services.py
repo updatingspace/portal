@@ -13,7 +13,6 @@ from django.db.models import Count, F, Prefetch, Q
 from django.utils import timezone
 
 # from accounts.services import user_has_telegram_link # Removed for microservices split
-
 from .data import seed_nominations_from_fixture, seed_votings_from_fixture
 from .models import Game, Nomination, NominationOption, NominationVote, Voting
 

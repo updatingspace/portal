@@ -34,7 +34,6 @@ from tenant_voting.models import (
     Vote,
 )
 
-
 API_PREFIX = "/api/v1"
 POLLS_ROOT = f"{API_PREFIX}/polls"
 POLLS_LIST = POLLS_ROOT
@@ -308,7 +307,7 @@ class VotingApiTests(TestCase):
     @patch("tenant_voting.api._access_check_allowed", new=_mock_access_check_allowed)
     def test_list_polls_with_data(self):
         """Test listing polls with existing data."""
-        poll, _, _, _ = self._create_poll_with_nomination()
+        _poll, _, _, _ = self._create_poll_with_nomination()
 
         request_id = str(uuid.uuid4())
         hdrs = _headers(

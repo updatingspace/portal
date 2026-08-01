@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
-from django.http import JsonResponse
 from django.db import models
+from django.http import JsonResponse
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 

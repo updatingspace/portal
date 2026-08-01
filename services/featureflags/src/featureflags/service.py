@@ -5,8 +5,9 @@ from collections.abc import Iterable
 from django.db import transaction
 from django.utils import timezone
 
-from .models import FeatureFlag, FeatureFlagAuditEvent, OutboxMessage
 from core.ymq import schedule_outbox_wakeup
+
+from .models import FeatureFlag, FeatureFlagAuditEvent, OutboxMessage
 
 
 def _normalize_flag_key(key: str) -> str:

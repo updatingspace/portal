@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
+from activity.audit import log_audit_event as _log_audit
 from activity.connectors.base import RawEventIn
 from activity.connectors.registry import get_connector
 from activity.enums import AccountLinkStatus, Visibility
@@ -33,9 +34,8 @@ from activity.models import (
     make_dedupe_hash,
 )
 from activity.privacy import safe_exception_label
-from activity.audit import log_audit_event as _log_audit
-from core.ymq import schedule_outbox_wakeup
 from core.errors import error_payload
+from core.ymq import schedule_outbox_wakeup
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime, int] | None:
         occurred_at = datetime.fromisoformat(parts[0])
         event_id = int(parts[1])
         return occurred_at, event_id
-    except Exception:
+    except (IndexError, TypeError, ValueError):
         return None
 
 
@@ -748,7 +748,7 @@ def run_sync(*, tenant_id, account_link_id: int) -> dict[str, int]:
             raise
         except Exception as exc:
             last_exc = exc
-            logger.warning(
+            logger.exception(
                 "Sync attempt failed",
                 extra={
                     "tenant_id": str(tenant_id),

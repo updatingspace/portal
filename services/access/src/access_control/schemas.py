@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, List, Literal
+from typing import Any, Literal
 
 from ninja import Schema
-
+from pydantic import Field
 
 ScopeType = Literal["GLOBAL", "TENANT", "COMMUNITY", "TEAM", "SERVICE"]
 Visibility = Literal["public", "community", "team", "private"]
@@ -135,7 +135,7 @@ class TenantAdminRoleOut(Schema):
     tenant_id: uuid.UUID | None
     service: str
     name: str
-    permission_keys: List[str]
+    permission_keys: list[str]
 
 
 class TenantAdminBindingOut(Schema):
@@ -178,7 +178,7 @@ class FeatureFlagIn(Schema):
     description: str = ""
     enabled: bool = False
     target_type: RolloutTargetType = "all"
-    target_value: dict = {}
+    target_value: dict = Field(default_factory=dict)
 
 
 class FeatureFlagOut(Schema):
@@ -211,9 +211,9 @@ class ExperimentIn(Schema):
     tenant_id: uuid.UUID | None = None
     description: str = ""
     enabled: bool = False
-    variants: list[ExperimentVariantIn] = []
+    variants: list[ExperimentVariantIn] = Field(default_factory=list)
     target_type: RolloutTargetType = "all"
-    target_value: dict = {}
+    target_value: dict = Field(default_factory=dict)
 
 
 class ExperimentOut(Schema):

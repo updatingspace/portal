@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
+
 from access_control.api import router as access_router
 from access_control.rollout_api import rollout_router
 from core.api import router as core_router

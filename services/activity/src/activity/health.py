@@ -100,14 +100,14 @@ def _check_access_service() -> CheckResult:
                     latency_ms=round(latency, 2),
                     message=f"Access service returned {resp.status_code}",
                 )
-    except Exception as e:
+    except Exception:
         latency = (time.perf_counter() - start) * 1000
-        logger.warning("Access service health check failed: %s", e)
+        logger.exception("Access service health check failed")
         return CheckResult(
             name="access_service",
             status="error",
             latency_ms=round(latency, 2),
-            message=f"Access service unreachable: {e}",
+            message="Access service unreachable",
         )
 
 
@@ -139,7 +139,7 @@ def readiness_check(request) -> JsonResponse:
     try:
         checks.append(_check_access_service())
     except Exception:
-        pass
+        logger.exception("Optional Access readiness check failed")
 
     # Determine overall status
     statuses = [c.status for c in checks]
@@ -180,7 +180,7 @@ def metrics_endpoint(request) -> JsonResponse:
     For full Prometheus integration, use django-prometheus library.
     This provides basic JSON metrics for monitoring dashboards.
     """
-    from activity.models import ActivityEvent, RawEvent, AccountLink
+    from activity.models import AccountLink, ActivityEvent, RawEvent
 
     # Basic counts
     metrics = {

@@ -16,9 +16,7 @@ def _is_suspended_or_banned(master_flags: dict) -> bool:
     status = str(master_flags.get("status", "")).lower()
     if status in {"suspended", "banned"}:
         return True
-    if master_flags.get("suspended") is True or master_flags.get("banned") is True:
-        return True
-    return False
+    return bool(master_flags.get("suspended") is True or master_flags.get("banned") is True)
 
 
 def _is_system_admin(master_flags: dict) -> bool:

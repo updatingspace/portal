@@ -27,13 +27,17 @@ from datetime import timedelta
 import httpx
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import models, transaction
+from django.db import DatabaseError, models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from tenant_voting.models import OutboxMessage
 
 logger = logging.getLogger(__name__)
+
+
+class OutboxPublishError(RuntimeError):
+    """Raised when an outbox message is rejected by the downstream service."""
 
 
 class Command(BaseCommand):
@@ -133,8 +137,8 @@ class Command(BaseCommand):
                 # Sleep before next poll
                 time.sleep(interval)
                 
-            except Exception as e:
-                logger.error(f"Error in outbox publisher: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Error in outbox publisher")
                 if not daemon:
                     raise
                 time.sleep(interval)
@@ -188,10 +192,11 @@ class Command(BaseCommand):
                     )
                     self.messages_published += 1
                     
-                except Exception as e:
+                except (DatabaseError, httpx.HTTPError, OutboxPublishError):
                     self.messages_failed += 1
-                    logger.error(
-                        f"Failed to publish message {msg.id}: {e}",
+                    logger.exception(
+                        "Failed to publish message %s",
+                        msg.id,
                         extra={
                             "message_id": str(msg.id),
                             "event_type": msg.event_type,
@@ -281,7 +286,7 @@ class Command(BaseCommand):
         )
         
         if response.status_code >= 400:
-            raise Exception(
+            raise OutboxPublishError(
                 f"Activity service returned {response.status_code}: {response.text}"
             )
         

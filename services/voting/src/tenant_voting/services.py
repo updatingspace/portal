@@ -1,39 +1,41 @@
 import uuid
-from typing import Dict
+
 from django.conf import settings
-from django.db import transaction, IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count
 from django.utils import timezone
 
+from core.ymq import schedule_outbox_wakeup
+
 from . import metrics
 from .models import (
+    Nomination,
     NominationKind,
+    Option,
     OutboxMessage,
     Poll,
-    Vote,
-    Nomination,
-    Option,
-    PollStatus,
-    PollScopeType,
-    PollParticipant,
-    PollRole,
     PollInvite,
     PollInviteStatus,
+    PollParticipant,
+    PollRole,
+    PollScopeType,
+    PollStatus,
     ResultsVisibility,
+    Vote,
 )
-from core.ymq import schedule_outbox_wakeup
 from .schemas import (
-    ResultOptionOut,
-    ResultNominationOut,
-    PollResultsOut,
     NominationIn,
     NominationUpdateIn,
     OptionIn,
     OptionUpdateIn,
     PollCreateIn,
+    PollResultsOut,
     PollUpdateIn,
+    ResultNominationOut,
+    ResultOptionOut,
 )
 from .templates import get_template
+
 
 class VotingServiceError(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
@@ -92,13 +94,7 @@ def can_view_results(poll: Poll, user_id: str) -> bool:
     user_role = get_user_role(poll, user_id)
     if user_role == PollRole.OBSERVER:
         return True
-    if poll.results_visibility == ResultsVisibility.ADMINS_ONLY and user_role in {
-        PollRole.OWNER,
-        PollRole.ADMIN,
-        PollRole.MODERATOR,
-    }:
-        return True
-    return False
+    return bool(poll.results_visibility == ResultsVisibility.ADMINS_ONLY and user_role in {PollRole.OWNER, PollRole.ADMIN, PollRole.MODERATOR})
 
 
 def _user_votes_for_nomination(nomination: Nomination, user_id: str):
@@ -239,7 +235,7 @@ def get_poll_results(poll: Poll) -> PollResultsOut:
         .annotate(count=Count("id"))
     )
 
-    results_map: Dict[uuid.UUID, Dict[uuid.UUID, int]] = {}
+    results_map: dict[uuid.UUID, dict[uuid.UUID, int]] = {}
     for r in rows:
         nom_id = r["nomination_id"]
         opt_id = r["option_id"]
@@ -305,7 +301,7 @@ def assign_participant_role(
         user_id=user_id,
         defaults={"role": role, "tenant_id": poll.tenant_id},
     )
-    invite, _ = PollInvite.objects.update_or_create(
+    _invite, _ = PollInvite.objects.update_or_create(
         poll=poll,
         user_id=user_id,
         defaults={

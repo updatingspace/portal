@@ -1,8 +1,9 @@
 """Create PortalAuditEvent table for lifecycle audit trail."""
 
-from django.db import migrations, models
-import django.utils.timezone
 import uuid
+
+import django.utils.timezone
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):

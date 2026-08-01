@@ -4,8 +4,9 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Attendance, Event, EventVisibility, OutboxMessage, RSVP
 from core.ymq import schedule_outbox_wakeup
+
+from .models import RSVP, Attendance, Event, EventVisibility, OutboxMessage
 
 
 def _is_ydb_mode() -> bool:

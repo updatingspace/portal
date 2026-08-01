@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
+
 from portal.api import router as portal_router
 
 

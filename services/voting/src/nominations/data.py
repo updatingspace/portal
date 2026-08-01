@@ -127,7 +127,7 @@ def seed_votings_from_fixture(force: bool = False, using: str | None = None) -> 
                 deadline_at = timezone.make_aware(
                     timezone.datetime.fromisoformat(deadline_value)
                 )
-            except Exception:
+            except ValueError:
                 deadline_at = None
 
         rules_data = voting_data.get("rules") or {}

@@ -7,6 +7,7 @@ from django.utils import timezone
 from ninja import Body, Query, Router
 from ninja.errors import HttpError
 
+from core.errors import error_payload
 from core.schemas import ErrorOut
 from core.security import require_internal_signature
 from portal.access import AccessService
@@ -29,16 +30,15 @@ from portal.schemas import (
     MembershipUpsertIn,
     ModuleItem,
     ModulesOut,
-    PostCreateIn,
-    PostOut,
     PortalProfileOut,
     PortalProfileUpdateIn,
+    PostCreateIn,
+    PostOut,
     TeamCreateIn,
     TeamOut,
 )
 from portal.security import bff_context_auth
 from portal.services import ensure_tenant
-from core.errors import error_payload
 
 router = Router(tags=["Portal"], auth=[bff_context_auth])
 REQUIRED_BODY = Body(...)

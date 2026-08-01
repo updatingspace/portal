@@ -13,6 +13,8 @@ from tenant_voting.api import _access_check_allowed
 from tenant_voting.context import InternalContext
 from tenant_voting.models import (
     Nomination as TenantNomination,
+)
+from tenant_voting.models import (
     Option,
     Poll,
     PollScopeType,
@@ -132,9 +134,7 @@ def _is_poll_open(poll: Poll) -> bool:
     now = timezone.now()
     if poll.starts_at and now < poll.starts_at:
         return False
-    if poll.ends_at and now > poll.ends_at:
-        return False
-    return True
+    return not (poll.ends_at and now > poll.ends_at)
 
 
 def _can_read_poll(
@@ -376,7 +376,7 @@ def get_nomination_with_status(
 ) -> dict[str, Any] | None:
     try:
         parsed = uuid.UUID(str(nomination_id))
-    except Exception:
+    except ValueError:
         return None
 
     nomination = (

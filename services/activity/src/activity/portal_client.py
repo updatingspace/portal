@@ -34,7 +34,7 @@ class PortalClient:
 
         timestamp = str(int(time.time()))
         digest = hashlib.sha256(body or b"").hexdigest()
-        message = "\n".join([method.upper(), path, digest, request_id, timestamp]).encode("utf-8")
+        message = f"{method.upper()}\n{path}\n{digest}\n{request_id}\n{timestamp}".encode()
         signature = hmac.new(secret.encode("utf-8"), message, digestmod=hashlib.sha256).hexdigest()
         return timestamp, signature
 
@@ -47,7 +47,7 @@ class PortalClient:
         path = f"{request_path}?user_ids={','.join(unique_ids)}"
         try:
             timestamp, signature = self._sign("GET", self._signed_path(request_path), b"", ctx.request_id)
-        except Exception as exc:
+        except RuntimeError as exc:
             logger.warning("Portal profile signing failed", extra={"error": str(exc)})
             return {}
 
@@ -71,7 +71,7 @@ class PortalClient:
             response = self._client.get(f"{self._base_url}{path}", headers=headers)
             response.raise_for_status()
             payload = response.json()
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             logger.warning(
                 "Portal profile lookup failed",
                 extra={

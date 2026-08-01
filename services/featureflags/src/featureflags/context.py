@@ -57,7 +57,7 @@ def require_internal_context(request: Any) -> InternalContext:
         master_flags = json.loads(master_raw)
         if not isinstance(master_flags, dict):
             master_flags = {}
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         master_flags = {}
 
     typed_master_flags = cast(dict[str, Any], master_flags)

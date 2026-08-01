@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from urllib.parse import urlparse
 
 import httpx
@@ -144,8 +144,7 @@ def proxy_request(
 
         def iterator() -> Iterable[bytes]:
             try:
-                for chunk in resp.iter_bytes(chunk_size=1024):
-                    yield chunk
+                yield from resp.iter_bytes(chunk_size=1024)
             finally:
                 close()
 

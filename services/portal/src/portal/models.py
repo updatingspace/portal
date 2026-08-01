@@ -168,15 +168,15 @@ class Post(models.Model):
 
 
 # Audit model lives in portal.audit but must be discoverable by Django.
-from portal.audit import PortalAuditEvent  # noqa: E402, F401
+from portal.audit import PortalAuditEvent
 
 __all__ = [
-    "Tenant",
-    "PortalProfile",
     "Community",
     "CommunityMembership",
+    "PortalAuditEvent",
+    "PortalProfile",
+    "Post",
     "Team",
     "TeamMembership",
-    "Post",
-    "PortalAuditEvent",
+    "Tenant",
 ]

@@ -14,9 +14,9 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 
-from activity.context import ActivityContext
-from activity.connectors.steam import SteamConnector
 from activity.connectors.base import RawEventIn
+from activity.connectors.steam import SteamConnector
+from activity.context import ActivityContext
 from activity.logging_config import JsonFormatter
 from activity.models import (
     AccountLink,
@@ -120,9 +120,11 @@ class PortalClientTests(TestCase):
             },
         )()
 
-        with patch.object(client, "_sign", wraps=client._sign) as sign_spy:
-            with patch.object(client._client, "get", return_value=fake_response) as get_mock:
-                result = client.list_profiles(ctx, [str(user_id)])
+        with (
+            patch.object(client, "_sign", wraps=client._sign) as sign_spy,
+            patch.object(client._client, "get", return_value=fake_response) as get_mock,
+        ):
+            result = client.list_profiles(ctx, [str(user_id)])
 
         self.assertEqual(result[str(user_id)]["display_name"], "Mihhail Matvejev")
         sign_spy.assert_called_once_with("GET", "/api/v1/portal/internal/profiles", b"", "rid-profiles-1")

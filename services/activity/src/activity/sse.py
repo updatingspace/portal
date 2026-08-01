@@ -143,8 +143,8 @@ def sse_unread_count(request):
             count = get_unread_count(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
             last_count = count
             yield _sse_event("unread", {"count": count, "timestamp": datetime.now(timezone.utc).isoformat()})
-        except Exception as e:
-            logger.error("SSE: Failed to get initial unread count: %s", e)
+        except Exception:
+            logger.exception("SSE: Failed to get initial unread count")
             yield _sse_event("error", {"message": "Failed to get unread count"})
             return
 
@@ -172,8 +172,8 @@ def sse_unread_count(request):
                             "unread",
                             {"count": count, "timestamp": datetime.now(timezone.utc).isoformat()},
                         )
-                except Exception as e:
-                    logger.warning("SSE: Error checking unread count: %s", e)
+                except Exception:
+                    logger.exception("SSE: Error checking unread count")
 
             # Short sleep to allow signal handling and avoid long blocking sleeps
             time.sleep(1)

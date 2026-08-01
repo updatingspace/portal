@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -10,8 +11,9 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Achievement, AchievementGrant, OutboxMessage
 from core.ymq import schedule_outbox_wakeup
+
+from .models import Achievement, AchievementGrant, OutboxMessage
 
 
 def _encode_cursor(dt: datetime, row_id: UUID) -> str:
@@ -24,7 +26,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime, UUID] | None:
         raw = base64.urlsafe_b64decode(cursor.encode("utf-8")).decode("utf-8")
         dt_raw, id_raw = raw.split("|", 1)
         return datetime.fromisoformat(dt_raw), UUID(id_raw)
-    except Exception:
+    except (binascii.Error, UnicodeError, ValueError):
         return None
 
 

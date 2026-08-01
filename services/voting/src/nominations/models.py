@@ -93,12 +93,8 @@ class Voting(models.Model):
 
     @property
     def expose_vote_counts(self) -> bool:
-        rule_flag = False
-        try:
-            rule_flag = bool(self.rules.get("show_vote_counts"))
-        except Exception:
-            # В rules может приехать что угодно, поэтому не ломаемся на невалидных данных.
-            rule_flag = False
+        rules = self.rules if isinstance(self.rules, dict) else {}
+        rule_flag = bool(rules.get("show_vote_counts"))
         return bool(self.show_vote_counts or rule_flag)
 
     @property
@@ -106,13 +102,8 @@ class Voting(models.Model):
         """
         Draft/public flag stored inside flexible rules JSON to avoid schema churn.
         """
-        try:
-            rules = self.rules or {}
-            if isinstance(rules, dict):
-                return bool(rules.get("is_public", True))
-        except Exception:
-            return True
-        return True
+        rules = self.rules if isinstance(self.rules, dict) else {}
+        return bool(rules.get("is_public", True))
 
     def set_public(self, value: bool) -> None:
         rules = self.rules if isinstance(self.rules, dict) else {}

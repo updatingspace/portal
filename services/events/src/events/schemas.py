@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from core.schemas import CamelSchema
 from pydantic import Field
 
+from core.schemas import CamelSchema
 
 ScopeType = Literal["TENANT", "COMMUNITY", "TEAM"]
 Visibility = Literal["public", "community", "team", "private"]

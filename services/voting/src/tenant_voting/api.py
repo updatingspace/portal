@@ -1,9 +1,9 @@
-import uuid
 import hashlib
 import hmac
 import json
 import logging
 import time
+import uuid
 from uuid import UUID
 
 import httpx
@@ -12,8 +12,10 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import Router
-# events.models.OutboxMessage import removed (moved to services)
 
+from . import services
+
+# events.models.OutboxMessage import removed (moved to services)
 from .context import InternalContext, require_internal_context
 from .dsar import erase_user_data, export_user_data
 from .models import (
@@ -27,7 +29,6 @@ from .models import (
     PollStatus,
     Vote,
 )
-from . import services
 from .schemas import (
     NominationIn,
     NominationOut,
@@ -48,7 +49,6 @@ from .schemas import (
     VoteOut,
 )
 from .templates import get_templates
-
 
 router = Router(tags=["Voting"])
 
@@ -201,10 +201,7 @@ def _poll_visible(
     ):
         return True
 
-    if poll.visibility == "team" and (poll.scope_type == PollScopeType.TEAM):
-        return True
-
-    return False
+    return bool(poll.visibility == "team" and poll.scope_type == PollScopeType.TEAM)
 
 
 def _require_poll(
@@ -863,10 +860,10 @@ def cast_vote(request, payload: VoteCastIn):
             code=e.code,
             message=e.message,
         )
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
-        raise e
+        raise
 
 
 @router.delete("/votes/{vote_id}")
@@ -968,25 +965,26 @@ def get_results(request, poll_id: uuid.UUID):
     if poll.visibility in {"community", "team"}:
         if poll.visibility == "community" and (
             poll.scope_type == PollScopeType.COMMUNITY
+        ) and not _access_check_allowed(
+            tenant_id=ctx.tenant_id,
+            tenant_slug=ctx.tenant_slug,
+            user_id=ctx.user_id,
+            request_id=ctx.request_id,
+            master_flags=ctx.master_flags,
+            action="voting.poll.read",
+            scope_type="COMMUNITY",
+            scope_id=str(poll.scope_id),
         ):
-            if not _access_check_allowed(
-                tenant_id=ctx.tenant_id,
-                tenant_slug=ctx.tenant_slug,
-                user_id=ctx.user_id,
-                request_id=ctx.request_id,
-                master_flags=ctx.master_flags,
-                action="voting.poll.read",
-                scope_type="COMMUNITY",
-                scope_id=str(poll.scope_id),
-            ):
-                return _error_response(
-                    request,
-                    status=403,
-                    code="FORBIDDEN",
-                    message="Results not visible",
-                )
-        if poll.visibility == "team" and poll.scope_type == PollScopeType.TEAM:
-            if not _access_check_allowed(
+            return _error_response(
+                request,
+                status=403,
+                code="FORBIDDEN",
+                message="Results not visible",
+            )
+        if (
+            poll.visibility == "team"
+            and poll.scope_type == PollScopeType.TEAM
+            and not _access_check_allowed(
                 tenant_id=ctx.tenant_id,
                 tenant_slug=ctx.tenant_slug,
                 user_id=ctx.user_id,
@@ -995,13 +993,14 @@ def get_results(request, poll_id: uuid.UUID):
                 action="voting.poll.read",
                 scope_type="TEAM",
                 scope_id=str(poll.scope_id),
-            ):
-                return _error_response(
-                    request,
-                    status=403,
-                    code="FORBIDDEN",
-                    message="Results not visible",
-                )
+            )
+        ):
+            return _error_response(
+                request,
+                status=403,
+                code="FORBIDDEN",
+                message="Results not visible",
+            )
 
     # Aggregate votes per option per nomination
     return services.get_poll_results(poll)
