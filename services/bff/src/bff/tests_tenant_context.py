@@ -197,15 +197,14 @@ class SwitchTenantEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -252,15 +251,14 @@ class SwitchTenantEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "other"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "other"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json()["error"]["code"], "TENANT_FORBIDDEN")
@@ -272,15 +270,14 @@ class SwitchTenantEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "nonexistent"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "nonexistent"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()["error"]["code"], "TENANT_NOT_FOUND")
@@ -300,15 +297,14 @@ class SwitchTenantEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json()["error"]["code"], "TENANT_FORBIDDEN")
@@ -351,12 +347,11 @@ class SessionTenantsEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/tenants",
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/tenants",
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -411,12 +406,11 @@ class EntryMeEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/entry/me",
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/entry/me",
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -446,12 +440,11 @@ class EntryMeEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/entry/me",
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/entry/me",
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -481,12 +474,11 @@ class EntryMeEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_capturing_proxy):
-                resp = self.client.get(
-                    "/api/v1/entry/me",
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_capturing_proxy):
+            resp = self.client.get(
+                "/api/v1/entry/me",
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
 
@@ -556,12 +548,11 @@ class EntryTenantApplicationsEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self._post(
-                    {"slug": "new-community", "name": "New Community"},
-                    HTTP_HOST="aef.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self._post(
+                {"slug": "new-community", "name": "New Community"},
+                HTTP_HOST="aef.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["status"], "pending")
@@ -605,12 +596,11 @@ class EntryTenantApplicationsEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self._post(
-                    {"slug": "future-team", "name": "Future Team"},
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self._post(
+                {"slug": "future-team", "name": "Future Team"},
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 201)
         headers = captured["context_headers"]  # type: ignore[index]
@@ -636,12 +626,11 @@ class EntryTenantApplicationsEndpointTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self._post(
-                    {"slug": "new-community", "name": "New Community"},
-                    HTTP_HOST="aef.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self._post(
+                {"slug": "new-community", "name": "New Community"},
+                HTTP_HOST="aef.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()["error"]["code"], "EMAIL_REQUIRED")
@@ -694,13 +683,12 @@ class DownstreamTenantHeadersTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/portal/something",
-                    # Note: host doesn't need to match tenant (path-based mode)
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/portal/something",
+                # Note: host doesn't need to match tenant (path-based mode)
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(captured.get("X-Tenant-Id"), str(self.tenant_a.id))
@@ -779,12 +767,11 @@ class SessionMeWithActiveTenantTests(TestCase):
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST="aef.updspace.com",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST="aef.updspace.com",
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -846,12 +833,11 @@ class SessionMeTenantlessTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST="portal.updating.space",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
@@ -1069,12 +1055,11 @@ class MiddlewareTenantContextTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/entry/me",
-                    HTTP_HOST="portal.updating.space",  # No tenant subdomain
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/entry/me",
+                HTTP_HOST="portal.updating.space",  # No tenant subdomain
+            )
         self.assertEqual(resp.status_code, 200)
 
     def test_tenant_required_endpoint_without_active_tenant_returns_403(self):
@@ -1139,19 +1124,18 @@ class RateLimitTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_SESSION_RATE_LIMIT_PER_MIN=3,
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked):
-                # Make requests up to the limit
-                for _ in range(3):
-                    self.client.get(
-                        "/api/v1/session/tenants",
-                        HTTP_HOST="portal.updating.space",
-                    )
-                # This one should be rate-limited
-                resp = self.client.get(
+        ), patch("bff.api.proxy_request", side_effect=_mocked):
+            # Make requests up to the limit
+            for _ in range(3):
+                self.client.get(
                     "/api/v1/session/tenants",
                     HTTP_HOST="portal.updating.space",
                 )
+            # This one should be rate-limited
+            resp = self.client.get(
+                "/api/v1/session/tenants",
+                HTTP_HOST="portal.updating.space",
+            )
         self.assertEqual(resp.status_code, 429)
         self.assertEqual(resp.json()["error"]["code"], "RATE_LIMITED")
 
@@ -1177,13 +1161,12 @@ class RateLimitTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_SESSION_RATE_LIMIT_PER_MIN=10,
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked):
-                for _ in range(3):
-                    self.client.get(
-                        "/api/v1/session/tenants",
-                        HTTP_HOST="portal.updating.space",
-                    )
+        ), patch("bff.api.proxy_request", side_effect=_mocked):
+            for _ in range(3):
+                self.client.get(
+                    "/api/v1/session/tenants",
+                    HTTP_HOST="portal.updating.space",
+                )
 
         self.assertEqual(BffRateLimitWindow.objects.count(), 1)
         window = BffRateLimitWindow.objects.get()
@@ -1284,30 +1267,28 @@ class SwitchTenantEdgeCaseTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp1 = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp1 = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
         self.assertEqual(resp1.status_code, 200)
 
         # Second switch to same tenant
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp2 = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp2 = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
         self.assertEqual(resp2.status_code, 200)
 
     def test_switch_empty_body(self):
@@ -1341,15 +1322,14 @@ class SwitchTenantEdgeCaseTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=double_encoded,
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=double_encoded,
+                HTTP_HOST="portal.updating.space",
+            )
 
         self.assertEqual(resp.status_code, 200)
 
@@ -1369,15 +1349,14 @@ class SwitchTenantEdgeCaseTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         session_data = self.store.get(self.session.session_id)
         self.assertEqual(session_data.last_tenant_slug, "aef")
@@ -1398,15 +1377,14 @@ class SwitchTenantEdgeCaseTests(TestCase):
         with self.settings(
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+        ), patch(
+            "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
         ):
-            with patch(
-                "bff.api.proxy_request", side_effect=self._mock_memberships(memberships)
-            ):
-                resp = self._csrf_post(
-                    "/api/v1/session/switch-tenant",
-                    data=json.dumps({"tenant_slug": "aef"}),
-                    HTTP_HOST="portal.updating.space",
-                )
+            resp = self._csrf_post(
+                "/api/v1/session/switch-tenant",
+                data=json.dumps({"tenant_slug": "aef"}),
+                HTTP_HOST="portal.updating.space",
+            )
 
         data = resp.json()
         self.assertEqual(data["redirect_to"], "/t/aef/")

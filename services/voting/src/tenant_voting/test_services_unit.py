@@ -1,11 +1,20 @@
 import uuid
 from datetime import timedelta
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 
-from .models import OutboxMessage, Poll, Nomination, Option, Vote, PollStatus, PollScopeType
-from .services import cast_vote, get_poll_results, VotingServiceError
+from .models import (
+    Nomination,
+    Option,
+    OutboxMessage,
+    Poll,
+    PollScopeType,
+    PollStatus,
+    Vote,
+)
+from .services import VotingServiceError, cast_vote, get_poll_results
 
 User = get_user_model()
 

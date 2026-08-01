@@ -6,26 +6,25 @@ Uses mocks for permission checks.
 """
 from __future__ import annotations
 
-import importlib
 import hashlib
 import hmac
+import importlib
 import json
 import os
 import sys
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from unittest import mock
 from unittest.mock import patch
 
 from django.conf import settings
-from django.core.management import call_command
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
-
 
 API_PREFIX = "/api/v1"
 EVENTS_ROOT = f"{API_PREFIX}/events"
@@ -95,9 +94,7 @@ def _mock_has_permission_allow_all(**kwargs) -> bool:
     """Mock permission check that allows all requests."""
     master_flags = kwargs.get("master_flags", {})
     # Deny suspended/banned users
-    if master_flags.get("suspended") or master_flags.get("banned"):
-        return False
-    return True
+    return not (master_flags.get("suspended") or master_flags.get("banned"))
 
 
 def _mock_has_permission_system_admin_only(**kwargs) -> bool:
@@ -105,9 +102,7 @@ def _mock_has_permission_system_admin_only(**kwargs) -> bool:
     master_flags = kwargs.get("master_flags", {})
     if master_flags.get("suspended") or master_flags.get("banned"):
         return False
-    if master_flags.get("system_admin"):
-        return True
-    return False
+    return bool(master_flags.get("system_admin"))
 
 
 def _mock_has_permission_read_only(**kwargs) -> bool:
@@ -122,9 +117,7 @@ def _mock_has_permission_read_only(**kwargs) -> bool:
     if ".read" in permission_key or ".list" in permission_key:
         return True
     # Allow RSVP for everyone
-    if "rsvp" in permission_key:
-        return True
-    return False
+    return "rsvp" in permission_key
 
 
 @override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret")
@@ -148,8 +141,8 @@ class EventsApiTests(TestCase):
         """Test that events from other tenants are not visible."""
         other_tenant_id = str(uuid.uuid4())
 
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
 
         # Create event for our tenant
         self.Event.objects.create(
@@ -202,8 +195,8 @@ class EventsApiTests(TestCase):
     @patch("events.permissions.has_permission", side_effect=_mock_has_permission_read_only)
     def test_attendance_requires_permission(self, mock_perm1, mock_perm2):
         """Test that marking attendance requires permission."""
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
         ev = self.Event.objects.create(
             tenant_id=self.tenant_id,
             scope_type="TENANT",
@@ -272,8 +265,8 @@ class EventsApiTests(TestCase):
     @patch("events.permissions.has_permission", side_effect=_mock_has_permission_allow_all)
     def test_list_includes_meta_and_rsvp_counts(self, mock_perm1, mock_perm2):
         """Test that list response includes meta and RSVP counts."""
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
 
         ev = self.Event.objects.create(
             tenant_id=self.tenant_id,
@@ -470,8 +463,8 @@ class EventsApiTests(TestCase):
     @patch("events.permissions.has_permission", side_effect=_mock_has_permission_read_only)
     def test_update_event_requires_manage_permission(self, mock_perm1, mock_perm2):
         """Test that updating events requires manage permission."""
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
         ev = self.Event.objects.create(
             tenant_id=self.tenant_id,
             scope_type="TENANT",
@@ -510,8 +503,8 @@ class EventsApiTests(TestCase):
     @patch("events.permissions.has_permission", side_effect=_mock_has_permission_allow_all)
     def test_system_admin_can_update_event(self, mock_perm1, mock_perm2):
         """Test that system admin can update events."""
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
         ev = self.Event.objects.create(
             tenant_id=self.tenant_id,
             scope_type="TENANT",
@@ -552,8 +545,8 @@ class EventsApiTests(TestCase):
     @patch("events.permissions.has_permission", side_effect=_mock_has_permission_read_only)
     def test_rsvp_flow(self, mock_perm1, mock_perm2):
         """Test RSVP set and get flow."""
-        starts = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
-        ends = timezone.make_aware(datetime(2026, 1, 10, 11, 0, 0))
+        starts = datetime(2026, 1, 10, 10, 0, 0, tzinfo=UTC)
+        ends = datetime(2026, 1, 10, 11, 0, 0, tzinfo=UTC)
         ev = self.Event.objects.create(
             tenant_id=self.tenant_id,
             scope_type="TENANT",

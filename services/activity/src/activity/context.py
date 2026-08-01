@@ -54,7 +54,6 @@ def _parse_flags(value: str | None) -> frozenset[str]:
             return flags
     except (json.JSONDecodeError, TypeError) as e:
         logger.warning("Failed to parse master_flags as JSON: %s, error: %s", value, e)
-        pass
     
     # Fallback: comma-separated list
     raw = [part.strip() for part in str(value).split(",")]

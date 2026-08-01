@@ -6,7 +6,13 @@ import uuid
 from django.db import models
 from django.utils import timezone
 
-from activity.enums import AccountLinkStatus, NewsStatus, ScopeType, SourceType, Visibility
+from activity.enums import (
+    AccountLinkStatus,
+    NewsStatus,
+    ScopeType,
+    SourceType,
+    Visibility,
+)
 from activity.fields import EncryptedJSONField, EncryptedTextField
 
 
@@ -444,4 +450,4 @@ def uuid_from_str(value: str) -> uuid.UUID:
 
 
 # Audit model lives in activity.audit but must be discoverable by Django.
-from activity.audit import ActivityAuditEvent  # noqa: E402, F401
+from activity.audit import ActivityAuditEvent  # noqa: F401

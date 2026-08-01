@@ -13,9 +13,7 @@ def _is_suspended_or_banned(master_flags: dict) -> bool:
     status = str(master_flags.get("status", "")).lower()
     if status in {"suspended", "banned"}:
         return True
-    if master_flags.get("suspended") is True or master_flags.get("banned") is True:
-        return True
-    return False
+    return bool(master_flags.get("suspended") is True or master_flags.get("banned") is True)
 
 
 def _is_system_admin(master_flags: dict) -> bool:
@@ -80,14 +78,14 @@ def has_permission(
 
     try:
         resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
-    except Exception:
+    except httpx.HTTPError:
         return False
 
     if resp.status_code != 200:
         return False
     try:
         data = resp.json()
-    except Exception:
+    except ValueError:
         return False
     return bool(data.get("allowed"))
 

@@ -110,10 +110,9 @@ class SteamApiClient:
             logger.error("Steam API timeout", extra={"path": path})
             raise
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "Steam API error",
                 extra={"path": path, "error_type": safe_exception_label(exc)},
-                exc_info=True,
             )
             raise
 
@@ -354,7 +353,7 @@ class SteamConnector(Connector):
                         )
 
                 except Exception as exc:
-                    logger.warning(
+                    logger.exception(
                         "Failed to fetch achievements for game",
                         extra={
                             "account_link_id": account_link.id,

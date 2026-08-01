@@ -30,7 +30,7 @@ def _build_client(access_key: str, secret_key: str, region: str):
 
 @lru_cache(maxsize=32)
 def _resolve_queue_url(queue_ref: str, access_key: str, secret_key: str, region: str) -> str:
-    if queue_ref.startswith("http://") or queue_ref.startswith("https://"):
+    if queue_ref.startswith(("http://", "https://")):
         return queue_ref
     client = _build_client(access_key, secret_key, region)
     return client.get_queue_url(QueueName=queue_ref)["QueueUrl"]

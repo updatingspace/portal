@@ -381,18 +381,18 @@ class RolloutAuditLog(models.Model):
 
 
 __all__ = [
-    "PermissionService",
+    "Experiment",
+    "FeatureFlag",
+    "KillSwitch",
     "Permission",
-    "Role",
-    "RolePermission",
-    "ScopeType",
-    "RoleBinding",
+    "PermissionService",
     "PolicyAction",
     "PolicyOverride",
-    "TenantAdminAuditEvent",
-    "RolloutTargetType",
-    "FeatureFlag",
-    "Experiment",
-    "KillSwitch",
+    "Role",
+    "RoleBinding",
+    "RolePermission",
     "RolloutAuditLog",
+    "RolloutTargetType",
+    "ScopeType",
+    "TenantAdminAuditEvent",
 ]

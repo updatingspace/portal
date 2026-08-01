@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
@@ -29,13 +29,13 @@ def _check_database() -> dict[str, Any]:
             "status": "healthy",
             "latency_ms": round(duration_ms, 2),
         }
-    except Exception as e:
+    except DatabaseError:
         duration_ms = (time.time() - start) * 1000
-        logger.error(f"Database health check failed: {e}")
+        logger.exception("Database health check failed")
         return {
             "status": "unhealthy",
             "latency_ms": round(duration_ms, 2),
-            "error": str(e),
+            "error": "Database unavailable",
         }
 
 
@@ -73,13 +73,13 @@ def _check_access_service() -> dict[str, Any]:
             "latency_ms": round(duration_ms, 2),
             "error": "Connection timed out",
         }
-    except Exception as e:
+    except httpx.HTTPError:
         duration_ms = (time.time() - start) * 1000
-        logger.warning(f"Access service health check failed: {e}")
+        logger.exception("Access service health check failed")
         return {
             "status": "unhealthy",
             "latency_ms": round(duration_ms, 2),
-            "error": str(e),
+            "error": "Access service unavailable",
         }
 
 
@@ -115,21 +115,24 @@ def _check_activity_service() -> dict[str, Any]:
             "latency_ms": round(duration_ms, 2),
             "error": "Connection timed out",
         }
-    except Exception as e:
+    except httpx.HTTPError:
         duration_ms = (time.time() - start) * 1000
+        logger.exception("Activity service health check failed")
         return {
             "status": "unhealthy",
             "latency_ms": round(duration_ms, 2),
-            "error": str(e),
+            "error": "Activity service unavailable",
         }
 
 
 def _get_outbox_stats() -> dict[str, Any]:
     """Get outbox message statistics."""
     try:
-        from tenant_voting.models import OutboxMessage
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
+
+        from tenant_voting.models import OutboxMessage
         
         now = timezone.now()
         one_hour_ago = now - timedelta(hours=1)
@@ -161,9 +164,9 @@ def _get_outbox_stats() -> dict[str, Any]:
         
         return result
         
-    except Exception as e:
-        logger.error(f"Failed to get outbox stats: {e}")
-        return {"error": str(e)}
+    except DatabaseError:
+        logger.exception("Failed to get outbox stats")
+        return {"error": "Database unavailable"}
 
 
 def health_check(request) -> JsonResponse:

@@ -7,20 +7,33 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
+from django.core import signing
 from django.db import models, transaction
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.utils import timezone
-from django.core import signing
 from ninja import Body, Router
 from ninja.errors import HttpError
 
 from activity import schemas
+from activity.audit import log_audit_event as _log_audit
 from activity.connectors import install_connectors
 from activity.context import require_activity_context
 from activity.dsar import erase_user_data, export_user_data
 from activity.enums import NewsStatus, ScopeType, Visibility
-from activity.audit import log_audit_event as _log_audit
+from activity.media import (
+    build_news_media_key,
+    generate_download_url,
+    generate_upload_url,
+    is_news_media_key_allowed,
+    load_local_media_file,
+    normalize_media_payload,
+    parse_local_download_token,
+    parse_local_upload_token,
+    sanitize_tags,
+    save_local_media_file,
+)
 from activity.models import (
     AccountLink,
     ActivityEvent,
@@ -36,40 +49,28 @@ from activity.models import (
 from activity.permissions import Permissions, has_permission, require_permission
 from activity.portal_client import portal_client
 from activity.privacy import mask_for_api, mask_identifier
-from activity.media import (
-    build_news_media_key,
-    load_local_media_file,
-    parse_local_download_token,
-    parse_local_upload_token,
-    save_local_media_file,
-    generate_download_url,
-    generate_upload_url,
-    is_news_media_key_allowed,
-    normalize_media_payload,
-    sanitize_tags,
-)
 from activity.services import (
     FeedFilters,
     create_account_link,
     create_game,
+    get_unread_count_cached,
+    get_unread_count_fresh,
+    ingest_raw_and_normalize,
     list_feed,
     list_feed_paginated,
     list_games,
     list_sources,
     minecraft_webhook_secret,
     parse_csv,
+    publish_outbox_event,
+    require_not_suspended,
     run_sync,
+    update_last_seen,
     upsert_subscription,
     verify_hmac_signature,
-    ingest_raw_and_normalize,
-    require_not_suspended,
-    get_unread_count_cached,
-    get_unread_count_fresh,
-    publish_outbox_event,
-    update_last_seen,
 )
-from core.schemas import ErrorOut
 from core.errors import error_payload
+from core.schemas import ErrorOut
 
 router = Router(tags=["Activity"], auth=None)
 REQUIRED_BODY = Body(...)
@@ -192,7 +193,7 @@ def _build_news_payload(
                 if isinstance(key, str) and key:
                     try:
                         url = generate_download_url(key=key)
-                    except Exception:
+                    except (BotoCoreError, ClientError, RuntimeError, ValueError):
                         url = None
                 hydrated.append({**entry, "url": url})
             else:
@@ -407,7 +408,7 @@ def _coerce_actor_profile(profile: dict[str, Any] | None) -> schemas.ActorProfil
         return None
     try:
         parsed_user_id = UUID(str(user_id))
-    except Exception:
+    except ValueError:
         return None
     return schemas.ActorProfileOut(
         user_id=parsed_user_id,
@@ -513,7 +514,7 @@ def feed_get(
         if raw:
             try:
                 from_ = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except Exception:
+            except ValueError:
                 raise HttpError(
                     400,
                     error_payload("INVALID_FROM", "Invalid 'from' datetime"),
@@ -524,7 +525,7 @@ def feed_get(
         if raw:
             try:
                 to = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except Exception:
+            except ValueError:
                 raise HttpError(
                     400,
                     error_payload("INVALID_TO", "Invalid 'to' datetime"),
@@ -909,7 +910,7 @@ def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUI
             post.reactions_count = max(0, post.reactions_count - 1)
             post.save(update_fields=["reactions_count"])
     else:
-        obj, created = NewsReaction.objects.get_or_create(
+        _obj, created = NewsReaction.objects.get_or_create(
             tenant_id=ctx.tenant_id,
             post=post,
             user_id=ctx.user_id,
@@ -1521,7 +1522,7 @@ def feed_get_v2(
         if raw:
             try:
                 from_ = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except Exception:
+            except ValueError:
                 raise HttpError(
                     400,
                     error_payload("INVALID_FROM", "Invalid 'from' datetime"),
@@ -1532,7 +1533,7 @@ def feed_get_v2(
         if raw:
             try:
                 to = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except Exception:
+            except ValueError:
                 raise HttpError(
                     400,
                     error_payload("INVALID_TO", "Invalid 'to' datetime"),
@@ -1791,7 +1792,7 @@ def ingest_webhook_minecraft(request):
             if raw_linked_user_id
             else SYSTEM_USER_ID
         )
-    except Exception:
+    except ValueError:
         raise HttpError(
             400,
             error_payload(

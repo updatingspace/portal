@@ -27,7 +27,7 @@ class UserPreferenceService:
         Returns:
             UserPreference instance
         """
-        preference, created = UserPreference.get_or_create_for_user(user_id, tenant_id)
+        preference, _created = UserPreference.get_or_create_for_user(user_id, tenant_id)
         return preference
 
     @staticmethod

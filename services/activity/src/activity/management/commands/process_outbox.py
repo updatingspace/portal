@@ -146,14 +146,13 @@ class Command(BaseCommand):
                         event.save(update_fields=["retry_count", "claimed_at", "claim_token"])
 
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "Failed to process outbox event",
                     extra={
                         "event_id": event.id,
                         "event_type": event.event_type,
                         "error": str(exc),
                     },
-                    exc_info=True,
                 )
                 with transaction.atomic():
                     event.retry_count += 1

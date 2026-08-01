@@ -8,8 +8,8 @@ Covers:
 """
 from __future__ import annotations
 
-import json
 import importlib
+import json
 import sys
 import tempfile
 import uuid
@@ -26,7 +26,7 @@ BFF_SRC = Path(__file__).resolve().parents[4] / "services" / "bff" / "src"
 if str(BFF_SRC) not in sys.path:
     sys.path.insert(0, str(BFF_SRC))
 
-from bff.security import sign_internal_request  # noqa: E402
+from bff.security import sign_internal_request
 
 
 def _headers(
@@ -410,35 +410,37 @@ class NewsIntegrationTests(TestCase):
         NEWS_MEDIA_LOCAL_PUBLIC_PREFIX="/api/v1/activity",
     )
     def test_news_media_upload_url_uses_local_fallback_in_debug_without_bucket(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with override_settings(NEWS_MEDIA_LOCAL_STORAGE_ROOT=tmp_dir):
-                upload_payload = {
-                    "filename": "news.png",
-                    "content_type": "image/png",
-                    "size_bytes": 12,
-                }
-                resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-local-1")
-                self.assertEqual(resp.status_code, 200)
-                data = resp.json()
-                self.assertEqual(data["key"].split("/")[1], self.tenant_id)
-                self.assertTrue(data["upload_url"].startswith("/api/v1/activity/news/media/upload/"))
+        with (
+            tempfile.TemporaryDirectory() as tmp_dir,
+            override_settings(NEWS_MEDIA_LOCAL_STORAGE_ROOT=tmp_dir),
+        ):
+            upload_payload = {
+                "filename": "news.png",
+                "content_type": "image/png",
+                "size_bytes": 12,
+            }
+            resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-local-1")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data["key"].split("/")[1], self.tenant_id)
+            self.assertTrue(data["upload_url"].startswith("/api/v1/activity/news/media/upload/"))
 
-                binary = b"\x89PNG\r\n\x1a\nlocal"
-                put_resp = self._put_binary(
-                    data["upload_url"],
-                    binary,
-                    "rid-upload-local-2",
-                    content_type="image/png",
-                )
-                self.assertEqual(put_resp.status_code, 204)
+            binary = b"\x89PNG\r\n\x1a\nlocal"
+            put_resp = self._put_binary(
+                data["upload_url"],
+                binary,
+                "rid-upload-local-2",
+                content_type="image/png",
+            )
+            self.assertEqual(put_resp.status_code, 204)
 
-                get_resp = self._get(
-                    f"/api/v1/activity/news/media/file/{data['key']}",
-                    "rid-upload-local-3",
-                )
-                self.assertEqual(get_resp.status_code, 200)
-                self.assertEqual(b"".join(get_resp.streaming_content), binary)
-                self.assertEqual(get_resp["Content-Type"], "image/png")
+            get_resp = self._get(
+                f"/api/v1/activity/news/media/file/{data['key']}",
+                "rid-upload-local-3",
+            )
+            self.assertEqual(get_resp.status_code, 200)
+            self.assertEqual(b"".join(get_resp.streaming_content), binary)
+            self.assertEqual(get_resp["Content-Type"], "image/png")
 
     @override_settings(DEBUG=False, NEWS_MEDIA_BUCKET="")
     def test_news_media_upload_url_requires_bucket_outside_debug(self):

@@ -21,6 +21,10 @@ from .schemas import (
     AnalyticsReportOut,
     ContentWidgetIn,
     ContentWidgetOut,
+    DashboardLayoutIn,
+    DashboardLayoutOut,
+    DashboardWidgetIn,
+    DashboardWidgetOut,
     DefaultPreferencesOut,
     HomePageModalBulkAction,
     HomePageModalIn,
@@ -28,10 +32,6 @@ from .schemas import (
     HomePageModalOut,
     ModalAnalyticsOut,
     ModalListFilters,
-    DashboardLayoutIn,
-    DashboardLayoutOut,
-    DashboardWidgetIn,
-    DashboardWidgetOut,
     UserPreferencesIn,
     UserPreferencesOut,
 )
@@ -147,7 +147,7 @@ def get_preferences(request: HttpRequest):
     """
     user_id, tenant_id = _get_user_context(request)
 
-    pref, created = UserPreference.objects.get_or_create(
+    pref, _created = UserPreference.objects.get_or_create(
         user_id=user_id,
         tenant_id=tenant_id,
         defaults={
@@ -307,7 +307,7 @@ def _modal_to_out(modal: HomePageModal) -> dict[str, Any]:
 )
 def list_homepage_modals(request: HttpRequest, language: str = "en"):
     """Get active homepage modals for display (user-facing)"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
     now = timezone.now()
 
     modals = HomePageModal.objects.filter(
@@ -344,7 +344,7 @@ def admin_list_homepage_modals(
     Get homepage modals for admin with filtering, sorting, search.
     Supports include_deleted, is_active, modal_type, search, date filters.
     """
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     queryset = HomePageModal.objects.filter(
         Q(tenant_id=tenant_id) | Q(tenant_id__isnull=True)
@@ -377,7 +377,7 @@ def admin_list_homepage_modals(
 @router.get("/admin/homepage-modals/{modal_id}", response=HomePageModalOut, tags=["admin"])
 def admin_get_homepage_modal(request: HttpRequest, modal_id: int):
     """Get a single homepage modal by ID"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     modal = get_object_or_404(
         HomePageModal,
@@ -506,7 +506,7 @@ def admin_preview_homepage_modal(
     language: str = "en",
 ):
     """Preview a modal as it would appear to users"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     modal = get_object_or_404(
         HomePageModal,
@@ -536,7 +536,7 @@ def list_content_widgets(
     page: str | None = None,
 ):
     """Get active content widgets for display (user-facing)"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
     now = timezone.now()
 
     queryset = ContentWidget.objects.filter(
@@ -571,7 +571,7 @@ def admin_list_content_widgets(
     placement: str | None = None,
 ):
     """Get all content widgets for admin"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     queryset = ContentWidget.objects.filter(tenant_id=tenant_id)
 
@@ -674,7 +674,7 @@ def admin_get_modal_analytics(
     days: int = 30,
 ):
     """Get analytics summary for all modals"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     start_date = timezone.now() - timezone.timedelta(days=days)
 
@@ -730,7 +730,7 @@ def admin_get_analytics_report(
     days: int = 30,
 ):
     """Get aggregated analytics report for dashboard"""
-    user_id, tenant_id = _get_user_context(request)
+    _user_id, tenant_id = _get_user_context(request)
 
     end_date = timezone.now()
     start_date = end_date - timezone.timedelta(days=days)

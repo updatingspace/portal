@@ -1,0 +1,10 @@
+[lint.per-file-ignores]
+# Django consumes these mutable class attributes as declarative metadata.
+"**/admin.py" = ["RUF012"]
+"**/audit.py" = ["RUF012"]
+"**/migrations/*.py" = ["RUF012"]
+"**/models.py" = ["RUF012"]
+
+[lint.flake8-bugbear]
+# Django Ninja intentionally evaluates Query metadata at route declaration time.
+extend-immutable-calls = ["ninja.Query"]

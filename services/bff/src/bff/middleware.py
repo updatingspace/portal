@@ -16,7 +16,6 @@ from .models import BffRateLimitWindow
 from .session_store import SessionStore
 from .tenant import resolve_tenant
 
-
 REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 
 # Endpoints that work without any tenant context (tenantless mode)
@@ -107,7 +106,7 @@ class TenantResolveMiddleware(MiddlewareMixin):
 
     def process_request(self, request: HttpRequest):
         if not request.path.startswith("/api/v1/"):
-            return None
+            return
 
         # Try host-based resolution (legacy / subdomain alias)
         tenant = resolve_tenant(request.get_host())
@@ -115,18 +114,18 @@ class TenantResolveMiddleware(MiddlewareMixin):
 
         # For tenantless endpoints, don't require host-based tenant
         if _is_tenantless_endpoint(request.path):
-            return None
+            return
 
         # For public endpoints (auth/login/callback), allow no tenant
         if any(request.path.startswith(p) for p in PUBLIC_PREFIXES):
-            return None
+            return
 
         # In path-based mode, tenant requirement is enforced by
         # CookieSessionAuthMiddleware using active_tenant from session.
         # If host-based resolution succeeded (legacy mode), we keep it.
         # If not, we let the request proceed — the session middleware
         # will enforce tenant context from the active session tenant.
-        return None
+        return
 
 
 class CookieSessionAuthMiddleware(MiddlewareMixin):

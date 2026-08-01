@@ -2,10 +2,11 @@ from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
+
+from core.health import detailed_health_check, health_check, readiness_check
 from nominations.api import router as nominations_router
-from votings.api import router as votings_router
 from tenant_voting.api import router as tenant_voting_router
-from core.health import health_check, readiness_check, detailed_health_check
+from votings.api import router as votings_router
 
 
 def _error_response(request, *, status: int, code: str, message: str, details: dict | None = None):

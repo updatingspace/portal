@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import Any
 
+from django.db import DatabaseError
 from django.db.models import Count, Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
@@ -11,13 +12,25 @@ from django.utils import timezone
 from ninja import Query, Router
 from ninja.errors import HttpError
 
+from access_control.models import ScopeType
+from access_control.services import compute_effective_access, master_flags_from_dict
 from core import api as core_api
-from core.models import ContentWidget, DashboardLayout, DashboardWidget, HomePageModal, ModalAnalytics
+from core.models import (
+    ContentWidget,
+    DashboardLayout,
+    DashboardWidget,
+    HomePageModal,
+    ModalAnalytics,
+)
 from core.schemas import (
     AnalyticsEventIn,
     AnalyticsReportOut,
     ContentWidgetIn,
     ContentWidgetOut,
+    DashboardLayoutIn,
+    DashboardLayoutOut,
+    DashboardWidgetIn,
+    DashboardWidgetOut,
     HomePageModalBulkAction,
     HomePageModalIn,
     HomePageModalListOut,
@@ -25,14 +38,7 @@ from core.schemas import (
     ModalAnalyticsOut,
     ModalListFilters,
 )
-from core.schemas import (
-    DashboardLayoutIn,
-    DashboardLayoutOut,
-    DashboardWidgetIn,
-    DashboardWidgetOut,
-)
-from access_control.models import ScopeType
-from access_control.services import compute_effective_access, master_flags_from_dict
+
 from .models import UserPreference
 from .schemas import (
     UserPreferenceDefaultsSchema,
@@ -152,8 +158,8 @@ def update_preferences(
         return preference.to_dict()
     except UserPreference.DoesNotExist:
         raise HttpError(404, "User preferences not found")
-    except Exception as e:
-        raise HttpError(500, f"Failed to update preferences: {str(e)}")
+    except DatabaseError as exc:
+        raise HttpError(500, "Failed to update preferences") from exc
 
 
 @router.get("/preferences/defaults", response=UserPreferenceDefaultsSchema)

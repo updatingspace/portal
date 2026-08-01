@@ -32,7 +32,7 @@ class JsonFormatter(logging.Formatter):
     - extra: any additional fields passed to the logger
     """
 
-    RESERVED_ATTRS = {
+    RESERVED_ATTRS = frozenset({
         "args",
         "asctime",
         "created",
@@ -55,7 +55,7 @@ class JsonFormatter(logging.Formatter):
         "stack_info",
         "thread",
         "threadName",
-    }
+    })
 
     def __init__(self, service_name: str = "activity"):
         super().__init__()

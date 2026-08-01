@@ -151,14 +151,13 @@ def has_permission(
         )
         return False
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "Access service error",
             extra={
                 "permission_key": permission_key,
                 "user_id": str(user_id),
                 "error": str(exc),
             },
-            exc_info=True,
         )
         return False
 

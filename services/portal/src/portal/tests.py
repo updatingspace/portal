@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import importlib
 import hashlib
 import hmac
+import importlib
 import json
 import os
 import sys
@@ -13,17 +13,25 @@ from io import StringIO
 from unittest import mock
 
 from django.conf import settings
-from django.core.management import call_command
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase
 from django.utils import timezone
 from ninja.errors import HttpError
 
+from core.errors import error_payload
 from portal.context import PortalContext
 from portal.enums import TeamStatus, Visibility
-from portal.models import Community, CommunityMembership, PortalProfile, Post, Team, TeamMembership, Tenant
+from portal.models import (
+    Community,
+    CommunityMembership,
+    PortalProfile,
+    Post,
+    Team,
+    TeamMembership,
+    Tenant,
+)
 from portal.services import ensure_tenant
-from core.errors import error_payload
 
 
 def _host_headers(
@@ -39,7 +47,7 @@ def _host_headers(
     ts = str(int(time.time()))
     path_only = path.split("?", 1)[0]
     body_hash = hashlib.sha256(body).hexdigest()
-    msg = "\n".join([method.upper(), path_only, body_hash, request_id, ts]).encode("utf-8")
+    msg = f"{method.upper()}\n{path_only}\n{body_hash}\n{request_id}\n{ts}".encode()
     signature = hmac.new(
         str(getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")).encode("utf-8"),
         msg,
@@ -187,7 +195,6 @@ class PortalPrivateVisibilityTests(TestCase):
         def check_side_effect(ctx, permission: str, **kwargs):
             if permission == "portal.posts.read_private":
                 raise HttpError(403, error_payload("FORBIDDEN", "deny"))
-            return None
 
         with mock.patch("portal.api.AccessService.check", side_effect=check_side_effect):
             resp = self.client.get(
@@ -753,7 +760,7 @@ class PortalProfileAuditTests(TestCase):
         super().tearDownClass()
 
     def setUp(self):
-        from portal.audit import PortalAuditEvent  # noqa: F811
+        from portal.audit import PortalAuditEvent
 
         self.AuditEvent = PortalAuditEvent
         self.client = Client()

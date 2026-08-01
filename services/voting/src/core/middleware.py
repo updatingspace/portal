@@ -10,6 +10,7 @@ import logging
 import time
 from collections import defaultdict
 from threading import Lock
+from typing import ClassVar
 
 from django.http import HttpRequest, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
@@ -35,8 +36,8 @@ class RateLimitMiddleware(MiddlewareMixin):
     """
     
     # Class-level storage for rate limit counters
-    _counters: dict[str, list[float]] = defaultdict(list)
-    _lock = Lock()
+    _counters: ClassVar[dict[str, list[float]]] = defaultdict(list)
+    _lock: ClassVar[Lock] = Lock()
     
     def __init__(self, get_response=None):
         super().__init__(get_response)
@@ -133,10 +134,7 @@ class RateLimitMiddleware(MiddlewareMixin):
             return True
         
         # Option/nomination creation
-        if method == "POST" and ("/nominations" in path or "/options" in path):
-            return True
-        
-        return False
+        return bool(method == "POST" and ("/nominations" in path or "/options" in path))
     
     def _get_limits(self, request: HttpRequest) -> tuple[int, int]:
         """Get (window_seconds, max_requests) for the endpoint."""
@@ -228,8 +226,7 @@ class LoggingMiddleware(MiddlewareMixin):
         
         logger.error(
             "Request failed with exception",
-            extra=log_context,
-            exc_info=True
+            extra=log_context
         )
     
     @staticmethod

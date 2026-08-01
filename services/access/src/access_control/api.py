@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import List
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
@@ -11,6 +10,8 @@ from django.utils import timezone
 from ninja import Query, Router, Schema
 from pydantic import ValidationError
 
+from access_control.context import require_internal_context
+from access_control.dsar import erase_user_data, export_user_data
 from access_control.models import (
     Permission,
     PolicyOverride,
@@ -20,8 +21,6 @@ from access_control.models import (
     ScopeType,
     TenantAdminAuditEvent,
 )
-from access_control.context import require_internal_context
-from access_control.dsar import erase_user_data, export_user_data
 from access_control.schemas import (
     CheckIn,
     CheckOut,
@@ -36,9 +35,9 @@ from access_control.schemas import (
     RoleBindingOut,
     RoleIn,
     RoleOut,
-    TenantAdminRoleOut,
-    TenantAdminBindingOut,
     TenantAdminAuditEventOut,
+    TenantAdminBindingOut,
+    TenantAdminRoleOut,
 )
 from access_control.services import (
     MasterFlags,
@@ -46,6 +45,7 @@ from access_control.services import (
     log_tenant_admin_event,
     master_flags_from_dict,
 )
+
 TenantAdminRoleOut.model_rebuild(force=True)
 TenantAdminBindingOut.model_rebuild(force=True)
 TenantAdminAuditEventOut.model_rebuild(force=True)
@@ -144,7 +144,7 @@ def _dsar_audit_target(ctx, target_user_id: UUID) -> tuple[str, str]:
 class TenantRolePayload(Schema):
     service: str
     name: str
-    permission_keys: List[str]
+    permission_keys: list[str]
 
 
 TenantRolePayload.model_rebuild(force=True)
@@ -218,11 +218,7 @@ def dsar_erase(request, target_user_id: UUID):
     operation_id="access_check",
 )
 def check_access(request, payload: CheckIn):
-    try:
-        ctx = require_internal_context(request)
-    except Exception:
-        # Let the global HttpError handler format errors consistently with the rest of the app.
-        raise
+    ctx = require_internal_context(request)
 
     # Enforce tenant/user consistency (anti-confusion)
     if str(payload.tenant_id) != str(ctx.tenant_id):

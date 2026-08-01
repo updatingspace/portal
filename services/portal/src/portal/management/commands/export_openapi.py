@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
@@ -10,7 +10,7 @@ from ninja import NinjaAPI
 
 class Command(BaseCommand):
     help = "Export OpenAPI schema for the service (django-ninja)."
-    requires_system_checks: list[str] = []
+    requires_system_checks: tuple[str, ...] = ()
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -29,7 +29,7 @@ class Command(BaseCommand):
             raise RuntimeError(f"Unable to load portal api module from {api_path}")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        portal_router = getattr(mod, "router")
+        portal_router = mod.router
 
         api = NinjaAPI(title="Portal Core API", version="1.0.0")
         api.add_router("/api/v1", portal_router)

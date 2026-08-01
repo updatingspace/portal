@@ -218,9 +218,11 @@ class NominationServiceTests(TestCase):
 
     def test_record_vote_requires_telegram_link_when_flag_enabled(self):
         self.user.has_telegram_link = False
-        with override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True):
-            with self.assertRaises(TelegramLinkRequiredError):
-                record_vote(self.nomination.id, self.option.id, self.user)
+        with (
+            override_settings(TELEGRAM_REQUIRE_LINK_FOR_VOTING=True),
+            self.assertRaises(TelegramLinkRequiredError),
+        ):
+            record_vote(self.nomination.id, self.option.id, self.user)
 
     def test_record_vote_saves_choice_without_counts(self):
         counts, nomination = record_vote(self.nomination.id, self.option.id, self.user)

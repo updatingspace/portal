@@ -5,7 +5,6 @@ from ninja.errors import HttpError
 from activity.connectors.base import Connector
 from core.errors import error_payload
 
-
 _CONNECTORS: dict[str, Connector] = {}
 
 

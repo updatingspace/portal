@@ -15,9 +15,14 @@ from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
-from .models import Achievement, AchievementCategory, AchievementGrant, AchievementStatus, GrantVisibility
+from .models import (
+    Achievement,
+    AchievementCategory,
+    AchievementGrant,
+    AchievementStatus,
+    GrantVisibility,
+)
 from .services import create_grant, revoke_grant
-
 
 API_PREFIX = "/api/v1"
 ACHIEVEMENTS_ROOT = f"{API_PREFIX}/gamification/achievements"

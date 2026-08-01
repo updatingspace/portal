@@ -14,17 +14,23 @@ from core.errors import error_payload
 
 from .context import InternalContext, require_internal_context
 from .dsar import erase_user_data, export_user_data
-from .models import Achievement, AchievementCategory, AchievementGrant, AchievementStatus, GrantVisibility
+from .models import (
+    Achievement,
+    AchievementCategory,
+    AchievementGrant,
+    AchievementStatus,
+    GrantVisibility,
+)
 from .permissions import has_permission
 from .schemas import (
     AchievementCreateIn,
     AchievementListOut,
     AchievementOut,
     AchievementUpdateIn,
+    CategoriesListOut,
     CategoryCreateIn,
     CategoryOut,
     CategoryUpdateIn,
-    CategoriesListOut,
     GrantCreateIn,
     GrantListOut,
     GrantOut,

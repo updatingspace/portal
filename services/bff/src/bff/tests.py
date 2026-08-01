@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import importlib
 import hashlib
 import hmac
+import importlib
 import json
 import os
 import sys
@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 from django.conf import settings
-from django.core.management import call_command
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.utils import timezone
 from ninja.errors import HttpError
@@ -125,9 +125,11 @@ class BffProxyRoutingTests(TestCase):
             captured["upstream_path"] = upstream_path
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(**settings_overrides):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(path, HTTP_HOST=self.host)
+        with (
+            self.settings(**settings_overrides),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
+            resp = self.client.get(path, HTTP_HOST=self.host)
         return resp, captured
 
     def test_access_proxy_adds_prefix_when_missing(self):
@@ -200,15 +202,18 @@ class BffApplicationApproveProvisioningTests(TestCase):
         ):
             calls.append((method, upstream_path, query_string))
 
-            if upstream_base_url.endswith(":8001/api/v1"):
-                if upstream_path == "applications/42/approve" and method == "POST":
-                    return httpx.Response(
-                        200,
-                        json={
-                            "user_id": "11111111-1111-1111-1111-111111111111",
-                            "activation_link_sent": True,
-                        },
-                    )
+            if (
+                upstream_base_url.endswith(":8001/api/v1")
+                and upstream_path == "applications/42/approve"
+                and method == "POST"
+            ):
+                return httpx.Response(
+                    200,
+                    json={
+                        "user_id": "11111111-1111-1111-1111-111111111111",
+                        "activation_link_sent": True,
+                    },
+                )
 
             if upstream_base_url.endswith(":8002/api/v1"):
                 if upstream_path == "access/admin/roles" and method == "GET":
@@ -257,14 +262,13 @@ class BffApplicationApproveProvisioningTests(TestCase):
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
             BFF_TENANT_HOST_SUFFIX="updspace.com",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.post(
-                    "/api/v1/portal/applications/42/approve",
-                    data=b"{}",
-                    content_type="application/json",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.post(
+                "/api/v1/portal/applications/42/approve",
+                data=b"{}",
+                content_type="application/json",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
@@ -293,15 +297,18 @@ class BffApplicationApproveProvisioningTests(TestCase):
         ):
             calls.append((method, upstream_path, query_string))
 
-            if upstream_base_url.endswith(":8001/api/v1"):
-                if upstream_path == "applications/42/approve" and method == "POST":
-                    return httpx.Response(
-                        200,
-                        json={
-                            "user_id": "11111111-1111-1111-1111-111111111111",
-                            "activation_link_sent": True,
-                        },
-                    )
+            if (
+                upstream_base_url.endswith(":8001/api/v1")
+                and upstream_path == "applications/42/approve"
+                and method == "POST"
+            ):
+                return httpx.Response(
+                    200,
+                    json={
+                        "user_id": "11111111-1111-1111-1111-111111111111",
+                        "activation_link_sent": True,
+                    },
+                )
 
             if upstream_base_url.endswith(":8002/api/v1"):
                 if upstream_path == "access/admin/roles" and method == "GET":
@@ -341,14 +348,13 @@ class BffApplicationApproveProvisioningTests(TestCase):
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
             BFF_TENANT_HOST_SUFFIX="updspace.com",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.post(
-                    "/api/v1/portal/applications/42/approve",
-                    data=b"{}",
-                    content_type="application/json",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.post(
+                "/api/v1/portal/applications/42/approve",
+                data=b"{}",
+                content_type="application/json",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(
@@ -426,13 +432,12 @@ class BffAccountDeletionTests(TestCase):
             BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
             BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.delete(
-                    "/api/v1/account/me",
-                    HTTP_HOST=self.host,
-                    HTTP_X_CSRF_TOKEN="csrf-token",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.delete(
+                "/api/v1/account/me",
+                HTTP_HOST=self.host,
+                HTTP_X_CSRF_TOKEN="csrf-token",
+            )
 
         self.assertEqual(resp.status_code, 204)
         self.assertEqual(
@@ -491,12 +496,11 @@ class BffAccountDeletionTests(TestCase):
             BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
             BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
             BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/account/me/export",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/account/me/export",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -575,12 +579,11 @@ class BffSessionProfileSyncTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
@@ -614,7 +617,7 @@ class BffSessionProfileSyncTests(TestCase):
                 payload = {}
                 try:
                     payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else "{}")
-                except Exception:
+                except (json.JSONDecodeError, UnicodeError):
                     payload = {}
 
                 action = payload.get("action")
@@ -655,12 +658,11 @@ class BffSessionProfileSyncTests(TestCase):
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
@@ -701,12 +703,11 @@ class BffSessionProfileSyncTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_FEATUREFLAGS_URL="http://featureflags:8008/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
@@ -765,12 +766,11 @@ class BffSessionProfileSyncTests(TestCase):
             BFF_TENANT_HOST_SUFFIX="updspace.com",
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
@@ -822,12 +822,11 @@ class BffSessionProfileSyncTests(TestCase):
             BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
             BFF_ENFORCE_ACTIVE_MEMBERSHIP=True,
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = self.client.get(
-                    "/api/v1/session/me",
-                    HTTP_HOST=self.host,
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = self.client.get(
+                "/api/v1/session/me",
+                HTTP_HOST=self.host,
+            )
 
         self.assertEqual(resp.status_code, 403)
         payload = resp.json()
@@ -1698,13 +1697,12 @@ class BffSessionAuditTests(TestCase):
             BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
             BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = client.delete(
-                    "/api/v1/account/me",
-                    HTTP_HOST=host,
-                    HTTP_X_CSRF_TOKEN="csrf-token",
-                )
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = client.delete(
+                "/api/v1/account/me",
+                HTTP_HOST=host,
+                HTTP_X_CSRF_TOKEN="csrf-token",
+            )
 
         self.assertEqual(resp.status_code, 204)
 
@@ -1761,9 +1759,8 @@ class BffSessionAuditTests(TestCase):
             BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
             BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
             BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-        ):
-            with patch("bff.api.proxy_request", side_effect=_mocked_proxy):
-                resp = client.get("/api/v1/account/me/export", HTTP_HOST=host)
+        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+            resp = client.get("/api/v1/account/me/export", HTTP_HOST=host)
 
         self.assertEqual(resp.status_code, 200)
         audits = list(BffAuditEvent.objects.filter(action="dsar.exported"))

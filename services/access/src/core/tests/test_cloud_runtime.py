@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import types
 from unittest.mock import patch
+
 from django.db.utils import NotSupportedError
 
 from app import cloud_runtime

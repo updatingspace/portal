@@ -5,13 +5,14 @@ import hmac
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 from django.conf import settings
 from ninja.errors import HttpError
 
-from portal.context import PortalContext
 from core.errors import error_payload
+from portal.context import PortalContext
 
 
 class AccessService:
@@ -133,7 +134,7 @@ class AccessService:
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 raw = resp.read().decode("utf-8")
-        except Exception:
+        except (OSError, TimeoutError, urllib.error.URLError):
             raise HttpError(
                 502,
                 error_payload(
@@ -145,7 +146,7 @@ class AccessService:
 
         try:
             data = json.loads(raw)
-        except Exception:
+        except json.JSONDecodeError:
             data = None
 
         allowed = False

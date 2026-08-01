@@ -11,7 +11,6 @@ from typing import Any
 from django.conf import settings
 from django.core import signing
 
-
 _FILENAME_SAFE_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 _LOCAL_UPLOAD_TOKEN_SALT = "activity.news-media.upload"
 _LOCAL_DOWNLOAD_TOKEN_SALT = "activity.news-media.download"

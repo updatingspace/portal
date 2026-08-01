@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 from urllib.parse import urlparse
 
 import dj_database_url
@@ -64,7 +64,7 @@ def _can_compare_database_versions(version, minimum_version) -> bool:
 def _patch_ydb_version_check() -> None:
     try:
         from ydb_backend.backend import base as ydb_base
-    except Exception:
+    except ImportError:
         return
 
     if getattr(ydb_base.DatabaseWrapper, "_updspace_version_patch", False):
@@ -91,7 +91,6 @@ def _patch_ydb_version_check() -> None:
             )
             raise NotSupportedError(error_msg)
 
-        return None
 
     ydb_base.DatabaseWrapper.get_database_version = _normalized_get_database_version
     ydb_base.DatabaseWrapper.check_database_version_supported = (

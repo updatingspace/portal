@@ -61,7 +61,7 @@ class MinecraftConnector:
                 occurred_at = datetime.fromisoformat(
                     occurred.replace("Z", "+00:00")
                 )
-            except Exception:
+            except (TypeError, ValueError):
                 occurred_at = timezone.now()
         else:
             occurred_at = timezone.now()

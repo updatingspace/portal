@@ -69,12 +69,12 @@ class BffRateLimitWindow(models.Model):
 
 
 # Audit model lives in bff.audit but must be discoverable by Django.
-from bff.audit import BffAuditEvent  # noqa: E402, F401
+from bff.audit import BffAuditEvent
 
 __all__ = [
-    "Tenant",
-    "BffSession",
+    "BffAuditEvent",
     "BffOauthState",
     "BffRateLimitWindow",
-    "BffAuditEvent",
+    "BffSession",
+    "Tenant",
 ]

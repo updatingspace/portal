@@ -3,12 +3,12 @@ from __future__ import annotations
 from ninja import Router
 from ninja.errors import HttpError
 
-from nominations.schemas import VotingFeedSchema, VotingSummarySchema
 from nominations.compat import (
     is_global_admin,
     list_votings_feed,
     list_votings_overview,
 )
+from nominations.schemas import VotingFeedSchema, VotingSummarySchema
 from tenant_voting.context import require_internal_context
 from votings.schemas import (
     VotingImportPreviewSchema,

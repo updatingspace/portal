@@ -6,7 +6,7 @@ from uuid import UUID
 from django.db.models import Q
 from django.utils import timezone
 
-from events.models import Attendance, Event, OutboxMessage, RSVP
+from events.models import RSVP, Attendance, Event, OutboxMessage
 
 ANONYMIZED_USER_ID = UUID("00000000-0000-0000-0000-000000000000")
 REDACTED_VALUE = "[redacted]"

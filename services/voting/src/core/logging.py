@@ -9,6 +9,7 @@ import json
 import logging
 import traceback
 from datetime import datetime, timezone
+from typing import Any, ClassVar
 
 
 class JsonFormatter(logging.Formatter):
@@ -118,7 +119,7 @@ class LogContext:
             logger.info("Processing request")  # Will include request_id and user_id
     """
     
-    _context: dict = {}
+    _context: ClassVar[dict[str, Any]] = {}
     
     def __init__(self, **kwargs):
         self.new_context = kwargs

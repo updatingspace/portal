@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.db import migrations
 
-
 GAMIFICATION_PERMISSIONS = [
     ("gamification.achievements.create", "Create achievements", "gamification"),
     ("gamification.achievements.edit", "Edit achievements", "gamification"),

@@ -2,12 +2,15 @@ from django.http import JsonResponse
 from django.urls import path
 from ninja import NinjaAPI
 from ninja.errors import HttpError
+
 from activity.api import (
     news_media_download_file,
     news_media_upload_file,
+)
+from activity.api import (
     router as activity_router,
 )
-from activity.health import liveness_check, readiness_check, metrics_endpoint
+from activity.health import liveness_check, metrics_endpoint, readiness_check
 from activity.sse import sse_feed_live, sse_unread_count
 
 

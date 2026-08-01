@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from ninja import Schema
-
+from pydantic import Field
 
 PollStatus = Literal["draft", "active", "closed"]
 PollScopeType = Literal["TENANT", "COMMUNITY", "TEAM", "EVENT", "POST"]
@@ -26,7 +26,7 @@ class PollOut(Schema):
     allow_revoting: bool = False
     anonymous: bool = False
     results_visibility: ResultsVisibility = "after_closed"
-    settings: dict[str, Any] = {}
+    settings: dict[str, Any] = Field(default_factory=dict)
     created_by: uuid.UUID
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -43,7 +43,7 @@ class NominationOut(Schema):
     sort_order: int
     max_votes: int = 1
     is_required: bool = False
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class OptionOut(Schema):
@@ -88,7 +88,7 @@ class NominationIn(Schema):
     sort_order: int | None = None
     max_votes: int = 1
     is_required: bool = False
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
     options: list[OptionIn] | None = None
 
 
@@ -113,7 +113,7 @@ class PollCreateIn(Schema):
     allow_revoting: bool = False
     anonymous: bool = False
     results_visibility: ResultsVisibility = "after_closed"
-    settings: dict[str, Any] = {}
+    settings: dict[str, Any] = Field(default_factory=dict)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     nominations: list[NominationIn] | None = None

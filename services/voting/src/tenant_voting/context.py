@@ -7,8 +7,8 @@ from typing import Any, cast
 
 from ninja.errors import HttpError
 
-from core.security import require_internal_signature
 from core.http import require_context
+from core.security import require_internal_signature
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ def require_internal_context(request) -> InternalContext:
         master_flags = json.loads(master_raw)
         if not isinstance(master_flags, dict):
             master_flags = {}
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         master_flags = {}
 
     return InternalContext(

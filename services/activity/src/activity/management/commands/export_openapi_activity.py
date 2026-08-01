@@ -10,7 +10,7 @@ from ninja import NinjaAPI
 
 class Command(BaseCommand):
     help = "Export OpenAPI schema for Activity service (django-ninja)."
-    requires_system_checks: list[str] = []
+    requires_system_checks: tuple[str, ...] = ()
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -33,7 +33,7 @@ class Command(BaseCommand):
             )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        activity_router = getattr(mod, "router")
+        activity_router = mod.router
 
         api = NinjaAPI(title="Activity Service API", version="1.0.0")
         api.add_router("/api/activity", activity_router)

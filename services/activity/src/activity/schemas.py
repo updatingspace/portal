@@ -6,7 +6,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from ninja import Schema
-
+from pydantic import Field
 
 # ============================================================================
 # Error Responses
@@ -245,7 +245,7 @@ class ActivityEventOut(Schema):
     scope_type: str
     scope_id: str
     source_ref: str
-    actor_profile: "ActorProfileOut | None" = None
+    actor_profile: ActorProfileOut | None = None
 
 
 class FeedOut(Schema):
@@ -359,12 +359,12 @@ class NewsMediaIn(Schema):
 class NewsCreateIn(Schema):
     title: str | None = None
     body: str
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     visibility: str
     status: Literal["published", "draft"] = "published"
     scope_type: str | None = None
     scope_id: str | None = None
-    media: list[NewsMediaIn] = []
+    media: list[NewsMediaIn] = Field(default_factory=list)
 
 
 class NewsUpdateIn(Schema):

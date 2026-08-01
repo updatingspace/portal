@@ -1,10 +1,9 @@
 from datetime import datetime
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
 from ninja import Schema
-from pydantic import field_validator
-
+from pydantic import Field, field_validator
 
 # =============================================================================
 # User Preferences Schemas
@@ -243,13 +242,13 @@ class ContentWidgetIn(Schema):
     name: str
     widget_type: str = "banner"
     placement: str = "top"
-    content: dict[str, Any] = {}
+    content: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     start_date: datetime | None = None
     end_date: datetime | None = None
     priority: int = 0
-    target_pages: list[str] = []
-    target_roles: list[str] = []
+    target_pages: list[str] = Field(default_factory=list)
+    target_roles: list[str] = Field(default_factory=list)
 
     @field_validator("widget_type")
     @classmethod
@@ -276,7 +275,7 @@ class AnalyticsEventIn(Schema):
     modal_id: int
     event_type: str
     session_id: str = ""
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("event_type")
     @classmethod
@@ -327,7 +326,7 @@ class DashboardLayoutOut(Schema):
 
 class DashboardLayoutIn(Schema):
     layout_name: str
-    layout_config: dict[str, Any] = {}
+    layout_config: dict[str, Any] = Field(default_factory=dict)
     is_default: bool = False
 
 
@@ -353,5 +352,5 @@ class DashboardWidgetIn(Schema):
     position_y: int = 0
     width: int = 4
     height: int = 3
-    settings: dict[str, Any] = {}
+    settings: dict[str, Any] = Field(default_factory=dict)
     is_visible: bool = True

@@ -8,7 +8,9 @@ from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
 from django.conf import settings
+from django.db import DatabaseError
 from django.http import (
     HttpRequest,
     HttpResponse,
@@ -21,10 +23,10 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from ninja import NinjaAPI, Router
 
-from .models import BffOauthState
 from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
+from .models import BffOauthState
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
@@ -36,6 +38,14 @@ from .tenant import (
 )
 
 logger = logging.getLogger(__name__)
+BFF_RECOVERABLE_EXCEPTIONS = (
+    DatabaseError,
+    httpx.HTTPError,
+    RuntimeError,
+    TypeError,
+    UnicodeError,
+    ValueError,
+)
 router = Router()
 router.add_decorator(csrf_protect, mode="view")
 public_router = Router()
@@ -85,9 +95,7 @@ def _sanitize_next_path(next_path: str | None, *, default: str = "/choose-tenant
     if not candidate:
         return default
     if (
-        candidate.startswith("http://")
-        or candidate.startswith("https://")
-        or candidate.startswith("//")
+        candidate.startswith(("http://", "https://", "//"))
     ):
         return default
     if not candidate.startswith("/"):
@@ -200,7 +208,7 @@ def _provision_default_tenant_member_binding(
 
     try:
         roles_payload = roles_resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "Default member provisioning: invalid roles payload",
             extra={"request_id": request.request_id, "user_id": approved_user_id},
@@ -262,7 +270,7 @@ def _provision_default_tenant_member_binding(
 
     try:
         bindings_payload = bindings_resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "Default member provisioning: invalid bindings payload",
             extra={
@@ -340,7 +348,7 @@ def _maybe_provision_after_application_approve(
             if response.content
             else {}
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "Skip post-approve provisioning: invalid approve payload",
             extra={"request_id": request.request_id},
@@ -353,7 +361,7 @@ def _maybe_provision_after_application_approve(
 
     try:
         _provision_default_tenant_member_binding(request, ctx, approved_user_id)
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.exception(
             "Post-approve provisioning failed",
             extra={
@@ -367,13 +375,13 @@ def _decode_json_body(body: bytes) -> dict[str, Any] | None:
     raw = body or b"{}"
     try:
         payload: Any = json.loads(raw.decode("utf-8"))
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return None
 
     if isinstance(payload, str):
         try:
             payload = json.loads(payload)
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             return None
 
     if not isinstance(payload, dict):
@@ -447,7 +455,7 @@ def _load_id_me_payload(
             context_headers=_tenantless_id_context_headers(request, ctx),
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "ID /me fetch failed",
             extra={"request_id": request.request_id},
@@ -467,7 +475,7 @@ def _load_id_me_payload(
 
     try:
         payload = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return None, []
 
     if not isinstance(payload, dict):
@@ -493,7 +501,7 @@ def _load_tenant_applications(request: HttpRequest, ctx) -> list[dict[str, str]]
             context_headers=_tenantless_id_context_headers(request, ctx),
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "ID tenant-applications fetch failed",
             extra={"request_id": request.request_id},
@@ -506,7 +514,7 @@ def _load_tenant_applications(request: HttpRequest, ctx) -> list[dict[str, str]]
 
     try:
         payload = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return []
 
     applications: list[dict[str, str]] = []
@@ -562,7 +570,7 @@ def _load_rollout_snapshot(
             },
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "session/me rollout snapshot probe failed",
             extra={"request_id": request.request_id},
@@ -575,7 +583,7 @@ def _load_rollout_snapshot(
 
     try:
         payload = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return {}, {}
 
     if not isinstance(payload, dict):
@@ -635,7 +643,7 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 },
                 request_id=request.request_id,
             )
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             logger.warning(
                 "session/me access snapshot probe failed",
                 extra={
@@ -661,7 +669,11 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
 
         try:
             data = resp.json()
-        except Exception:
+        except ValueError:
+            logger.warning(
+                "session/me access snapshot returned invalid JSON",
+                extra={"request_id": request.request_id, "service": service},
+            )
             continue
 
         permissions = data.get("effective_permissions") if isinstance(data, dict) else None
@@ -677,9 +689,13 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                     continue
                 role_service = role.get("service")
                 role_name = role.get("name")
-                if isinstance(role_service, str) and isinstance(role_name, str):
-                    if role_service.strip() and role_name.strip():
-                        effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
+                if (
+                    isinstance(role_service, str)
+                    and isinstance(role_name, str)
+                    and role_service.strip()
+                    and role_name.strip()
+                ):
+                    effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
 
     return sorted(effective_permissions), sorted(effective_roles)
 
@@ -702,7 +718,7 @@ def _load_feature_flags_snapshot(request: HttpRequest, ctx) -> dict[str, bool]:
             context_headers=_active_context_headers(request, ctx),
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
             "session/me feature flags probe failed",
             extra={"request_id": request.request_id},
@@ -715,7 +731,7 @@ def _load_feature_flags_snapshot(request: HttpRequest, ctx) -> dict[str, bool]:
 
     try:
         data = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return {}
 
     if not isinstance(data, dict):
@@ -953,15 +969,17 @@ def session_me(request: HttpRequest):
                     )
                     if sync_resp.status_code == 200:
                         portal_profile = sync_resp.json()
-        except Exception:
-            # Keep /me resilient; ignore sync errors.
-            pass
+        except BFF_RECOVERABLE_EXCEPTIONS:
+            # Keep /me resilient while retaining diagnostics for failed syncs.
+            logger.exception(
+                "Portal profile synchronization failed",
+                extra={"request_id": request.request_id},
+            )
 
     id_frontend_base_url = getattr(settings, "ID_PUBLIC_BASE_URL", "") or id_upstream
     if id_frontend_base_url:
         id_frontend_base_url = str(id_frontend_base_url).rstrip("/")
-        if id_frontend_base_url.endswith("/api/v1"):
-            id_frontend_base_url = id_frontend_base_url[:-7]
+        id_frontend_base_url = id_frontend_base_url.removesuffix("/api/v1")
     else:
         id_frontend_base_url = None
 
@@ -1124,7 +1142,7 @@ def entry_tenant_applications(request: HttpRequest):
             context_headers=context_headers,
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
             message="ID service unavailable",
@@ -1134,7 +1152,7 @@ def entry_tenant_applications(request: HttpRequest):
 
     try:
         response_payload = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         response_payload = {
             "slug": requested_slug,
             "status": "pending",
@@ -1327,8 +1345,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
 
     # Strip /api/v1 suffix to get base URL for OAuth endpoints
     id_base_url = id_url.rstrip("/")
-    if id_base_url.endswith("/api/v1"):
-        id_base_url = id_base_url[:-7]  # Remove /api/v1
+    id_base_url = id_base_url.removesuffix("/api/v1")  # Remove /api/v1
 
     client_id = getattr(settings, "BFF_OIDC_CLIENT_ID", "")
     client_secret = getattr(settings, "BFF_OIDC_CLIENT_SECRET", "")
@@ -1338,7 +1355,6 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     callback_url = f"{scheme}://{host}/api/v1/auth/callback"
 
     # Token exchange
-    import httpx
     token_url = f"{id_base_url}/oauth/token"
 
     try:
@@ -1353,7 +1369,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             },
             timeout=10.0,
         )
-    except Exception:
+    except httpx.HTTPError:
         return _auth_error_redirect(
             request,
             code="UPSTREAM_UNAVAILABLE",
@@ -1378,7 +1394,7 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=10.0,
         )
-    except Exception:
+    except httpx.HTTPError:
         return _auth_error_redirect(
             request,
             code="UPSTREAM_UNAVAILABLE",
@@ -1446,7 +1462,7 @@ def session_login(request: HttpRequest):
 
     try:
         payload = json.loads((request.body or b"{}").decode("utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, UnicodeError):
         return error_response(
             code="BAD_REQUEST",
             message="Invalid JSON",
@@ -1503,7 +1519,7 @@ def session_login(request: HttpRequest):
             },
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
             message="ID upstream is unavailable",
@@ -1514,7 +1530,7 @@ def session_login(request: HttpRequest):
     if resp.status_code >= 400:
         try:
             details = resp.json()
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             details = {"upstream_body": resp.text}
         return error_response(
             code="UPSTREAM_ERROR",
@@ -1526,7 +1542,7 @@ def session_login(request: HttpRequest):
 
     try:
         out = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         out = {"ok": True, "sent": True}
 
     # Pass through dev_magic_link if present
@@ -1576,7 +1592,7 @@ def session_callback(request: HttpRequest, code: str, next: str | None = None):
             },
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
             message="ID upstream is unavailable",
@@ -1587,7 +1603,7 @@ def session_callback(request: HttpRequest, code: str, next: str | None = None):
     if resp.status_code >= 400:
         try:
             details = resp.json()
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             details = {"upstream_body": resp.text}
         return error_response(
             code=(
@@ -1612,7 +1628,7 @@ def session_callback(request: HttpRequest, code: str, next: str | None = None):
             if ttl_seconds
             else timedelta(days=14)
         )
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         ttl = timedelta(days=14)
 
     session = SessionStore().create(
@@ -1630,9 +1646,7 @@ def session_callback(request: HttpRequest, code: str, next: str | None = None):
     redirect_to = next if next else "/"
     # Avoid open redirects
     if isinstance(redirect_to, str) and (
-        redirect_to.startswith("http://")
-        or redirect_to.startswith("https://")
-        or redirect_to.startswith("//")
+        redirect_to.startswith(("http://", "https://", "//"))
     ):
         redirect_to = "/"
     response = HttpResponseRedirect(redirect_to)
@@ -1663,7 +1677,7 @@ def internal_establish_session(request: HttpRequest):
 
     try:
         payload = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
+    except (json.JSONDecodeError, UnicodeError):
         return error_response(
             code="BAD_REQUEST",
             message="Invalid JSON",
@@ -1698,7 +1712,7 @@ def internal_establish_session(request: HttpRequest):
             if ttl_seconds
             else timedelta(days=14)
         )
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         ttl = timedelta(days=14)
 
     session = SessionStore().create(
@@ -1827,7 +1841,7 @@ def _proxy_group(
         details: dict[str, Any] = {}
         try:
             details["upstream_body"] = resp.json()
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             details["upstream_body"] = resp.text
         details["upstream_status"] = resp.status_code
         if is_stream:
@@ -1848,8 +1862,7 @@ def _proxy_group(
             # Fallback: avoid loading entire response into memory
             def iterator():
                 try:
-                    for chunk in resp.iter_bytes(chunk_size=1024):
-                        yield chunk
+                    yield from resp.iter_bytes(chunk_size=1024)
                 finally:
                     resp.close()
             stream_iter = iterator()
@@ -2328,7 +2341,7 @@ def _call_dsar_service(
             payload = resp.json()
             if isinstance(payload, dict):
                 details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             details = {}
         return None, error_response(
             code=failure_code,
@@ -2340,7 +2353,7 @@ def _call_dsar_service(
 
     try:
         payload = resp.json()
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         payload = {"ok": True}
 
     return payload if isinstance(payload, dict) else {"ok": True}, None
@@ -2426,7 +2439,7 @@ def _delete_identity_account(request: HttpRequest, ctx) -> HttpResponse | None:
             payload = resp.json()
             if isinstance(payload, dict):
                 details = payload.get("error") if isinstance(payload.get("error"), dict) else payload
-        except Exception:
+        except BFF_RECOVERABLE_EXCEPTIONS:
             details = {}
         return error_response(
             code="ACCOUNT_DELETE_FAILED",
@@ -2488,7 +2501,7 @@ def proxy_account(request: HttpRequest, path: str):
             context_headers=context_headers,
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
             message="ID service unavailable",
@@ -2537,7 +2550,7 @@ def proxy_auth(request: HttpRequest, path: str):
             },
             request_id=request.request_id,
         )
-    except Exception:
+    except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
             message="Auth service unavailable",

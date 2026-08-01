@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 from django.conf import settings
+
 from .context import InternalContext
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class PortalClient:
 
         ts = str(int(time.time()))
         digest = hashlib.sha256(body or b"").hexdigest()
-        msg = "\n".join([method.upper(), path, digest, request_id, ts]).encode("utf-8")
+        msg = f"{method.upper()}\n{path}\n{digest}\n{request_id}\n{ts}".encode()
         sig = hmac.new(secret.encode("utf-8"), msg, digestmod=hashlib.sha256).hexdigest()
         return ts, sig
 
