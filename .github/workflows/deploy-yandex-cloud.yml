@@ -5,6 +5,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      apply:
+        description: "One-time apply (Terraform apply + frontend publish + migrate YDB + smoke). Default stays plan-only; no standing secret change."
+        type: boolean
+        default: false
   pull_request:
     branches:
       - main
@@ -36,24 +41,23 @@ jobs:
   validate-deploy-secrets:
     name: Validate deploy secrets
     runs-on: ubuntu-latest
-    env:
-      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
-      YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
-      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
-      YC_CONTAINER_REGISTRY_ID: ${{ secrets.YC_CONTAINER_REGISTRY_ID }}
-      YC_FRONTEND_BUCKET_NAME: ${{ secrets.YC_FRONTEND_BUCKET_NAME }}
-      YC_TF_VARS_B64: ${{ secrets.YC_TF_VARS_B64 }}
-      YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
-      YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
-      YC_SMOKE_HOST: ${{ secrets.YC_SMOKE_HOST }}
     steps:
       - name: Validate required deploy secrets
+        # Секреты нужны только для реального деплоя (push/workflow_dispatch).
+        # На pull_request шаг не выполняется, поэтому секреты вообще не
+        # инъектируются в окружение раннера — минимизируем поверхность.
+        if: github.event_name != 'pull_request'
+        env:
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+          YC_CONTAINER_REGISTRY_ID: ${{ secrets.YC_CONTAINER_REGISTRY_ID }}
+          YC_FRONTEND_BUCKET_NAME: ${{ secrets.YC_FRONTEND_BUCKET_NAME }}
+          YC_TF_VARS_B64: ${{ secrets.YC_TF_VARS_B64 }}
+          YC_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.YC_OBJECT_STORAGE_ACCESS_KEY_ID }}
+          YC_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.YC_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
+          YC_SMOKE_HOST: ${{ secrets.YC_SMOKE_HOST }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
-            echo "PR validation path skips production deploy secrets."
-            exit 0
-          fi
-
           missing=()
           for name in \
             YC_SERVICE_ACCOUNT_KEY_JSON \
@@ -165,6 +169,7 @@ jobs:
       TF_VAR_folder_id: ${{ secrets.YC_FOLDER_ID }}
       TF_VAR_id_public_base_url: ${{ secrets.YC_ID_PUBLIC_BASE_URL }}
       YC_TERRAFORM_AUTO_APPLY: ${{ secrets.YC_TERRAFORM_AUTO_APPLY }}
+      APPLY_INPUT: ${{ github.event.inputs.apply }}
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
@@ -196,12 +201,12 @@ jobs:
       - name: OpenTofu plan
         run: tofu -chdir=infra/terraform/yandex-cloud plan -out=tfplan
       - name: OpenTofu apply
-        if: env.YC_TERRAFORM_AUTO_APPLY == 'true'
+        if: env.YC_TERRAFORM_AUTO_APPLY == 'true' || env.APPLY_INPUT == 'true'
         run: tofu -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
       - name: Export apply status
         id: status
         run: |
-          if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' ]]; then
+          if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' || "${APPLY_INPUT}" == 'true' ]]; then
             echo 'applied=true' >> "$GITHUB_OUTPUT"
             echo '### OpenTofu apply completed' >> "$GITHUB_STEP_SUMMARY"
             echo 'Production deploy will continue with frontend publish, YDB migrations, and smoke checks.' >> "$GITHUB_STEP_SUMMARY"

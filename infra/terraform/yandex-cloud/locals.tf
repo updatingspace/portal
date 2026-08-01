@@ -42,6 +42,56 @@ locals {
     for service in local.all_services : service => 8
   }, var.service_concurrency)
 
+  # --- IAM: наименьшие привилегии для служебных SA (вместо folder-wide editor) ---
+  # ВНИМАНИЕ: набор ролей выверить через `tofu plan` перед apply. Роли подобраны
+  # по фактическому использованию (invoke контейнеров, pull образов, логи, YMQ,
+  # Object Storage). Если интеграции/контейнеру не хватит прав — деплой упадёт
+  # (fail-safe), тогда добавить недостающую роль сюда.
+  service_account_folder_roles = {
+    # runtime исполняет контейнеры: тянет образы, инвокает upstream-сервисы
+    # (BFF -> access/portal/...), пишет логи. YDB и Lockbox выданы отдельными
+    # ресурсами (ydb.editor, lockbox.payloadViewer). YMQ и S3 доступны через
+    # статик-ключ automation из Lockbox — отдельные IAM-роли runtime не нужны.
+    runtime = [
+      "container-registry.images.puller",
+      "serverless.containers.invoker",
+      "logging.writer",
+    ]
+    # gateway (API Gateway): инвокает BFF-контейнер и отдаёт статику из бакета.
+    gateway = [
+      "serverless.containers.invoker",
+      "storage.viewer",
+    ]
+    # trigger (YMQ/timer): инвокает outbox-контейнеры и читает очередь.
+    trigger = [
+      "serverless.containers.invoker",
+      "ymq.reader",
+    ]
+    # automation (статик-ключ): создаёт/использует YMQ и Object Storage.
+    automation = [
+      "storage.editor",
+      "ymq.admin",
+    ]
+  }
+
+  service_account_ids = {
+    runtime    = yandex_iam_service_account.runtime.id
+    gateway    = yandex_iam_service_account.gateway.id
+    trigger    = yandex_iam_service_account.trigger.id
+    automation = yandex_iam_service_account.automation.id
+  }
+
+  service_account_role_bindings = merge([
+    for sa, roles in local.service_account_folder_roles : {
+      for role in roles : "${sa}.${role}" => { sa = sa, role = role }
+    }
+  ]...)
+
+  # S-3 (по-дизайну, не меняем вслепую): статик-ключ automation кладётся в общий
+  # runtime-Lockbox, потому что ВСЕ контейнеры используют его для YMQ-outbox
+  # (boto3, см. core/ymq.py), а activity — ещё и для media в Object Storage.
+  # Разделение S3/YMQ-доступа потребует отдельных ключей/SA per-service —
+  # выносить в отдельную задачу с ревью, иначе сломается outbox во всех сервисах.
   runtime_secret_entries = merge(
     var.lockbox_secret_entries,
     {

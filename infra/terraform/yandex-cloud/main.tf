@@ -39,17 +39,14 @@ resource "yandex_iam_service_account" "ci" {
   description = "GitHub Actions deploy identity"
 }
 
-resource "yandex_resourcemanager_folder_iam_member" "service_accounts_editor" {
-  for_each = {
-    runtime    = yandex_iam_service_account.runtime.id
-    gateway    = yandex_iam_service_account.gateway.id
-    trigger    = yandex_iam_service_account.trigger.id
-    automation = yandex_iam_service_account.automation.id
-  }
+# Наименьшие привилегии: точечные folder-роли по каждому SA вместо общего
+# editor. Карта ролей и обоснование — в locals.service_account_folder_roles.
+resource "yandex_resourcemanager_folder_iam_member" "service_account_roles" {
+  for_each = local.service_account_role_bindings
 
   folder_id = var.folder_id
-  role      = "editor"
-  member    = "serviceAccount:${each.value}"
+  role      = each.value.role
+  member    = "serviceAccount:${local.service_account_ids[each.value.sa]}"
 }
 
 resource "yandex_lockbox_secret" "runtime" {

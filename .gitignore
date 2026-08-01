@@ -233,3 +233,6 @@ infra/terraform/**/.terraform/
 runtime.auto.tfvars
 image-tags.auto.tfvars.json
 yc-sa-key.json
+
+# Local secrets — NEVER commit real secret material
+secrets/

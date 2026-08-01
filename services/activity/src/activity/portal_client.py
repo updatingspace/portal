@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import time
 from typing import Any
@@ -60,7 +61,11 @@ class PortalClient:
             "X-Updspace-Signature": signature,
         }
         if ctx.master_flags:
-            headers["X-Master-Flags"] = ",".join(sorted(ctx.master_flags))
+            # Канонический формат — JSON-объект (см. BFF); приёмник ждёт dict.
+            headers["X-Master-Flags"] = json.dumps(
+                {str(f): True for f in sorted(ctx.master_flags)},
+                separators=(",", ":"),
+            )
 
         try:
             response = self._client.get(f"{self._base_url}{path}", headers=headers)

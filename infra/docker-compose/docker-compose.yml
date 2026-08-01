@@ -1,3 +1,8 @@
+# DEV ONLY — локальная сборка для разработки.
+# Значения паролей и секретов ниже (POSTGRES_PASSWORD, DJANGO_SECRET_KEY,
+# *_HMAC_SECRET, *_CALLBACK_SECRET и т.п.) — заведомо небезопасные плейсхолдеры
+# для локального окружения. НЕ использовать в production: там секреты приходят
+# из Yandex Lockbox через переменные окружения (см. infra/terraform/yandex-cloud).
 services:
   traefik:
     image: traefik:v2.11

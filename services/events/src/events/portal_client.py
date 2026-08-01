@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import time
 from typing import Any
@@ -28,10 +29,12 @@ class PortalServiceUnavailable(PortalClientError):
 def _master_flags_header(flags: dict[str, Any]) -> str | None:
     if not flags:
         return None
-    truthy = [str(k) for k, v in flags.items() if v]
+    truthy = {str(k): True for k, v in flags.items() if v}
     if not truthy:
         return None
-    return ",".join(sorted(truthy))
+    # Канонический формат X-Master-Flags — JSON-объект (как в BFF); читатели на
+    # стороне сервисов делают json.loads и ждут dict. CSV приёмник парсит как {}.
+    return json.dumps(truthy, separators=(",", ":"))
 
 
 class PortalClient:

@@ -10,6 +10,7 @@ import {
   Xmark,
 } from '@gravity-ui/icons';
 import type { ModalType } from '../../types';
+import { sanitizeRichHtml } from '@/shared/lib/sanitizeHtml';
 import './ModalPreview.css';
 
 interface ModalPreviewProps {
@@ -116,7 +117,7 @@ export function ModalPreview({
         {contentHtml ? (
           <div
             className="modal-preview__content modal-preview__content--html"
-            dangerouslySetInnerHTML={{ __html: contentHtml }}
+            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(contentHtml) }}
           />
         ) : (
           <Text

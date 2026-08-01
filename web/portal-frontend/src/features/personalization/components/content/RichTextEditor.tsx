@@ -5,6 +5,7 @@
 import { Button, Flex, Icon, Text } from '@gravity-ui/uikit';
 import { Bold, Italic, ListUl, Link, Code } from '@gravity-ui/icons';
 import { useCallback, useRef } from 'react';
+import { sanitizeRichHtml } from '@/shared/lib/sanitizeHtml';
 import './RichTextEditor.css';
 
 interface RichTextEditorProps {
@@ -165,7 +166,7 @@ export function RichTextEditor({
         onPaste={handlePaste}
         onKeyDown={handleKeyDown}
         data-placeholder={placeholder}
-        dangerouslySetInnerHTML={{ __html: value }}
+        dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(value) }}
         role="textbox"
         aria-multiline="true"
         aria-label="Content editor"
