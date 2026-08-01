@@ -1,0 +1,45 @@
+# Remote state backend для OpenTofu/Terraform (Yandex Object Storage, S3-совместимый).
+#
+# ЗАЧЕМ: сейчас backend не задан -> используется ЛОКАЛЬНЫЙ terraform.tfstate.
+# В CI при свежем checkout state пустой, поэтому `plan` показывает "создать всё",
+# а `apply` из CI конфликтует с уже существующими ресурсами. Из-за этого apply
+# в пайплайне отключён, и весь код после начального ручного apply не выкатывался.
+# Remote backend хранит единый state в бакете -> и CI, и локально видят одно
+# состояние, apply становится безопасным и повторяемым.
+#
+# КАК ВКЛЮЧИТЬ (bootstrap, один раз):
+#   1. Создать бакет для state ОТДЕЛЬНО от этого стека (чтобы не было
+#      chicken-and-egg), напр. через YC CLI:
+#        yc storage bucket create --name updatingspace-portal-tfstate
+#      Включить версионирование бакета (защита state от потери).
+#   2. Выдать static access key SA с доступом к бакету и экспортировать:
+#        export AWS_ACCESS_KEY_ID=<key_id>
+#        export AWS_SECRET_ACCESS_KEY=<secret>
+#   3. Переименовать этот файл: backend.tf.example -> backend.tf
+#   4. Мигрировать локальный state в бакет:
+#        tofu -chdir=infra/terraform/yandex-cloud init -migrate-state
+#      OpenTofu скопирует terraform.tfstate в бакет и дальше будет работать с ним.
+#   5. В CI (deploy-yandex-cloud.yml) на шаге "OpenTofu init" добавить те же
+#      AWS_* креды (из secrets), чтобы init подхватывал remote state.
+#
+# ВАЖНО: перед первым apply после миграции обязательно `tofu plan` и сверка —
+# state/облако/код сейчас рассинхронены (см. reconciliation в задаче деплоя).
+
+# terraform {
+#   backend "s3" {
+#     endpoints = {
+#       s3 = "https://storage.yandexcloud.net"
+#     }
+#     bucket = "updatingspace-portal-tfstate"
+#     key    = "yandex-cloud/terraform.tfstate"
+#     region = "ru-central1"
+#
+#     # Yandex Object Storage не является полноценным AWS S3 — отключаем
+#     # AWS-специфичные проверки.
+#     skip_region_validation      = true
+#     skip_credentials_validation = true
+#     skip_requesting_account_id  = true
+#     skip_metadata_api_check     = true
+#     skip_s3_checksum            = true
+#   }
+# }

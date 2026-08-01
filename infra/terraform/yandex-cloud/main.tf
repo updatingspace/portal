@@ -848,6 +848,17 @@ resource "yandex_api_gateway" "portal" {
       certificate_id = var.certificate_id
     }
   }
+
+  # Основной домен портала (portal.<public_zone>) держим параллельно с
+  # tenant-wildcard, чтобы apply не отвязывал живую главную. Активируется
+  # заданием portal_certificate_id.
+  dynamic "custom_domains" {
+    for_each = var.portal_certificate_id != "" ? [1] : []
+    content {
+      fqdn           = local.portal_gateway_domain
+      certificate_id = var.portal_certificate_id
+    }
+  }
 }
 
 resource "yandex_dns_zone" "public" {
