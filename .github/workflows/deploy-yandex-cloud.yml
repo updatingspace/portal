@@ -5,6 +5,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      apply:
+        description: "One-time apply (Terraform apply + frontend publish + migrate YDB + smoke). Default stays plan-only; no standing secret change."
+        type: boolean
+        default: false
   pull_request:
     branches:
       - main
@@ -164,6 +169,7 @@ jobs:
       TF_VAR_folder_id: ${{ secrets.YC_FOLDER_ID }}
       TF_VAR_id_public_base_url: ${{ secrets.YC_ID_PUBLIC_BASE_URL }}
       YC_TERRAFORM_AUTO_APPLY: ${{ secrets.YC_TERRAFORM_AUTO_APPLY }}
+      APPLY_INPUT: ${{ github.event.inputs.apply }}
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
@@ -195,12 +201,12 @@ jobs:
       - name: OpenTofu plan
         run: tofu -chdir=infra/terraform/yandex-cloud plan -out=tfplan
       - name: OpenTofu apply
-        if: env.YC_TERRAFORM_AUTO_APPLY == 'true'
+        if: env.YC_TERRAFORM_AUTO_APPLY == 'true' || env.APPLY_INPUT == 'true'
         run: tofu -chdir=infra/terraform/yandex-cloud apply -auto-approve tfplan
       - name: Export apply status
         id: status
         run: |
-          if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' ]]; then
+          if [[ "${YC_TERRAFORM_AUTO_APPLY}" == 'true' || "${APPLY_INPUT}" == 'true' ]]; then
             echo 'applied=true' >> "$GITHUB_OUTPUT"
             echo '### OpenTofu apply completed' >> "$GITHUB_STEP_SUMMARY"
             echo 'Production deploy will continue with frontend publish, YDB migrations, and smoke checks.' >> "$GITHUB_STEP_SUMMARY"
