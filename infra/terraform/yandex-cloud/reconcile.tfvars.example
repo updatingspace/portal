@@ -1,0 +1,21 @@
+# Скопируй в reconcile.tfvars и подставь актуальные значения перед раскаткой.
+# Значения НЕ секретные (теги образов + ID сертификата — это ссылки).
+
+# Актуальный build текущего master (см. последний CI build_id, формат
+# YYYY.MM.DD-<run>-<sha>). Перебивает устаревший runtime.auto.tfvars.
+container_image_tags = {
+  access       = "REPLACE-with-current-build-id"
+  activity     = "REPLACE-with-current-build-id"
+  bff          = "REPLACE-with-current-build-id"
+  events       = "REPLACE-with-current-build-id"
+  featureflags = "REPLACE-with-current-build-id"
+  gamification = "REPLACE-with-current-build-id"
+  portal       = "REPLACE-with-current-build-id"
+  voting       = "REPLACE-with-current-build-id"
+}
+
+# Cert для основного домена portal.<public_zone> (Certificate Manager).
+portal_certificate_id = "REPLACE-with-cert-id"
+
+# Опционально: тёплые контейнеры против cold-start (континуальная стоимость).
+# min_ready_instances = { bff = 1, portal = 1, access = 1 }
