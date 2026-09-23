@@ -14,8 +14,8 @@ after `migrate_ydb` with the local YDB environment from `.github/workflows/ci.ym
 The check refuses non-local databases.
 
 OIDC callback uses the `user_id` UUID claim for the internal Portal identity.
-For older ID releases, a UUID `sub` is accepted when `user_id` is absent.
-Opaque subjects without an internal UUID are rejected with `INVALID_USERINFO`
+A UUID-shaped `sub` is never a substitute for a linked internal identity.
+Subjects without an explicit internal UUID are rejected with `INVALID_USERINFO`
 and no session; they must be linked to an UpdSpace identity in ID.
 
 ## Run

@@ -14,13 +14,12 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app.settings")
 django.setup()
 
 import httpx
+from bff.models import BffOauthState, BffSession, Tenant
+from bff.session_store import SessionStore
 from django.conf import settings
 from django.db import connections, transaction
 from django.test import Client, override_settings
 from django.utils import timezone
-
-from bff.models import BffOauthState, BffSession, Tenant
-from bff.session_store import SessionStore
 
 
 def main() -> None:
@@ -78,7 +77,8 @@ def main() -> None:
                 return_value=httpx.Response(
                     200,
                     json={
-                        "sub": owner,
+                        "sub": "opaque-local-subject",
+                        "user_id": owner,
                         "master_flags": {"email_verified": True},
                     },
                 ),
