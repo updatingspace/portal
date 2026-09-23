@@ -29,6 +29,14 @@ title: BFF Session Lifecycle
 - `id_defaults`, если identity provider умеет отдавать portal-safe theme hint;
 - capability probes для основных модулей, включая personalization.
 
+Пять независимых проверок capabilities через Access выполняются параллельно
+в пределах одного запроса (не более пяти одновременно). У каждой сохраняются
+исходные user/tenant context, HMAC, timeout и отдельное состояние HTTP-клиента.
+Результаты объединяются после завершения всех проверок; ошибка одного сервиса
+не удаляет результаты остальных. Права не кешируются между запросами, поэтому
+следующая загрузка сессии снова обращается в Access. Это сокращает ожидание
+независимых ответов, но не устраняет холодный старт сервисов.
+
 ### Tenant switch
 
 `POST /session/switch-tenant` меняет active tenant внутри BFF session, не создавая новый identity account.

@@ -44,7 +44,7 @@ jobs:
           - service: activity
             test_target: src
           - service: bff
-            test_target: src/bff/tests.py src/bff/tests_tenant_context.py src/bff/test_ydb_compat.py src/bff/test_proxy_pool.py
+            test_target: src/bff/tests.py src/bff/tests_tenant_context.py src/bff/test_ydb_compat.py src/bff/test_proxy_pool.py src/bff/test_access_snapshot.py
           - service: events
             test_target: src/events/tests.py src/events/test_settings_security.py
           - service: featureflags

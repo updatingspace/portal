@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -616,10 +617,17 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
         return [], []
 
     access_path = _resolve_access_check_path(access_upstream)
-    effective_permissions: set[str] = set()
-    effective_roles: set[str] = set()
+    incoming_headers = dict(request.headers)
+    context_headers = {
+        **_active_context_headers(request, ctx),
+        "Content-Type": "application/json",
+    }
+    request_id = request.request_id
 
-    for service, probe_permission in SESSION_ME_CAPABILITY_PROBES:
+    def load_service(probe: tuple[str, str]) -> tuple[set[str], set[str]]:
+        service, probe_permission = probe
+        effective_permissions: set[str] = set()
+        effective_roles: set[str] = set()
         payload = {
             "tenant_id": str(ctx.tenant_id),
             "user_id": str(ctx.user_id),
@@ -637,45 +645,42 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 method="POST",
                 query_string="",
                 body=body,
-                incoming_headers=request.headers,
-                context_headers={
-                    **_active_context_headers(request, ctx),
-                    "Content-Type": "application/json",
-                },
-                request_id=request.request_id,
+                incoming_headers=incoming_headers,
+                context_headers=context_headers,
+                request_id=request_id,
             )
         except BFF_RECOVERABLE_EXCEPTIONS:
             logger.warning(
                 "session/me access snapshot probe failed",
                 extra={
-                    "request_id": request.request_id,
+                    "request_id": request_id,
                     "service": service,
                     "probe_permission": probe_permission,
                 },
                 exc_info=True,
             )
-            continue
+            return set(), set()
 
         if resp.status_code != 200:
             logger.warning(
                 "session/me access snapshot probe returned non-200",
                 extra={
-                    "request_id": request.request_id,
+                    "request_id": request_id,
                     "service": service,
                     "probe_permission": probe_permission,
                     "status_code": resp.status_code,
                 },
             )
-            continue
+            return set(), set()
 
         try:
             data = resp.json()
         except ValueError:
             logger.warning(
                 "session/me access snapshot returned invalid JSON",
-                extra={"request_id": request.request_id, "service": service},
+                extra={"request_id": request_id, "service": service},
             )
-            continue
+            return set(), set()
 
         permissions = data.get("effective_permissions") if isinstance(data, dict) else None
         if isinstance(permissions, list):
@@ -698,6 +703,16 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 ):
                     effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
 
+        return effective_permissions, effective_roles
+
+    # Independent network reads only: no ORM work or shared per-user cache.
+    # Scope the executor to this request and wait for all checks before returning.
+    effective_permissions: set[str] = set()
+    effective_roles: set[str] = set()
+    with ThreadPoolExecutor(max_workers=len(SESSION_ME_CAPABILITY_PROBES)) as executor:
+        for permissions, roles in executor.map(load_service, SESSION_ME_CAPABILITY_PROBES):
+            effective_permissions.update(permissions)
+            effective_roles.update(roles)
     return sorted(effective_permissions), sorted(effective_roles)
 
 
