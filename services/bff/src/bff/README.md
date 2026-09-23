@@ -33,6 +33,8 @@ All API calls go through:
 - `GET /api/v1/csrf` → issues Django CSRF cookie/token for SPA bootstrap
 - `GET /api/v1/session/me` → aggregates `user + portal_profile + id_profile + id_defaults + capability probes`
 - `POST /api/v1/session/logout`
+  (also `/api/v1/logout`): revokes the authenticated session even before tenant
+  selection; a valid CSRF token is still required.
 - `POST /api/v1/internal/session/establish` (server-to-server from UpdSpaceID; sets HttpOnly cookie)
 - Proxy (adds context + signature):
   - `/api/v1/portal/*` → Portal Core

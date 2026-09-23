@@ -1530,6 +1530,30 @@ class CsrfProtectionTests(TestCase):
         self.host = "aef.updspace.com"
         self.logout_path = "/api/v1/session/logout"
 
+    def test_logout_without_selected_tenant_revokes_session_with_csrf(self):
+        for path in (self.logout_path, "/api/v1/logout"):
+            with self.subTest(path=path):
+                client = Client(enforce_csrf_checks=True)
+                session = SessionStore().create(
+                    tenant_id=str(self.tenant.id),
+                    user_id=str(uuid.uuid4()),
+                    master_flags={},
+                    ttl=timedelta(minutes=10),
+                )
+                client.cookies[settings.BFF_SESSION_COOKIE_NAME] = session.session_id
+                host = "portal.updspace.com"
+                rejected = client.post(path, HTTP_HOST=host)
+                self.assertEqual(rejected.status_code, 403)
+                self.assertEqual(rejected.json()["error"]["code"], "CSRF_FAILED")
+                self.assertIsNotNone(SessionStore().get(session.session_id))
+                token = client.get("/api/v1/csrf", HTTP_HOST=host).json()["csrfToken"]
+                response = client.post(path, HTTP_HOST=host, HTTP_X_CSRF_TOKEN=token)
+                self.assertEqual(response.status_code, 204)
+                self.assertIsNone(SessionStore().get(session.session_id))
+                self.assertEqual(
+                    response.cookies[settings.BFF_SESSION_COOKIE_NAME]["max-age"], 0
+                )
+
     def test_csrf_bootstrap_sets_host_only_cookie(self):
         resp = self.client.get(
             "/api/v1/csrf",
