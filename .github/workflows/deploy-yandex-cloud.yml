@@ -127,6 +127,9 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
           tags: portal-ci/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -143,6 +146,11 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
+          # Yandex Registry accepts a Docker v2 image manifest, not the
+          # attestation index emitted by current Buildx defaults.
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
           tags: |
             cr.yandex/${{ secrets.YC_CONTAINER_REGISTRY_ID }}/${{ matrix.image }}:${{ github.sha }}
             cr.yandex/${{ secrets.YC_CONTAINER_REGISTRY_ID }}/${{ matrix.image }}:${{ needs.generate-build-id.outputs.build_id }}
