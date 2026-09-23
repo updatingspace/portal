@@ -159,11 +159,7 @@ class BffProxyRoutingTests(TestCase):
     def test_feature_flags_proxy_routes_to_configured_upstream(self):
         resp, captured = self._call_proxy(
             "/api/v1/feature-flags/flags",
-            {
-                "BFF_UPSTREAM_FEATUREFLAGS_URL": (
-                    "http://featureflags:8008/api/v1"
-                )
-            },
+            {"BFF_UPSTREAM_FEATUREFLAGS_URL": ("http://featureflags:8008/api/v1")},
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(captured["upstream_path"], "flags")
@@ -258,11 +254,14 @@ class BffApplicationApproveProvisioningTests(TestCase):
 
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.post(
                 "/api/v1/portal/applications/42/approve",
                 data=b"{}",
@@ -344,11 +343,14 @@ class BffApplicationApproveProvisioningTests(TestCase):
 
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.post(
                 "/api/v1/portal/applications/42/approve",
                 data=b"{}",
@@ -423,16 +425,19 @@ class BffAccountDeletionTests(TestCase):
                 return httpx.Response(204, content=b"")
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
-            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
-            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+                BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+                BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.delete(
                 "/api/v1/account/me",
                 HTTP_HOST=self.host,
@@ -484,19 +489,26 @@ class BffAccountDeletionTests(TestCase):
                     )
                 return httpx.Response(
                     200,
-                    json={"service": service_name, "tenant_id": str(self.tenant.id), "user_id": self.user_id},
+                    json={
+                        "service": service_name,
+                        "tenant_id": str(self.tenant.id),
+                        "user_id": self.user_id,
+                    },
                 )
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
-            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
-            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+                BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+                BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/account/me/export",
                 HTTP_HOST=self.host,
@@ -575,11 +587,14 @@ class BffSessionProfileSyncTests(TestCase):
                 )
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/session/me",
                 HTTP_HOST=self.host,
@@ -608,15 +623,27 @@ class BffSessionProfileSyncTests(TestCase):
             timeout=None,
         ):
             if upstream_path == "portal/me" and method == "GET":
-                return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
+                return httpx.Response(
+                    200, json={"first_name": "", "last_name": "", "bio": None}
+                )
 
             if upstream_path == "me" and method == "GET":
-                return httpx.Response(200, json={"user": {"first_name": "Max", "last_name": "Doe"}, "memberships": []})
+                return httpx.Response(
+                    200,
+                    json={
+                        "user": {"first_name": "Max", "last_name": "Doe"},
+                        "memberships": [],
+                    },
+                )
 
             if upstream_path == "access/check" and method == "POST":
                 payload = {}
                 try:
-                    payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else "{}")
+                    payload = json.loads(
+                        body.decode("utf-8")
+                        if isinstance(body, (bytes, bytearray))
+                        else "{}"
+                    )
                 except (json.JSONDecodeError, UnicodeError):
                     payload = {}
 
@@ -627,8 +654,13 @@ class BffSessionProfileSyncTests(TestCase):
                         json={
                             "allowed": True,
                             "reason_code": "RBAC_ALLOW",
-                            "effective_roles": [{"id": 1, "name": "member", "service": "portal"}],
-                            "effective_permissions": ["portal.profile.read_self", "portal.posts.create_public"],
+                            "effective_roles": [
+                                {"id": 1, "name": "member", "service": "portal"}
+                            ],
+                            "effective_permissions": [
+                                "portal.profile.read_self",
+                                "portal.posts.create_public",
+                            ],
                         },
                     )
                 if action == "activity.feed.read":
@@ -637,8 +669,13 @@ class BffSessionProfileSyncTests(TestCase):
                         json={
                             "allowed": True,
                             "reason_code": "RBAC_ALLOW",
-                            "effective_roles": [{"id": 2, "name": "member", "service": "activity"}],
-                            "effective_permissions": ["activity.feed.read", "activity.news.create"],
+                            "effective_roles": [
+                                {"id": 2, "name": "member", "service": "activity"}
+                            ],
+                            "effective_permissions": [
+                                "activity.feed.read",
+                                "activity.news.create",
+                            ],
                         },
                     )
                 return httpx.Response(
@@ -653,12 +690,15 @@ class BffSessionProfileSyncTests(TestCase):
 
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/session/me",
                 HTTP_HOST=self.host,
@@ -694,16 +734,24 @@ class BffSessionProfileSyncTests(TestCase):
             timeout=None,
         ):
             if upstream_path == "portal/me" and method == "GET":
-                return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
+                return httpx.Response(
+                    200, json={"first_name": "", "last_name": "", "bio": None}
+                )
             if upstream_path == "flags/evaluate" and method == "GET":
-                return httpx.Response(200, json={"feature_flags": {"new_dashboard": True, "beta_feed": False}})
+                return httpx.Response(
+                    200,
+                    json={"feature_flags": {"new_dashboard": True, "beta_feed": False}},
+                )
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_FEATUREFLAGS_URL="http://featureflags:8008/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_FEATUREFLAGS_URL="http://featureflags:8008/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/session/me",
                 HTTP_HOST=self.host,
@@ -711,7 +759,9 @@ class BffSessionProfileSyncTests(TestCase):
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
-        self.assertEqual(payload.get("feature_flags"), {"new_dashboard": True, "beta_feed": False})
+        self.assertEqual(
+            payload.get("feature_flags"), {"new_dashboard": True, "beta_feed": False}
+        )
 
     def test_session_me_returns_available_tenants_from_active_memberships(self):
         self.client.cookies[self.cookie_name] = self.session.session_id
@@ -732,7 +782,9 @@ class BffSessionProfileSyncTests(TestCase):
             timeout=None,
         ):
             if upstream_path == "portal/me" and method == "GET":
-                return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
+                return httpx.Response(
+                    200, json={"first_name": "", "last_name": "", "bio": None}
+                )
             if upstream_path == "me" and method == "GET":
                 return httpx.Response(
                     200,
@@ -762,11 +814,14 @@ class BffSessionProfileSyncTests(TestCase):
                 )
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/session/me",
                 HTTP_HOST=self.host,
@@ -799,7 +854,9 @@ class BffSessionProfileSyncTests(TestCase):
             timeout=None,
         ):
             if upstream_path == "portal/me" and method == "GET":
-                return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
+                return httpx.Response(
+                    200, json={"first_name": "", "last_name": "", "bio": None}
+                )
             if upstream_path == "me" and method == "GET":
                 return httpx.Response(
                     200,
@@ -817,12 +874,15 @@ class BffSessionProfileSyncTests(TestCase):
                 )
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-            BFF_ENFORCE_ACTIVE_MEMBERSHIP=True,
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+                BFF_ENFORCE_ACTIVE_MEMBERSHIP=True,
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = self.client.get(
                 "/api/v1/session/me",
                 HTTP_HOST=self.host,
@@ -902,6 +962,7 @@ class OidcAuthLoginTests(TestCase):
 
         # Extract state from URL
         import re
+
         match = re.search(r"state=([^&]+)", location)
         self.assertIsNotNone(match)
         state = match.group(1)
@@ -929,6 +990,7 @@ class OidcAuthLoginTests(TestCase):
         location = resp["Location"]
 
         import re
+
         match = re.search(r"state=([^&]+)", location)
         state = match.group(1)
 
@@ -983,7 +1045,9 @@ class OidcAuthCallbackTests(TestCase):
         self.assertIn("/login?", resp["Location"])
         self.assertIn("auth_error=INVALID_STATE", resp["Location"])
 
-    def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(self):
+    def test_callback_with_state_tenant_mismatch_returns_error_and_preserves_state(
+        self,
+    ):
         """GET /auth/callback rejects state created for another tenant."""
 
         other_tenant = Tenant.objects.create(slug="other")
@@ -1021,9 +1085,7 @@ class OidcAuthCallbackTests(TestCase):
 
     @patch("httpx.post")
     @patch("httpx.get")
-    def test_callback_success_creates_session_and_redirects(
-        self, mock_get, mock_post
-    ):
+    def test_callback_success_creates_session_and_redirects(self, mock_get, mock_post):
         """Successful callback creates session and redirects to next."""
 
         # Setup state in DB
@@ -1105,9 +1167,12 @@ class OidcAuthCallbackTests(TestCase):
         ]
         mock_post.return_value = httpx.Response(200, json={"access_token": "test"})
         for index, (payload, valid) in enumerate(cases):
-            with self.subTest(payload=payload), self.settings(
-                BFF_TENANT_HOST_SUFFIX="updspace.com",
-                BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            with (
+                self.subTest(payload=payload),
+                self.settings(
+                    BFF_TENANT_HOST_SUFFIX="updspace.com",
+                    BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+                ),
             ):
                 state = f"identity-contract-{index}"
                 BffOauthState.objects.create(
@@ -1118,13 +1183,16 @@ class OidcAuthCallbackTests(TestCase):
                 )
                 mock_get.return_value = httpx.Response(200, content=json.dumps(payload))
                 response = self.client.get(
-                    "/api/v1/auth/callback", {"code": "test", "state": state},
+                    "/api/v1/auth/callback",
+                    {"code": "test", "state": state},
                     HTTP_HOST=self.host,
                 )
                 self.assertEqual(response.status_code, 302)
                 if valid:
                     self.assertEqual(response["Location"], "/dashboard")
-                    session = SessionStore().get(response.cookies["updspace_session"].value)
+                    session = SessionStore().get(
+                        response.cookies["updspace_session"].value
+                    )
                     self.assertEqual(session.user_id, identity)
                 else:
                     self.assertIn("auth_error=INVALID_USERINFO", response["Location"])
@@ -1234,6 +1302,7 @@ class OidcAuthIntegrationTests(TestCase):
 
         # Extract state for callback
         import re
+
         match = re.search(r"state=([^&]+)", authorize_url)
         state = match.group(1)
 
@@ -1530,6 +1599,30 @@ class CsrfProtectionTests(TestCase):
         self.host = "aef.updspace.com"
         self.logout_path = "/api/v1/session/logout"
 
+    def test_logout_without_selected_tenant_revokes_session_with_csrf(self):
+        for path in (self.logout_path, "/api/v1/logout"):
+            with self.subTest(path=path):
+                client = Client(enforce_csrf_checks=True)
+                session = SessionStore().create(
+                    tenant_id=str(self.tenant.id),
+                    user_id=str(uuid.uuid4()),
+                    master_flags={},
+                    ttl=timedelta(minutes=10),
+                )
+                client.cookies[settings.BFF_SESSION_COOKIE_NAME] = session.session_id
+                host = "portal.updspace.com"
+                rejected = client.post(path, HTTP_HOST=host)
+                self.assertEqual(rejected.status_code, 403)
+                self.assertEqual(rejected.json()["error"]["code"], "CSRF_FAILED")
+                self.assertIsNotNone(SessionStore().get(session.session_id))
+                token = client.get("/api/v1/csrf", HTTP_HOST=host).json()["csrfToken"]
+                response = client.post(path, HTTP_HOST=host, HTTP_X_CSRF_TOKEN=token)
+                self.assertEqual(response.status_code, 204)
+                self.assertIsNone(SessionStore().get(session.session_id))
+                self.assertEqual(
+                    response.cookies[settings.BFF_SESSION_COOKIE_NAME]["max-age"], 0
+                )
+
     def test_csrf_bootstrap_sets_host_only_cookie(self):
         resp = self.client.get(
             "/api/v1/csrf",
@@ -1734,16 +1827,19 @@ class BffSessionAuditTests(TestCase):
                 return httpx.Response(204, content=b"")
             return httpx.Response(200, json={"ok": True})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
-            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
-            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-            BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+                BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+                BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+                BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = client.delete(
                 "/api/v1/account/me",
                 HTTP_HOST=host,
@@ -1757,9 +1853,7 @@ class BffSessionAuditTests(TestCase):
         self.assertEqual(dsar_audits[0].target_id, "self")
         self.assertIn("voting", dsar_audits[0].metadata["services_erased"])
 
-        account_audits = list(
-            BffAuditEvent.objects.filter(action="account.deleted")
-        )
+        account_audits = list(BffAuditEvent.objects.filter(action="account.deleted"))
         self.assertEqual(len(account_audits), 1)
         event = account_audits[0]
         self.assertEqual(event.target_type, "user_account")
@@ -1797,15 +1891,18 @@ class BffSessionAuditTests(TestCase):
         ):
             return httpx.Response(200, json={"service": "ok"})
 
-        with self.settings(
-            BFF_TENANT_HOST_SUFFIX="updspace.com",
-            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
-            BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
-            BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
-            BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
-            BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
-            BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
-        ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
+        with (
+            self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
+                BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1",
+                BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
+                BFF_UPSTREAM_EVENTS_URL="http://events:8005/api/v1",
+                BFF_UPSTREAM_GAMIFICATION_URL="http://gamification:8007/api/v1",
+                BFF_UPSTREAM_VOTING_URL="http://voting:8004/api/v1",
+            ),
+            patch("bff.api.proxy_request", side_effect=_mocked_proxy),
+        ):
             resp = client.get("/api/v1/account/me/export", HTTP_HOST=host)
 
         self.assertEqual(resp.status_code, 200)
@@ -1880,9 +1977,13 @@ class BffRetentionCommandTests(TestCase):
 
         self.assertFalse(BffSession.objects.filter(id=old_session.session_id).exists())
         self.assertTrue(BffSession.objects.filter(id=fresh_session.session_id).exists())
-        self.assertFalse(BffOauthState.objects.filter(state=expired_oauth_state.state).exists())
         self.assertFalse(
-            BffRateLimitWindow.objects.filter(bucket_key=expired_rate_limit.bucket_key).exists()
+            BffOauthState.objects.filter(state=expired_oauth_state.state).exists()
+        )
+        self.assertFalse(
+            BffRateLimitWindow.objects.filter(
+                bucket_key=expired_rate_limit.bucket_key
+            ).exists()
         )
         self.assertFalse(BffAuditEvent.objects.filter(id=old_audit.id).exists())
         self.assertTrue(BffAuditEvent.objects.filter(id=fresh_audit.id).exists())
