@@ -28,7 +28,7 @@ from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
 from .models import BffOauthState
-from .proxy import proxy_request
+from .proxy import get_httpx_client, proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
 from .tenant import (
@@ -1359,17 +1359,17 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     token_url = f"{id_base_url}/oauth/token"
 
     try:
-        token_resp = httpx.post(
-            token_url,
-            json={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": callback_url,
-                "client_id": client_id,
-                "client_secret": client_secret,
-            },
-            timeout=10.0,
-        )
+        with get_httpx_client(timeout=10.0) as client:
+            token_resp = client.post(
+                token_url,
+                json={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": callback_url,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+            )
     except httpx.HTTPError:
         return _auth_error_redirect(
             request,
@@ -1390,11 +1390,11 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     # Get user info
     userinfo_url = f"{id_base_url}/oauth/userinfo"
     try:
-        userinfo_resp = httpx.get(
-            userinfo_url,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=10.0,
-        )
+        with get_httpx_client(timeout=10.0) as client:
+            userinfo_resp = client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
     except httpx.HTTPError:
         return _auth_error_redirect(
             request,

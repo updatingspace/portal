@@ -17,5 +17,6 @@ container_image_tags = {
 # Cert для основного домена portal.<public_zone> (Certificate Manager).
 portal_certificate_id = "REPLACE-with-cert-id"
 
-# Опционально: тёплые контейнеры против cold-start (континуальная стоимость).
-# min_ready_instances = { bff = 1, portal = 1, access = 1 }
+# По умолчанию подготовленных экземпляров нет: без трафика нет платы за их простой.
+# Опционально: прогретый BFF против cold-start (постоянная плата даже при 0 RPS).
+# min_ready_instances = { bff = 1 }
