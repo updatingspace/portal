@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
 from django.conf import settings
@@ -1408,10 +1409,14 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    userinfo = userinfo_resp.json()
-    user_id = userinfo.get("sub") or userinfo.get("user_id")
-
-    if not user_id:
+    try:
+        userinfo = userinfo_resp.json()
+        if not isinstance(userinfo, dict):
+            raise TypeError("Userinfo must be an object")
+        # OIDC subjects are opaque. Prefer the explicit internal identity claim;
+        # older ID releases exposed the same UUID as their subject.
+        user_id = str(UUID(str(userinfo.get("user_id") or userinfo.get("sub") or "")))
+    except (TypeError, ValueError):
         return _auth_error_redirect(
             request,
             code="INVALID_USERINFO",

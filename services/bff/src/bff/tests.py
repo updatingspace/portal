@@ -1087,6 +1087,48 @@ class OidcAuthCallbackTests(TestCase):
         self.assertFalse(BffOauthState.objects.filter(state=state).exists())
 
     @patch("httpx.post")
+    @patch("httpx.get")
+    def test_callback_validates_internal_identity_claim(self, mock_get, mock_post):
+        identity = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        cases = [
+            ({"sub": "18", "user_id": identity}, True),
+            ({"sub": identity}, True),
+            ({"sub": "18"}, False),
+            ({"sub": identity, "user_id": "invalid"}, False),
+            ({"sub": {"nested": identity}}, False),
+            ({}, False),
+            ([], False),
+            (None, False),
+        ]
+        mock_post.return_value = httpx.Response(200, json={"access_token": "test"})
+        for index, (payload, valid) in enumerate(cases):
+            with self.subTest(payload=payload), self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            ):
+                state = f"identity-contract-{index}"
+                BffOauthState.objects.create(
+                    state=state,
+                    tenant_id=self.tenant.id,
+                    next_path="/dashboard",
+                    expires_at=timezone.now() + timedelta(minutes=10),
+                )
+                mock_get.return_value = httpx.Response(200, content=json.dumps(payload))
+                response = self.client.get(
+                    "/api/v1/auth/callback", {"code": "test", "state": state},
+                    HTTP_HOST=self.host,
+                )
+                self.assertEqual(response.status_code, 302)
+                if valid:
+                    self.assertEqual(response["Location"], "/dashboard")
+                    session = SessionStore().get(response.cookies["updspace_session"].value)
+                    self.assertEqual(session.user_id, identity)
+                else:
+                    self.assertIn("auth_error=INVALID_USERINFO", response["Location"])
+                    self.assertNotIn("updspace_session", response.cookies)
+                self.assertFalse(BffOauthState.objects.filter(state=state).exists())
+
+    @patch("httpx.post")
     def test_callback_token_exchange_failure_returns_error(self, mock_post):
         """Failed token exchange redirects to login with auth_error."""
         state = "valid-state-456"

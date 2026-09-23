@@ -13,6 +13,11 @@ tenant isolation and revocation. Run `python scripts/check_ydb_auth_runtime.py`
 after `migrate_ydb` with the local YDB environment from `.github/workflows/ci.yml`.
 The check refuses non-local databases.
 
+OIDC callback uses the `user_id` UUID claim for the internal Portal identity.
+For older ID releases, a UUID `sub` is accepted when `user_id` is absent.
+Opaque subjects without an internal UUID are rejected with `INVALID_USERINFO`
+and no session; they must be linked to an UpdSpace identity in ID.
+
 ## Run
 
 ### Local Dev

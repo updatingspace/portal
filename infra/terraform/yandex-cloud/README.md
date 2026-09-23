@@ -31,6 +31,7 @@
 - Tenant hosts используют `*.t.updspace.com` by default (`*.${tenant_wildcard_subdomain}.${public_zone}`) как direct addressing surface для конкретного tenant, чтобы exact service domains вроде `id.updspace.com` могли жить на отдельных gateways.
 - Wildcard certificate для tenant hosts ожидается как уже выпущенный `certificate_id`. Сертификат должен покрывать `*.t.updspace.com` при production default `tenant_wildcard_subdomain = "t"`. Сертификат можно bootstrap'нуть отдельно в Certificate Manager и затем передать его ID сюда.
 - `UpdSpaceID` живёт вне этого репозитория. Для BFF указываются `id_public_base_url` и при необходимости `id_internal_api_url`.
+- В GitHub Actions `id_internal_api_url` задаётся отдельным необязательным secret `YC_ID_INTERNAL_API_URL`. Без него BFF использует `id_public_base_url` + `/api/v1`; старое значение из `YC_TF_VARS_B64` переопределяется, чтобы очередной apply не восстановил неработающий внутренний адрес.
 - Один serverless YDB database используется всеми сервисами; разделение идёт по именам таблиц и сервисным migration job'ам.
 
 ## Секреты Lockbox
