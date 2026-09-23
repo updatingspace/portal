@@ -188,6 +188,21 @@ jobs:
       - name: Restore Terraform variables
         run: |
           printf '%s' '${{ secrets.YC_TF_VARS_B64 }}' | base64 --decode > infra/terraform/yandex-cloud/runtime.auto.tfvars
+      - name: Set current ID upstream
+        env:
+          ID_INTERNAL_API_URL: ${{ secrets.YC_ID_INTERNAL_API_URL }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          # An obsolete URL in bundled tfvars must not restore a broken BFF.
+          # Empty uses the public ID URL; private routing requires this secret.
+          Path('infra/terraform/yandex-cloud/zz-id-upstream.auto.tfvars.json').write_text(
+              json.dumps({'id_internal_api_url': os.environ.get('ID_INTERNAL_API_URL', '').strip()})
+          )
+          PY
       - name: Pin current image tags
         run: |
           cat > infra/terraform/yandex-cloud/image-tags.auto.tfvars.json <<JSON
