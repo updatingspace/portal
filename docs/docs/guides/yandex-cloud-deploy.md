@@ -4,6 +4,14 @@ title: Yandex Cloud Deploy
 
 # Yandex Cloud Deploy
 
+HTTP-контейнеры принимают запросы на порте из переменной `PORT`, которую задаёт
+Yandex Serverless Containers. Команды запуска Gunicorn используют этот порт;
+если `PORT` отсутствует или пуст (локальный запуск), сохраняется порт сервиса
+из Docker Compose. `EXPOSE` сам по себе не меняет порт слушающего процесса.
+Shell-команда запуска использует `exec`, чтобы Gunicorn оставался PID 1 и
+получал сигналы завершения. Контракт проверяется запуском реального Gunicorn
+на назначенном порте в `scripts/ci/test_http_container_ports.py`.
+
 Этот runbook фиксирует production-путь для деплоя `updspace-portal` в Yandex Cloud на low-cost serverless-стеке.
 
 ## Целевая topology
