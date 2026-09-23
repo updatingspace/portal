@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import traceback
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -17,6 +19,7 @@ from .session_store import SessionStore
 from .tenant import resolve_tenant
 
 REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
+logger = logging.getLogger(__name__)
 
 # Endpoints that work without any tenant context (tenantless mode)
 TENANTLESS_PREFIXES = (
@@ -76,6 +79,18 @@ class ErrorMappingMiddleware(MiddlewareMixin):
     def process_exception(self, request: HttpRequest, exception: Exception):
         if not request.path.startswith("/api/v1/"):
             return None
+
+        # Exception messages may contain database parameters or credentials.
+        # Keep the request correlation and stack locations without those values.
+        frames = traceback.extract_tb(exception.__traceback__)
+        logger.error(
+            "Unhandled BFF error: method=%s path=%s request_id=%s type=%s stack=%s",
+            request.method,
+            request.path,
+            getattr(request, "request_id", None),
+            type(exception).__name__,
+            [(frame.filename, frame.lineno, frame.name) for frame in frames],
+        )
 
         # Avoid leaking exception details in prod.
         details = None
