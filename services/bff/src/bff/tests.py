@@ -1165,6 +1165,88 @@ class OidcAuthCallbackTests(TestCase):
 
     @patch("httpx.Client.post")
     @patch("httpx.Client.get")
+    def test_callback_rejects_invalid_token_payload_without_userinfo(
+        self, mock_get, mock_post
+    ):
+        bodies = [
+            b"<html>upstream unavailable</html>",
+            b"\xff",
+            b"null",
+            b"[]",
+            b"{}",
+            b'{"access_token": null}',
+            b'{"access_token": ""}',
+            b'{"access_token": "  "}',
+            b'{"access_token": 123}',
+            b'{"access_token": {"nested": "value"}}',
+        ]
+        for index, body in enumerate(bodies):
+            with self.subTest(body=body), self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            ):
+                state = f"invalid-token-response-{index}"
+                BffOauthState.objects.create(
+                    state=state,
+                    tenant_id=self.tenant.id,
+                    next_path="/dashboard",
+                    expires_at=timezone.now() + timedelta(minutes=10),
+                )
+                mock_post.reset_mock()
+                mock_get.reset_mock()
+                mock_post.return_value = httpx.Response(200, content=body)
+                response = self.client.get(
+                    "/api/v1/auth/callback", {"code": "test", "state": state},
+                    HTTP_HOST=self.host,
+                )
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("auth_error=TOKEN_EXCHANGE_FAILED", response["Location"])
+                self.assertIn("next=%2Fdashboard", response["Location"])
+                self.assertNotIn("updspace_session", response.cookies)
+                self.assertEqual(BffSession.objects.count(), 0)
+                self.assertFalse(BffOauthState.objects.filter(state=state).exists())
+                mock_post.assert_called_once()
+                mock_get.assert_not_called()
+
+    @patch("httpx.Client.post")
+    @patch("httpx.Client.get")
+    def test_callback_timeouts_preserve_next_without_replaying_exchange(
+        self, mock_get, mock_post
+    ):
+        for stage in ("token", "userinfo"):
+            with self.subTest(stage=stage), self.settings(
+                BFF_TENANT_HOST_SUFFIX="updspace.com",
+                BFF_UPSTREAM_ID_URL="http://id.internal:8001/api/v1",
+            ):
+                state = f"timeout-{stage}"
+                BffOauthState.objects.create(
+                    state=state,
+                    tenant_id=self.tenant.id,
+                    next_path="/dashboard",
+                    expires_at=timezone.now() + timedelta(minutes=10),
+                )
+                mock_post.reset_mock()
+                mock_get.reset_mock()
+                mock_post.side_effect = (
+                    httpx.ReadTimeout("upstream timeout") if stage == "token" else None
+                )
+                mock_post.return_value = httpx.Response(200, json={"access_token": "test"})
+                mock_get.side_effect = httpx.ReadTimeout("upstream timeout")
+                response = self.client.get(
+                    "/api/v1/auth/callback", {"code": "test", "state": state},
+                    HTTP_HOST=self.host,
+                )
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("auth_error=UPSTREAM_UNAVAILABLE", response["Location"])
+                self.assertIn("next=%2Fdashboard", response["Location"])
+                self.assertNotIn("updspace_session", response.cookies)
+                self.assertEqual(BffSession.objects.count(), 0)
+                self.assertFalse(BffOauthState.objects.filter(state=state).exists())
+                mock_post.assert_called_once()
+                self.assertEqual(mock_get.call_count, 0 if stage == "token" else 1)
+
+    @patch("httpx.Client.post")
+    @patch("httpx.Client.get")
     def test_callback_userinfo_failure_returns_error(self, mock_get, mock_post):
         """Failed userinfo fetch redirects to login with auth_error."""
         state = "valid-state-789"

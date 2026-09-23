@@ -48,6 +48,8 @@ Logout path ревокает текущую BFF session и чистит browser 
 | Failure mode | Effect |
 | --- | --- |
 | identity callback invalid | login sequence does not materialize session |
+| OIDC token endpoint returns malformed JSON or an invalid `access_token` | BFF redirects to `/login` with `auth_error=TOKEN_EXCHANGE_FAILED`, preserves `next`, and does not call userinfo or create a session |
+| OIDC token/userinfo request times out | BFF redirects with `auth_error=UPSTREAM_UNAVAILABLE`; the code exchange is not automatically retried and its state remains consumed |
 | tenant not selected | `session/me` может вернуть tenantless state |
 | internal secret misconfigured | BFF не может безопасно подписывать internal requests |
 | downstream profile unavailable | session still exists, but bootstrap becomes partial |

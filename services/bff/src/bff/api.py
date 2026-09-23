@@ -1384,8 +1384,19 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    tokens = token_resp.json()
-    access_token = tokens.get("access_token")
+    try:
+        tokens = token_resp.json()
+        if not isinstance(tokens, dict):
+            raise TypeError("Token response must be an object")
+        access_token = tokens.get("access_token")
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("Token response must contain a non-empty access token")
+    except (TypeError, ValueError):
+        return _auth_error_redirect(
+            request,
+            code="TOKEN_EXCHANGE_FAILED",
+            next_path=next_path,
+        )
 
     # Get user info
     userinfo_url = f"{id_base_url}/oauth/userinfo"
