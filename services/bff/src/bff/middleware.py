@@ -282,10 +282,7 @@ class SessionRateLimitMiddleware(MiddlewareMixin):
                     if created:
                         return None
 
-                    if (
-                        window.expires_at <= now
-                        or window.window_started_at < window_start
-                    ):
+                    if window.expires_at <= now or window.window_started_at < window_start:
                         reset = BffRateLimitWindow.objects.filter(
                             bucket_key=bucket_key,
                             expires_at=window.expires_at,
