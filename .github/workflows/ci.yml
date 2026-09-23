@@ -88,6 +88,11 @@ jobs:
         run: ruff check --config ../../ruff.toml src
       - name: Run tests
         run: pytest -q ${{ matrix.test_target }}
+      - name: Check HTTP runtime port contract
+        if: matrix.service == 'bff'
+        run: |
+          ruff check --config ../../ruff.toml ../../scripts/ci/test_http_container_ports.py
+          pytest -q ../../scripts/ci/test_http_container_ports.py
 
   ydb-schema-check:
     name: YDB schema dry-run (${{ matrix.service }})

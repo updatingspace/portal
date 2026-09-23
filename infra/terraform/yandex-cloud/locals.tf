@@ -119,15 +119,15 @@ locals {
   id_public_base_url  = trimsuffix(var.id_public_base_url, "/")
   id_internal_api_url = var.id_internal_api_url != "" ? trimsuffix(var.id_internal_api_url, "/") : "${local.id_public_base_url}/api/v1"
 
-  access_api_url       = "${yandex_serverless_container.access.url}/api/v1"
+  access_api_url       = "${trimsuffix(yandex_serverless_container.access.url, "/")}/api/v1"
   access_service_url   = yandex_serverless_container.access.url
-  portal_api_url       = "${yandex_serverless_container.portal.url}/api/v1"
-  featureflags_api_url = "${yandex_serverless_container.featureflags.url}/api/v1"
-  activity_api_url     = "${yandex_serverless_container.activity.url}/api/v1"
+  portal_api_url       = "${trimsuffix(yandex_serverless_container.portal.url, "/")}/api/v1"
+  featureflags_api_url = "${trimsuffix(yandex_serverless_container.featureflags.url, "/")}/api/v1"
+  activity_api_url     = "${trimsuffix(yandex_serverless_container.activity.url, "/")}/api/v1"
   activity_service_url = yandex_serverless_container.activity.url
-  events_api_url       = "${yandex_serverless_container.events.url}/api/v1"
-  gamification_api_url = "${yandex_serverless_container.gamification.url}/api/v1"
-  voting_api_url       = "${yandex_serverless_container.voting.url}/api/v1"
+  events_api_url       = "${trimsuffix(yandex_serverless_container.events.url, "/")}/api/v1"
+  gamification_api_url = "${trimsuffix(yandex_serverless_container.gamification.url, "/")}/api/v1"
+  voting_api_url       = "${trimsuffix(yandex_serverless_container.voting.url, "/")}/api/v1"
 
   access_env = merge(
     local.common_service_env,
