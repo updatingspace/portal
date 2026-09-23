@@ -25,6 +25,13 @@ original `next` path; no userinfo request or session is created. Upstream
 timeouts use `UPSTREAM_UNAVAILABLE`. The authorization-code exchange is never
 automatically retried, and its state remains consumed after an attempted exchange.
 
+ID proxy requests and OIDC token/userinfo calls allow up to 30 seconds of HTTP
+read inactivity (`BFF_ID_TIMEOUT_SECONDS`) so a cold ID container can finish
+starting. Connect, write and pool timeouts still use `BFF_PROXY_TIMEOUT_SECONDS`
+(10 seconds), as do other upstreams. An explicit per-request timeout takes
+precedence. This is a response-wait allowance, not a total request deadline or a
+latency guarantee; it adds no retries, periodic requests or warm instances.
+
 Proxy requests and OIDC token/userinfo calls reuse a bounded HTTP connection pool within each worker process
 (100 connections, at most 20 idle connections retained for 30 seconds). Each
 request still gets its own HTTPX client, so upstream cookies and per-user headers

@@ -1313,6 +1313,8 @@ class OidcAuthIntegrationTests(TestCase):
             self.settings(
                 BFF_TENANT_HOST_SUFFIX="updspace.com",
                 BFF_UPSTREAM_ID_URL="https://id.example.invalid/api/v1",
+                BFF_PROXY_TIMEOUT_SECONDS=7,
+                BFF_ID_TIMEOUT_SECONDS=45,
             ),
             patch("bff.proxy.getproxies", return_value={}),
             patch.object(proxy_module, "_TRANSPORT", httpx.MockTransport(upstream)),
@@ -1334,6 +1336,11 @@ class OidcAuthIntegrationTests(TestCase):
                 self.assertTrue(cookie["httponly"])
                 self.assertEqual(SessionStore().get(cookie.value).user_id, identity)
         self.assertEqual([request.method for request in requests], ["POST", "GET"] * 2)
+        for request in requests:
+            self.assertEqual(
+                request.extensions["timeout"],
+                {"connect": 7, "read": 45, "write": 7, "pool": 7},
+            )
 
     @patch("httpx.Client.post")
     @patch("httpx.Client.get")

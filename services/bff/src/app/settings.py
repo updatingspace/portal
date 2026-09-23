@@ -220,6 +220,11 @@ try:
 except ValueError:
     BFF_PROXY_TIMEOUT_SECONDS = 10.0
 
+try:
+    BFF_ID_TIMEOUT_SECONDS = float(os.getenv("BFF_ID_TIMEOUT_SECONDS", "30"))
+except ValueError:
+    BFF_ID_TIMEOUT_SECONDS = 30.0
+
 ROOT_URLCONF = "app.urls"
 
 TEMPLATES = [
