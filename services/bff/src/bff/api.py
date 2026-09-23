@@ -1413,9 +1413,9 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
         userinfo = userinfo_resp.json()
         if not isinstance(userinfo, dict):
             raise TypeError("Userinfo must be an object")
-        # OIDC subjects are opaque. Prefer the explicit internal identity claim;
-        # older ID releases exposed the same UUID as their subject.
-        user_id = str(UUID(str(userinfo.get("user_id") or userinfo.get("sub") or "")))
+        # A UUID-shaped OIDC subject is still opaque, not proof of a linked
+        # internal identity. ID omits user_id when no master is linked.
+        user_id = str(UUID(str(userinfo.get("user_id") or "")))
     except (TypeError, ValueError):
         return _auth_error_redirect(
             request,

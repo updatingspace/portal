@@ -1050,6 +1050,7 @@ class OidcAuthCallbackTests(TestCase):
             200,
             json={
                 "sub": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "email": "test@example.com",
                 "master_flags": {"email_verified": True},
             },
@@ -1092,7 +1093,9 @@ class OidcAuthCallbackTests(TestCase):
         identity = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         cases = [
             ({"sub": "18", "user_id": identity}, True),
-            ({"sub": identity}, True),
+            ({"sub": identity, "user_id": identity}, True),
+            ({"sub": identity}, False),
+            ({"sub": identity, "user_id": None}, False),
             ({"sub": "18"}, False),
             ({"sub": identity, "user_id": "invalid"}, False),
             ({"sub": {"nested": identity}}, False),
@@ -1253,6 +1256,7 @@ class OidcAuthIntegrationTests(TestCase):
             200,
             json={
                 "sub": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "user_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "email": "voter@aef.com",
                 "name": "Test Voter",
                 "master_flags": {"system_admin": False},
