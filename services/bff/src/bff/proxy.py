@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import atexit
+import os
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from urllib.parse import urlparse
+from urllib.request import getproxies
 
 import httpx
 from django.conf import settings
@@ -12,6 +15,53 @@ from .security import sign_internal_request
 
 _TOKEN_LOCK = threading.Lock()
 _TOKEN_CACHE: dict[str, str | float] = {"token": "", "expires_at": 0.0}
+_TRANSPORT_LOCK = threading.Lock()
+_TRANSPORT: httpx.HTTPTransport | None = None
+
+
+def _get_transport() -> httpx.HTTPTransport:
+    global _TRANSPORT
+    with _TRANSPORT_LOCK:
+        if _TRANSPORT is None:
+            # Share sockets, never a Client's cookies, headers or auth state.
+            _TRANSPORT = httpx.HTTPTransport(
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=30.0,
+                ),
+            )
+        return _TRANSPORT
+
+
+def _close_transport() -> None:
+    global _TRANSPORT
+    with _TRANSPORT_LOCK:
+        transport, _TRANSPORT = _TRANSPORT, None
+    if transport is not None:
+        transport.close()
+
+
+def _reset_transport_after_fork() -> None:
+    global _TRANSPORT, _TRANSPORT_LOCK
+    # An inherited lock may be held by a thread that does not exist in the child.
+    # Neither sockets nor locks belonging to the parent can be reused there.
+    _TRANSPORT = None
+    _TRANSPORT_LOCK = threading.Lock()
+
+
+class _BorrowedTransport(httpx.BaseTransport):
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        return _get_transport().handle_request(request)
+
+    def close(self) -> None:
+        # The worker owns the pool; closing one request must not close it.
+        pass
+
+
+atexit.register(_close_transport)
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_transport_after_fork)
 
 
 def _filtered_request_headers(
@@ -41,7 +91,14 @@ def _filtered_request_headers(
 def get_httpx_client(timeout: float | None = None) -> httpx.Client:
     if timeout is None:
         timeout = float(getattr(settings, "BFF_PROXY_TIMEOUT_SECONDS", 10))
-    return httpx.Client(timeout=timeout, follow_redirects=False)
+    # An explicit transport disables HTTPX's automatic proxy routing. Preserve
+    # HTTP(S)/ALL_PROXY and NO_PROXY behavior in environments that use a proxy.
+    proxies = getproxies()
+    if any(proxies.get(scheme) for scheme in ("http", "https", "all")):
+        return httpx.Client(timeout=timeout, follow_redirects=False)
+    return httpx.Client(
+        timeout=timeout, follow_redirects=False, transport=_BorrowedTransport()
+    )
 
 
 def _normalize_base_url(url: str) -> str:
@@ -107,7 +164,10 @@ def proxy_request(
     request_id: str,
     stream: bool = False,
     timeout: float | None = None,
-) -> httpx.Response | tuple[httpx.Response, Callable[[], Iterable[bytes]], Callable[[], None]]:
+) -> (
+    httpx.Response
+    | tuple[httpx.Response, Callable[[], Iterable[bytes]], Callable[[], None]]
+):
     url = upstream_base_url.rstrip("/") + "/" + upstream_path.lstrip("/")
     if query_string:
         url = url + ("&" if "?" in url else "?") + query_string
@@ -133,14 +193,19 @@ def proxy_request(
     headers["X-Updspace-Signature"] = signed.signature
 
     if stream:
-        client = get_httpx_client(timeout=None)
+        client = get_httpx_client(timeout=timeout)
         stream_ctx = client.stream(
             method=method,
             url=url,
             content=body,
             headers=headers,
         )
-        resp = stream_ctx.__enter__()
+        try:
+            resp = stream_ctx.__enter__()
+        except BaseException:
+            client.close()
+            raise
+        closed = False
 
         def iterator() -> Iterable[bytes]:
             try:
@@ -149,9 +214,13 @@ def proxy_request(
                 close()
 
         def close() -> None:
-            resp.close()
-            stream_ctx.__exit__(None, None, None)
-            client.close()
+            nonlocal closed
+            if not closed:
+                closed = True
+                try:
+                    stream_ctx.__exit__(None, None, None)
+                finally:
+                    client.close()
 
         return resp, iterator, close
 
