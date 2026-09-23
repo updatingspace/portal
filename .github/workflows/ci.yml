@@ -44,7 +44,7 @@ jobs:
           - service: activity
             test_target: src
           - service: bff
-            test_target: src/bff/tests.py src/bff/tests_tenant_context.py
+            test_target: src/bff/tests.py src/bff/tests_tenant_context.py src/bff/test_ydb_compat.py
           - service: events
             test_target: src/events/tests.py src/events/test_settings_security.py
           - service: featureflags
@@ -152,6 +152,11 @@ jobs:
           '
       - name: Run migrate_ydb dry-run
         run: python src/manage.py migrate_ydb --dry-run
+      - name: Check BFF auth and sessions against YDB
+        if: matrix.service == 'bff'
+        run: |
+          python src/manage.py migrate_ydb
+          python scripts/check_ydb_auth_runtime.py
 
   frontend-check:
     name: Check portal frontend

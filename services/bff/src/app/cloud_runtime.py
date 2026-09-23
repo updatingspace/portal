@@ -137,6 +137,9 @@ def build_database_settings(
         raise ImproperlyConfigured("DB_DRIVER must be one of: postgres, ydb")
 
     _patch_ydb_version_check()
+    from .ydb_compat import install_ydb_compatibility
+
+    install_ydb_compatibility()
 
     ydb_endpoint = _require("YDB_ENDPOINT", read_env)
     ydb_database = _require("YDB_DATABASE", read_env)
