@@ -45,6 +45,13 @@ Logout path ревокает текущую BFF session и чистит browser 
 
 ## Failure modes worth knowing
 
+Вызовы ID через proxy и OIDC token/userinfo допускают 30 секунд ожидания данных
+ответа (`BFF_ID_TIMEOUT_SECONDS`), чтобы холодный запуск ID не обрывался прежним
+10-секундным read timeout. Connect/write/pool и остальные upstream используют
+`BFF_PROXY_TIMEOUT_SECONDS` (10 секунд). Явный timeout отдельного запроса имеет
+приоритет. Это предел бездействия при чтении, а не общий deadline или гарантия
+скорости. Повторов обмена кода, периодического прогрева и готовых инстансов нет.
+
 | Failure mode | Effect |
 | --- | --- |
 | identity callback invalid | login sequence does not materialize session |

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +21,8 @@ class EchoHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
+        if self.path.startswith("/slow"):
+            time.sleep(0.5)
         payload = json.dumps(
             {
                 "port": self.client_address[1],
@@ -34,7 +37,10 @@ class EchoHandler(BaseHTTPRequestHandler):
         if self.path == "/redirect":
             self.send_header("Location", "/should-not-follow")
         self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.wfile.write(payload)
+        except BrokenPipeError:
+            pass  # The timeout regression deliberately cancels one response.
 
     def log_message(self, format: str, *args: object) -> None:
         pass
@@ -62,7 +68,7 @@ def isolated_pool() -> Iterator[None]:
 
 
 def call_proxy(
-    upstream: str, user: str, *, stream: bool = False
+    upstream: str, user: str, *, stream: bool = False, timeout: float | None = 2
 ) -> (
     httpx.Response
     | tuple[httpx.Response, Callable[[], Iterable[bytes]], Callable[[], None]]
@@ -84,7 +90,7 @@ def call_proxy(
         },
         request_id=f"request-{user}",
         stream=stream,
-        timeout=2,
+        timeout=timeout,
     )
 
 
@@ -189,6 +195,66 @@ def test_timeout_is_passed_per_request(stream: bool) -> None:
         {"connect": 2, "read": 2, "write": 2, "pool": 2},
         {"connect": 7, "read": 7, "write": 7, "pool": 7},
     ]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("id_read_timeout", [30, 45])
+def test_id_response_wait_is_scoped_and_explicit_timeout_wins(
+    stream: bool, id_read_timeout: float
+) -> None:
+    seen: list[dict[str, float]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request.extensions["timeout"])
+        raise httpx.ReadTimeout("upstream timed out", request=request)
+
+    with (
+        override_settings(
+            BFF_UPSTREAM_ID_URL="https://id.invalid/api/v1/",
+            BFF_PROXY_TIMEOUT_SECONDS=7,
+            BFF_ID_TIMEOUT_SECONDS=id_read_timeout,
+        ),
+        patch.object(proxy, "_TRANSPORT", httpx.MockTransport(handle)),
+    ):
+        for upstream_url, timeout in (
+            ("https://id.invalid/api/v1", None),
+            ("https://id.invalid/api/v1", 2),
+            ("https://portal.invalid/api/v1", None),
+            ("https://id.invalid/api/other", None),
+        ):
+            with pytest.raises(httpx.ReadTimeout):
+                call_proxy(upstream_url, "a", stream=stream, timeout=timeout)
+    assert seen == [
+        {"connect": 7, "read": id_read_timeout, "write": 7, "pool": 7},
+        {"connect": 2, "read": 2, "write": 2, "pool": 2},
+        {"connect": 7, "read": 7, "write": 7, "pool": 7},
+        {"connect": 7, "read": 7, "write": 7, "pool": 7},
+    ]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_slow_id_response_survives_generic_read_deadline(
+    upstream: str, stream: bool
+) -> None:
+    with override_settings(
+        BFF_UPSTREAM_ID_URL=upstream + "/slow",
+        BFF_PROXY_TIMEOUT_SECONDS=0.1,
+        BFF_ID_TIMEOUT_SECONDS=2,
+    ):
+        # The same real delayed server fails with the old deadline and succeeds
+        # with the ID allowance, including streamed responses.
+        with pytest.raises(httpx.ReadTimeout):
+            call_proxy(upstream + "/slow", "a", stream=stream, timeout=0.1)
+        result = call_proxy(upstream + "/slow", "a", stream=stream, timeout=None)
+        if stream:
+            response, iterator, close = result
+            payload = json.loads(b"".join(iterator()))
+            close()
+        else:
+            response = result
+            payload = response.json()
+        assert response.status_code == 200
+        assert payload["path"] == "/slow/echo?user=a"
 
 
 def test_stream_open_failure_closes_request_client() -> None:

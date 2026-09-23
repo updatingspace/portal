@@ -88,7 +88,15 @@ def _filtered_request_headers(
     return out
 
 
-def get_httpx_client(timeout: float | None = None) -> httpx.Client:
+def get_id_timeout() -> httpx.Timeout:
+    # Only response waiting needs extra time for a scaled-to-zero ID container.
+    return httpx.Timeout(
+        float(getattr(settings, "BFF_PROXY_TIMEOUT_SECONDS", 10)),
+        read=float(getattr(settings, "BFF_ID_TIMEOUT_SECONDS", 30)),
+    )
+
+
+def get_httpx_client(timeout: float | httpx.Timeout | None = None) -> httpx.Client:
     if timeout is None:
         timeout = float(getattr(settings, "BFF_PROXY_TIMEOUT_SECONDS", 10))
     # An explicit transport disables HTTPX's automatic proxy routing. Preserve
@@ -163,11 +171,22 @@ def proxy_request(
     context_headers: dict[str, str],
     request_id: str,
     stream: bool = False,
-    timeout: float | None = None,
+    timeout: float | httpx.Timeout | None = None,
 ) -> (
     httpx.Response
     | tuple[httpx.Response, Callable[[], Iterable[bytes]], Callable[[], None]]
 ):
+    id_upstream = str(
+        getattr(settings, "BFF_UPSTREAM_ID_URL", "")
+        or getattr(settings, "ID_BASE_URL", "")
+        or ""
+    ).strip()
+    if (
+        timeout is None
+        and id_upstream
+        and _normalize_base_url(upstream_base_url) == _normalize_base_url(id_upstream)
+    ):
+        timeout = get_id_timeout()
     url = upstream_base_url.rstrip("/") + "/" + upstream_path.lstrip("/")
     if query_string:
         url = url + ("&" if "?" in url else "?") + query_string
