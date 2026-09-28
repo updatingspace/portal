@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from django.conf import settings
+from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 
@@ -72,8 +74,28 @@ def compute_effective_access(
 
     mf = master_flags or MasterFlags()
 
-    # Validate permission exists
-    perm = Permission.objects.filter(key=permission_key).first()
+    # Ordinary YDB decisions read one consistent snapshot in a single request.
+    # Master denials/admin decisions need only the catalog lookup, as before.
+    facts = None
+    if (
+        connection.vendor == "ydb"
+        and settings.ACCESS_YDB_BATCH_CHECKS
+        and not (mf.suspended or mf.banned or mf.system_admin)
+    ):
+        from access_control.ydb_access import load_access_facts
+
+        facts = load_access_facts(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            permission_key=permission_key,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            now=timezone.now(),
+            all_permissions=return_effective_permissions,
+        )
+        perm = facts.permission
+    else:
+        perm = Permission.objects.filter(key=permission_key).first()
     if not perm:
         return CheckDecision(
             allowed=False,
@@ -108,38 +130,34 @@ def compute_effective_access(
             permissions=[permission_key] if return_effective_permissions else [],
         )
 
-    # Overrides
-    now = timezone.now()
-    overrides = list(
-        PolicyOverride.objects.filter(tenant_id=tenant_id, user_id=user_id)
-        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
-        .select_related("permission")
-        .order_by("-created_at")
-    )
+    # Deny wins over allow; both loaders apply tenant/user, expiry and key filters.
+    if facts is None:
+        override_actions = set(
+            PolicyOverride.objects.filter(tenant_id=tenant_id, user_id=user_id)
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+            .filter(Q(permission_id__isnull=True) | Q(permission_id=permission_key))
+            .values_list("action", flat=True)
+        )
+    else:
+        override_actions = facts.override_actions
+    if PolicyAction.DENY in override_actions:
+        return CheckDecision(False, "POLICY_DENY", [], [])
+    if PolicyAction.ALLOW in override_actions:
+        return CheckDecision(
+            True, "POLICY_ALLOW", [],
+            [permission_key] if return_effective_permissions else [],
+        )
 
-    def _matches_override(o: PolicyOverride) -> bool:
-        if o.permission_id is None:
-            return True
-        return o.permission_id == permission_key
-
-    # deny wins over allow
-    for o in overrides:
-        if o.action == PolicyAction.DENY and _matches_override(o):
-            return CheckDecision(
-                allowed=False,
-                reason_code="POLICY_DENY",
-                roles=[],
-                permissions=[],
-            )
-
-    for o in overrides:
-        if o.action == PolicyAction.ALLOW and _matches_override(o):
-            return CheckDecision(
-                allowed=True,
-                reason_code="POLICY_ALLOW",
-                roles=[],
-                permissions=[permission_key] if return_effective_permissions else [],
-            )
+    if facts is not None:
+        if not facts.roles:
+            return CheckDecision(False, "NO_ROLE", [], [])
+        allowed = permission_key in facts.permission_keys
+        return CheckDecision(
+            allowed=allowed,
+            reason_code="RBAC_ALLOW" if allowed else "RBAC_DENY",
+            roles=facts.roles,
+            permissions=sorted(facts.permission_keys) if return_effective_permissions else [],
+        )
 
     # RBAC
     bindings = (

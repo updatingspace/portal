@@ -88,7 +88,7 @@ jobs:
         run: ruff check --config ../../ruff.toml src
       - name: Lint Access YDB regression
         if: matrix.service == 'access'
-        run: ruff check --config ../../ruff.toml scripts/check_ydb_access_runtime.py
+        run: ruff check --config ../../ruff.toml scripts/check_ydb_access_runtime.py scripts/check_ydb_access_query.py
       - name: Run tests
         run: pytest -q ${{ matrix.test_target }}
       - name: Run Activity legacy test module
@@ -183,6 +183,7 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python scripts/check_ydb_access_runtime.py
+          python scripts/check_ydb_access_query.py
 
   frontend-check:
     name: Check portal frontend
