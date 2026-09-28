@@ -7,10 +7,12 @@ import os
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from ninja.errors import HttpError
 
+from app.private_invoke import private_invoke_headers, urlopen_no_redirect
 from core.errors import error_payload
 from portal.context import PortalContext
 
@@ -97,15 +99,13 @@ class AccessService:
         if access_base_url:
             base = access_base_url.rstrip("/")
             target_url = f"{base}/access/check"
-            path = "/api/v1/access/check"
         else:
             base = access_service_url.rstrip("/") if access_service_url else ""
             target_url = f"{base}/check"
-            path = "/check"
 
         signed_headers = AccessService._build_signed_headers(
             request_id=ctx.request_id,
-            path=path,
+            path=urlsplit(target_url).path,
             body=body,
         )
 
@@ -132,7 +132,9 @@ class AccessService:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            for key, value in private_invoke_headers(target_url).items():
+                req.add_header(key, value)
+            with urlopen_no_redirect(req, timeout=5) as resp:
                 raw = resp.read().decode("utf-8")
         except (OSError, TimeoutError, urllib.error.URLError):
             raise HttpError(

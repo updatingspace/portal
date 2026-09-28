@@ -31,6 +31,7 @@ from django.db import DatabaseError, models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from app.private_invoke import PrivateInvokeError, private_invoke_headers
 from tenant_voting.models import OutboxMessage
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ class Command(BaseCommand):
         signal.signal(signal.SIGTERM, self._handle_signal)
         
         activity_url = getattr(settings, "ACTIVITY_SERVICE_URL", "http://activity:8006/api/v1")
-        events_endpoint = f"{activity_url}/events/ingest"
+        events_endpoint = activity_url.rstrip("/") + "/events/ingest"
         
         hmac_secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")
         
@@ -172,7 +173,7 @@ class Command(BaseCommand):
         
         self.stdout.write(f"Processing {len(messages)} messages...")
         
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=10.0, follow_redirects=False) as client:
             for msg in messages:
                 try:
                     if dry_run:
@@ -192,7 +193,7 @@ class Command(BaseCommand):
                     )
                     self.messages_published += 1
                     
-                except (DatabaseError, httpx.HTTPError, OutboxPublishError):
+                except (DatabaseError, httpx.HTTPError, OutboxPublishError, PrivateInvokeError):
                     self.messages_failed += 1
                     logger.exception(
                         "Failed to publish message %s",
@@ -279,13 +280,14 @@ class Command(BaseCommand):
             ).hexdigest()
             headers["X-Updspace-Signature"] = signature
         
+        headers.update(private_invoke_headers(events_endpoint))
         response = client.post(
             events_endpoint,
             json=event_payload,
             headers=headers,
         )
         
-        if response.status_code >= 400:
+        if not 200 <= response.status_code < 300:
             raise OutboxPublishError(
                 f"Activity service returned {response.status_code}: {response.text}"
             )

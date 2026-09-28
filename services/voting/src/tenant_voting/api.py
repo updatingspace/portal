@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import uuid
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -12,6 +13,8 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import Router
+
+from app.private_invoke import private_invoke_headers
 
 from . import services
 
@@ -105,8 +108,8 @@ def _access_check_allowed(
     scope_id: str,
 ) -> bool:
     base_url = str(getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")).rstrip("/")
-    path = "/api/v1/access/check"
     url = f"{base_url}/access/check"
+    path = urlsplit(url).path
 
     payload = {
         "tenant_id": tenant_id,
@@ -134,7 +137,8 @@ def _access_check_allowed(
     headers.update(_internal_hmac_headers(method="POST", path=path, body=body, request_id=request_id))
 
     try:
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
+        headers.update(private_invoke_headers(url))
+        resp = httpx.post(url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
     except Exception:
         # Fail-closed: запрещаем при сбое проверки доступа, но логируем причину.
         logger.warning("Access check request failed; denying", exc_info=True)

@@ -12,10 +12,13 @@ import hmac
 import json
 import logging
 import time
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
 from django.conf import settings
+
+from app.private_invoke import private_invoke_headers
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +75,8 @@ def has_permission(
     base_url = str(
         getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")
     ).rstrip("/")
-    path = "/api/v1/access/check"
     url = f"{base_url}/access/check"
+    path = urlsplit(url).path
 
     payload = {
         "tenant_id": str(tenant_id),
@@ -117,7 +120,8 @@ def has_permission(
     }
 
     try:
-        with httpx.Client(timeout=5.0) as client:
+        headers.update(private_invoke_headers(url))
+        with httpx.Client(timeout=5.0, follow_redirects=False) as client:
             resp = client.post(url, content=body, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()

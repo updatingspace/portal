@@ -16,6 +16,8 @@ from django.conf import settings
 from django.db import DatabaseError, connection
 from django.http import JsonResponse
 
+from app.private_invoke import PrivateInvokeError, private_invoke_headers
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,13 +45,14 @@ def _check_access_service() -> dict[str, Any]:
     """Check Access service connectivity."""
     base_url = getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")
     # Assume Access service has a health endpoint
-    health_url = base_url.replace("/api/v1", "") + "/health"
+    health_url = base_url.rstrip("/").removesuffix("/api/v1") + "/health"
     
     start = time.time()
     try:
         response = httpx.get(
             health_url,
-            headers={"X-Forwarded-Proto": "https"},
+            headers={"X-Forwarded-Proto": "https", **private_invoke_headers(health_url)},
+            follow_redirects=False,
             timeout=3.0,
         )
         duration_ms = (time.time() - start) * 1000
@@ -73,7 +76,7 @@ def _check_access_service() -> dict[str, Any]:
             "latency_ms": round(duration_ms, 2),
             "error": "Connection timed out",
         }
-    except httpx.HTTPError:
+    except (httpx.HTTPError, PrivateInvokeError):
         duration_ms = (time.time() - start) * 1000
         logger.exception("Access service health check failed")
         return {
@@ -86,13 +89,14 @@ def _check_access_service() -> dict[str, Any]:
 def _check_activity_service() -> dict[str, Any]:
     """Check Activity service connectivity (for outbox publishing)."""
     activity_url = getattr(settings, "ACTIVITY_SERVICE_URL", "http://activity:8006/api/v1")
-    health_url = activity_url.replace("/api/v1", "") + "/health"
+    health_url = activity_url.rstrip("/").removesuffix("/api/v1") + "/health"
     
     start = time.time()
     try:
         response = httpx.get(
             health_url,
-            headers={"X-Forwarded-Proto": "https"},
+            headers={"X-Forwarded-Proto": "https", **private_invoke_headers(health_url)},
+            follow_redirects=False,
             timeout=3.0,
         )
         duration_ms = (time.time() - start) * 1000
@@ -115,7 +119,7 @@ def _check_activity_service() -> dict[str, Any]:
             "latency_ms": round(duration_ms, 2),
             "error": "Connection timed out",
         }
-    except httpx.HTTPError:
+    except (httpx.HTTPError, PrivateInvokeError):
         duration_ms = (time.time() - start) * 1000
         logger.exception("Activity service health check failed")
         return {

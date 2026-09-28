@@ -12,6 +12,7 @@ import httpx
 from django.conf import settings
 
 from activity.context import ActivityContext
+from app.private_invoke import PrivateInvokeError, private_invoke_headers
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class PortalClient:
     def __init__(self) -> None:
         base_url = getattr(settings, "PORTAL_SERVICE_URL", "http://portal:8003/api/v1")
         self._base_url = str(base_url).rstrip("/")
-        self._client = httpx.Client(timeout=5.0)
+        self._client = httpx.Client(timeout=5.0, follow_redirects=False)
 
     def _signed_path(self, path: str) -> str:
         base_path = urlsplit(self._base_url).path.rstrip("/")
@@ -68,10 +69,11 @@ class PortalClient:
             )
 
         try:
+            headers.update(private_invoke_headers(self._base_url))
             response = self._client.get(f"{self._base_url}{path}", headers=headers)
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+        except (httpx.HTTPError, ValueError, PrivateInvokeError) as exc:
             logger.warning(
                 "Portal profile lookup failed",
                 extra={

@@ -91,6 +91,19 @@ jobs:
         run: ruff check --config ../../ruff.toml scripts/check_ydb_access_runtime.py
       - name: Run tests
         run: pytest -q ${{ matrix.test_target }}
+      - name: Run Activity legacy test module
+        if: matrix.service == 'activity'
+        run: pytest -q src/activity/tests.py
+      - name: Check internal service HTTP contracts
+        if: contains(fromJSON('["portal", "activity", "events", "gamification", "voting"]'), matrix.service)
+        run: |
+          ruff check --config ../../ruff.toml ../../scripts/ci/test_internal_service_clients.py
+          pytest -q ../../scripts/ci/test_internal_service_clients.py
+      - name: Check packaged IAM helpers
+        if: matrix.service == 'portal'
+        run: |
+          ruff check --config ../../ruff.toml ../../scripts/ci/test_private_invoke.py
+          pytest -q ../../scripts/ci/test_private_invoke.py
       - name: Check HTTP runtime port contract
         if: matrix.service == 'bff'
         run: |
