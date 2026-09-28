@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import time
+from unittest.mock import patch
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import django
 
@@ -11,7 +14,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app.settings")
 django.setup()
 
 from django.conf import settings
-from django.db import connection, connections
+from django.db import close_old_connections, connection, connections
 from django.test import override_settings
 
 from access_control.services import CheckDecision, compute_effective_access
@@ -29,6 +32,55 @@ def _result(decision: CheckDecision) -> tuple:
         ),
         decision.permissions,
     )
+
+
+def check_connection_lifecycle() -> None:
+    tenant, user = uuid4(), uuid4()
+
+    def decide() -> None:
+        result = compute_effective_access(
+            tenant_id=tenant,
+            user_id=user,
+            permission_key="portal.profile.read_self",
+            scope_type="TENANT",
+            scope_id=str(tenant),
+        )
+        assert result.allowed and result.reason_code == "RBAC_ALLOW"
+
+    connections.close_all()
+    assert connection.settings_dict["CONN_MAX_AGE"] == 600
+    decide()
+    first = connection.connection
+    # Django invokes this at request start/end. TestClient disconnects the
+    # signal receiver, so exercise the real cleanup hook explicitly here.
+    close_old_connections()
+    assert connection.connection is first
+    decide()
+    assert connection.connection is first
+
+    connection.close_at = time.monotonic() - 1
+    close_old_connections()
+    assert connection.connection is None
+    decide()
+    assert connection.connection is not first
+
+    # Unusable connections are discarded before handling the next request.
+    connection.errors_occurred = True
+    with patch.object(connection, "is_usable", return_value=False):
+        close_old_connections()
+    assert connection.connection is None
+    decide()
+
+    # A zero lifetime still opts out of reuse when explicitly configured.
+    connections.close_all()
+    try:
+        connection.settings_dict["CONN_MAX_AGE"] = 0
+        decide()
+        close_old_connections()
+        assert connection.connection is None
+    finally:
+        connection.settings_dict["CONN_MAX_AGE"] = 600
+        connections.close_all()
 
 
 def main() -> None:
@@ -65,9 +117,13 @@ def main() -> None:
         return actual
 
     count = exercise_decision_contracts(compare)
+    check_connection_lifecycle()
     connections.close_all()
     print(
         f"YDB one-query authorization: {count} contracts matched ORM and expected behavior; each used one query"
+    )
+    print(
+        "YDB request lifecycle: reuse, expiry, unusable replacement and zero lifetime passed"
     )
 
 
