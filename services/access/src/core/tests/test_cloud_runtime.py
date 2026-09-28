@@ -2,11 +2,34 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from django.db.utils import NotSupportedError
 
 from app import cloud_runtime
+
+
+@pytest.mark.parametrize("max_age", [0, 15, 600])
+def test_ydb_connection_lifetime_matches_configured_sql_lifetime(max_age: int):
+    env = {
+        "DB_DRIVER": "ydb",
+        "YDB_ENDPOINT": "grpc://127.0.0.1:2136",
+        "YDB_DATABASE": "/local",
+        "YDB_CREDENTIALS_MODE": "token",
+        "YDB_TOKEN": "local-only-test-token",
+    }
+    driver, databases = cloud_runtime.build_database_settings(
+        base_dir=Path("/tmp"),
+        read_env=env.get,
+        allow_sqlite=False,
+        sqlite_fallback_hint="unused",
+        conn_max_age=max_age,
+    )
+    assert driver == "ydb"
+    assert databases["default"]["CONN_MAX_AGE"] == max_age
+    assert "conn_max_age" not in databases["default"]["OPTIONS"]
 
 
 def _install_fake_ydb_backend(version):
