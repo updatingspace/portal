@@ -104,6 +104,9 @@ jobs:
         run: |
           ruff check --config ../../ruff.toml ../../scripts/ci/test_private_invoke.py
           pytest -q ../../scripts/ci/test_private_invoke.py
+          ruff check --config ../../ruff.toml ../../scripts/ci/test_access_transport.py
+          pytest -q ../../scripts/ci/test_access_transport.py
+          ruff check --config ../../ruff.toml ../../scripts/ci/check_ydb_connection_lifecycle.py
       - name: Check HTTP runtime port contract
         if: matrix.service == 'bff'
         run: |
@@ -178,6 +181,9 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python scripts/check_ydb_auth_runtime.py
+      - name: Check service YDB connection reuse
+        if: contains(fromJSON('["portal", "activity", "events", "gamification", "voting"]'), matrix.service)
+        run: python ../../scripts/ci/check_ydb_connection_lifecycle.py
       - name: Check Access bootstrap and authorization against YDB
         if: matrix.service == 'access'
         run: |

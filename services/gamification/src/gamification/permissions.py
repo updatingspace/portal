@@ -3,16 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import logging
 import time
 from urllib.parse import urlsplit
 
-import httpx
 from django.conf import settings
 
-from app.private_invoke import private_invoke_headers
-
-logger = logging.getLogger(__name__)
+from app.access_client import check_access, unavailable
 
 
 def _is_suspended_or_banned(master_flags: dict) -> bool:
@@ -66,7 +62,8 @@ def has_permission(
     ts = str(int(time.time()))
     secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")
     if not secret:
-        return False
+        unavailable(request_id=str(request_id), reason="missing_hmac_secret")
+
     msg = "\n".join(
         ["POST", path, hashlib.sha256(body).hexdigest(), str(request_id), ts]
     ).encode("utf-8")
@@ -84,20 +81,4 @@ def has_permission(
         "X-Updspace-Signature": sig,
     }
 
-    try:
-        headers.update(private_invoke_headers(url))
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
-    except Exception:
-        # Fail-closed: при сбое проверки доступа запрещаем, но логируем причину,
-        # чтобы ошибка не была немой.
-        logger.warning("Access check request failed; denying", exc_info=True)
-        return False
-
-    if resp.status_code != 200:
-        return False
-    try:
-        data = resp.json()
-    except Exception:
-        logger.warning("Access check returned non-JSON; denying", exc_info=True)
-        return False
-    return bool(data.get("allowed"))
+    return check_access(url=url, body=body, headers=headers)
