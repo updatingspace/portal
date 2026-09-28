@@ -105,6 +105,7 @@ DB_DRIVER, DATABASES = build_database_settings(
     allow_sqlite=ALLOW_SQLITE,
     sqlite_fallback_hint=SQLITE_FALLBACK_HINT,
 )
+ACCESS_YDB_BATCH_CHECKS = read_env_flag("ACCESS_YDB_BATCH_CHECKS", True)
 if DB_DRIVER == "ydb":
     MIGRATION_MODULES = build_ydb_migration_modules(
         "access_control",
