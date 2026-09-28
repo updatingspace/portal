@@ -5,14 +5,12 @@ import hmac
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 from urllib.parse import urlsplit
 
 from django.conf import settings
 from ninja.errors import HttpError
 
-from app.private_invoke import private_invoke_headers, urlopen_no_redirect
+from app.access_client import check_access, unavailable
 from core.errors import error_payload
 from portal.context import PortalContext
 
@@ -34,7 +32,7 @@ class AccessService:
         ts = str(int(time.time()))
         secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "") or ""
         if not secret:
-            raise RuntimeError("BFF_INTERNAL_HMAC_SECRET is not configured")
+            unavailable(request_id=request_id, reason="missing_hmac_secret")
 
         message = "\n".join(
             [
@@ -78,7 +76,7 @@ class AccessService:
         if not access_url:
             if str(allow_all_in_dev).strip() in {"1", "true", "yes", "on"}:
                 return
-            AccessService._deny_all(ctx, permission)
+            unavailable(request_id=ctx.request_id, reason="missing_access_url")
 
         payload = {
             "tenant_id": str(ctx.tenant_id),
@@ -109,50 +107,22 @@ class AccessService:
             body=body,
         )
 
-        req = urllib.request.Request(
-            target_url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Request-Id": ctx.request_id,
-                "X-Tenant-Id": str(ctx.tenant_id),
-                "X-Tenant-Slug": str(ctx.tenant_slug),
-                "X-User-Id": str(ctx.user_id),
-                "X-Forwarded-Proto": "https",
-                "X-Master-Flags": json.dumps(
-                    {
-                        "suspended": "suspended" in ctx.master_flags,
-                        "banned": "banned" in ctx.master_flags,
-                        "system_admin": "system_admin" in ctx.master_flags,
-                    },
-                    separators=(",", ":"),
-                ),
-                **signed_headers,
-            },
-            method="POST",
-        )
-        try:
-            for key, value in private_invoke_headers(target_url).items():
-                req.add_header(key, value)
-            with urlopen_no_redirect(req, timeout=5) as resp:
-                raw = resp.read().decode("utf-8")
-        except (OSError, TimeoutError, urllib.error.URLError):
-            raise HttpError(
-                502,
-                error_payload(
-                    "ACCESS_UNAVAILABLE",
-                    "Access service unavailable",
-                    details={"permission": permission},
-                ),
-            )
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = None
-
-        allowed = False
-        if isinstance(data, dict):
-            allowed = bool(data.get("allowed"))
-        if not allowed:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Request-Id": ctx.request_id,
+            "X-Tenant-Id": str(ctx.tenant_id),
+            "X-Tenant-Slug": str(ctx.tenant_slug),
+            "X-User-Id": str(ctx.user_id),
+            "X-Forwarded-Proto": "https",
+            "X-Master-Flags": json.dumps(
+                {
+                    "suspended": "suspended" in ctx.master_flags,
+                    "banned": "banned" in ctx.master_flags,
+                    "system_admin": "system_admin" in ctx.master_flags,
+                },
+                separators=(",", ":"),
+            ),
+            **signed_headers,
+        }
+        if not check_access(url=target_url, body=body, headers=headers):
             AccessService._deny_all(ctx, permission)

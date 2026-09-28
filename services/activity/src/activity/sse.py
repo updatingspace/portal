@@ -10,15 +10,18 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timezone
 from typing import Any
 
 from django.http import StreamingHttpResponse
+from ninja.errors import HttpError
 
 from activity.context import require_activity_context
 from activity.models import NewsPost, Outbox, Subscription
 from activity.permissions import Permissions, has_permission
 from activity.services import get_unread_count, require_not_suspended
+from core.errors import http_error_payload, http_errors
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,15 @@ logger = logging.getLogger(__name__)
 SSE_HEARTBEAT_INTERVAL = 10  # seconds (keep under gunicorn worker timeout)
 SSE_UPDATE_INTERVAL = 5  # seconds (how often to check for updates)
 SSE_MAX_DURATION = 300  # max connection duration (5 minutes)
+
+
+def _guard_stream(events: Iterable[str], request_id: str) -> Iterator[str]:
+    try:
+        yield from events
+    except HttpError as exc:
+        # Headers are already sent. Report the failure and close the stream;
+        # never publish an event whose visibility could not be checked.
+        yield _sse_event("error", http_error_payload(exc, request_id))
 
 
 def _sse_event(event_type: str, data: dict) -> str:
@@ -80,6 +92,7 @@ def _can_receive_news_change(ctx, payload: dict[str, Any], subscribed_scopes: se
     )
 
 
+@http_errors
 def sse_unread_count(request):
     """
     SSE endpoint for real-time unread count updates.
@@ -179,7 +192,7 @@ def sse_unread_count(request):
             time.sleep(1)
 
     response = StreamingHttpResponse(
-        event_stream(),
+        _guard_stream(event_stream(), ctx.request_id),
         content_type="text/event-stream",
     )
     response["Cache-Control"] = "no-cache"
@@ -187,6 +200,7 @@ def sse_unread_count(request):
     return response
 
 
+@http_errors
 def sse_feed_live(request):
     ctx = require_activity_context(request, require_user=True)
     require_not_suspended(ctx)
@@ -268,7 +282,9 @@ def sse_feed_live(request):
 
             time.sleep(1)
 
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response = StreamingHttpResponse(
+        _guard_stream(event_stream(), ctx.request_id), content_type="text/event-stream"
+    )
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response

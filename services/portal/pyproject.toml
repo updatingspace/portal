@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]",
     "dj-database-url",
     "gunicorn",
+    "httpx>=0.27",
     "pillow",
     "ydb[yc]==3.28.0",
     "ydb-dbapi==0.1.20",

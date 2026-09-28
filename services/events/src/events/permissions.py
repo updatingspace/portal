@@ -6,10 +6,9 @@ import json
 import time
 from urllib.parse import urlsplit
 
-import httpx
 from django.conf import settings
 
-from app.private_invoke import PrivateInvokeError, private_invoke_headers
+from app.access_client import check_access, unavailable
 
 
 def _is_suspended_or_banned(master_flags: dict) -> bool:
@@ -63,7 +62,8 @@ def has_permission(
     ts = str(int(time.time()))
     secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")
     if not secret:
-        return False
+        unavailable(request_id=str(request_id), reason="missing_hmac_secret")
+
     msg = "\n".join(["POST", path, hashlib.sha256(body).hexdigest(), str(request_id), ts]).encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), msg, digestmod=hashlib.sha256).hexdigest()
 
@@ -79,19 +79,7 @@ def has_permission(
         "X-Updspace-Signature": sig,
     }
 
-    try:
-        headers.update(private_invoke_headers(url))
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
-    except (httpx.HTTPError, PrivateInvokeError):
-        return False
-
-    if resp.status_code != 200:
-        return False
-    try:
-        data = resp.json()
-    except ValueError:
-        return False
-    return bool(data.get("allowed"))
+    return check_access(url=url, body=body, headers=headers)
 
 
 def has_scope_membership(

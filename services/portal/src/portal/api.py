@@ -89,6 +89,8 @@ def _check_any_permissions(
             AccessService.check(ctx, permission, scope_type=scope_type, scope_id=scope_id)
             return
         except HttpError as exc:
+            if exc.status_code != 403:
+                raise
             last_error = exc
             continue
     if last_error:
@@ -720,7 +722,9 @@ def posts_list(
             scope_id=str(ctx.tenant_id),
         )
         include_private = True
-    except HttpError:
+    except HttpError as exc:
+        if exc.status_code != 403:
+            raise
         include_private = False
 
     qs = Post.objects.filter(tenant=tenant).order_by("-created_at")

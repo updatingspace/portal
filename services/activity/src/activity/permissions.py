@@ -10,17 +10,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import logging
 import time
 from urllib.parse import urlsplit
 from uuid import UUID
 
-import httpx
 from django.conf import settings
 
-from app.private_invoke import private_invoke_headers
-
-logger = logging.getLogger(__name__)
+from app.access_client import check_access, unavailable
 
 
 def _is_suspended_or_banned(master_flags: frozenset[str]) -> bool:
@@ -94,11 +90,7 @@ def has_permission(
     ts = str(int(time.time()))
     secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")
     if not secret:
-        logger.warning(
-            "BFF_INTERNAL_HMAC_SECRET not configured, denying permission",
-            extra={"permission_key": permission_key, "user_id": str(user_id)},
-        )
-        return False
+        unavailable(request_id=str(request_id), reason="missing_hmac_secret")
 
     msg = "\n".join(
         ["POST", path, hashlib.sha256(body).hexdigest(), str(request_id), ts]
@@ -119,51 +111,7 @@ def has_permission(
         "X-Updspace-Signature": sig,
     }
 
-    try:
-        headers.update(private_invoke_headers(url))
-        with httpx.Client(timeout=5.0, follow_redirects=False) as client:
-            resp = client.post(url, content=body, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                allowed = data.get("allowed", False)
-                logger.debug(
-                    "Permission check result",
-                    extra={
-                        "permission_key": permission_key,
-                        "user_id": str(user_id),
-                        "allowed": allowed,
-                    },
-                )
-                return bool(allowed)
-            logger.warning(
-                "Access service returned non-200",
-                extra={
-                    "status_code": resp.status_code,
-                    "permission_key": permission_key,
-                    "user_id": str(user_id),
-                },
-            )
-            return False
-    except httpx.TimeoutException:
-        logger.error(
-            "Access service timeout",
-            extra={
-                "permission_key": permission_key,
-                "user_id": str(user_id),
-                "url": url,
-            },
-        )
-        return False
-    except Exception as exc:
-        logger.exception(
-            "Access service error",
-            extra={
-                "permission_key": permission_key,
-                "user_id": str(user_id),
-                "error": str(exc),
-            },
-        )
-        return False
+    return check_access(url=url, body=body, headers=headers)
 
 
 def require_permission(

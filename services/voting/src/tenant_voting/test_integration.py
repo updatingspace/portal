@@ -566,8 +566,9 @@ class BffHeaderPropagationTests(TestCase):
         # Should return error with invalid signature (401, 403, or 400)
         self.assertIn(response.status_code, [400, 401, 403])
 
+    @patch("tenant_voting.api._access_check_allowed", return_value=True)
     @patch("tenant_voting.context.require_internal_signature", return_value=None)
-    def test_request_with_valid_headers_accepted(self, mock_signature):
+    def test_request_with_valid_headers_accepted(self, mock_signature, mock_access):
         """Requests with valid headers should be processed."""
         headers = _headers(
             method="GET",
@@ -579,8 +580,10 @@ class BffHeaderPropagationTests(TestCase):
         
         response = self.client.get("/api/v1/polls", **headers)
         
-        # Should be processed (200 or other valid response)
-        self.assertIn(response.status_code, [200, 403, 404])
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_access.called)
+        self.assertEqual(mock_access.call_args.kwargs["tenant_id"], str(self.tenant_id))
+        self.assertEqual(mock_access.call_args.kwargs["user_id"], str(self.user_id))
 
     @patch("tenant_voting.context.require_internal_signature", return_value=None)
     def test_tenant_id_extracted_from_header(self, mock_signature):
