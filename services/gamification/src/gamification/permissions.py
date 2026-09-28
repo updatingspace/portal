@@ -5,9 +5,12 @@ import hmac
 import json
 import logging
 import time
+from urllib.parse import urlsplit
 
 import httpx
 from django.conf import settings
+
+from app.private_invoke import private_invoke_headers
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +46,8 @@ def has_permission(
         return True
 
     base_url = str(getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")).rstrip("/")
-    path = "/api/v1/access/check"
     url = f"{base_url}/access/check"
+    path = urlsplit(url).path
 
     payload = {
         "tenant_id": tenant_id,
@@ -82,7 +85,8 @@ def has_permission(
     }
 
     try:
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
+        headers.update(private_invoke_headers(url))
+        resp = httpx.post(url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
     except Exception:
         # Fail-closed: при сбое проверки доступа запрещаем, но логируем причину,
         # чтобы ошибка не была немой.

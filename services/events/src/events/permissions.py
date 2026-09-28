@@ -4,9 +4,12 @@ import hashlib
 import hmac
 import json
 import time
+from urllib.parse import urlsplit
 
 import httpx
 from django.conf import settings
+
+from app.private_invoke import PrivateInvokeError, private_invoke_headers
 
 
 def _is_suspended_or_banned(master_flags: dict) -> bool:
@@ -40,8 +43,8 @@ def has_permission(
         return True
 
     base_url = str(getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")).rstrip("/")
-    path = "/api/v1/access/check"
     url = f"{base_url}/access/check"
+    path = urlsplit(url).path
 
     payload = {
         "tenant_id": tenant_id,
@@ -77,8 +80,9 @@ def has_permission(
     }
 
     try:
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
-    except httpx.HTTPError:
+        headers.update(private_invoke_headers(url))
+        resp = httpx.post(url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
+    except (httpx.HTTPError, PrivateInvokeError):
         return False
 
     if resp.status_code != 200:

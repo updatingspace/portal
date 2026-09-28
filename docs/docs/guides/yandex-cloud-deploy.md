@@ -25,6 +25,22 @@ Terraform удаляет завершающий слэш, чтобы BFF и се
 - `API Gateway` отдаёт frontend из bucket и проксирует `/api/v1/{proxy+}` в `BFF`.
 - `BFF` и все внутренние Django-сервисы работают как private `Serverless Containers`.
 - межсервисные вызовы идут не по private IP, а по private invoke URL контейнеров с IAM bearer token.
+
+Portal, Activity, Events, Gamification и Voting добавляют IAM bearer token к
+внутренним HTTPS-запросам на `*.containers.yandexcloud.net`. Адреса берутся только
+из настроек deployment: `ACCESS_BASE_URL`, `ACCESS_SERVICE_URL`,
+`PORTAL_SERVICE_URL` и `ACTIVITY_SERVICE_URL`. В Activity задаются оба адреса
+Access и `PORTAL_SERVICE_URL`; локальные значения рассчитаны на Docker Compose.
+Токен service account получается из metadata при первом запросе и повторно
+используется в процессе до срока обновления. Фонового опроса или прогрева нет,
+`min_instances=0` сохраняется. HMAC и tenant/user context проверяются отдельно;
+решения RBAC не кешируются. Ошибка metadata прерывает вызов, редиректы внутренних
+клиентов отключены, внешние API и локальные HTTP-адреса IAM-токен не получают.
+
+Контракты запускаются в окружении каждого из пяти сервисов:
+`pytest -q ../../scripts/ci/test_internal_service_clients.py`.
+Общие проверки токена, срока действия, конкурентного обновления и редиректов:
+`pytest -q ../../scripts/ci/test_private_invoke.py` (из `services/portal`).
 - primary database для всех backend services: `YDB serverless`.
 - shared Redis в production не используется; session / oauth state / rate-limit живут в YDB, а локальный cache остаётся только как оптимизация в памяти контейнера.
 - outbox wake-up делается через `YMQ` + `function_trigger`.

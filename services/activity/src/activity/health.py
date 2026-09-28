@@ -21,6 +21,7 @@ from django.db import connection
 from django.http import JsonResponse
 
 from activity.models import Outbox
+from app.private_invoke import private_invoke_headers
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,14 @@ def _check_database() -> CheckResult:
 def _check_access_service() -> CheckResult:
     """Check Access service connectivity."""
     access_url = getattr(settings, "ACCESS_SERVICE_URL", "http://access:8002")
+    health_url = access_url.rstrip("/") + "/health"
     start = time.perf_counter()
 
     try:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=5.0, follow_redirects=False) as client:
             resp = client.get(
-                f"{access_url}/health",
-                headers={"X-Forwarded-Proto": "https"},
+                health_url,
+                headers={"X-Forwarded-Proto": "https", **private_invoke_headers(health_url)},
             )
             latency = (time.perf_counter() - start) * 1000
 
