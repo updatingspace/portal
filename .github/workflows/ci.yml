@@ -86,6 +86,9 @@ jobs:
           pip install pytest pytest-django ruff==0.16.1
       - name: Run Ruff
         run: ruff check --config ../../ruff.toml src
+      - name: Lint Access YDB regression
+        if: matrix.service == 'access'
+        run: ruff check --config ../../ruff.toml scripts/check_ydb_access_runtime.py
       - name: Run tests
         run: pytest -q ${{ matrix.test_target }}
       - name: Check HTTP runtime port contract
@@ -162,6 +165,11 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python scripts/check_ydb_auth_runtime.py
+      - name: Check Access bootstrap and authorization against YDB
+        if: matrix.service == 'access'
+        run: |
+          python src/manage.py migrate_ydb
+          python scripts/check_ydb_access_runtime.py
 
   frontend-check:
     name: Check portal frontend

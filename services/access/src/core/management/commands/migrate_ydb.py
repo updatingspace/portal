@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from django.apps import apps
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
@@ -43,8 +44,10 @@ class Command(BaseCommand):
 
         if options["dry_run"]:
             self.stdout.write(self.style.SUCCESS(f"planned {len(models)} models"))
+            self.stdout.write("would seed the Access permission catalog and global member templates")
             return
 
+        call_command("seed_access_defaults", stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS(f"migrate_ydb completed: created={created}, skipped={skipped}"))
 
 

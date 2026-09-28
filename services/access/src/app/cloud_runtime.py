@@ -138,6 +138,10 @@ def build_database_settings(
 
     _patch_ydb_version_check()
 
+    from .ydb_compat import install_ydb_compatibility
+
+    install_ydb_compatibility()
+
     ydb_endpoint = _require("YDB_ENDPOINT", read_env)
     ydb_database = _require("YDB_DATABASE", read_env)
     ydb_name = read_env("YDB_NAME", "default") or "default"
