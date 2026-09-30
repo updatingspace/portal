@@ -93,7 +93,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     let body = '## Error Details\n\n';
     body += `**Error Message:** ${error?.message || 'Unknown'}\n`;
-    body += `**URL:** ${window.location.href}\n`;
+    body += `**Path:** ${window.location.pathname.replace(/\/invite\/[^/]+/, '/invite/[redacted]')}\n`;
     body += `**Timestamp:** ${new Date().toISOString()}\n`;
     if (requestId) {
       body += `**Request ID:** \`${requestId}\`\n`;
@@ -131,7 +131,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             </Text>
 
             <Text variant="body-1" color="secondary" className="error-boundary-description">
-              Произошла неожиданная ошибка. Мы уже знаем о проблеме и работаем над её устранением.
+              Не удалось отобразить страницу. Попробуйте открыть её снова или вернитесь на главную.
             </Text>
 
             {error?.message && (

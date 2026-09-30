@@ -8,7 +8,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone as dj_timezone
 from django.utils.timezone import is_naive, make_aware
@@ -373,6 +373,11 @@ def list_events(
     to: str | None = Query(None, alias="to"),
     scope_type: str | None = Query(None, alias="scope_type"),
     scope_id: str | None = Query(None, alias="scope_id"),
+    q: str | None = None,
+    mine: bool = False,
+    rsvp: str | None = None,
+    visibility: str | None = None,
+    period: str | None = None,
     limit: int = Query(100, ge=1, le=250),
     offset: int = Query(0, ge=0),
 ):
@@ -394,10 +399,38 @@ def list_events(
         dt_to = _parse_iso_datetime(to, code="INVALID_TO", message="to must be ISO datetime")
         qs = qs.filter(starts_at__lte=dt_to)
 
-    total = qs.count()
-
-    events = list(qs.order_by("starts_at", "id")[offset : offset + limit])
-    visible = [e for e in events if _event_visible_for_user(e, ctx=ctx)]
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q) | Q(location_text__icontains=q))
+    if mine:
+        qs = qs.filter(created_by=ctx.user_id)
+    if rsvp:
+        if rsvp not in RSVPStatus.values:
+            raise HttpError(422, {"code": "INVALID_RSVP", "message": "Unknown participation response"})
+        qs = qs.filter(id__in=list(RSVP.objects.filter(tenant_id=ctx.tenant_id, user_id=ctx.user_id, status=rsvp).values_list("event_id", flat=True)))
+    if visibility:
+        qs = qs.filter(visibility=visibility)
+    if period == "past":
+        qs = qs.filter(ends_at__lt=dj_timezone.now())
+    elif period == "upcoming":
+        qs = qs.filter(ends_at__gte=dj_timezone.now())
+    # Visibility is part of filtering, before pagination and the total. Cache
+    # scope decisions within this request to avoid repeated membership calls.
+    visible_ids = []
+    scope_access: dict[tuple[str, str, str], bool] = {}
+    for event in qs.only("id", "tenant_id", "visibility", "scope_type", "scope_id", "created_by").iterator():
+        if event.visibility == "public":
+            allowed = True
+        elif event.visibility == "private":
+            allowed = str(event.created_by) == str(ctx.user_id)
+        else:
+            key = (event.visibility, event.scope_type, event.scope_id)
+            if key not in scope_access:
+                scope_access[key] = _event_visible_for_user(event, ctx=ctx)
+            allowed = scope_access[key]
+        if allowed:
+            visible_ids.append(event.id)
+    total = len(visible_ids)
+    visible = list(qs.filter(id__in=visible_ids).order_by("starts_at", "id")[offset : offset + limit])
 
     event_ids = [str(e.id) for e in visible]
     counts_map = _get_rsvp_counts_map(ctx=ctx, event_ids=event_ids)

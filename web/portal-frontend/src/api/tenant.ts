@@ -40,13 +40,13 @@ export type EntryMeResponse = {
   memberships: TenantSummary[];
   last_tenant: { tenant_slug: string } | null;
   pending_tenant_applications: PendingApplication[];
+  tenant_applications?: PendingApplication[];
 };
 
 export type TenantApplicationPayload = {
   slug: string;
   name: string;
   description?: string;
-  email?: string;
 };
 
 // --- API calls ---
@@ -67,7 +67,9 @@ export async function switchTenant(tenantSlug: string): Promise<SwitchTenantResp
  * GET /api/v1/session/tenants
  */
 export async function fetchSessionTenants(): Promise<TenantSummary[]> {
-  return request<TenantSummary[]>('/session/tenants', { method: 'GET' });
+  const result = await request<TenantSummary[]>('/session/tenants', { method: 'GET' });
+  if (!Array.isArray(result)) throw new Error('Invalid membership response');
+  return result;
 }
 
 /**
@@ -75,7 +77,9 @@ export async function fetchSessionTenants(): Promise<TenantSummary[]> {
  * GET /api/v1/entry/me
  */
 export async function fetchEntryMe(): Promise<EntryMeResponse> {
-  return request<EntryMeResponse>('/entry/me', { method: 'GET' });
+  const result = await request<EntryMeResponse>('/entry/me', { method: 'GET' });
+  if (!Array.isArray(result?.memberships)) throw new Error('Invalid community response');
+  return result;
 }
 
 /**
@@ -89,4 +93,22 @@ export async function submitTenantApplication(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export type ReviewableTenantApplication = PendingApplication & {
+  tenant_id: string;
+  applicant_user_id: string;
+  name: string;
+  description: string;
+};
+
+export function fetchTenantApplicationsForReview(): Promise<ReviewableTenantApplication[]> {
+  return request('/entry/admin/tenant-applications', { method: 'GET' });
+}
+
+export function reviewTenantApplication(
+  id: string,
+  decision: 'approve' | 'reject',
+): Promise<ReviewableTenantApplication> {
+  return request(`/entry/admin/tenant-applications/${encodeURIComponent(id)}/${decision}`, { method: 'POST' });
 }

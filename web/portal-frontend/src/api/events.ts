@@ -27,6 +27,11 @@ export type {
 // API
 
 export async function fetchEvents(params?: {
+    q?: string;
+    mine?: boolean;
+    rsvp?: RsvpStatus;
+    visibility?: string;
+    period?: 'past' | 'upcoming';
     from?: string;
     to?: string;
     scopeType?: string;
@@ -35,6 +40,11 @@ export async function fetchEvents(params?: {
     offset?: number;
 }): Promise<EventListResponse> {
     const queryParams = new URLSearchParams();
+    if (params?.q) queryParams.set('q', params.q);
+    if (params?.mine) queryParams.set('mine', 'true');
+    if (params?.rsvp) queryParams.set('rsvp', params.rsvp);
+    if (params?.visibility) queryParams.set('visibility', params.visibility);
+    if (params?.period) queryParams.set('period', params.period);
     if (params?.from) queryParams.set('from', params.from);
     if (params?.to) queryParams.set('to', params.to);
     if (params?.scopeType) queryParams.set('scope_type', params.scopeType);

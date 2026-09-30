@@ -96,7 +96,7 @@ class PortalEnsureTenantTests(TestCase):
 
         self.assertEqual(tenant.id, tenant_id)
         self.assertEqual(tenant.slug, "new-slug")
-        self.assertEqual(tenant.name, "new-slug")
+        self.assertEqual(tenant.name, "Old Name")
 
 
 @mock.patch.dict("os.environ", {}, clear=False)

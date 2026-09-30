@@ -1,3 +1,4 @@
+import {useSessionDraft} from '../../../shared/hooks/useSessionDraft';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -40,71 +41,6 @@ const getPeriodRange = (period: 'day' | 'week' | 'month' | 'all') => {
   return { from: base.toISOString(), to: now.toISOString() };
 };
 
-const buildOptimisticNewsId = () => `optimistic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-const buildOptimisticNewsEvent = ({
-  tenantId,
-  user,
-  newsId,
-  title,
-  body,
-  tags,
-  media,
-  visibility,
-  status,
-}: {
-  tenantId: string;
-  user: { id: string; username?: string; displayName?: string; avatarUrl?: string | null } | null;
-  newsId: string;
-  title?: string;
-  body: string;
-  tags: string[];
-  media: NewsMediaItem[];
-  visibility: 'public' | 'private';
-  status: 'published' | 'draft';
-}): ActivityEvent => {
-  const occurredAt = new Date().toISOString();
-  return {
-    id: -Date.now(),
-    tenantId,
-    actorUserId: user?.id ?? null,
-    targetUserId: null,
-    type: 'news.posted',
-    occurredAt,
-    title: title || body.slice(0, 120).trim() || 'Новость',
-    payloadJson: {
-      news_id: newsId,
-      title: title ?? null,
-      body,
-      tags,
-      media,
-      status,
-      comments_count: 0,
-      reactions_count: 0,
-      views_count: 0,
-      reaction_counts: [],
-      my_reactions: [],
-      permalink: {
-        news_id: newsId,
-        path: `/feed/${newsId}`,
-      },
-      optimistic: true,
-    },
-    visibility,
-    scopeType: 'TENANT',
-    scopeId: tenantId,
-    sourceRef: `news:${newsId}`,
-    actorProfile: user
-      ? {
-          user_id: user.id,
-          username: user.username ?? null,
-          display_name: user.displayName ?? null,
-          avatar_url: user.avatarUrl ?? null,
-        }
-      : null,
-  };
-};
-
 export function useFeedPageController() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -116,11 +52,20 @@ export function useFeedPageController() {
   const realtimeFlagEnabled = user?.featureFlags?.activity_feed_realtime_enabled === true;
   const { source, period, sort, setSource, setPeriod, setSort, resetFilters } = useFeedFilters();
 
-  const [newsMedia, setNewsMedia] = useState<NewsMediaItem[]>([]);
-  const [publishMode, setPublishMode] = useState<'public' | 'private' | 'draft'>('public');
+  const draft = useSessionDraft(`${user?.id ?? 'guest'}:${tenantId ?? 'none'}:feed`, {text:'', media:[] as NewsMediaItem[], mode:'public' as 'public' | 'private' | 'draft'});
+  const {value: draftValue, setValue: setDraftValue, clear: clearDraft, guard: draftGuard} = draft;
+  const composerValue = draftValue.text;
+  const newsMedia = draftValue.media;
+  const publishMode = draftValue.mode;
+  const setComposerValue = useCallback((text: string) => setDraftValue((prev) => ({...prev, text})), [setDraftValue]);
+  const setNewsMedia = useCallback((next: NewsMediaItem[] | ((prev: NewsMediaItem[]) => NewsMediaItem[])) => setDraftValue((prev) => ({...prev, media: typeof next === 'function' ? next(prev.media) : next})), [setDraftValue]);
+  const setPublishMode = useCallback((mode: 'public' | 'private' | 'draft') => setDraftValue((prev) => ({...prev, mode})), [setDraftValue]);
+  const draftRef = useRef(draftValue);
+  useEffect(() => {draftRef.current = draftValue;}, [draftValue]);
+  const publishLock = useRef(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [composerValue, setComposerValue] = useState('');
   const [moderationMode, setModerationMode] = useState(false);
   const [selectedModerationIds, setSelectedModerationIds] = useState<string[]>([]);
   const [moderationReason, setModerationReason] = useState('');
@@ -186,7 +131,7 @@ export function useFeedPageController() {
   }, [focusedNews, items, sort]);
 
   useEffect(() => {
-    if (!canReadFeed) return;
+    if (!canReadFeed || error || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -199,7 +144,7 @@ export function useFeedPageController() {
       observer.observe(loadMoreRef.current);
     }
     return () => observer.disconnect();
-  }, [canReadFeed, fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [canReadFeed, error, fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   useEffect(() => {
     if (
@@ -241,7 +186,7 @@ export function useFeedPageController() {
 
   const handleRemoveMedia = useCallback((index: number) => {
     setNewsMedia((prev) => prev.filter((_, idx) => idx !== index));
-  }, []);
+  }, [setNewsMedia]);
 
   const handleImageUpload = useCallback(
     async (files: FileList | null) => {
@@ -284,12 +229,15 @@ export function useFeedPageController() {
         setUploading(false);
       }
     },
-    [newsMedia.length],
+    [newsMedia.length, setNewsMedia],
   );
 
   const handlePublishNews = useCallback(async () => {
     const markup = composerValue.trim();
-    if (!markup) return;
+    if (!markup || publishLock.current || uploading || !canCreateNews) return;
+    publishLock.current = true;
+    setPublishError(null);
+    const submittedDraft = draftRef.current;
     const title = extractTitle(markup);
     const tags = extractTags(markup);
     const youtubeIds = extractYoutubeIds(markup);
@@ -299,37 +247,6 @@ export function useFeedPageController() {
     const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
     const status = publishMode === 'draft' ? 'draft' : 'published';
     const visibility = publishMode === 'private' ? 'private' : 'public';
-    const optimisticNewsId = buildOptimisticNewsId();
-    const optimisticItem = tenantId
-      ? buildOptimisticNewsEvent({
-          tenantId,
-          user,
-          newsId: optimisticNewsId,
-          title: title || undefined,
-          body,
-          tags,
-          media: mergedMedia,
-          visibility,
-          status,
-        })
-      : null;
-    const previousComposerValue = composerValue;
-    const previousMedia = newsMedia;
-    const previousPublishMode = publishMode;
-
-    if (optimisticItem) {
-      if (status === 'draft') {
-        upsertDraftItem(queryClient, optimisticItem);
-      } else {
-        upsertFeedItem(queryClient, optimisticItem, { prependIfMissing: true });
-      }
-    }
-
-    setComposerValue('');
-    setNewsMedia([]);
-    setComposerOpen(false);
-    setPublishMode('public');
-
     try {
       const created = await createNews({
         title: title || undefined,
@@ -359,10 +276,11 @@ export function useFeedPageController() {
           };
         }),
       });
-      if (status === 'draft') {
-        removeDraftItem(queryClient, optimisticNewsId);
-      } else {
-        removeFeedNews(queryClient, optimisticNewsId);
+      if (draftRef.current === submittedDraft) {
+        const clean = {text:'', media:[] as NewsMediaItem[], mode:'public' as const};
+        clearDraft(clean);
+        setDraftValue(clean);
+        setComposerOpen(false);
       }
       const createdStatus = created.payloadJson?.status;
       const newsId = typeof created.payloadJson?.news_id === 'string' ? created.payloadJson.news_id : null;
@@ -376,18 +294,14 @@ export function useFeedPageController() {
         queryClient.setQueryData(activityKeys.unreadCount(), 0);
       }
     } catch (err) {
-      if (status === 'draft') {
-        removeDraftItem(queryClient, optimisticNewsId);
-      } else {
-        removeFeedNews(queryClient, optimisticNewsId);
-      }
-      setComposerValue(previousComposerValue);
-      setNewsMedia(previousMedia);
-      setComposerOpen(Boolean(previousComposerValue.trim()) || previousMedia.length > 0);
-      setPublishMode(previousPublishMode);
+      const statusCode = (err as {status?:number}).status;
+      setPublishError(!statusCode || statusCode >= 500
+        ? 'Не удалось подтвердить результат. Текст сохранён. Обновите ленту и проверьте публикацию перед повторной отправкой.'
+        : 'Не удалось сохранить публикацию. Введённые данные сохранены.');
+      setComposerOpen(true);
       notifyApiError(err, publishMode === 'draft' ? 'Не удалось сохранить черновик' : 'Не удалось опубликовать новость');
-    }
-  }, [composerValue, createNews, newsMedia, publishMode, queryClient, tenantId, user]);
+    } finally {publishLock.current = false;}
+  }, [composerValue, createNews, newsMedia, publishMode, queryClient, uploading, canCreateNews, clearDraft, setDraftValue]);
 
   const hasContent = sortedItems.length > 0;
   const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
@@ -496,6 +410,7 @@ export function useFeedPageController() {
       setLiveFallback(true);
     });
     source.onerror = () => {
+      source.close();
       setLiveFallback(true);
     };
 
@@ -546,6 +461,9 @@ export function useFeedPageController() {
 
   return {
     user,
+    draftGuard,
+    publishError,
+    fetchNextPage,
     canReadFeed,
     canCreateNews,
     canModerateNews,

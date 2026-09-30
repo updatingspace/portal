@@ -261,22 +261,12 @@ describe('TenantContext', () => {
   // refreshTenants — failure
   // ----------------------------------------------------------------
 
-  it('refreshTenants failure: returns empty array, does not crash', async () => {
+  it('keeps failures distinct from an empty membership list', async () => {
     fetchSessionTenantsMock.mockRejectedValueOnce(new Error('network error'));
-
     let captured: ReturnType<typeof useTenantContext> | undefined;
-    render(
-      <TenantProvider>
-        <TestConsumer onContext={(ctx) => { captured = ctx; }} />
-      </TenantProvider>,
-    );
-
-    let result: TenantSummary[] | undefined;
-    await act(async () => {
-      result = await captured!.refreshTenants();
-    });
-
-    expect(result).toEqual([]);
+    render(<TenantProvider><TestConsumer onContext={(ctx) => { captured = ctx; }} /></TenantProvider>);
+    await act(async () => {await expect(captured!.refreshTenants()).rejects.toThrow('network error');});
+    expect(captured!.errorMessage).toBe('Не удалось обновить список сообществ.');
   });
 
   // ----------------------------------------------------------------

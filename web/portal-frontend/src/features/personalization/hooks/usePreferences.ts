@@ -24,7 +24,7 @@ const DEFAULTS_KEY = ['preferences', 'defaults'];
 export const PERSONALIZATION_PREFERENCES_CACHE_KEY = 'personalization-preferences-cache-v1';
 export const PERSONALIZATION_PREFERENCES_UPDATED_EVENT = 'updspace:preferences-updated';
 
-export function readCachedPreferences(): UserPreferences | undefined {
+export function readCachedPreferences(userId?: string, tenantId?: string): UserPreferences | undefined {
   if (typeof localStorage === 'undefined') {
     return undefined;
   }
@@ -34,7 +34,9 @@ export function readCachedPreferences(): UserPreferences | undefined {
     if (!raw) {
       return undefined;
     }
-    return JSON.parse(raw) as UserPreferences;
+    const cached = JSON.parse(raw) as UserPreferences;
+    if (userId && cached.user_id !== userId || tenantId && cached.tenant_id !== tenantId) return undefined;
+    return cached;
   } catch {
     return undefined;
   }
@@ -42,6 +44,8 @@ export function readCachedPreferences(): UserPreferences | undefined {
 
 export interface UsePreferencesOptions {
   enabled?: boolean;
+  userId?: string;
+  tenantId?: string;
 }
 
 export interface UsePreferencesReturn {
@@ -51,8 +55,10 @@ export interface UsePreferencesReturn {
   isLoading: boolean;
   isError: boolean;
   error: Error | null;
+  reload: () => Promise<unknown>;
   
   // Mutations
+  savePreferences: (payload: PreferencesUpdatePayload) => Promise<void>;
   updateAppearance: (appearance: Partial<AppearanceSettings>) => Promise<void>;
   updateLocalization: (localization: Partial<LocalizationSettings>) => Promise<void>;
   updateNotifications: (notifications: Partial<NotificationSettings>) => Promise<void>;
@@ -74,11 +80,12 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     isLoading,
     isError,
     error,
+    refetch,
   } = useQuery({
     queryKey: PREFERENCES_KEY,
     queryFn: fetchPreferences,
     enabled,
-    initialData: readCachedPreferences,
+    initialData: () => readCachedPreferences(options.userId, options.tenantId),
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30, // 30 minutes
@@ -173,6 +180,8 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
     }
   }, [preferences, cachePreferences]);
 
+  const savePreferences = useCallback(async (payload: PreferencesUpdatePayload) => {await updateMutation.mutateAsync(payload);}, [updateMutation]);
+
   // Convenience methods
   const updateAppearance = useCallback(
     async (appearance: Partial<AppearanceSettings>) => {
@@ -213,6 +222,8 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
       isLoading,
       isError,
       error: error as Error | null,
+      reload: refetch,
+      savePreferences,
       updateAppearance,
       updateLocalization,
       updateNotifications,
@@ -227,6 +238,8 @@ export function usePreferences(options: UsePreferencesOptions = {}): UsePreferen
       isLoading,
       isError,
       error,
+      refetch,
+      savePreferences,
       updateAppearance,
       updateLocalization,
       updateNotifications,

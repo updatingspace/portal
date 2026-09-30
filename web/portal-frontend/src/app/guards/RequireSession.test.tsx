@@ -83,7 +83,7 @@ describe('RequireSession', () => {
 
     const status = await screen.findByTestId('status-view');
     expect(status.textContent).toContain('no-access');
-    expect(status.textContent).toContain('Нет активного доступа к tenant');
+    expect(status.textContent).toContain('Нет доступа к сообществу');
     expect(status.textContent).toContain('No active membership for tenant');
   });
 });

@@ -9,7 +9,6 @@ import React, {
 } from 'react';
 
 import { isApiError } from '../api/client';
-import { notifyApiError } from '../utils/apiErrorHandling';
 import { logger } from '../utils/logger';
 import { fetchSessionMe } from '../modules/portal/api';
 
@@ -25,9 +24,11 @@ export type UserInfo = {
   tenant?: { id: string; slug: string };
   availableTenants?: Array<{ id: string; slug: string }>;
   capabilities?: string[];
+  accessSnapshotStatus?: 'ready' | 'partial' | 'unavailable';
   roles?: string[];
   featureFlags?: Record<string, boolean>;
   language?: string | null;
+  idFrontendBaseUrl?: string | null;
   idTheme?: 'light' | 'dark' | 'auto' | null;
 };
 
@@ -48,8 +49,10 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     available_tenants?: unknown;
     portal_profile?: Record<string, unknown> | null;
     id_profile?: { user?: Record<string, unknown> | null } | null;
+    id_frontend_base_url?: unknown;
     id_defaults?: { theme?: unknown } | null;
     capabilities?: unknown;
+    access_snapshot_status?: unknown;
     roles?: unknown;
     feature_flags?: unknown;
   };
@@ -155,9 +158,11 @@ const deriveUserFromSessionMe = (payload: unknown): UserInfo | null => {
     tenant: tenantId && tenantSlug ? { id: tenantId, slug: tenantSlug } : undefined,
     availableTenants,
     capabilities,
+    accessSnapshotStatus: data.access_snapshot_status === 'partial' || data.access_snapshot_status === 'unavailable' ? data.access_snapshot_status : Array.isArray(data.capabilities) ? 'ready' : 'unavailable',
     roles,
     featureFlags,
     language,
+    idFrontendBaseUrl: safeString(data.id_frontend_base_url),
     idTheme: idThemeRaw === 'light' || idThemeRaw === 'dark' || idThemeRaw === 'auto' ? idThemeRaw : null,
   };
 };
@@ -183,80 +188,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
   // Start as not initialized in all modes; tests and runtime will
   // explicitly mark initialization complete via setUser/refreshProfile.
   const [isInitialized, setIsInitialized] = useState(false);
+  const sessionGeneration = useRef(0);
   const refreshInFlightRef = useRef<Promise<UserInfo | null> | null>(null);
 
   const setUser = useCallback((nextUser: UserInfo | null) => {
+    sessionGeneration.current += 1;
+    refreshInFlightRef.current = null;
+    setIsLoading(false);
     setUserState(nextUser);
     setSessionIssue(null);
     setIsInitialized(true);
   }, []);
-
-  const getCurrentSubdomain = (): string | null => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    const hostParts = window.location.host.split('.');
-    if (hostParts.length < 3) {
-      return null;
-    }
-    const subdomain = hostParts[0]?.trim();
-    return subdomain && subdomain.length > 0 ? subdomain : null;
-  };
-
-  const extractAvailableTenantsFromDetails = (
-    details: unknown,
-  ): Array<{ id: string; slug: string }> => {
-    if (!details || typeof details !== 'object') {
-      return [];
-    }
-    const raw = (details as { available_tenants?: unknown }).available_tenants;
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-    return raw
-      .filter(
-        (item): item is { id: string; slug: string } =>
-          Boolean(item) &&
-          typeof item === 'object' &&
-          typeof (item as { id?: unknown }).id === 'string' &&
-          typeof (item as { slug?: unknown }).slug === 'string',
-      )
-      .map((item) => ({ id: item.id.trim(), slug: item.slug.trim() }))
-      .filter((item) => item.id.length > 0 && item.slug.length > 0);
-  };
-
-  const tryRedirectToAvailableTenant = (
-    tenants: Array<{ id: string; slug: string }>,
-  ): boolean => {
-    if (typeof window === 'undefined' || tenants.length === 0) {
-      return false;
-    }
-
-    const currentSubdomain = getCurrentSubdomain();
-    const candidate = tenants.find(
-      (tenant) => tenant.slug !== currentSubdomain,
-    );
-    if (!candidate) {
-      return false;
-    }
-
-    const hostParts = window.location.host.split('.');
-    if (hostParts.length < 3) {
-      return false;
-    }
-    hostParts[0] = candidate.slug;
-
-    const nextHost = hostParts.join('.');
-    const nextUrl = `${window.location.protocol}//${nextHost}/app`;
-    window.location.assign(nextUrl);
-    return true;
-  };
 
   const refreshProfile = useCallback((): Promise<UserInfo | null> => {
     if (refreshInFlightRef.current) {
       return refreshInFlightRef.current;
     }
 
+    const generation = sessionGeneration.current;
     const refreshPromise = (async (): Promise<UserInfo | null> => {
       setIsLoading(true);
       logger.info('Refreshing profile', {
@@ -266,10 +215,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
 
       try {
         const session = await fetchSessionMe();
+        if (generation !== sessionGeneration.current) return null;
         if (session) {
           setSessionIssue(null);
           const mapped = deriveUserFromSessionMe(session);
-          setUser(mapped);
+          setUserState(mapped);
           logger.info('Profile refreshed', {
             area: 'auth',
             event: 'refresh_profile',
@@ -281,13 +231,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
           });
           return mapped;
         }
-        setUser(null);
+        setUserState(null);
         logger.info('Profile refresh: guest state', {
           area: 'auth',
           event: 'refresh_profile',
         });
         return null;
       } catch (error) {
+        if (generation !== sessionGeneration.current) return null;
         if (isApiError(error)) {
           // Treat 401 and tenant-not-found as guest state (no toast)
           const isTenantNotFound =
@@ -295,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
             (error.message && error.message.toLowerCase().includes('unknown tenant'));
           const isNoActiveMembership = error.code === 'NO_ACTIVE_MEMBERSHIP';
           if (error.kind === 'unauthorized' || isTenantNotFound) {
-            setUser(null);
+            setUserState(null);
             setSessionIssue(null);
             logger.warn('Profile refresh guest state', {
               area: 'auth',
@@ -304,44 +255,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode; bootstrap?: boo
               error,
             });
           } else if (isNoActiveMembership) {
-            const availableTenants = extractAvailableTenantsFromDetails(error.details);
-            const redirected = tryRedirectToAvailableTenant(availableTenants);
             setUserState(null);
             setSessionIssue({
               code: 'NO_ACTIVE_MEMBERSHIP',
               message:
                 error.message ||
-                'В текущем tenant нет активного membership. Выберите другой tenant или обратитесь к администратору.',
+                'Нет доступа к этому сообществу. Выберите другое или обратитесь к администратору.',
             });
             logger.warn('Profile refresh blocked: no active membership', {
               area: 'auth',
               event: 'refresh_profile',
               data: {
                 reason: 'no_active_membership',
-                redirected,
-                availableTenantsCount: availableTenants.length,
               },
               error,
             });
           } else {
-            setSessionIssue(null);
-            notifyApiError(error, 'Не получилось обновить профиль');
+            setSessionIssue({code: 'SESSION_UNAVAILABLE', message: 'Не удалось проверить сессию. Попробуйте ещё раз.'});
           }
         } else {
-          setSessionIssue(null);
-          notifyApiError(error, 'Не получилось обновить профиль');
+          setSessionIssue({code: 'SESSION_UNAVAILABLE', message: 'Не удалось проверить сессию. Попробуйте ещё раз.'});
         }
         return null;
       } finally {
-        setIsLoading(false);
-        setIsInitialized(true);
+        if (generation === sessionGeneration.current) {
+          setIsLoading(false);
+          setIsInitialized(true);
+        }
       }
     })().finally(() => {
-      refreshInFlightRef.current = null;
+      if (generation === sessionGeneration.current) refreshInFlightRef.current = null;
     });
 
     refreshInFlightRef.current = refreshPromise;
     return refreshPromise;
+  }, []);
+
+  useEffect(() => {
+    const expired = () => setUser(null);
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('portal-session') : null;
+    if (channel) channel.onmessage = (event) => {if (event.data === 'signed-out') expired();};
+    window.addEventListener('portal:session-expired', expired);
+    return () => {window.removeEventListener('portal:session-expired', expired); channel?.close();};
   }, [setUser]);
 
   useEffect(() => {

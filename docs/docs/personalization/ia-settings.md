@@ -352,7 +352,7 @@ Invalid Timezone
 - Single-column form layout
 - Slightly reduced padding
 
-### Mobile (<768px)
+### Mobile (&lt;768px)
 - Tabs switch to vertical accordion OR dropdown selector
 - Full-width form fields
 - Sticky "Save" button at bottom (if manual save needed)
@@ -454,7 +454,7 @@ interface UserPreferences {
 ### Success Metrics
 - % users who customize theme (target: >60%)
 - % users who reduce notifications (target: >40%)
-- Average time to find a setting (target: <30 seconds)
+- Average time to find a setting (target: &lt;30 seconds)
 
 ---
 

@@ -581,7 +581,7 @@ resource "yandex_serverless_container" "bff" {
 }
 
 resource "yandex_serverless_container" "outbox_task" {
-  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
+  for_each = var.enable_outbox_task_containers ? local.outbox_task_services : toset([])
 
   name               = "${local.name_prefix}-${each.key}-outbox"
   description        = "Outbox worker for ${each.key}"
@@ -613,6 +613,7 @@ resource "yandex_serverless_container" "outbox_task" {
       events       = local.events_env
       featureflags = local.featureflags_env
       gamification = local.gamification_env
+      portal       = local.portal_env
       voting       = local.voting_env
     }, each.key)
   }
@@ -789,7 +790,7 @@ resource "yandex_message_queue" "outbox" {
 }
 
 resource "yandex_function_trigger" "outbox_queue" {
-  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
+  for_each = var.enable_outbox_task_containers ? local.outbox_task_services : toset([])
 
   name = "${local.name_prefix}-${each.key}-queue-trigger"
 
@@ -807,7 +808,7 @@ resource "yandex_function_trigger" "outbox_queue" {
 }
 
 resource "yandex_function_trigger" "outbox_sweep" {
-  for_each = var.enable_outbox_task_containers ? local.outbox_services : toset([])
+  for_each = var.enable_outbox_task_containers ? local.outbox_task_services : toset([])
 
   name = "${local.name_prefix}-${each.key}-outbox-sweep"
 

@@ -14,6 +14,6 @@ export const AppLoader: React.FC = () => (
       padding: '32px 16px',
     }}
   >
-    <Loader size="l" />
+    <Loader size="l" /><span className="visually-hidden">Загрузка / Loading</span>
   </div>
 );

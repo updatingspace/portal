@@ -1,10 +1,14 @@
 import React from 'react';
-import { Card, Icon, Loader, Select, Text } from '@gravity-ui/uikit';
-import { ArrowUpRightFromSquare, Plus } from '@gravity-ui/icons';
+import { Button, Card, Icon, Select, Text } from '@gravity-ui/uikit';
+import { Plus } from '@gravity-ui/icons';
 
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
+import { ContentDialog } from '../../../shared/ui/portal/ContentDialog';
+import { InlineError } from '../../../shared/ui/portal/PortalUI';
 import type { NewsMediaItem } from '../../../types/activity';
 
 type FeedComposerPanelProps = {
+  publishError?: string | null;
   canCreateNews: boolean;
   composerOpen: boolean;
   setComposerOpen: (open: boolean) => void;
@@ -29,6 +33,7 @@ const MIN_EXPANDED_HEIGHT = 120;
 const MAX_COMPOSER_HEIGHT = 260;
 
 export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
+  publishError,
   canCreateNews,
   composerOpen,
   setComposerOpen,
@@ -47,6 +52,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
   newsMedia,
   handleRemoveMedia,
 }) => {
+  const mobile = useMediaQuery('(max-width: 719px)');
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   React.useLayoutEffect(() => {
@@ -62,39 +68,45 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
     textarea.style.height = `${nextHeight}px`;
   }, [composerOpen, composerValue]);
 
+  React.useEffect(() => {
+    if (mobile && composerOpen) textareaRef.current?.focus();
+  }, [mobile, composerOpen]);
+
   const submitLabel =
     publishMode === 'draft'
       ? 'Сохранить черновик'
       : publishMode === 'private'
         ? 'Опубликовать приватно'
-        : 'Опубликовать публично';
+        : 'Опубликовать в сообществе';
 
   if (!canCreateNews) {
-    return (
-      <Card view="filled" className="feed-empty" data-qa="feed-composer-locked">
-        <Text variant="subheader-2">Публикация новостей недоступна.</Text>
-        <Text variant="body-2" color="secondary">
-          Для создания новостей требуется дополнительный доступ.
-        </Text>
-      </Card>
-    );
+    return null;
   }
 
-  return (
+  const editor = (
     <Card
       view="filled"
-      className={['feed-composer', composerOpen ? 'feed-composer--expanded' : '']
+      className={[
+        'feed-composer',
+        composerOpen ? 'feed-composer--expanded' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
       data-qa="feed-composer"
       aria-label="Композер новостей"
     >
-      <div className="feed-composer__header">
-        <Text variant="subheader-2">Что происходит?</Text>
-        <Text variant="caption-2" color="secondary">
-          Быстрая отправка: Ctrl/Cmd + Enter
-        </Text>
-      </div>
+      {!mobile && (
+        <div className="feed-composer__header">
+          <Text variant="subheader-2">Новая публикация</Text>
+          <Text
+            variant="caption-2"
+            color="secondary"
+            className="feed-composer__shortcut"
+          >
+            Быстрая отправка: Ctrl/Cmd + Enter
+          </Text>
+        </div>
+      )}
 
       <div
         className="feed-composer__shell"
@@ -110,9 +122,10 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
           onChange={(event) => setComposerValue(event.target.value)}
           onFocus={() => setComposerOpen(true)}
           onKeyDown={handleComposerKeyDown}
-          placeholder="Поделитесь новостью, коротким обновлением или ссылкой на YouTube"
+          placeholder="Поделитесь новостью или планами"
           aria-label="Текст новости"
-          rows={1}
+          rows={mobile ? 7 : 1}
+          autoFocus={mobile}
         />
 
         {detectedTags.length > 0 && (
@@ -125,22 +138,22 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
           </div>
         )}
 
+        {publishError && <InlineError>{publishError}</InlineError>}
         <div className="feed-composer__controls">
           <div className="feed-composer__controls-left">
-            <button
-              type="button"
-              className="feed-composer__media-button"
+            <Button
+              view="flat"
+              size="xl"
               onClick={(event) => {
                 event.stopPropagation();
                 fileInputRef.current?.click();
               }}
               aria-label="Добавить изображения"
+              disabled={uploading || isCreatingNews}
             >
               <Icon data={Plus} />
-            </button>
-            <Text variant="caption-2" color="secondary" className="feed-composer__hint">
-              Добавьте изображения при необходимости
-            </Text>
+              Фото
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -155,41 +168,35 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
             <div className="feed-composer__visibility">
               <Select
                 value={[publishMode]}
+                size="xl"
+                aria-label="Аудитория публикации"
                 onUpdate={(values) => {
-                  const next = values[0] as 'public' | 'private' | 'draft' | undefined;
+                  const next = values[0] as
+                    | 'public'
+                    | 'private'
+                    | 'draft'
+                    | undefined;
                   if (next) setPublishMode(next);
                 }}
                 options={[
-                  { value: 'public', content: 'Опубликовать публично' },
-                  { value: 'private', content: 'Опубликовать приватно' },
-                  { value: 'draft', content: 'Сохранить черновик' },
+                  { value: 'public', content: 'Сообществу' },
+                  { value: 'private', content: 'Только мне' },
+                  { value: 'draft', content: 'Черновик' },
                 ]}
               />
             </div>
 
-            <button
-              type="button"
-              className={[
-                'feed-composer__submit',
-                canPublishNews ? 'feed-composer__submit--ready' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              disabled={!canPublishNews}
-              onClick={(event) => {
-                event.stopPropagation();
-                handlePublishNews();
-              }}
+            <Button
+              size="xl"
+              view="action"
+              disabled={!canPublishNews || isCreatingNews || uploading}
+              loading={isCreatingNews || uploading}
+              onClick={handlePublishNews}
               aria-label={submitLabel}
-              title={submitLabel}
-              data-qa="composer-submit"
+              qa="composer-submit"
             >
-              {isCreatingNews || uploading ? (
-                <Loader size="s" />
-              ) : (
-                <Icon data={ArrowUpRightFromSquare} />
-              )}
-            </button>
+              {publishMode === 'draft' ? 'Сохранить черновик' : 'Опубликовать'}
+            </Button>
           </div>
         </div>
       </div>
@@ -197,8 +204,13 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
       {newsMedia.length > 0 && (
         <div className="feed-composer__media">
           {newsMedia.map((media, index) => (
-            <div key={`${media.type}-${index}`} className="feed-composer__media-item">
-              {media.type === 'image' && media.url ? <img src={media.url} alt="preview" /> : null}
+            <div
+              key={`${media.type}-${index}`}
+              className="feed-composer__media-item"
+            >
+              {media.type === 'image' && media.url ? (
+                <img src={media.url} alt="Изображение для публикации" />
+              ) : null}
               <button
                 type="button"
                 className="feed-composer__media-remove"
@@ -211,5 +223,28 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
         </div>
       )}
     </Card>
+  );
+  if (!mobile) return editor;
+  return (
+    <>
+      <Button
+        className="feed-composer-launch"
+        view="action"
+        size="xl"
+        aria-label="Написать публикацию"
+        onClick={() => setComposerOpen(true)}
+      >
+        <Icon data={Plus} size={20} />
+      </Button>
+      {composerOpen && (
+        <ContentDialog
+          title="Новая публикация"
+          busy={isCreatingNews || uploading}
+          onClose={() => setComposerOpen(false)}
+        >
+          {editor}
+        </ContentDialog>
+      )}
+    </>
   );
 };

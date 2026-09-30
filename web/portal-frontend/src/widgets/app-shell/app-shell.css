@@ -133,15 +133,6 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-accent-color) 20%, #111);
 }
 
-@media (max-width: 960px) {
-  .app-shell {
-    height: auto;
-  }
-  .app-shell__content-shell {
-    height: auto;
-  }
-}
-
 .app-shell .gn-aside-header__content,
 .app-shell .gn-aside-header__panels {
   height: 100%;
@@ -150,3 +141,28 @@
 .app-shell .gn-aside-header__content {
   overflow: hidden;
 }
+
+.app-shell__header-leading {display: flex; align-items: center; gap: 12px; min-width: 0;}
+.app-shell__brand {font-size: 21px; font-weight: 750; letter-spacing: -.04em; text-transform: none; text-decoration: none;}
+.app-shell__brand-dot {color: var(--portal-accent);}
+.portal-navigation-menu {display: grid; gap: 4px; padding-bottom: 16px;}
+.portal-navigation-menu a {padding: 12px 16px; min-height: 48px; box-sizing: border-box; border-radius: 8px; text-decoration: none; color: var(--portal-text); font-size: 17px;}
+.portal-navigation-menu a.active {background: var(--portal-surface-alt); color: var(--portal-accent); font-weight: 650;}
+.app-shell--mobile {height: auto; min-height: 100dvh; background: var(--portal-bg);}
+.app-shell--mobile .gn-aside-header__aside,
+.app-shell--mobile .gn-aside-header__panels {display: none;}
+.app-shell--mobile .app-shell__aside {height: auto; background: var(--portal-bg);}
+.app-shell--mobile .gn-aside-header__content {width: 100%; height: auto; overflow: visible;}
+.app-shell--mobile .app-shell__content-shell {height: auto; min-height: 100dvh;}
+.app-shell--mobile .app-shell__header {height: 64px; min-height: 64px; padding: 0 16px 0 8px; gap: 8px; box-shadow: none; background: var(--portal-bg);}
+.app-shell--mobile .app-shell__header-leading {gap: 4px;}
+.app-shell--mobile .app-shell__header-actions {width: auto; flex-wrap: nowrap;}
+.app-shell--mobile .app-shell__theme-select, .app-shell--mobile .app-shell__user-name {display: none;}
+.app-shell--mobile .app-shell__user-button {min-width: 44px; min-height: 44px; padding: 4px; justify-content: center; border: 0; background: transparent;}
+.app-shell--mobile .app-shell__content {padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); overflow: visible; background: var(--portal-bg); min-width: 0;}
+.app-shell--mobile .portal-page {padding: 0;}
+.app-shell--mobile .portal-page__heading {margin-bottom: 24px;}
+.app-shell--mobile .portal-inline-error {align-items: flex-start; flex-direction: column;}
+.app-shell--mobile .portal-state {padding: 24px 0; border: 0; background: transparent; margin: 0;}
+
+.app-shell--mobile .g-button_size_l {--g-button-height: 44px;}

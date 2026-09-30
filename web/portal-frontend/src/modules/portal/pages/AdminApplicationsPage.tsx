@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Loader } from '@gravity-ui/uikit';
-
-import type { ApiError } from '../../../api/client';
-import { isApiError, requestResult } from '../../../api/client';
-import { StatusView } from '../components/StatusView';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Label } from '@gravity-ui/uikit';
+import { requestResult } from '../../../api/client';
+import {
+  ConfirmDialog,
+  InlineError,
+  PageLayout,
+  PageState,
+  useUITranslation,
+} from '../../../shared/ui/portal/PortalUI';
+import { useFormatters } from '../../../shared/hooks/useFormatters';
 
 type Application = {
   id: number;
@@ -12,126 +17,217 @@ type Application = {
   status: string;
   created_at: string;
 };
-
-type ApplicationListOut = { items: Application[] };
-
-type ApproveOut = { activation_token: string; activation_expires_at: string };
-
-type PageState = 'loading' | 'ready' | 'unauthorized' | 'no-access' | 'error' | 'empty';
-
+const fieldValue = (value: unknown) =>
+  typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 export function AdminApplicationsPage() {
+  const t = useUITranslation();
+  const { formatDateTime } = useFormatters();
   const [items, setItems] = useState<Application[]>([]);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [state, setState] = useState<PageState>('loading');
-  const [error, setError] = useState<ApiError | null>(null);
-
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<number[]>([]);
+  const locks = useRef(new Set<number>());
+  const [errors, setErrors] = useState<Record<number, string>>({});
+  const [confirmation, setConfirmation] = useState<{
+    item: Application;
+    action: 'approve' | 'reject';
+  } | null>(null);
   const load = useCallback(async () => {
-    setState('loading');
+    setLoading(true);
     setError(null);
     try {
-      const res = await requestResult<ApplicationListOut>('/portal/applications?status=pending');
-      if (!res.ok) {
-        if (res.status === 401) {
-          setItems([]);
-          setState('unauthorized');
-          return;
-        }
-        if (res.status === 403) {
-          setItems([]);
-          setState('no-access');
-          return;
-        }
-        throw new Error(res.error.message ?? 'Failed');
-      }
-      const list = res.data?.items ?? [];
-      setItems(list);
-      setState(list.length ? 'ready' : 'empty');
-    } catch (e) {
-      setItems([]);
-      setError(isApiError(e) ? e : null);
-      setState('error');
+      const result = await requestResult<{ items: Application[] }>(
+        '/portal/applications?status=pending',
+      );
+      if (!result.ok)
+        throw new Error(
+          result.status === 403
+            ? 'Доступ к заявкам ограничен.'
+            : 'Не удалось загрузить заявки.',
+        );
+      setItems(result.data.items ?? []);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось загрузить заявки.',
+      );
+    } finally {
+      setLoading(false);
     }
   }, []);
-
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
-
-  const approve = useCallback(async (id: number) => {
-    setBusyId(id);
+  const decide = async () => {
+    if (!confirmation) return;
+    const { item, action } = confirmation;
+    if (locks.current.has(item.id)) return;
+    locks.current.add(item.id);
+    setPending((prev) => [...prev, item.id]);
+    setErrors((prev) => ({ ...prev, [item.id]: '' }));
+    setConfirmation(null);
     try {
-      const res = await requestResult<ApproveOut>(`/portal/applications/${id}/approve`, { method: 'POST' });
-      if (!res.ok) throw new Error(res.error.message ?? 'Failed to approve');
-      await load();
+      const result = await requestResult<unknown>(
+        `/portal/applications/${item.id}/${action}`,
+        { method: 'POST' },
+      );
+      if (!result.ok)
+        throw new Error(
+          result.status === 409
+            ? 'Заявка уже обработана другим администратором. Обновите список.'
+            : result.status === 403
+              ? 'Право обработки заявок больше недоступно.'
+              : 'Не удалось подтвердить решение. Обновите статус перед повторной попыткой.',
+        );
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === item.id
+            ? { ...row, status: action === 'approve' ? 'approved' : 'rejected' }
+            : row,
+        ),
+      );
+    } catch (reason) {
+      setErrors((prev) => ({
+        ...prev,
+        [item.id]:
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось сохранить решение.',
+      }));
     } finally {
-      setBusyId(null);
+      locks.current.delete(item.id);
+      setPending((prev) => prev.filter((id) => id !== item.id));
     }
-  }, [load]);
-
-  const reject = useCallback(async (id: number) => {
-    setBusyId(id);
-    try {
-      const res = await requestResult<{ ok: true }>(`/portal/applications/${id}/reject`, { method: 'POST' });
-      if (!res.ok) throw new Error(res.error.message ?? 'Failed to reject');
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  }, [load]);
-
-  const meta = useMemo(() => {
-    if (!error) return null;
-    return { message: error.message };
-  }, [error]);
-
-  if (state === 'loading') {
-    return (
-      <div className="container py-4">
-        <div className="status-block status-block-info">
-          <Loader size="l" />
-          <div className="text-muted mt-2">Загружаем заявки…</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === 'unauthorized') return <StatusView kind="unauthorized" title="Заявки" showLogin />;
-  if (state === 'no-access') return <StatusView kind="no-access" title="Заявки" />;
-  if (state === 'error') return <StatusView kind="error" title="Заявки" description={meta?.message} retry={{ onClick: load }} />;
-  if (state === 'empty') return <StatusView kind="empty" title="Заявки" description="Пока нет заявок в статусе pending." />;
-
+  };
   return (
-    <div className="container py-4" style={{ maxWidth: 1100 }}>
-      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-        <h1 className="page-title mb-0">Заявки (approve)</h1>
-        <Button view="outlined" onClick={load}>Обновить</Button>
-      </div>
-
-      <div className="row g-3">
-        {items.map((a) => (
-          <div className="col-12" key={a.id}>
-            <div className="status-block status-block-info">
-              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div>
-                  <div className="status-title">Application #{a.id}</div>
-                  <div className="text-muted">tenant: {a.tenant_slug} · status: {a.status}</div>
-                </div>
-                <div className="d-flex gap-2 flex-wrap">
-                  <Button view="action" disabled={busyId === a.id} onClick={() => approve(a.id)}>
-                    {busyId === a.id ? '…' : 'Approve'}
-                  </Button>
-                  <Button view="outlined" disabled={busyId === a.id} onClick={() => reject(a.id)}>
-                    Reject
-                  </Button>
-                </div>
+    <PageLayout
+      title={t('Заявки на аккаунты', 'Account applications')}
+      description={t(
+        'Доступ к аккаунту предоставляется после рассмотрения заявки.',
+        'Account access requires an approved application.',
+      )}
+      actions={
+        <>
+          <Button href="/choose-tenant">
+            {t('Мои сообщества', 'My communities')}
+          </Button>
+          <Button
+            disabled={loading}
+            loading={loading}
+            onClick={() => void load()}
+          >
+            {t('Обновить', 'Refresh')}
+          </Button>
+        </>
+      }
+    >
+      {error && <InlineError onRetry={() => void load()}>{error}</InlineError>}
+      {loading && !items.length && (
+        <PageState
+          kind="loading"
+          title={t('Загружаем заявки', 'Loading applications')}
+        />
+      )}
+      {!loading && !error && !items.length && (
+        <PageState
+          kind="empty"
+          title={t(
+            'Нет заявок на рассмотрении',
+            'No applications awaiting review',
+          )}
+        />
+      )}
+      <div className="portal-stack">
+        {items.map((item) => (
+          <article className="portal-card" key={item.id}>
+            <div className="portal-page__heading">
+              <div>
+                <h2>
+                  {fieldValue(item.payload_json.display_name) ||
+                    fieldValue(item.payload_json.name) ||
+                    `${t('Заявка', 'Application')} #${item.id}`}
+                </h2>
+                <p>
+                  {item.tenant_slug} · {formatDateTime(item.created_at)}
+                </p>
               </div>
-              <pre style={{ marginTop: 12, marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                {JSON.stringify(a.payload_json, null, 2)}
-              </pre>
+              <Label>
+                {item.status === 'approved'
+                  ? t('Одобрена', 'Approved')
+                  : item.status === 'rejected'
+                    ? t('Отклонена', 'Declined')
+                    : t('На рассмотрении', 'Under review')}
+              </Label>
             </div>
-          </div>
+            <dl>
+              {[
+                ['email', t('Почта', 'Email')],
+                ['username', t('Имя пользователя', 'Username')],
+                ['reason', t('Причина заявки', 'Application reason')],
+                ['message', t('Сообщение', 'Message')],
+              ].map(
+                ([key, label]) =>
+                  fieldValue(item.payload_json[key]) && (
+                    <div key={key}>
+                      <dt>{label}</dt>
+                      <dd>{fieldValue(item.payload_json[key])}</dd>
+                    </div>
+                  ),
+              )}
+            </dl>
+            {errors[item.id] && (
+              <InlineError onRetry={() => void load()}>
+                {errors[item.id]}
+              </InlineError>
+            )}
+            {item.status === 'pending' && (
+              <div className="portal-actions">
+                <Button
+                  view="action"
+                  loading={pending.includes(item.id)}
+                  disabled={pending.includes(item.id)}
+                  onClick={() => setConfirmation({ item, action: 'approve' })}
+                >
+                  {t('Одобрить', 'Approve')}
+                </Button>
+                <Button
+                  view="outlined-danger"
+                  disabled={pending.includes(item.id)}
+                  onClick={() => setConfirmation({ item, action: 'reject' })}
+                >
+                  {t('Отклонить', 'Decline')}
+                </Button>
+              </div>
+            )}
+            {item.status === 'approved' && (
+              <p>
+                {t(
+                  'Решение сохранено. Активация аккаунта выполняется через UpdSpaceID.',
+                  'Decision saved. Account activation is handled by UpdSpaceID.',
+                )}
+              </p>
+            )}
+          </article>
         ))}
       </div>
-    </div>
+      <ConfirmDialog
+        open={confirmation !== null}
+        title={t('Решение по заявке', 'Application decision')}
+        description={
+          confirmation
+            ? `${t('Заявка', 'Application')} #${confirmation.item.id}: ${confirmation.action === 'approve' ? t('разрешить активацию аккаунта?', 'allow account activation?') : t('отклонить запрос доступа?', 'decline access?')}`
+            : ''
+        }
+        confirmLabel={
+          confirmation?.action === 'approve'
+            ? t('Одобрить', 'Approve')
+            : t('Отклонить', 'Decline')
+        }
+        destructive={confirmation?.action === 'reject'}
+        onClose={() => setConfirmation(null)}
+        onConfirm={() => void decide()}
+      />
+    </PageLayout>
   );
 }

@@ -109,7 +109,7 @@ describe('PollsPage integration', () => {
     expect(await screen.findByText('Alpha Cup')).toBeInTheDocument();
     expect(screen.getByText('Beta League')).toBeInTheDocument();
 
-    const searchInput = screen.getByPlaceholderText('Поиск по названию или описанию');
+    const searchInput = screen.getByRole('textbox', {name:'Поиск голосований на текущей странице'});
     await userEvent.type(searchInput, 'beta');
 
     expect(screen.queryByText('Alpha Cup')).not.toBeInTheDocument();

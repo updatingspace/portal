@@ -4,6 +4,7 @@ from ninja import NinjaAPI
 from ninja.errors import HttpError
 
 from portal.api import router as portal_router
+from portal.entry_api import router as entry_router
 
 
 def _error_response(request, *, status: int, code: str, message: str, details: dict | None = None):
@@ -40,6 +41,7 @@ def on_http_error(request, exc: HttpError):
 
 # Routes at root level (BFF prefixes with /portal/)
 api.add_router("", portal_router)
+api.add_router("", entry_router)
 
 urlpatterns = [
     path("api/v1/", api.urls),

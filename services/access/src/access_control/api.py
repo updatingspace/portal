@@ -21,6 +21,7 @@ from access_control.models import (
     ScopeType,
     TenantAdminAuditEvent,
 )
+from access_control.permissions_mvp import MVP_PERMISSIONS
 from access_control.schemas import (
     CheckIn,
     CheckOut,
@@ -325,6 +326,83 @@ def _tenant_permission_denied(request):
         code="FORBIDDEN",
         message="Tenant admin permissions required",
     )
+
+
+class TenantOwnerIn(Schema):
+    tenant_id: UUID
+    owner_user_id: UUID
+
+
+@router.post(
+    "/internal/tenant-owner",
+    response={200: dict, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut},
+)
+def provision_tenant_owner(request, payload: TenantOwnerIn):
+    ctx = require_internal_context(request)
+    try:
+        _require_admin(ctx)
+    except PermissionError:
+        return _error(request, status=403, code="FORBIDDEN", message="System administrator required")
+    if str(payload.tenant_id) != ctx.tenant_id:
+        return _error(request, status=400, code="TENANT_MISMATCH", message="Tenant context mismatch")
+    if ctx.master_flags.get("banned") or ctx.master_flags.get("suspended"):
+        return _error(request, status=403, code="FORBIDDEN", message="Account is unavailable")
+    _grant_tenant_owner(ctx, payload)
+    return {"ok": True}
+
+
+@transaction.atomic
+def _grant_tenant_owner(ctx, payload: TenantOwnerIn) -> None:
+    # YDB creates schema without running Django data migrations. Ensure the
+    # canonical tenant permission catalog exists before acknowledging a grant.
+    specs = {
+        spec.key: spec for spec in MVP_PERMISSIONS
+        if spec.key != "portal.tenant_applications.review"
+    }
+    existing_permissions = dict(Permission.objects.values_list("key", "service"))
+    for key, spec in specs.items():
+        if key in existing_permissions and existing_permissions[key] != spec.service:
+            raise ValueError(f"Permission {key} belongs to an unexpected service")
+    Permission.objects.bulk_create([
+        Permission(key=key, service=spec.service, description=spec.description)
+        for key, spec in specs.items() if key not in existing_permissions
+    ])
+    # Batch grants by service: the number of reads must not grow with every
+    # permission, otherwise YDB round trips exceed the provisioning timeout.
+    for service in sorted({spec.service for spec in specs.values()}):
+        role, _ = Role.objects.get_or_create(
+            tenant_id=payload.tenant_id,
+            service=service,
+            name="owner",
+            defaults={"is_system_template": False},
+        )
+        existing_grants = set(
+            RolePermission.objects.filter(role=role).values_list("permission_id", flat=True)
+        )
+        RolePermission.objects.bulk_create([
+            RolePermission(role=role, permission_id=key)
+            for key, spec in specs.items()
+            if spec.service == service and key not in existing_grants
+        ])
+        binding, created = RoleBinding.objects.get_or_create(
+            tenant_id=payload.tenant_id,
+            user_id=payload.owner_user_id,
+            scope_type=ScopeType.TENANT,
+            scope_id=str(payload.tenant_id),
+            role=role,
+        )
+        if created:
+            log_tenant_admin_event(
+                tenant_id=payload.tenant_id,
+                performed_by=ctx.user_id,
+                action="tenant_owner_provisioned",
+                target_type="binding",
+                target_id=str(binding.id),
+                metadata={
+                    "user_id": str(payload.owner_user_id),
+                    "role_id": str(role.id),
+                },
+            )
 
 
 @router.post(

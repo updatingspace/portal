@@ -1,0 +1,72 @@
+{
+  "release": "2026.09.30-ux-mobile-8dae7a63",
+  "commit": "8dae7a63d23a8af41cd502435d4d0163fc994f98",
+  "services": {
+    "portal": {
+      "previous_revision": "bban68hhhoht3lq823qr",
+      "previous_image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-portal@sha256:07a2d6888741b734cd2e39e351938e3bfc63ca9d5e10de58e42e45af3055d036",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-portal:2026.09.30-ux-mobile-8dae7a63",
+      "files": {
+        "outbox_function.py": "5ac2dbe4e3ca716f5609537f93afb3443b5813858ff79a4d6284c41911a46322",
+        "portal/entry_api.py": "8daeaa1ea5a4b827493ba40b20751581831934e725313e82bb085e8c4daf2c28"
+      },
+      "revision": "bba5245uh7oroet1qga5",
+      "digest": "sha256:4e29a0efca37cbae36c3d89ad6a8ceaa0ebd6902c2c8ea806325174181de9a4a",
+      "health_status": 200
+    },
+    "activity": {
+      "previous_revision": "bba3a94gqdnulot9tp63",
+      "previous_image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-activity@sha256:83e183ed78bfd0cca9ad980fd9e68bcf96430a8ea3de475f3adc5ebc6c1a0c77",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-activity:2026.09.30-ux-mobile-8dae7a63",
+      "files": {
+        "activity/api.py": "910ffe71b46b6877b9551979d03f98924e11272b8398aba669e78d167304ce32",
+        "activity/services.py": "fc2af9bc5225616b3f01c5aee02007df0e10760255669d62198dfae97956c691"
+      },
+      "revision": "bbaqb0ajs03caoer8f48",
+      "digest": "sha256:5c76cb56532f5e0ede2c40717be60a77c02811354719e6926e4c97be5352943a",
+      "health_status": 200
+    },
+    "events": {
+      "previous_revision": "bbakqeece61hub27pu8v",
+      "previous_image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-events@sha256:d9042162dad3f32ffe8349b1c55d5d7985f63c2b6ba2f5bfc5a122f84c97cea3",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-events:2026.09.30-ux-mobile-8dae7a63",
+      "files": {
+        "events/api.py": "22f895aad47b5bfe1f54c8d02e7967532c72cd0a816c944b8b3402333992b471",
+        "app/ydb_compat.py": "0d1c9ab0f916747c62bcb24711b4ad406701d4141b9229a44f13d76cc7c83052",
+        "app/cloud_runtime.py": "3b3b9b571429e6bd8fdcae28cfa8f1075a67f0ab0ad1fd75540fbad3052fec0c"
+      },
+      "revision": "bba512ia7bdldsiqj1aq",
+      "digest": "sha256:4ed2cc1246c02537779bb0e368eea6982206760cd7a158ce79743ec40da38cc2",
+      "health_status": 200
+    },
+    "gamification": {
+      "previous_revision": "bbaka3t6jhfgg6lmn8kp",
+      "previous_image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-gamification@sha256:5b67ce5bca77b7187e190c0e54746da4ea0971d592a48d7ecdb9403b4818531a",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-gamification:2026.09.30-ux-mobile-8dae7a63",
+      "files": {
+        "gamification/api.py": "26c82ebae5a06934312217ef1fcc499de3c5dc67f784a52b8510357248235270",
+        "app/ydb_compat.py": "0d1c9ab0f916747c62bcb24711b4ad406701d4141b9229a44f13d76cc7c83052",
+        "app/cloud_runtime.py": "3b3b9b571429e6bd8fdcae28cfa8f1075a67f0ab0ad1fd75540fbad3052fec0c"
+      },
+      "revision": "bbaoukseaobbqb0hj99v",
+      "digest": "sha256:6bd7257f3a9e66619b6d3e55aee6327c7bd3bf21e441062deaf4f7a52d23a11f",
+      "health_status": 200
+    },
+    "bff": {
+      "previous_revision": "bbacsdf09um7c8gpihus",
+      "previous_image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-bff@sha256:0f99a97c6d72da3d0ee0107c4fe047d4edd61dc258696d613aa90dd21d62d1d0",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-bff:2026.09.30-ux-mobile-8dae7a63",
+      "files": {
+        "bff/middleware.py": "3f8f8b1dd9c90982faada721b2cc5a11ef6d9d4cb9ae70d00235c2fcaf70c3a0",
+        "bff/api.py": "12ab35bd4eeeadec24afeaa651ae22838aba01d01e2383c344ab47e7f2c7f897",
+        "app/ydb_compat.py": "1175d8bd10acea3d2b8ac43c945ced36af37425076391841b5a3aa00856fda73",
+        "app/cloud_runtime.py": "23524c9099ff690afcb4466fe1da9205658ccc07e002f814b5382173c206f274"
+      },
+      "revision": "bbar0c6fvo91r04tne5l",
+      "digest": "sha256:0a9d4676698da8c0ef9ab43af85e99a6f449c8f98ae715b7dc836977354e7b65",
+      "health_status": 200
+    }
+  },
+  "frontend_build_id": "2026.09.30-ux-mobile-r2",
+  "publication": "Backend revisions verified; frontend publication and read-back evidence recorded by the release operator."
+}

@@ -21,7 +21,7 @@ export const buildDocumentTitle = (params?: {
   const pageTitle = normalizePart(params?.pageTitle);
   const tenantTitle = formatTenantSegment(params?.tenantSlug);
 
-  const parts = [pageTitle, tenantTitle, APP_TITLE].filter((part, index, array): part is string => {
+  const parts = [pageTitle === APP_TITLE ? null : pageTitle, tenantTitle, APP_TITLE].filter((part, index, array): part is string => {
     if (!part) {
       return false;
     }

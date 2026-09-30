@@ -213,3 +213,11 @@ describe('PollPage integration', () => {
     expect(screen.getByText('Подождите 25 сек. и попробуйте снова.')).toBeInTheDocument();
   }, TEST_TIMEOUT_MS);
 });
+
+it('blocks voting when own votes could not be loaded', async () => {
+  setupBaseMocks();
+  vi.mocked(votingFeature.useMyVotes).mockReturnValue({data:undefined,isLoading:false,isError:true,refetch:vi.fn()} as ReturnType<typeof votingFeature.useMyVotes>);
+  renderPage();
+  expect(await screen.findByText('Не удалось проверить ваши голоса. Обновите данные перед участием.')).toBeVisible();
+  screen.getAllByRole('button',{name:'Выбрать'}).forEach(button=>expect(button).toBeDisabled());
+});

@@ -1,57 +1,70 @@
-import React from 'react';
-import { Avatar, Button, Card, Icon, Text } from '@gravity-ui/uikit';
-import { ArrowUpRightFromSquare, Person } from '@gravity-ui/icons';
-
+import { Avatar, Button, Icon } from '@gravity-ui/uikit';
+import { ArrowUpRightFromSquare } from '@gravity-ui/icons';
 import type { UserInfo } from '../../../../contexts/AuthContext';
+import { useUITranslation } from '../../../../shared/ui/portal/PortalUI';
 
-type ProfileSectionProps = {
+export function ProfileSection({
+  user,
+  idPortalUrl,
+  hideTitle = false,
+}: {
   user: UserInfo;
-  idPortalUrl: string;
-};
-
-export const ProfileSection: React.FC<ProfileSectionProps> = ({ user, idPortalUrl }) => {
-  const initials =
-    user.displayName?.charAt(0).toUpperCase() ||
-    user.email?.charAt(0).toUpperCase() ||
-    '?';
-
+  idPortalUrl?: string;
+  hideTitle?: boolean;
+}) {
+  const t = useUITranslation();
+  const name = user.displayName || user.username || t('Аккаунт', 'Account');
+  const accountUrl =
+    idPortalUrl && /^https?:\/\//.test(idPortalUrl)
+      ? `${idPortalUrl.replace(/\/$/, '')}/profile`
+      : undefined;
   return (
-    <Card view="filled" className="p-4 mb-4">
-      <div className="d-flex align-items-center gap-2 mb-3">
-        <Icon data={Person} size={18} />
-        <Text variant="subheader-2">Profile</Text>
-      </div>
-
-      <div className="d-flex align-items-center gap-3 mb-3">
+    <section
+      className="portal-settings__section"
+      aria-label={t('Аккаунт и безопасность', 'Account and security')}
+    >
+      {!hideTitle && (
+        <h2 id="settings-account">
+          {t('Аккаунт и безопасность', 'Account and security')}
+        </h2>
+      )}
+      <div className="portal-settings__identity">
         <Avatar
-          size="l"
-          text={initials}
-          title={user.displayName || user.username || 'Account'}
+          size="m"
+          text={name}
+          imgUrl={user.avatarUrl ?? undefined}
           aria-hidden="true"
         />
         <div>
-          <Text variant="body-2" className="fw-semibold">
-            {user.displayName || 'No name set'}
-          </Text>
-          <Text variant="body-1" color="secondary">
-            {user.email}
-          </Text>
+          <strong>{name}</strong>
+          {user.email && <p>{user.email}</p>}
         </div>
       </div>
-
-      <Text variant="body-1" color="secondary" className="mb-3" as="p">
-        Manage your profile information, display name, and preferences.
-      </Text>
-
-      <Button
-        view="outlined"
-        href={`${idPortalUrl}/profile`}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Edit Profile
-        <Icon data={ArrowUpRightFromSquare} size={14} />
-      </Button>
-    </Card>
+      <p>
+        {t(
+          'Профиль, пароль и способы входа управляются в UpdSpaceID.',
+          'Your profile, password and sign-in methods are managed in UpdSpaceID.',
+        )}
+      </p>
+      {accountUrl ? (
+        <Button
+          size="l"
+          view="outlined"
+          href={accountUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t('Открыть UpdSpaceID', 'Open UpdSpaceID')}
+          <Icon data={ArrowUpRightFromSquare} size={14} />
+        </Button>
+      ) : (
+        <p className="portal-settings__notice">
+          {t(
+            'Ссылка на управление аккаунтом сейчас недоступна. Попробуйте позже.',
+            'Account management is currently unavailable. Try again later.',
+          )}
+        </p>
+      )}
+    </section>
   );
-};
+}

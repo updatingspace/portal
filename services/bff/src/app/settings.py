@@ -108,6 +108,7 @@ MIDDLEWARE = [
 ]
 
 # --- BFF Settings ---
+BFF_FEED_STREAMING_ENABLED = read_env_flag("BFF_FEED_STREAMING_ENABLED", True)
 BFF_TENANT_HOST_SUFFIX = read_env("BFF_TENANT_HOST_SUFFIX", "updspace.com")
 BFF_TENANT_API_PREFIX = read_env("BFF_TENANT_API_PREFIX", "api")
 BFF_DEV_AUTO_TENANT = read_env_flag("BFF_DEV_AUTO_TENANT", False)

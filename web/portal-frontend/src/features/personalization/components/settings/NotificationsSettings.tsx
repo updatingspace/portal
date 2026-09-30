@@ -170,6 +170,7 @@ export function NotificationsSettings({
       <SettingsSection
         title={t('notifications.sections.polls.title')}
         description={t('notifications.sections.polls.description')}
+        collapseOnMobile
         testId="section-polls"
       >
         <NotificationToggle
@@ -199,6 +200,7 @@ export function NotificationsSettings({
       <SettingsSection
         title={t('notifications.sections.events.title')}
         description={t('notifications.sections.events.description')}
+        collapseOnMobile
         testId="section-events"
       >
         <NotificationToggle
@@ -228,6 +230,7 @@ export function NotificationsSettings({
       <SettingsSection
         title={t('notifications.sections.community.title')}
         description={t('notifications.sections.community.description')}
+        collapseOnMobile
         testId="section-community"
       >
         <NotificationToggle
@@ -250,6 +253,7 @@ export function NotificationsSettings({
       <SettingsSection
         title={t('notifications.sections.system.title')}
         description={t('notifications.sections.system.description')}
+        collapseOnMobile
         testId="section-system"
       >
         <NotificationToggle
@@ -272,6 +276,7 @@ export function NotificationsSettings({
       <SettingsSection
         title={t('notifications.sections.quietHours.title')}
         description={t('notifications.sections.quietHours.description')}
+        collapseOnMobile
         testId="section-quiet-hours"
       >
         <PrivacyToggle

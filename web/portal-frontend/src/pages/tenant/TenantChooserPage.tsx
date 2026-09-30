@@ -1,319 +1,78 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-
-import {
-  type EntryMeResponse,
-  type TenantSummary,
-  fetchEntryMe,
-  submitTenantApplication,
-} from '../../api/tenant';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button, Label, TextArea, TextInput } from '@gravity-ui/uikit';
+import { Controller, useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { fetchEntryMe, submitTenantApplication, type EntryMeResponse } from '../../api/tenant';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTenantContext } from '../../contexts/TenantContext';
-import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
-import { AppLoader } from '../../shared/ui/AppLoader';
-import { logger } from '../../utils/logger';
+import { AuthActions } from '../../widgets/app-shell/AuthActions';
+import { ThemeSelect } from '../../widgets/app-shell/ThemeSelect';
+import { FormField, InlineError, PageLayout, PageState, useUITranslation } from '../../shared/ui/portal/PortalUI';
+import { TenantApplicationReviewPanel } from './TenantApplicationReviewPanel';
 
-import './TenantChooserPage.css';
+const applicationSchema = z.object({
+  name: z.string().trim().min(1, 'Введите название').max(128, 'Не более 128 символов'),
+  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/, 'Латинские буквы, цифры и дефис; не более 32 символов').refine((s) => !['www','portal','api','id','admin','app','support','docs'].includes(s), 'Этот адрес зарезервирован'),
+  description: z.string().trim().max(4000, 'Не более 4000 символов'),
+});
+type Application = z.infer<typeof applicationSchema>;
 
-type PageState = 'loading' | 'ready' | 'error';
-
-const isActiveMembership = (tenant: TenantSummary): boolean =>
-  String(tenant.status || '').trim().toLowerCase() === 'active';
-
-const resolveTenantDisplayName = (tenant: TenantSummary): string => {
-  const displayName =
-    typeof tenant.display_name === 'string' ? tenant.display_name.trim() : '';
-  if (displayName) return displayName;
-  return tenant.tenant_slug || 'Сообщество';
-};
-
-export const TenantChooserPage: React.FC = () => {
+export function TenantChooserPage() {
+  const {user} = useAuth();
+  const {doSwitchTenant, setAvailableTenants} = useTenantContext();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const reason = searchParams.get('reason');
-  useDocumentTitle('Выбор сообщества');
-
-  const { doSwitchTenant, errorMessage: tenantErrorMessage } = useTenantContext();
-
-  const [pageState, setPageState] = useState<PageState>('loading');
-  const [entryData, setEntryData] = useState<EntryMeResponse | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [reloading, setReloading] = useState(false);
-
-  const [newSlug, setNewSlug] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-
-  const memberships = entryData?.memberships ?? [];
-  const pendingApplications = entryData?.pending_tenant_applications ?? [];
-
-  const activeMemberships = useMemo(
-    () => memberships.filter((tenant) => isActiveMembership(tenant)),
-    [memberships],
-  );
-  const inactiveMemberships = useMemo(
-    () => memberships.filter((tenant) => !isActiveMembership(tenant)),
-    [memberships],
-  );
-
-  const hasAnyMemberships = memberships.length > 0;
-  const hasActiveMemberships = activeMemberships.length > 0;
-  const hasPendingApplications = pendingApplications.length > 0;
-
-  const applyEntryData = useCallback((data: EntryMeResponse) => {
-    setEntryData(data);
-    setNewEmail(typeof data.user?.email === 'string' ? data.user.email.trim() : '');
-    setShowCreateForm(data.memberships.length === 0 && data.pending_tenant_applications.length === 0);
-    setPageState('ready');
-  }, []);
-
-  const loadEntryData = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!options?.silent) {
-        setPageState('loading');
-      }
-      setErrorMsg(null);
-      try {
-        const data = await fetchEntryMe();
-        applyEntryData(data);
-      } catch (err) {
-        logger.error('Failed to load entry/me', { error: err });
-        setErrorMsg('Не удалось загрузить список tenant.');
-        setPageState('error');
-      }
-    },
-    [applyEntryData],
-  );
-
-  useEffect(() => {
-    loadEntryData();
-  }, [loadEntryData]);
-
-  const handleSelectTenant = useCallback(
-    async (tenant: TenantSummary) => {
-      const tenantSlug = String(tenant.tenant_slug || '').trim();
-      const tenantName = resolveTenantDisplayName(tenant);
-      if (!tenantSlug) {
-        setErrorMsg('Не удалось определить slug сообщества. Обновите страницу.');
-        return;
-      }
-
-      if (!isActiveMembership(tenant)) {
-        setErrorMsg(`Сообщество «${tenantName}» пока недоступно (статус membership не active).`);
-        return;
-      }
-
-      setErrorMsg(null);
-      const success = await doSwitchTenant(tenantSlug);
-      if (success) {
-        navigate(`/t/${tenantSlug}/`, { replace: true });
-        return;
-      }
-
-      setErrorMsg(
-        `Не удалось переключиться на «${tenantName}». ${tenantErrorMessage || 'Попробуйте ещё раз.'}`,
-      );
-    },
-    [doSwitchTenant, navigate, tenantErrorMessage],
-  );
-
-  const handleCreateApplication = useCallback(async () => {
-    if (!newSlug.trim()) return;
-    const email = newEmail.trim();
-
-    if (!email) {
-      setErrorMsg('Укажите email для заявки.');
-      return;
+  const t = useUITranslation();
+  const [data, setData] = useState<EntryMeResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
+  const [search, setSearch] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const {control, handleSubmit, formState, reset, watch} = useForm<Application>({resolver: zodResolver(applicationSchema), defaultValues: {name: '', slug: '', description: ''}});
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {const next = await fetchEntryMe(); setData(next); setAvailableTenants(next.memberships);} catch {setError('Не удалось загрузить сообщества и заявки. Повторите попытку.');} finally {setLoading(false);}
+  }, [setAvailableTenants]);
+  useEffect(() => {void load();}, [load]);
+  const submit = handleSubmit(async (draft) => {
+    setFormError(null);
+    try {await submitTenantApplication(draft); reset(); setShowForm(false); await load();} catch (reason) {
+      const code = (reason as {code?: string}).code;
+      setFormError(code === 'SLUG_TAKEN' || code === 'TENANT_SLUG_TAKEN' ? 'Этот адрес уже занят. Выберите другой.' : code === 'RATE_LIMITED' ? 'Достигнут лимит заявок. Повторите позднее.' : 'Не удалось отправить заявку. Введённые данные сохранены.');
     }
-
-    const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailLooksValid) {
-      setErrorMsg('Укажите корректный email.');
-      return;
-    }
-
-    setSubmitting(true);
-    setErrorMsg(null);
-    try {
-      await submitTenantApplication({
-        slug: newSlug.trim().toLowerCase(),
-        name: newName.trim() || newSlug.trim(),
-        description: newDescription.trim(),
-        email,
-      });
-
-      setNewSlug('');
-      setNewName('');
-      setNewDescription('');
-      await loadEntryData({ silent: true });
-      setShowCreateForm(false);
-    } catch (err) {
-      logger.error('Failed to submit application', { error: err });
-      setErrorMsg('Не удалось отправить заявку.');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [loadEntryData, newDescription, newEmail, newName, newSlug]);
-
-  const handleRefresh = useCallback(async () => {
-    setReloading(true);
-    await loadEntryData({ silent: true });
-    setReloading(false);
-  }, [loadEntryData]);
-
-  if (pageState === 'loading') {
-    return <AppLoader />;
-  }
-
-  return (
-    <div className="tenant-chooser">
-      <div className="tenant-chooser__panel">
-        <div className="tenant-chooser__header">
-          <div>
-            <h1 className="tenant-chooser__title">Portal Updating Space</h1>
-            <p className="tenant-chooser__subtitle">Выберите сообщество</p>
-          </div>
-          <div className="tenant-chooser__actions">
-            <button
-              type="button"
-              className="tenant-chooser__action-btn tenant-chooser__action-btn--secondary"
-              onClick={handleRefresh}
-              disabled={reloading}
-            >
-              {reloading ? 'Обновление...' : 'Обновить статус'}
-            </button>
-            <button
-              type="button"
-              className="tenant-chooser__action-btn tenant-chooser__action-btn--primary"
-              onClick={() => setShowCreateForm((prev) => !prev)}
-            >
-              {showCreateForm ? 'Скрыть создание' : 'Создать сообщество'}
-            </button>
-          </div>
-        </div>
-
-        {reason === 'forbidden' && (
-          <div className="tenant-chooser__alert tenant-chooser__alert--warning">
-            У вас нет доступа к запрашиваемому сообществу.
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="tenant-chooser__alert tenant-chooser__alert--error">
-            {errorMsg}
-          </div>
-        )}
-
-        {pageState === 'error' && (
-          <button
-            onClick={() => window.location.reload()}
-            className="tenant-chooser__action-btn tenant-chooser__action-btn--secondary"
-            type="button"
-          >
-            Повторить
-          </button>
-        )}
-
-        {pageState === 'ready' && hasActiveMemberships && (
-          <div className="tenant-chooser__tenant-grid">
-            {activeMemberships.map((tenant) => (
-              <button
-                key={tenant.tenant_id}
-                type="button"
-                className="tenant-chooser__tenant-card"
-                onClick={() => handleSelectTenant(tenant)}
-              >
-                <div className="tenant-chooser__tenant-name">
-                  {resolveTenantDisplayName(tenant)}
-                </div>
-                <div className="tenant-chooser__tenant-meta">
-                  <span>/{tenant.tenant_slug}</span>
-                  <span>{tenant.base_role || 'member'}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {pageState === 'ready' && !hasActiveMemberships && hasAnyMemberships && (
-          <div className="tenant-chooser__empty">
-            Нет активных membership для входа в сообщества.
-          </div>
-        )}
-
-        {pageState === 'ready' && !hasAnyMemberships && (
-          <div className="tenant-chooser__empty">
-            У вас пока нет сообществ. Создайте заявку:
-          </div>
-        )}
-
-        {inactiveMemberships.length > 0 && (
-          <div className="tenant-chooser__muted">
-            Часть сообществ скрыта для входа, потому что статус membership не active.
-          </div>
-        )}
-
-        {entryData?.last_tenant && (
-          <div className="tenant-chooser__muted">
-            Последний tenant: <strong>{entryData.last_tenant.tenant_slug}</strong>
-          </div>
-        )}
-
-        {showCreateForm && (
-          <div className="tenant-chooser__create-form">
-            <input
-              type="text"
-              placeholder="Slug (например: my-community)"
-              value={newSlug}
-              onChange={(e) => setNewSlug(e.target.value)}
-              className="tenant-chooser__input"
-            />
-            <input
-              type="text"
-              placeholder="Название"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="tenant-chooser__input"
-            />
-            <input
-              type="email"
-              placeholder="Email для заявки"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              className="tenant-chooser__input"
-            />
-            <textarea
-              placeholder="Описание (необязательно)"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              rows={3}
-              className="tenant-chooser__input tenant-chooser__textarea"
-            />
-            <button
-              onClick={handleCreateApplication}
-              disabled={submitting || !newSlug.trim() || !newEmail.trim()}
-              className="tenant-chooser__action-btn tenant-chooser__action-btn--primary"
-              type="button"
-            >
-              {submitting ? 'Отправка...' : 'Отправить заявку'}
-            </button>
-          </div>
-        )}
-
-        {hasPendingApplications && (
-          <div className="tenant-chooser__pending">
-            <p>Ваша заявка на рассмотрении:</p>
-            {pendingApplications.map((app) => (
-              <div key={app.id} className="tenant-chooser__pending-item">
-                <div>/{app.slug}</div>
-                <div>Статус: {app.status}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+  });
+  const applications = data?.tenant_applications ?? data?.pending_tenant_applications ?? [];
+  const memberships = data?.memberships ?? [];
+  const status: Record<string, string> = {pending: t('На рассмотрении', 'Under review'), provisioning: t('Сообщество подготавливается', 'Preparing community'), approved: t('Сообщество готово', 'Community ready'), rejected: t('Заявка отклонена', 'Application declined')};
+  return <PageLayout title={t('Мои сообщества', 'My communities')} description={user?.displayName || user?.email || undefined} actions={<><ThemeSelect /><AuthActions /><Button loading={loading} disabled={loading} onClick={() => void load()}>{t('Обновить статус', 'Refresh status')}</Button></>}>
+    <div className="portal-stack">
+      {error && <InlineError onRetry={() => void load()}>{error}</InlineError>}
+      {loading && !data && <PageState kind="loading" title={t('Загружаем сообщества', 'Loading communities')} />}
+      {memberships.length > 5 && <TextInput value={search} onUpdate={setSearch} placeholder={t('Найти сообщество', 'Find a community')} aria-label={t('Поиск сообществ', 'Find communities')} />}
+      {!!memberships.length && <section className="portal-grid">{memberships.filter((m) => `${m.display_name} ${m.tenant_slug}`.toLowerCase().includes(search.toLowerCase())).map((m) => <article className="portal-card" key={m.tenant_id}>
+        <span className="portal-eyebrow">/{m.tenant_slug}</span><h2>{m.display_name || m.tenant_slug}</h2>
+        {m.status === 'active' ? <Button view="action" disabled={selectedSlug !== null} loading={selectedSlug === m.tenant_slug} onClick={() => {if (selectedSlug) return; setSelectedSlug(m.tenant_slug); setSelectionError(null); void doSwitchTenant(m.tenant_slug).then((success) => {if (success) navigate(`/t/${m.tenant_slug}/`); else setSelectionError(m.tenant_slug);}).catch(() => setSelectionError(m.tenant_slug)).finally(() => setSelectedSlug(null));}}>{t('Открыть сообщество', 'Open community')}</Button> : <p>{t('Ваш доступ к этому сообществу сейчас неактивен.', 'Your access to this community is currently inactive.')}</p>}
+        {selectionError === m.tenant_slug && <InlineError>{t('Не удалось открыть сообщество. Повторите попытку.', 'Unable to open community. Try again.')}</InlineError>}
+      </article>)}</section>}
+      {data && !memberships.length && <p>{t('У вас пока нет сообществ. Выберите, как начать.', 'You have no communities yet. Choose how to start.')}</p>}
+      {data && <section className="portal-grid">
+        <article className="portal-card"><h2>{t('Присоединиться по приглашению', 'Join by invitation')}</h2><p>{t('Приглашение выдаёт администратор вашего сообщества.', 'Ask your community administrator for an invitation.')}</p><Button view="outlined" size="l" onClick={() => setShowJoin(!showJoin)}>{t('Как присоединиться', 'How to join')}</Button>{showJoin && <p>{t('Откройте полученную ссылку в этой вкладке. Если ссылки нет, свяжитесь с администратором сообщества.', 'Open your invitation link in this tab. If you do not have a link, contact your community administrator.')}</p>}</article>
+        <article className="portal-card"><h2>{t('Создать сообщество', 'Create a community')}</h2><p>{t('Подайте заявку. После рассмотрения сообщество появится в вашем списке.', 'Apply to create a community. It will appear here after review and setup.')}</p><Button view="outlined" size="l" onClick={() => setShowForm(!showForm)}>{t('Подать заявку', 'Apply')}</Button></article>
+      </section>}
+      {showForm && <form className="portal-card" onSubmit={submit}><h2>{t('Новое сообщество', 'New community')}</h2>
+        <Controller control={control} name="name" render={({field}) => <FormField label={t('Название', 'Name')} error={formState.errors.name?.message}>{(props) => <TextInput {...props} value={field.value} onUpdate={field.onChange} disabled={formState.isSubmitting} />}</FormField>} />
+        <Controller control={control} name="slug" render={({field}) => <FormField label={t('Адрес сообщества', 'Community address')} hint={`/t/${watch('slug') || 'my-community'}/`} error={formState.errors.slug?.message}>{(props) => <TextInput {...props} value={field.value} onUpdate={field.onChange} disabled={formState.isSubmitting} />}</FormField>} />
+        <Controller control={control} name="description" render={({field}) => <FormField label={t('Описание', 'Description')} error={formState.errors.description?.message}>{(props) => <TextArea {...props} value={field.value} onUpdate={field.onChange} disabled={formState.isSubmitting} />}</FormField>} />
+        <p>{t('Заявка будет связана с вашим аккаунтом и отправлена на рассмотрение.', 'This application will be associated with your account and sent for review.')}</p>
+        {formError && <InlineError>{formError}</InlineError>}<Button type="submit" view="action" size="l" loading={formState.isSubmitting} disabled={formState.isSubmitting}>{t('Отправить заявку', 'Submit application')}</Button>
+      </form>}
+      {!!applications.length && <section className="portal-card"><h2>{t('Мои заявки', 'My applications')}</h2><div className="portal-stack">{applications.map((app) => <div key={app.id} className="portal-actions"><strong>/{app.slug}</strong><Label>{status[app.status] ?? t('Статус уточняется', 'Status unavailable')}</Label></div>)}</div></section>}
+      {user?.isSuperuser && <TenantApplicationReviewPanel onReviewed={() => void load()} />}
     </div>
-  );
-};
+  </PageLayout>;
+}

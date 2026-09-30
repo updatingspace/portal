@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { notifyApiError } from '../../utils/apiErrorHandling';
 import { createFeatureFlag, listFeatureFlags, updateFeatureFlag, type FeatureFlag, type FeatureFlagInput } from './api';
 
 export const useFeatureFlags = () => {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await listFeatureFlags();
       setFlags(data);
     } catch (error) {
-      notifyApiError(error, 'Не удалось загрузить feature flags');
+      setError(error instanceof Error ? error : new Error('Не удалось загрузить функции.'));
     } finally {
       setLoading(false);
     }
@@ -35,5 +36,5 @@ export const useFeatureFlags = () => {
     return updated;
   }, []);
 
-  return { flags, loading, reload, create, patch };
+  return { flags, loading, error, reload, create, patch };
 };

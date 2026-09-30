@@ -14,7 +14,8 @@ vi.mock('./model/useProfileSession', () => ({
 }));
 
 vi.mock('./model/useProfileHubData', () => ({
-  useProfileHubData: (sessionInfo: unknown) => mockUseProfileHubData(sessionInfo),
+  useProfileHubData: (sessionInfo: unknown) =>
+    mockUseProfileHubData(sessionInfo),
 }));
 
 vi.mock('../../../hooks/useActivity', () => ({
@@ -25,7 +26,10 @@ vi.mock('./components/CreatePostComposer', () => ({
   CreatePostComposer: (props: { canCreatePost: boolean }) => (
     <div>
       {!props.canCreatePost && (
-        <span>У вас нет прав на публикацию в этом tenant’е. Обратитесь к администратору.</span>
+        <span>
+          У вас нет прав на публикацию в этом tenant’е. Обратитесь к
+          администратору.
+        </span>
       )}
       <button disabled={!props.canCreatePost}>Опубликовать</button>
     </div>
@@ -129,7 +133,10 @@ function mockProfileHubData(
 
 describe('ProfileHubPage', () => {
   beforeEach(() => {
-    mockUseProfileSession.mockReturnValue({ sessionInfo: { tenant: { id: 't-1', slug: 'aef' }, user: { id: 'u-1' } } });
+    localStorage.setItem('portal_locale_v1', 'ru');
+    mockUseProfileSession.mockReturnValue({
+      sessionInfo: { tenant: { id: 't-1', slug: 'aef' }, user: { id: 'u-1' } },
+    });
     mockProfileHubData();
     mockCreateNews.mockReset();
   });
@@ -137,11 +144,22 @@ describe('ProfileHubPage', () => {
   it('renders safely with partial data (no avatar/bio/widgets)', () => {
     renderProfileHubPage();
 
-    expect(screen.getByRole('heading', { name: 'Test User' })).toBeInTheDocument();
-    expect(screen.getByText('Добавьте описание профиля — так людям проще понять, кто вы.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Test User' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Добавьте описание профиля — так людям проще понять, кто вы.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Пока нет достижений')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'О профиле' }),
+    ).toBeInTheDocument();
   });
 
-  it('shows disabled composer hint when post.create is missing', () => {
+  it('hides writing actions when post.create is missing', () => {
     mockProfileHubData({
       vm: {
         ...BASE_VM,
@@ -151,8 +169,12 @@ describe('ProfileHubPage', () => {
 
     renderProfileHubPage();
 
-    expect(screen.getByText('У вас нет прав на публикацию в этом tenant’е. Обратитесь к администратору.')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Опубликовать' })[0]).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: 'Написать публикацию' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Опубликовать' }),
+    ).not.toBeInTheDocument();
   });
 
   it('renders no-permission block instead of feed when post.view missing', () => {
@@ -165,7 +187,9 @@ describe('ProfileHubPage', () => {
 
     renderProfileHubPage();
 
-    expect(screen.getByText('У вас нет прав на просмотр публикаций в этом разделе.')).toBeInTheDocument();
+    expect(
+      screen.getByText('У вас нет прав на просмотр публикаций в этом разделе.'),
+    ).toBeInTheDocument();
   });
 
   it('renders feed loading skeleton while feed is loading', () => {
@@ -173,7 +197,9 @@ describe('ProfileHubPage', () => {
 
     const { container } = renderProfileHubPage();
 
-    expect(container.querySelectorAll('.profile-hub__post-skeleton').length).toBeGreaterThan(0);
+    expect(
+      container.querySelectorAll('.profile-hub__post-skeleton').length,
+    ).toBeGreaterThan(0);
   });
 
   it('renders feed error state with retry action', () => {
@@ -182,6 +208,8 @@ describe('ProfileHubPage', () => {
     renderProfileHubPage();
 
     expect(screen.getByText('Не удалось загрузить ленту')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Повторить' }),
+    ).toBeInTheDocument();
   });
 });

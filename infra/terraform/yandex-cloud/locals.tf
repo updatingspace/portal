@@ -137,8 +137,9 @@ locals {
   portal_env = merge(
     local.common_service_env,
     {
-      ACCESS_BASE_URL    = local.access_api_url
-      ACCESS_SERVICE_URL = local.access_service_url
+      ACCESS_BASE_URL            = local.access_api_url
+      ACCESS_SERVICE_URL         = local.access_service_url
+      ACCESS_PRIVATE_INVOKE_AUTH = "true"
     },
     lookup(var.service_environment, "portal", {}),
   )
@@ -209,6 +210,7 @@ locals {
       BFF_UPSTREAM_PORTAL_INVOKE_URL       = local.portal_api_url
       BFF_UPSTREAM_VOTING_INVOKE_URL       = local.voting_api_url
       BFF_SESSION_RATE_LIMIT_PER_MIN       = "60"
+      BFF_FEED_STREAMING_ENABLED           = "false"
       ID_BASE_URL                          = local.id_internal_api_url
       ID_PUBLIC_BASE_URL                   = local.id_public_base_url
       YC_API_GATEWAY_DOMAIN                = local.tenant_gateway_domain
@@ -219,8 +221,9 @@ locals {
     lookup(var.service_environment, "bff", {}),
   )
 
-  outbox_services    = var.outbox_services
-  retention_services = var.retention_services
+  outbox_services      = var.outbox_services
+  outbox_task_services = var.portal_outbox_function_zip == null ? var.outbox_services : setsubtract(var.outbox_services, toset(["portal"]))
+  retention_services   = var.retention_services
 
   api_gateway_spec = templatefile("${path.module}/templates/api-gateway.openapi.yaml.tftpl", {
     bff_container_id           = yandex_serverless_container.bff.id

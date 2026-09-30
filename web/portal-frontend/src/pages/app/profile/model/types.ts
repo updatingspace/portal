@@ -20,12 +20,12 @@ export type ProfileOwnerVM = {
 };
 
 export type ProfileStatsVM = {
-  posts: number;
-  following: number;
-  followers: number;
+  posts: number | null;
+  following: number | null;
+  followers: number | null;
   communities: number;
-  achievements: number;
-  friends?: number;
+  achievements: number | null;
+  friends?: number | null;
 };
 
 export type ProfileWidgetPreviewItemVM = {

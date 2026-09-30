@@ -497,6 +497,7 @@ def feed_get(
     from_: datetime | None = None,
     to: datetime | None = None,
     types: str | None = None,
+    actor_user_id: UUID | None = None,
     scope_type: str | None = None,
     scope_id: str | None = None,
     limit: int = 100,
@@ -537,6 +538,7 @@ def feed_get(
         from_dt=from_,
         to_dt=to,
         types=parse_csv(types),
+        actor_user_id=actor_user_id,
         scope_type=scope_type,
         scope_id=scope_id,
     )
@@ -1496,6 +1498,7 @@ def feed_get_v2(
     from_: datetime | None = None,
     to: datetime | None = None,
     types: str | None = None,
+    actor_user_id: UUID | None = None,
     scope_type: str | None = None,
     scope_id: str | None = None,
     limit: int = 50,
@@ -1547,6 +1550,7 @@ def feed_get_v2(
         from_dt=from_,
         to_dt=to,
         types=parse_csv(types),
+        actor_user_id=actor_user_id,
         scope_type=scope_type,
         scope_id=scope_id,
     )

@@ -209,6 +209,7 @@ def list_achievements(
     category: list[str] | None = Query(default=None),
     q: str | None = None,
     created_by: str | None = None,
+    earned: bool = False,
     limit: int = 20,
     cursor: str | None = None,
 ):
@@ -236,6 +237,11 @@ def list_achievements(
         qs = qs.filter(category__slug__in=category)
     if q:
         qs = qs.filter(name_i18n__icontains=q)
+    if earned:
+        grant_ids = list(AchievementGrant.objects.filter(
+            tenant_id=ctx.tenant_id, recipient_id=ctx.user_id, revoked_at__isnull=True
+        ).values_list("achievement_id", flat=True))
+        qs = qs.filter(id__in=grant_ids)
     if created_by == "me":
         qs = qs.filter(created_by=ctx.user_id)
 

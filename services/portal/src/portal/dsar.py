@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from django.db.models import Q
 from django.utils import timezone
 
 from portal.models import (
@@ -12,6 +13,10 @@ from portal.models import (
     Post,
     Team,
     TeamMembership,
+    TenantApplication,
+    TenantMembership,
+    TenantProvisioningOutbox,
+    TenantSlugClaim,
 )
 
 ANONYMIZED_USER_ID = UUID("00000000-0000-0000-0000-000000000000")
@@ -96,16 +101,30 @@ def _serialize_post(item: Post) -> dict[str, Any]:
 def export_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
     profile = PortalProfile.objects.filter(tenant_id=tenant_id, user_id=user_id).first()
     communities = list(
-        Community.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by("created_at")
+        Community.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by(
+            "created_at"
+        )
     )
-    teams = list(Team.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by("created_at"))
+    teams = list(
+        Team.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by(
+            "created_at"
+        )
+    )
     community_memberships = list(
-        CommunityMembership.objects.filter(tenant_id=tenant_id, user_id=user_id).order_by("created_at")
+        CommunityMembership.objects.filter(
+            tenant_id=tenant_id, user_id=user_id
+        ).order_by("created_at")
     )
     team_memberships = list(
-        TeamMembership.objects.filter(tenant_id=tenant_id, user_id=user_id).order_by("created_at")
+        TeamMembership.objects.filter(tenant_id=tenant_id, user_id=user_id).order_by(
+            "created_at"
+        )
     )
-    posts = list(Post.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by("created_at"))
+    posts = list(
+        Post.objects.filter(tenant_id=tenant_id, created_by=user_id).order_by(
+            "created_at"
+        )
+    )
 
     return {
         "service": "portal",
@@ -113,16 +132,54 @@ def export_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
         "user_id": str(user_id),
         "exported_at": timezone.now().isoformat(),
         "portal_profile": _serialize_profile(profile),
+        "tenant_memberships": list(
+            TenantMembership.objects.filter(
+                tenant_id=tenant_id, user_id=user_id
+            ).values("status", "base_role")
+        ),
+        "tenant_applications": list(
+            TenantApplication.objects.filter(
+                Q(tenant_id=tenant_id) | Q(status__in=["pending", "provisioning"]),
+                applicant_user_id=user_id,
+            ).values("slug", "name", "description", "status")
+        ),
         "communities_created": [_serialize_community(item) for item in communities],
         "teams_created": [_serialize_team(item) for item in teams],
-        "community_memberships": [_serialize_membership(item) for item in community_memberships],
+        "community_memberships": [
+            _serialize_membership(item) for item in community_memberships
+        ],
         "team_memberships": [_serialize_membership(item) for item in team_memberships],
         "posts": [_serialize_post(item) for item in posts],
     }
 
 
 def erase_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
-    profiles_deleted, _ = PortalProfile.objects.filter(tenant_id=tenant_id, user_id=user_id).delete()
+    applications = TenantApplication.objects.filter(
+        Q(tenant_id=tenant_id) | Q(status__in=["pending", "provisioning"]),
+        applicant_user_id=user_id,
+    )
+    # Materialize identifiers: the YDB backend cannot bind nested-query parameters.
+    application_rows = list(applications.values("id", "tenant_id", "status"))
+    for application in application_rows:
+        # Applications belong to the account before their future tenant exists.
+        TenantMembership.objects.filter(
+            user_id=user_id, status="provisioning", tenant_id=application["tenant_id"]
+        ).delete()
+        TenantProvisioningOutbox.objects.filter(application_id=application["id"]).delete()
+        if application["status"] == "pending":
+            TenantSlugClaim.objects.filter(application_id=application["id"]).delete()
+    applications.update(
+        applicant_user_id=ANONYMIZED_USER_ID,
+        name="[deleted]",
+        description="",
+        status="erased",
+    )
+    tenant_memberships_deleted, _ = TenantMembership.objects.filter(
+        tenant_id=tenant_id, user_id=user_id
+    ).delete()
+    profiles_deleted, _ = PortalProfile.objects.filter(
+        tenant_id=tenant_id, user_id=user_id
+    ).delete()
     community_memberships_deleted, _ = CommunityMembership.objects.filter(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -140,7 +197,9 @@ def erase_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
         tenant_id=tenant_id,
         created_by=user_id,
     ).update(created_by=ANONYMIZED_USER_ID)
-    posts_redacted = Post.objects.filter(tenant_id=tenant_id, created_by=user_id).update(
+    posts_redacted = Post.objects.filter(
+        tenant_id=tenant_id, created_by=user_id
+    ).update(
         created_by=ANONYMIZED_USER_ID,
         title=REDACTED_POST_TITLE,
         body=REDACTED_POST_BODY,
@@ -153,6 +212,7 @@ def erase_user_data(*, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
         "mode": "hybrid",
         "erased_at": timezone.now().isoformat(),
         "counts": {
+            "tenant_memberships_deleted": tenant_memberships_deleted,
             "profiles_deleted": profiles_deleted,
             "community_memberships_deleted": community_memberships_deleted,
             "team_memberships_deleted": team_memberships_deleted,

@@ -1,478 +1,362 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useRouteBase } from '@/shared/hooks/useRouteBase';
+import { ContentDialog } from '../../../shared/ui/portal/ContentDialog';
+import { SectionTabs } from '../../../shared/ui/portal/SectionTabs';
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button, Pagination, Select, TextInput } from '@gravity-ui/uikit';
 import { Calendar } from '@gravity-ui/date-components';
 import { dateTime, settings } from '@gravity-ui/date-utils';
-import {
-    Loader,
-    Button,
-    Pagination,
-    Card,
-    Text,
-    Icon,
-    Select,
-    TextInput,
-} from '@gravity-ui/uikit';
-import { Plus as PlusIcon, Calendar as CalendarIcon, Clock } from '@gravity-ui/icons';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useEventsList } from '../../../features/events';
-import { EventsTimeline } from '../../../features/events/components';
+import {
+  useEventsList,
+  type RsvpStatus,
+  type EventVisibility,
+  type FetchEventsParams,
+} from '../../../features/events';
+import { EventsTimeline } from '../../../features/events/components/EventsTimeline';
 import { can } from '../../../features/rbac/can';
-import { useFormatters } from '@/shared/hooks/useFormatters';
-import type { EventVisibility, EventWithCounts, RsvpStatus } from '../../../features/events';
+import { useFormatters } from '../../../shared/hooks/useFormatters';
+import { useRouteBase } from '../../../shared/hooks/useRouteBase';
+import {
+  FormField,
+  InlineError,
+  PageLayout,
+  PageState,
+  useUITranslation,
+} from '../../../shared/ui/portal/PortalUI';
 
 const PAGE_SIZE = 20;
-
-type CalendarValue = React.ComponentProps<typeof Calendar>['value'];
-
-type CalendarLike = {
-    toDate?: () => Date;
-    toJSDate?: () => Date;
-    year?: () => number;
-    month?: () => number;
-    date?: () => number;
-};
-
-type EventStatusFilter = 'upcoming' | 'past';
-
-type OwnershipFilter = 'all' | 'mine';
-
-type RsvpFilter = 'all' | RsvpStatus;
-
-type VisibilityFilter = 'all' | EventVisibility;
-
-const toCalendarValue = (date: Date | null): CalendarValue => {
-    if (!date) return null;
-    return dateTime({ input: date }) as CalendarValue;
-};
-
-const toJsDate = (value: CalendarValue): Date | null => {
-    if (!value || typeof value !== 'object') return null;
-    const v = value as CalendarLike;
-
-    if (typeof v.toDate === 'function') return v.toDate();
-    if (typeof v.toJSDate === 'function') return v.toJSDate();
-    if (typeof v.year === 'function' && typeof v.month === 'function' && typeof v.date === 'function') {
-        return new Date(v.year(), v.month() - 1, v.date());
-    }
-    return null;
-};
-
-const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-
-const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-
-const getSafeDate = (value: string | null | undefined) => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const formatDateFull = (date: Date, locale: string, timeZone?: string) =>
-    new Intl.DateTimeFormat(locale, {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone,
-    }).format(date);
-
-const formatRelativeDateLabel = (date: Date, locale: string, timeZone?: string) => {
-    const today = startOfDay(new Date());
-    const target = startOfDay(date);
-    const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
-
-    const prefix =
-        diffDays === 0
-            ? 'Сегодня'
-            : diffDays === 1
-                ? 'Завтра'
-                : diffDays === -1
-                    ? 'Вчера'
-                    : null;
-
-    const formatted = formatDateFull(date, locale, timeZone);
-    return prefix ? `${prefix}, ${formatted}` : formatted;
-};
-
-const TAB_ITEMS = [
-    { id: 'upcoming', title: 'Предстоящие', icon: CalendarIcon },
-    { id: 'past', title: 'Прошедшие', icon: Clock },
-] as const;
-
-const RSVP_OPTIONS: { value: RsvpFilter; content: string }[] = [
-    { value: 'all', content: 'Все ответы' },
-    { value: 'going', content: 'Иду' },
-    { value: 'interested', content: 'Интересно' },
-    { value: 'not_going', content: 'Не пойду' },
-];
-
-const VISIBILITY_OPTIONS: { value: VisibilityFilter; content: string }[] = [
-    { value: 'all', content: 'Любая видимость' },
-    { value: 'public', content: 'Публичное' },
-    { value: 'community', content: 'Сообщество' },
-    { value: 'team', content: 'Команда' },
-    { value: 'private', content: 'Приватное' },
-];
-
-const OWNERSHIP_OPTIONS: { value: OwnershipFilter; content: string }[] = [
-    { value: 'all', content: 'Все события' },
-    { value: 'mine', content: 'Создано мной' },
-];
-
-export const EventsPage: React.FC = () => {
-    const [page, setPage] = useState(1);
-    const navigate = useNavigate();
-    const routeBase = useRouteBase();
-    const { user } = useAuth();
-    const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
-    const [activeTab, setActiveTab] = useState<EventStatusFilter>('upcoming');
-    const [query, setQuery] = useState('');
-    const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>('all');
-    const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('all');
-    const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('all');
-    const { locale, intlLocale, timezone } = useFormatters();
-
-    const calendarLocale = locale;
-
-    React.useEffect(() => {
-        settings.loadLocale(calendarLocale).catch(() => undefined);
-    }, [calendarLocale]);
-
-    const offset = (page - 1) * PAGE_SIZE;
-
-    const dateRange = useMemo(() => {
-        const now = new Date();
-        if (selectedDate) {
-            const day = startOfDay(selectedDate);
-            return { from: day, to: endOfDay(day) };
-        }
-        if (activeTab === 'past') {
-            const to = endOfDay(now);
-            return { from: addDays(startOfDay(now), -30), to };
-        }
-        const from = now;
-        return { from, to: addDays(now, 60) };
-    }, [activeTab, selectedDate]);
-
-    const scopeFilters = useMemo(() => {
-        if (user?.tenant?.id) {
-            return { scopeType: 'TENANT' as const, scopeId: user.tenant.id };
-        }
-        return {};
-    }, [user]);
-
-    const { data, isLoading, isError, refetch } = useEventsList({
-        limit: PAGE_SIZE,
-        offset,
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-        ...scopeFilters,
+export function EventsPage() {
+  const { user } = useAuth();
+  const mobile = useMediaQuery('(max-width: 1079px)');
+  const base = useRouteBase();
+  const navigate = useNavigate();
+  const t = useUITranslation();
+  const { timezone, locale } = useFormatters();
+  const [params, setParams] = useSearchParams();
+  const [panel, setPanel] = useState<'filters' | 'calendar' | null>(null);
+  const [calendarReady, setCalendarReady] = useState(false);
+  useEffect(() => {
+    let current = true;
+    settings.loadLocale(locale).then(() => {
+      if (current) setCalendarReady(true);
     });
-
-    const events = useMemo(() => data?.items ?? [], [data?.items]);
-    const pagination = data?.meta;
-    const totalPages = pagination ? Math.ceil(pagination.total / PAGE_SIZE) : 1;
-
-    const canCreate = can(user, 'events.event.create');
-    const canManage = can(user, 'events.event.manage');
-
-    const baseFilteredEvents = useMemo(() => {
-        const normalizedQuery = query.trim().toLowerCase();
-        return events
-            .filter((event) => {
-                if (rsvpFilter !== 'all' && event.myRsvp !== rsvpFilter) return false;
-                if (visibilityFilter !== 'all' && event.visibility !== visibilityFilter) return false;
-                if (ownershipFilter === 'mine') {
-                    if (!user?.id) return false;
-                    if (event.createdBy !== user.id) return false;
-                }
-
-                if (normalizedQuery) {
-                    const haystack = [event.title, event.description, event.locationText]
-                        .filter(Boolean)
-                        .join(' ')
-                        .toLowerCase();
-                    if (!haystack.includes(normalizedQuery)) return false;
-                }
-
-                return true;
-            })
-            .sort((a, b) => {
-                const aDate = getSafeDate(a.startsAt);
-                const bDate = getSafeDate(b.startsAt);
-                if (!aDate || !bDate) return 0;
-                return aDate.getTime() - bDate.getTime();
-            });
-    }, [events, ownershipFilter, query, rsvpFilter, user, visibilityFilter]);
-
-    const filteredEvents = useMemo(() => {
-        if (selectedDate) {
-            return baseFilteredEvents;
-        }
-        const now = new Date();
-        return baseFilteredEvents.filter((event) => {
-            const start = getSafeDate(event.startsAt);
-            const end = getSafeDate(event.endsAt) ?? start;
-            const isPast = Boolean(end && end < now);
-            const isUpcoming = !isPast;
-
-            if (activeTab === 'upcoming' && !isUpcoming) return false;
-            if (activeTab === 'past' && !isPast) return false;
-            return true;
-        });
-    }, [activeTab, baseFilteredEvents, selectedDate]);
-
-    const handlePageChange = (newPage: number) => {
-        setPage(newPage);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    return () => {
+      current = false;
     };
-
-    const handleEdit = (event: EventWithCounts) => {
-        navigate(`${routeBase}/events/${event.id}/edit`);
-    };
-
-    const handleDateChange = (value: CalendarValue) => {
-        setSelectedDate(toJsDate(value));
-        setPage(1);
-    };
-
-    const handleTabChange = (tabId: string) => {
-        setActiveTab(tabId as EventStatusFilter);
-        setSelectedDate(null);
-        setPage(1);
-    };
-
-    const handleResetFilters = () => {
-        setQuery('');
-        setRsvpFilter('all');
-        setVisibilityFilter('all');
-        setOwnershipFilter('all');
-        setPage(1);
-    };
-
-    const hasFilters =
-        query.trim().length > 0 ||
-        rsvpFilter !== 'all' ||
-        visibilityFilter !== 'all' ||
-        ownershipFilter !== 'all';
-
-    const listTitle = selectedDate
-        ? formatRelativeDateLabel(selectedDate, intlLocale, timezone)
-        : activeTab === 'past'
-            ? 'Прошедшие мероприятия'
-            : 'Предстоящие мероприятия';
-
-    if (isLoading && !events.length) {
-        return (
-            <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-                <div className="text-center">
-                    <Loader size="l" />
-                    <Text variant="body-2" color="secondary" className="mt-4">
-                        Загружаем события...
-                    </Text>
-                </div>
-            </div>
-        );
-    }
-
-    if (isError && !events.length) {
-        return (
-            <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-                <Card className="max-w-md w-full p-8 text-center">
-                    <Text variant="subheader-2" className="mb-2">Ошибка загрузки</Text>
-                    <Text variant="body-2" color="secondary" className="mb-6">
-                        Не удалось загрузить мероприятия. Проверьте соединение и попробуйте снова.
-                    </Text>
-                    <Button onClick={() => refetch()} view="action" size="l" width="max">
-                        Повторить
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
-            <div className="container max-w-7xl mx-auto px-4 py-6">
-                <div className="flex flex-col gap-6 lg:flex-row">
-                    <div className="flex-1 space-y-5">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <Text variant="header-1" className="text-slate-900 dark:text-white">
-                                    Мероприятия
-                                </Text>
-                                <Text variant="body-2" color="secondary" className="mt-1">
-                                    Планируйте встречи, следите за RSVP и держите расписание под рукой.
-                                </Text>
-                            </div>
-                            {canCreate && (
-                                <Link to={`${routeBase}/events/create`}>
-                                    <Button view="action" size="l" className="shadow-sm">
-                                        <Icon data={PlusIcon} />
-                                        Создать
-                                    </Button>
-                                </Link>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
-                            {TAB_ITEMS.map((tab) => (
-                                <Button
-                                    key={tab.id}
-                                    view="flat"
-                                    size="l"
-                                    onClick={() => handleTabChange(tab.id)}
-                                    className={[
-                                        'rounded-none px-2 pb-3 pt-2 transition-colors',
-                                        activeTab === tab.id
-                                            ? 'border-b-2 border-slate-900 dark:border-white text-slate-900 dark:text-white'
-                                            : 'text-slate-500 dark:text-slate-400',
-                                    ].join(' ')}
-                                >
-                                    <Icon data={tab.icon} size={16} />
-                                    {tab.title}
-                                </Button>
-                            ))}
-                        </div>
-
-                        <Card className="p-4 bg-white/90 dark:bg-slate-900/70 border border-slate-200/70 dark:border-white/10">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                                <TextInput
-                                    size="l"
-                                    value={query}
-                                    onUpdate={setQuery}
-                                    placeholder="Поиск по названию, месту или описанию"
-                                    className="lg:flex-1"
-                                />
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                    <Select
-                                        size="l"
-                                        value={[rsvpFilter]}
-                                        onUpdate={(value) => setRsvpFilter((value[0] ?? 'all') as RsvpFilter)}
-                                        options={RSVP_OPTIONS}
-                                        width="max"
-                                    />
-                                    <Select
-                                        size="l"
-                                        value={[visibilityFilter]}
-                                        onUpdate={(value) => setVisibilityFilter((value[0] ?? 'all') as VisibilityFilter)}
-                                        options={VISIBILITY_OPTIONS}
-                                        width="max"
-                                    />
-                                    <Select
-                                        size="l"
-                                        value={[ownershipFilter]}
-                                        onUpdate={(value) => setOwnershipFilter((value[0] ?? 'all') as OwnershipFilter)}
-                                        options={OWNERSHIP_OPTIONS}
-                                        width="max"
-                                    />
-                                </div>
-                                {hasFilters && (
-                                    <Button view="flat" size="m" onClick={handleResetFilters}>
-                                        Сбросить
-                                    </Button>
-                                )}
-                            </div>
-                        </Card>
-
-                        <div className="space-y-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                    <Text variant="subheader-1" className="text-slate-900 dark:text-white">
-                                        {listTitle}
-                                    </Text>
-                                    <Text variant="body-2" color="secondary">
-                                        {filteredEvents.length
-                                            ? `Показано ${filteredEvents.length} событий`
-                                            : 'Список пока пуст'}
-                                    </Text>
-                                </div>
-                                {selectedDate && (
-                                    <Button
-                                        view="outlined"
-                                        size="m"
-                                        onClick={() => {
-                                            setSelectedDate(null);
-                                            setPage(1);
-                                        }}
-                                    >
-                                        Показать всё
-                                    </Button>
-                                )}
-                            </div>
-
-                            {isLoading ? (
-                                <div className="flex justify-center py-12">
-                                    <Loader size="l" />
-                                </div>
-                            ) : filteredEvents.length === 0 ? (
-                                <Card className="p-10 text-center">
-                                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                                        <Icon data={CalendarIcon} size={30} className="text-slate-400" />
-                                    </div>
-                                    <Text variant="subheader-2" className="mb-2">
-                                        Мероприятий не найдено
-                                    </Text>
-                                    <Text variant="body-2" color="secondary">
-                                        Попробуйте изменить фильтры или выбрать другую дату в календаре.
-                                    </Text>
-                                </Card>
-                            ) : (
-                                <EventsTimeline events={filteredEvents} onEdit={canManage ? handleEdit : undefined} />
-                            )}
-
-                            {totalPages > 1 && (
-                                <div className="mt-8 flex justify-center">
-                                    <Pagination
-                                        page={page}
-                                        pageSize={PAGE_SIZE}
-                                        total={pagination?.total || 0}
-                                        onUpdate={handlePageChange}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="lg:sticky lg:top-6 w-full lg:w-[320px] space-y-4">
-                        <Card className="p-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <Text variant="subheader-1" className="flex items-center gap-2">
-                                    <Icon data={CalendarIcon} size={18} />
-                                    Календарь
-                                </Text>
-                                {selectedDate && (
-                                    <Button
-                                        view="flat"
-                                        size="xs"
-                                        onClick={() => {
-                                            setSelectedDate(null);
-                                            setPage(1);
-                                        }}
-                                    >
-                                        Сбросить
-                                    </Button>
-                                )}
-                            </div>
-                            <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3">
-                                <Calendar
-                                    value={toCalendarValue(selectedDate)}
-                                    onUpdate={handleDateChange}
-                                />
-                            </div>
-                            {selectedDate && (
-                                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                                    <Text variant="body-2" color="secondary">
-                                        Выбрано: {formatRelativeDateLabel(selectedDate, intlLocale, timezone)}
-                                    </Text>
-                                </div>
-                            )}
-                        </Card>
-                    </div>
-                </div>
-            </div>
-        </div>
+  }, [locale]);
+  const period = params.get('period') === 'past' ? 'past' : 'upcoming';
+  const query = params.get('q') ?? '';
+  const owner = params.get('owner') === 'mine' ? 'mine' : 'all';
+  const rsvp = ['going', 'interested', 'not_going'].includes(
+    params.get('rsvp') ?? '',
+  )
+    ? (params.get('rsvp') as RsvpStatus)
+    : undefined;
+  const visibility = ['public', 'community', 'team', 'private'].includes(
+    params.get('visibility') ?? '',
+  )
+    ? (params.get('visibility') as EventVisibility)
+    : undefined;
+  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
+  const day = params.get('date') ?? '';
+  const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(day)
+    ? dateTime({ input: day, timeZone: timezone })
+    : null;
+  const selected = selectedDay?.isValid() ? selectedDay : null;
+  const filters: FetchEventsParams = {
+    q: query || undefined,
+    mine: owner === 'mine',
+    rsvp,
+    visibility,
+    period: selected ? undefined : period,
+    from: selected?.startOf('day').toISOString(),
+    to: selected?.endOf('day').toISOString(),
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
+  };
+  const { data, isLoading, isError, refetch } = useEventsList(filters);
+  const events = data?.items ?? [];
+  const update = (key: string, value: string) =>
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        if (key !== 'page') next.delete('page');
+        return next;
+      },
+      { replace: true },
     );
-};
+  const reset = () =>
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        ['q', 'owner', 'rsvp', 'visibility', 'page', 'date'].forEach((key) =>
+          next.delete(key),
+        );
+        return next;
+      },
+      { replace: true },
+    );
+  const hasFilters = Boolean(
+    query || owner === 'mine' || rsvp || visibility || selected,
+  );
+  const filterControls = (
+    <div className="portal-event-filters">
+      <FormField label={t('Поиск событий', 'Search events')}>
+        {(props) => (
+          <TextInput
+            {...props}
+            size="xl"
+            value={query}
+            onUpdate={(value) => update('q', value)}
+            placeholder={t(
+              'Название, место или описание',
+              'Title, location or description',
+            )}
+          />
+        )}
+      </FormField>
+      <FormField label={t('Мой ответ', 'My response')}>
+        {(props) => (
+          <Select
+            {...props}
+            size="xl"
+            width="max"
+            value={[rsvp ?? 'all']}
+            onUpdate={(values) =>
+              update('rsvp', values[0] === 'all' ? '' : values[0])
+            }
+            options={[
+              {
+                value: 'all',
+                content: t('Все ответы', 'All responses'),
+              },
+              { value: 'going', content: t('Пойду', 'Going') },
+              {
+                value: 'interested',
+                content: t('Интересно', 'Interested'),
+              },
+              {
+                value: 'not_going',
+                content: t('Не пойду', 'Not going'),
+              },
+            ]}
+          />
+        )}
+      </FormField>
+      <FormField label={t('Аудитория', 'Audience')}>
+        {(props) => (
+          <Select
+            {...props}
+            size="xl"
+            width="max"
+            value={[visibility ?? 'all']}
+            onUpdate={(values) =>
+              update('visibility', values[0] === 'all' ? '' : values[0])
+            }
+            options={[
+              {
+                value: 'all',
+                content: t('Любая аудитория', 'All audiences'),
+              },
+              {
+                value: 'public',
+                content: t('Сообщество', 'Community'),
+              },
+              { value: 'community', content: t('Группа', 'Group') },
+              { value: 'team', content: t('Команда', 'Team') },
+              {
+                value: 'private',
+                content: t('Ограниченный доступ', 'Restricted access'),
+              },
+            ]}
+          />
+        )}
+      </FormField>
+      <FormField label={t('Организатор', 'Organizer')}>
+        {(props) => (
+          <Select
+            {...props}
+            size="xl"
+            width="max"
+            value={[owner]}
+            onUpdate={(values) =>
+              update('owner', values[0] === 'all' ? '' : values[0])
+            }
+            options={[
+              { value: 'all', content: t('Все события', 'All events') },
+              {
+                value: 'mine',
+                content: t('Созданные мной', 'Created by me'),
+              },
+            ]}
+          />
+        )}
+      </FormField>
+      {hasFilters && (
+        <Button onClick={reset}>
+          {t('Сбросить фильтры', 'Clear filters')}
+        </Button>
+      )}
+    </div>
+  );
+  const calendar = (
+    <div className="portal-events-calendar">
+      {calendarReady && (
+        <Calendar
+          key={locale}
+          value={selected}
+          timeZone={timezone}
+          onUpdate={(value) => update('date', value.format('YYYY-MM-DD'))}
+        />
+      )}
+      <p>{timezone}</p>
+      {selected && (
+        <Button onClick={() => update('date', '')}>
+          {t('Показать всё', 'Show all')}
+        </Button>
+      )}
+    </div>
+  );
+  return (
+    <PageLayout
+      title={t('События', 'Events')}
+      actions={
+        can(user, 'events.event.create') && (
+          <Button
+            view="action"
+            onClick={() => navigate(`${base}/events/create`)}
+          >
+            {t('Создать событие', 'Create event')}
+          </Button>
+        )
+      }
+    >
+      <div className="portal-events-layout">
+        <div className="portal-stack">
+          <SectionTabs
+            label={t('Период', 'Period')}
+            value={period}
+            items={[
+              { id: 'upcoming', label: t('Предстоящие', 'Upcoming') },
+              { id: 'past', label: t('Прошедшие', 'Past') },
+            ]}
+            onChange={(value) =>
+              setParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.set('period', value);
+                  next.delete('date');
+                  next.delete('page');
+                  return next;
+                },
+                { replace: true },
+              )
+            }
+          />
+          <div className="portal-event-list-tools">
+            <span>{timezone}</span>
+            {mobile && (
+              <>
+                <Button
+                  size="xl"
+                  view="flat"
+                  onClick={() => setPanel('calendar')}
+                >
+                  {t('Календарь', 'Calendar')}
+                </Button>
+                <Button
+                  size="xl"
+                  view="flat"
+                  onClick={() => setPanel('filters')}
+                >
+                  {t('Фильтры событий', 'Event filters')}
+                  {hasFilters ? ' •' : ''}
+                </Button>
+              </>
+            )}
+          </div>
+          {selected && (
+            <Button
+              size="xl"
+              view="outlined"
+              onClick={() => update('date', '')}
+            >
+              {day} ×
+            </Button>
+          )}
+          {!mobile && filterControls}
+          {isError && (
+            <InlineError onRetry={() => void refetch()}>
+              {t(
+                'Не удалось загрузить события. Попробуйте ещё раз.',
+                'Unable to load events. Try again.',
+              )}
+            </InlineError>
+          )}
+          {isLoading && (
+            <PageState
+              kind="loading"
+              title={t('Загружаем события', 'Loading events')}
+            />
+          )}
+          {!isLoading && !isError && events.length === 0 && (
+            <PageState
+              kind="empty"
+              title={
+                hasFilters
+                  ? t('Событий не найдено', 'No matching events')
+                  : t('Здесь пока нет событий', 'No events yet')
+              }
+              description={
+                hasFilters
+                  ? t(
+                      'Измените фильтры или выберите другой день.',
+                      'Change filters or choose another day.',
+                    )
+                  : t(
+                      'Встречи сообщества появятся здесь.',
+                      'Community events will appear here.',
+                    )
+              }
+            />
+          )}
+          <EventsTimeline
+            events={events}
+            onEdit={
+              can(user, 'events.event.manage')
+                ? (event) => navigate(`${base}/events/${event.id}/edit`)
+                : undefined
+            }
+          />
+          {(data?.meta.total ?? 0) > PAGE_SIZE && (
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={data?.meta.total ?? 0}
+              onUpdate={(value) => update('page', String(value))}
+            />
+          )}
+        </div>
+        {!mobile && calendar}
+      </div>
+      {mobile && panel && (
+        <ContentDialog
+          title={
+            panel === 'calendar'
+              ? t('Календарь', 'Calendar')
+              : t('Фильтры событий', 'Event filters')
+          }
+          onClose={() => setPanel(null)}
+        >
+          {panel === 'calendar' ? calendar : filterControls}
+          <Button size="xl" view="action" onClick={() => setPanel(null)}>
+            {t('Показать события', 'Show events')}
+          </Button>
+        </ContentDialog>
+      )}
+    </PageLayout>
+  );
+}

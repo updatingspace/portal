@@ -153,6 +153,7 @@ variable "outbox_services" {
     "events",
     "featureflags",
     "gamification",
+    "portal",
     "voting",
   ]
 }
@@ -205,7 +206,7 @@ variable "ymq_batch_cutoff" {
 variable "outbox_sweep_cron" {
   description = "Cron schedule for outbox sweep safety-net triggers."
   type        = string
-  default     = "0 */15 * ? * *"
+  default     = "*/15 * ? * * *"
 }
 
 variable "retention_cron" {

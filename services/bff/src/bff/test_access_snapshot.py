@@ -10,7 +10,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 from django.http import HttpRequest
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from bff.api import SESSION_ME_CAPABILITY_PROBES, _load_effective_access_snapshot
 
@@ -72,7 +72,8 @@ def test_access_snapshot_checks_overlap_and_preserve_user_tenant_context() -> No
             for user in ("alice", "bob")
         }
         for user, future in futures.items():
-            permissions, roles = future.result(timeout=5)
+            permissions, roles, status = future.result(timeout=5)
+            assert status == "ready"
             assert permissions == sorted(
                 [
                     "shared.read",
@@ -119,7 +120,7 @@ def test_access_snapshot_preserves_successful_checks_when_one_fails(
         )
 
     with patch("bff.api.proxy_request", side_effect=respond):
-        permissions, roles = _load_effective_access_snapshot(
+        permissions, roles, status = _load_effective_access_snapshot(
             *snapshot_context("alice", "tenant-alice")
         )
     assert permissions == sorted(
@@ -128,6 +129,7 @@ def test_access_snapshot_preserves_successful_checks_when_one_fails(
         if service != "portal"
     )
     assert roles == []
+    assert status == "partial"
     assert sorted(calls) == sorted(action for _, action in SESSION_ME_CAPABILITY_PROBES)
 
 
@@ -136,7 +138,7 @@ def test_access_snapshot_without_upstream_does_not_make_requests() -> None:
     with patch("bff.api.proxy_request") as proxy:
         assert _load_effective_access_snapshot(
             *snapshot_context("alice", "tenant-alice")
-        ) == ([], [])
+        ) == ([], [], "unavailable")
     proxy.assert_not_called()
 
 
@@ -155,7 +157,43 @@ def test_access_snapshot_refreshes_revoked_permissions_without_cache() -> None:
         assert _load_effective_access_snapshot(request, context) == (
             ["portal.profile.read_self"],
             [],
+            "ready",
         )
         proxy.return_value = httpx.Response(200, json={"effective_permissions": []})
-        assert _load_effective_access_snapshot(request, context) == ([], [])
+        assert _load_effective_access_snapshot(request, context) == ([], [], "ready")
         assert proxy.call_count == len(SESSION_ME_CAPABILITY_PROBES) * 2
+
+
+class AccessSnapshotStatusTests(SimpleTestCase):
+    @override_settings(BFF_UPSTREAM_ACCESS_URL="")
+    def test_unconfigured_permissions_are_unavailable_not_a_confirmed_empty_set(self):
+        self.assertEqual(
+            _load_effective_access_snapshot(None, None), ([], [], "unavailable")
+        )
+
+    @override_settings(BFF_UPSTREAM_ACCESS_URL="http://access")
+    def test_partial_permissions_are_marked_as_partial(self):
+        request = SimpleNamespace(request_id="test", headers={})
+        context = SimpleNamespace(tenant_id="tenant", user_id="user", master_flags={})
+        good = SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "effective_permissions": ["events.event.read"],
+                "effective_roles": [],
+            },
+        )
+        bad = SimpleNamespace(status_code=503)
+        with (
+            patch("bff.api._active_context_headers", return_value={}),
+            patch(
+                "bff.api.SESSION_ME_CAPABILITY_PROBES",
+                [("events", "events.event.read"), ("activity", "activity.feed.read")],
+            ),
+            patch("bff.api.proxy_request", side_effect=[good, bad]),
+        ):
+            capabilities, roles, status = _load_effective_access_snapshot(
+                request, context
+            )
+        self.assertEqual(capabilities, ["events.event.read"])
+        self.assertEqual(roles, [])
+        self.assertEqual(status, "partial")

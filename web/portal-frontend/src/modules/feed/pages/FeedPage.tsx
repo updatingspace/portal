@@ -1,8 +1,13 @@
+import { InlineError } from '../../../shared/ui/portal/PortalUI';
 import React from 'react';
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
 import { Button, Card, Loader, Text } from '@gravity-ui/uikit';
 import { useNavigate } from 'react-router-dom';
 
-import { createClientAccessDeniedError, toAccessDeniedError } from '../../../api/accessDenied';
+import {
+  createClientAccessDeniedError,
+  toAccessDeniedError,
+} from '../../../api/accessDenied';
 import { isApiError } from '../../../api/client';
 import { AccessDeniedScreen } from '../../../features/access-denied';
 import { FeedComposerPanel } from '../components/FeedComposerPanel';
@@ -15,6 +20,7 @@ import './feed-page.css';
 export const FeedPage: React.FC = () => {
   const controller = useFeedPageController();
   const navigate = useNavigate();
+  const compact = useMediaQuery('(max-width: 1100px)');
 
   if (!controller.canReadFeed) {
     return (
@@ -27,31 +33,55 @@ export const FeedPage: React.FC = () => {
     );
   }
 
-  if (controller.error) {
-    const deniedError = toAccessDeniedError(controller.error, { source: 'api', tenant: controller.user?.tenant });
+  if (controller.error && !controller.hasContent) {
+    const deniedError = toAccessDeniedError(controller.error, {
+      source: 'api',
+      tenant: controller.user?.tenant,
+    });
     if (deniedError) {
       return <AccessDeniedScreen error={deniedError} />;
     }
 
     if (controller.isPermalinkView) {
-      const isNotFound = isApiError(controller.error) && controller.error.kind === 'not_found';
+      const isNotFound =
+        isApiError(controller.error) && controller.error.kind === 'not_found';
       return (
         <div className="feed-page feed-page--single" data-qa="feed-page">
           <div className="feed-page__single">
             <div className="feed-page__single-back">
-              <Button view="flat" size="m" onClick={() => navigate('..', { relative: 'path' })}>
+              <Button
+                view="flat"
+                size="m"
+                onClick={() => navigate('..', { relative: 'path' })}
+              >
                 К ленте
               </Button>
             </div>
-            <Card view="filled" className="feed-empty" data-qa="feed-single-error">
+            <Card
+              view="filled"
+              className="feed-empty"
+              data-qa="feed-single-error"
+            >
               <Text variant="subheader-2">
-                {isNotFound ? 'Пост не найден.' : 'Не удалось загрузить публикацию.'}
+                {isNotFound
+                  ? 'Пост не найден.'
+                  : 'Не удалось загрузить публикацию.'}
               </Text>
               <Text variant="body-2" color="secondary">
-                {isNotFound ? 'Проверьте ссылку или вернитесь к общей ленте.' : 'Попробуйте обновить страницу.'}
+                {isNotFound
+                  ? 'Проверьте ссылку или вернитесь к общей ленте.'
+                  : 'Попробуйте обновить страницу.'}
               </Text>
-              <Button view="flat" size="m" onClick={() => controller.refetch()}>
-                Повторить
+              <Button
+                view="flat"
+                size="m"
+                onClick={() =>
+                  isNotFound
+                    ? navigate('..', { relative: 'path' })
+                    : controller.refetch()
+                }
+              >
+                {isNotFound ? 'К ленте' : 'Повторить'}
               </Button>
             </Card>
           </div>
@@ -79,13 +109,21 @@ export const FeedPage: React.FC = () => {
       <div className="feed-page feed-page--single" data-qa="feed-page">
         <div className="feed-page__single">
           <div className="feed-page__single-back">
-            <Button view="flat" size="m" onClick={() => navigate('..', { relative: 'path' })}>
+            <Button
+              view="flat"
+              size="m"
+              onClick={() => navigate('..', { relative: 'path' })}
+            >
               К ленте
             </Button>
           </div>
 
           {controller.isLoading ? (
-            <Card view="filled" className="feed-page__single-loading" data-qa="feed-single-loading">
+            <Card
+              view="filled"
+              className="feed-page__single-loading"
+              data-qa="feed-single-loading"
+            >
               <Loader size="m" />
               <Text variant="body-2" color="secondary">
                 Загружаем публикацию...
@@ -101,7 +139,11 @@ export const FeedPage: React.FC = () => {
               />
             </div>
           ) : (
-            <Card view="filled" className="feed-empty" data-qa="feed-single-empty">
+            <Card
+              view="filled"
+              className="feed-empty"
+              data-qa="feed-single-empty"
+            >
               <Text variant="subheader-2">Пост не найден.</Text>
               <Text variant="body-2" color="secondary">
                 Проверьте ссылку или вернитесь к общей ленте.
@@ -113,13 +155,37 @@ export const FeedPage: React.FC = () => {
     );
   }
 
+  const filters = (
+    <FeedControlRail
+      source={controller.source}
+      sort={controller.sort}
+      period={controller.period}
+      setSort={controller.setSort}
+      setSource={controller.setSource}
+      setPeriod={controller.setPeriod}
+      resetFilters={controller.resetFilters}
+      realtimeFlagEnabled={controller.realtimeFlagEnabled}
+    />
+  );
+
   return (
     <div className="feed-page" data-qa="feed-page">
       <div className="feed-page__layout">
+        {controller.draftGuard}
         <section className="feed-stream">
+          {controller.error && (
+            <InlineError onRetry={() => void controller.refetch()}>
+              Не удалось обновить ленту. Уже загруженные публикации доступны.
+            </InlineError>
+          )}
+          {controller.publishError && !controller.composerOpen && (
+            <InlineError>{controller.publishError}</InlineError>
+          )}
           <FeedStreamView
-            composer={(
+            filters={compact ? filters : undefined}
+            composer={
               <FeedComposerPanel
+                publishError={controller.publishError}
                 canCreateNews={controller.canCreateNews}
                 composerOpen={controller.composerOpen}
                 setComposerOpen={controller.setComposerOpen}
@@ -138,7 +204,7 @@ export const FeedPage: React.FC = () => {
                 newsMedia={controller.newsMedia}
                 handleRemoveMedia={controller.handleRemoveMedia}
               />
-            )}
+            }
             unreadCount={controller.unreadCount}
             refetch={controller.refetch}
             isMarkingRead={controller.isMarkingRead}
@@ -150,8 +216,12 @@ export const FeedPage: React.FC = () => {
             moderationReason={controller.moderationReason}
             setModerationReason={controller.setModerationReason}
             moderationError={controller.moderationError}
-            clearModerationSelection={() => controller.setSelectedModerationIds([])}
-            handleModerationDeleteSelected={controller.handleModerationDeleteSelected}
+            clearModerationSelection={() =>
+              controller.setSelectedModerationIds([])
+            }
+            handleModerationDeleteSelected={
+              controller.handleModerationDeleteSelected
+            }
             hasContent={controller.hasContent}
             isLoading={controller.isLoading}
             source={controller.source}
@@ -165,17 +235,17 @@ export const FeedPage: React.FC = () => {
             isFetchingNextPage={controller.isFetchingNextPage}
             hasNextPage={controller.hasNextPage}
           />
+          {controller.hasNextPage && (
+            <Button
+              loading={controller.isFetchingNextPage}
+              disabled={controller.isFetchingNextPage}
+              onClick={() => void controller.fetchNextPage()}
+            >
+              Загрузить ещё
+            </Button>
+          )}
         </section>
-        <FeedControlRail
-          source={controller.source}
-          sort={controller.sort}
-          period={controller.period}
-          setSort={controller.setSort}
-          setSource={controller.setSource}
-          setPeriod={controller.setPeriod}
-          resetFilters={controller.resetFilters}
-          realtimeFlagEnabled={controller.realtimeFlagEnabled}
-        />
+        {!compact && filters}
       </div>
     </div>
   );

@@ -127,6 +127,11 @@ export interface MarkAttendancePayload {
  * Query parameters for listing events
  */
 export interface FetchEventsParams {
+  q?: string;
+  mine?: boolean;
+  rsvp?: RsvpStatus;
+  visibility?: string;
+  period?: 'past' | 'upcoming';
   from?: string;     // ISO datetime
   to?: string;       // ISO datetime
   scopeType?: string;

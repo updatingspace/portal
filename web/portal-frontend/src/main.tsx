@@ -2,13 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ToasterComponent, ToasterProvider } from '@gravity-ui/uikit';
 import {
-  MutationCache,
-  QueryCache,
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
 
-import '@gravity-ui/uikit/styles/fonts.css';
 import '@gravity-ui/uikit/styles/styles.css';
 
 import '@gravity-ui/markdown-editor/styles/styles.css';
@@ -26,37 +23,20 @@ import 'bootstrap/dist/css/bootstrap-grid.min.css';
 import 'bootstrap/dist/css/bootstrap-utilities.min.css';
 import './index.css';
 import './modules/voting/styles/voting-v2.css';
+import './shared/ui/portal/portal.css';
 
 import { toaster } from './toaster';
-import { emitAccessDenied, toAccessDeniedError } from './api/accessDenied';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthUIProvider } from './contexts/AuthUIContext';
-import { TenantProvider } from './contexts/TenantContext';
+import {AccountTenantScope} from './app/providers/AccountTenantScope';
 import { I18nProvider } from './app/providers/I18nProvider';
 import { ThemeModeProvider } from './app/providers/ThemeModeProvider';
 import { applyLegacyTenantAliasRedirect } from './app/bootstrap/legacyTenantAlias';
 import { createAppRouter } from './app/routes';
-import { AuthLoadingGuard } from './app/guards/AuthLoadingGuard';
 import { PortalRouter } from './app/PortalRouter';
 
 if (!applyLegacyTenantAliasRedirect()) {
   const queryClient = new QueryClient({
-    queryCache: new QueryCache({
-      onError: (error) => {
-        const deniedError = toAccessDeniedError(error, { source: 'api' });
-        if (deniedError) {
-          emitAccessDenied(deniedError);
-        }
-      },
-    }),
-    mutationCache: new MutationCache({
-      onError: (error) => {
-        const deniedError = toAccessDeniedError(error, { source: 'api' });
-        if (deniedError) {
-          emitAccessDenied(deniedError);
-        }
-      },
-    }),
     defaultOptions: {
       queries: {
         staleTime: 1000 * 60 * 5, // 5 minutes
@@ -69,24 +49,22 @@ if (!applyLegacyTenantAliasRedirect()) {
 
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
-      <ThemeModeProvider>
-        <I18nProvider>
+      <I18nProvider>
+        <ThemeModeProvider>
           <QueryClientProvider client={queryClient}>
             <ToasterProvider toaster={toaster}>
               <AuthProvider>
-                <TenantProvider>
+                <AccountTenantScope>
                   <AuthUIProvider>
-                    <AuthLoadingGuard>
                       <PortalRouter router={router} />
-                    </AuthLoadingGuard>
                     <ToasterComponent />
                   </AuthUIProvider>
-                </TenantProvider>
+                </AccountTenantScope>
               </AuthProvider>
             </ToasterProvider>
           </QueryClientProvider>
-        </I18nProvider>
-      </ThemeModeProvider>
+        </ThemeModeProvider>
+      </I18nProvider>
     </React.StrictMode>,
   );
 }

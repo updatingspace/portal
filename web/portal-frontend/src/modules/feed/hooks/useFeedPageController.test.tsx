@@ -153,6 +153,19 @@ describe('useFeedPageController', () => {
     );
   });
 
+  it('keeps the text visible while publishing and preserves edits when the response fails', async () => {
+    let reject!: (error: Error) => void;
+    createNewsMutationMock.mockReturnValue(new Promise((_resolve, fail) => {reject = fail;}));
+    const {result} = renderHook(() => useFeedPageController(), {wrapper:createWrapper()});
+    act(() => result.current.setComposerValue('Original text'));
+    let operation!: Promise<void>;
+    act(() => {operation=result.current.handlePublishNews();});
+    expect(result.current.composerValue).toBe('Original text');
+    act(() => result.current.setComposerValue('Original text, edited while sending'));
+    await act(async () => {reject(new Error('offline')); await operation;});
+    expect(result.current.composerValue).toBe('Original text, edited while sending');
+  });
+
   it('validates moderation reason before batch action', async () => {
     const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
 
@@ -203,6 +216,20 @@ describe('useFeedPageController', () => {
 
     expect(refetchMock).toHaveBeenCalledTimes(1);
     unmount();
+  });
+
+  it('closes a failed live connection and polls without reconnecting', () => {
+    const source = { close: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), onerror: null as (() => void) | null };
+    const EventSourceMock = vi.fn(function () { return source; });
+    vi.stubGlobal('EventSource', EventSourceMock);
+    const { unmount } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
+    act(() => source.onerror?.());
+    expect(source.close).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(refetchMock).toHaveBeenCalledTimes(2);
+    expect(EventSourceMock).toHaveBeenCalledTimes(1);
+    unmount();
+    vi.unstubAllGlobals();
   });
 
   it('toggles moderation mode with Alt+M hotkey', () => {

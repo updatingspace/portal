@@ -5,6 +5,7 @@ transaction, preserve nullable/FK types, and restore Django datetime semantics.
 """
 
 import json
+import uuid
 
 import ydb
 
@@ -59,7 +60,7 @@ def _patch_ydb_query_parameters() -> None:
             if field_type is None:
                 # The SDK infers literal/annotation parameter types. Keep their
                 # position rather than treating them as a neighbouring column.
-                result[placeholder] = value
+                result[placeholder] = (value, ydb.PrimitiveType.UUID) if isinstance(value, uuid.UUID) else value
                 continue
             parameter_type = compiler._ydb_types[field_type]
             if value is None:

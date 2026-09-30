@@ -1,18 +1,20 @@
 import React from 'react';
 import { Button } from '@gravity-ui/uikit';
 
+import { useUITranslation } from '../../shared/ui/portal/PortalUI';
 import { useThemeMode } from '../../app/providers/themeModeContext';
 
 export const ThemeSelect: React.FC = () => {
+  const t = useUITranslation();
   const { mode, resolvedMode, setMode } = useThemeMode();
   const options: Array<{ id: 'light' | 'dark' | 'auto'; label: string }> = [
-    { id: 'auto', label: 'System' },
-    { id: 'light', label: 'Light' },
-    { id: 'dark', label: 'Dark' },
+    { id: 'auto', label: t('Авто', 'Auto') },
+    { id: 'light', label: t('Светлая', 'Light') },
+    { id: 'dark', label: t('Тёмная', 'Dark') },
   ];
 
   return (
-    <div className="app-shell__theme-select" aria-label="Theme" data-testid="app-theme-select">
+    <div className="app-shell__theme-select" aria-label={t('Тема', 'Theme')} data-testid="app-theme-select">
       {options.map((option) => (
         <Button
           key={option.id}

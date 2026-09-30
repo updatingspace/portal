@@ -24,7 +24,7 @@ export const OfflineBanner: React.FC = () => {
 
       <style>{`
         .offline-banner {
-          position: fixed;
+          position: sticky;
           top: 0;
           left: 0;
           right: 0;
@@ -36,7 +36,7 @@ export const OfflineBanner: React.FC = () => {
           padding: 12px 24px;
           background: var(--g-color-base-warning-heavy);
           color: var(--g-color-text-inverted-primary);
-          animation: slideDown 0.3s ease-out;
+
         }
         @keyframes slideDown {
           from {

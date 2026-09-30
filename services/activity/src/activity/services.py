@@ -239,6 +239,7 @@ class FeedFilters:
     types: list[str] | None
     scope_type: str | None
     scope_id: str | None
+    actor_user_id: UUID | None = None
 
 
 def parse_csv(value: str | None) -> list[str] | None:
@@ -315,6 +316,8 @@ def _build_feed_queryset(
     filters: FeedFilters,
 ):
     qs = ActivityEvent.objects.filter(tenant_id=tenant_id)
+    if filters.actor_user_id is not None:
+        qs = qs.filter(actor_user_id=filters.actor_user_id)
     qs = _apply_feed_type_filters(qs, filters)
     qs = _apply_feed_visibility_filters(qs, user_id=user_id)
     scoped = _apply_feed_scope_filters(qs, tenant_id=tenant_id, user_id=user_id, filters=filters)

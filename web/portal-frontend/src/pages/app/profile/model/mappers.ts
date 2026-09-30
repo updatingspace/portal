@@ -59,7 +59,7 @@ export const buildProfileHubVM = (params: {
     owner: {
       id: user.id,
       tenantDisplayName,
-      handle: user.username || safeString(idProfileUser?.username),
+      handle: (user.username !== user.id ? user.username : undefined) || safeString(idProfileUser?.username),
       avatarUrl: user.avatarUrl ?? undefined,
       bio: safeString(portalProfile?.bio),
       roleBadge: safeString((sessionInfo?.tenant_membership as Record<string, unknown> | undefined)?.base_role),
@@ -67,13 +67,13 @@ export const buildProfileHubVM = (params: {
     },
     stats: {
       // Dedicated profile stats endpoint is not available yet.
-      // Keep numeric stats neutral to avoid presenting misleading counts.
-      posts: 0,
-      following: 0,
-      followers: 0,
+      // Unknown totals are distinct from confirmed zero counts.
+      posts: null,
+      following: null,
+      followers: null,
       communities: communities.length,
-      achievements: achievements.length,
-      friends: 0,
+      achievements: null,
+      friends: null,
     },
     about: {
       language: user.language ?? undefined,

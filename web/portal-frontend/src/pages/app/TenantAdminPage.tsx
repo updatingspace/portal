@@ -1,3 +1,8 @@
+import { SectionTabs } from '../../shared/ui/portal/SectionTabs';
+import { ContentDialog } from '../../shared/ui/portal/ContentDialog';
+import { useMediaQuery } from '../../shared/hooks/useMediaQuery';
+import { useUrlState } from '../../shared/hooks/useUrlState';
+import { useConfirmation } from '../../shared/ui/portal/useConfirmation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
@@ -19,6 +24,16 @@ import Person from '@gravity-ui/icons/Person';
 import Shield from '@gravity-ui/icons/Shield';
 import ListCheck from '@gravity-ui/icons/ListCheck';
 import Pulse from '@gravity-ui/icons/Pulse';
+
+import './tenant-admin.css';
+import {
+  permissionLabel,
+  presentAuditEvent,
+  resourceLabel,
+  roleLabel,
+  scopeLabel,
+  serviceLabel,
+} from '../../modules/tenantAdmin/presentation';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { StatusView } from '../../modules/portal/components/StatusView';
@@ -50,6 +65,34 @@ import {
   useTenantRoles,
 } from '../../modules/tenantAdmin/hooks';
 
+function AdminDetailPanel({
+  title,
+  open,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  busy: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const compact = useMediaQuery('(max-width: 1079px)');
+  if (!open) return null;
+  if (compact)
+    return (
+      <ContentDialog title={title} busy={busy} onClose={onClose}>
+        <div className="tenant-admin tenant-admin--dialog">{children}</div>
+      </ContentDialog>
+    );
+  return (
+    <Card className="tenant-admin__card tenant-admin__card--sticky">
+      {children}
+    </Card>
+  );
+}
+
 const ROLE_COLOR_PALETTE = [
   '#FF7A59',
   '#FFB648',
@@ -65,15 +108,18 @@ const ROLE_COLOR_PALETTE = [
 
 const SCOPE_LABELS: Record<ScopeType, string> = {
   GLOBAL: 'Глобальный',
-  TENANT: 'Тенант',
-  COMMUNITY: 'Сообщество',
+  TENANT: 'Всё сообщество',
+  COMMUNITY: 'Отдельная группа',
   TEAM: 'Команда',
   SERVICE: 'Сервис',
 };
 
-const ROLE_SCOPE_OPTIONS: Array<{ value: 'all' | 'tenant' | 'template'; content: string }> = [
+const ROLE_SCOPE_OPTIONS: Array<{
+  value: 'all' | 'tenant' | 'template';
+  content: string;
+}> = [
   { value: 'all', content: 'Все роли' },
-  { value: 'tenant', content: 'Роли тенанта' },
+  { value: 'tenant', content: 'Роли сообщества' },
   { value: 'template', content: 'Шаблоны системы' },
 ];
 
@@ -121,13 +167,13 @@ const TAB_OPTIONS: Array<{
   {
     id: 'permissions',
     label: 'Права',
-    description: 'Каталог permission-ключей по сервисам',
+    description: 'Какие действия доступны участникам',
     icon: ListCheck,
   },
   {
     id: 'audit',
     label: 'Аудит',
-    description: 'Последние изменения внутри тенанта',
+    description: 'Кто и когда изменил доступ',
     icon: Pulse,
   },
 ];
@@ -136,17 +182,23 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 
 const formatMemberName = (member: TenantMember | null | undefined) => {
   if (!member) return 'Неизвестный пользователь';
-  const name = [member.first_name, member.last_name].filter(Boolean).join(' ').trim();
-  return name || member.user_id;
+  const name = [member.first_name, member.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return name || 'Участник без имени';
 };
 
 const getInitials = (member?: TenantMember | null) => {
   if (!member) return '??';
-  const letters = [member.first_name?.[0], member.last_name?.[0]].filter(Boolean).join('');
+  const letters = [member.first_name?.[0], member.last_name?.[0]]
+    .filter(Boolean)
+    .join('');
   return letters || member.user_id.slice(0, 2).toUpperCase();
 };
 
-const formatIsoDate = (value?: string | null) => (value ? formatDateTime(value) : '—');
+const formatIsoDate = (value?: string | null) =>
+  value ? formatDateTime(value, { locale: 'ru' }) : '—';
 
 const hashString = (value: string) =>
   Array.from(value).reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -157,12 +209,16 @@ const getRoleFallbackColor = (name: string) =>
 const getPermissionResource = (permission: PermissionEntry) =>
   permission.key.split('.')[1] ?? 'misc';
 
-const buildPermissionGroups = (entries: PermissionEntry[]): RolePermissionGroup[] => {
+const buildPermissionGroups = (
+  entries: PermissionEntry[],
+): RolePermissionGroup[] => {
   const serviceMap = new Map<string, Map<string, PermissionEntry[]>>();
 
   entries.forEach((permission) => {
     const resource = getPermissionResource(permission);
-    const resourceMap = serviceMap.get(permission.service) ?? new Map<string, PermissionEntry[]>();
+    const resourceMap =
+      serviceMap.get(permission.service) ??
+      new Map<string, PermissionEntry[]>();
     const items = resourceMap.get(resource) ?? [];
     items.push(permission);
     resourceMap.set(resource, items);
@@ -179,17 +235,30 @@ const buildPermissionGroups = (entries: PermissionEntry[]): RolePermissionGroup[
 };
 
 export const TenantAdminPage: React.FC = () => {
+  const { confirm, confirmationDialog } = useConfirmation();
   const { user } = useAuth();
-  const isAuthorized = Boolean(user && (user.isSuperuser || can(user, 'portal.roles.read')));
-  const canManageRoles = Boolean(user && (user.isSuperuser || can(user, 'portal.roles.write')));
+  const isAuthorized = Boolean(
+    user && (user.isSuperuser || can(user, 'portal.roles.read')),
+  );
+  const canManageRoles = Boolean(
+    user && (user.isSuperuser || can(user, 'portal.roles.write')),
+  );
   const canManageBindings = Boolean(
     user && (user.isSuperuser || can(user, 'portal.role_bindings.write')),
   );
   const canViewPermissions = Boolean(
-    user && (user.isSuperuser || can(user, ['portal.permissions.read', 'portal.roles.read'])),
+    user &&
+      (user.isSuperuser ||
+        can(user, ['portal.permissions.read', 'portal.roles.read'])),
   );
 
-  const [activeTab, setActiveTab] = useState<TabKey>('roles');
+  const compact = useMediaQuery('(max-width: 1079px)');
+  const [activeTab, setActiveTab] = useUrlState<TabKey>('tab', 'roles', [
+    'members',
+    'roles',
+    'permissions',
+    'audit',
+  ]);
   const [rolePanelTab, setRolePanelTab] = useState<RolePanelTab>('overview');
 
   const [memberQuery, setMemberQuery] = useState('');
@@ -201,15 +270,21 @@ export const TenantAdminPage: React.FC = () => {
   const [roleQuery, setRoleQuery] = useState('');
   const debouncedRoleQuery = useDebouncedValue(roleQuery, 300);
   const [roleServiceFilter, setRoleServiceFilter] = useState('');
-  const [roleScopeFilter, setRoleScopeFilter] = useState<'all' | 'tenant' | 'template'>('all');
+  const [roleScopeFilter, setRoleScopeFilter] = useState<
+    'all' | 'tenant' | 'template'
+  >('all');
 
   const [permissionQuery, setPermissionQuery] = useState('');
   const debouncedPermissionQuery = useDebouncedValue(permissionQuery, 200);
   const [permissionServiceFilter, setPermissionServiceFilter] = useState('');
 
   const [rolePermissionQuery, setRolePermissionQuery] = useState('');
-  const debouncedRolePermissionQuery = useDebouncedValue(rolePermissionQuery, 200);
-  const [rolePermissionServiceFilter, setRolePermissionServiceFilter] = useState('');
+  const debouncedRolePermissionQuery = useDebouncedValue(
+    rolePermissionQuery,
+    200,
+  );
+  const [rolePermissionServiceFilter, setRolePermissionServiceFilter] =
+    useState('');
 
   const [auditQuery, setAuditQuery] = useState('');
   const debouncedAuditQuery = useDebouncedValue(auditQuery, 200);
@@ -227,8 +302,6 @@ export const TenantAdminPage: React.FC = () => {
     loading: loadingRoles,
     reload: reloadRoles,
   } = useTenantRoles({
-    query: debouncedRoleQuery,
-    service: roleServiceFilter || undefined,
     limit: 200,
   });
 
@@ -237,15 +310,19 @@ export const TenantAdminPage: React.FC = () => {
     loading: loadingMembers,
     reload: reloadMembers,
   } = useTenantMembers({
-    query: debouncedMemberQuery || undefined,
     limit: 200,
   });
 
-  const { events, loading: loadingEvents, reload: reloadEvents } = useTenantAdminEvents(50);
+  const {
+    events,
+    loading: loadingEvents,
+    reload: reloadEvents,
+  } = useTenantAdminEvents(50);
 
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const [roleFormMode, setRoleFormMode] = useState<RoleFormMode>('create');
+  const [roleEditing, setRoleEditing] = useState(false);
   const [selectedRole, setSelectedRole] = useState<TenantRole | null>(null);
   const [roleTemplate, setRoleTemplate] = useState<TenantRole | null>(null);
   const [roleForm, setRoleForm] = useState({
@@ -264,12 +341,15 @@ export const TenantAdminPage: React.FC = () => {
     roleId: null as number | null,
   });
   const [bindingSaving, setBindingSaving] = useState(false);
-  const [bindingDeletingId, setBindingDeletingId] = useState<number | null>(null);
+  const [bindingDeletingId, setBindingDeletingId] = useState<number | null>(
+    null,
+  );
 
   const [roleColors, setRoleColors] = useState<Record<number, string>>({});
 
   const selectedBindingUserId =
-    selectedMemberId || (bindingForm.userId.trim() ? bindingForm.userId.trim() : null);
+    selectedMemberId ||
+    (bindingForm.userId.trim() ? bindingForm.userId.trim() : null);
 
   const {
     bindings: memberBindings,
@@ -345,7 +425,9 @@ export const TenantAdminPage: React.FC = () => {
   useEffect(() => {
     if (!tenantId) return;
     try {
-      const stored = window.localStorage.getItem(`tenant-admin-role-colors:${tenantId}`);
+      const stored = window.localStorage.getItem(
+        `tenant-admin-role-colors:${tenantId}`,
+      );
       if (stored) {
         setRoleColors(JSON.parse(stored) as Record<number, string>);
       }
@@ -372,20 +454,33 @@ export const TenantAdminPage: React.FC = () => {
     return map;
   }, [members]);
 
-  const selectedMember = selectedMemberId ? membersById.get(selectedMemberId) ?? null : null;
+  const memberName = useCallback(
+    (id: string) => {
+      if (id === user?.id) return user.displayName || user.username || 'Вы';
+      return formatMemberName(membersById.get(id));
+    },
+    [membersById, user],
+  );
+
+  const selectedMember = selectedMemberId
+    ? (membersById.get(selectedMemberId) ?? null)
+    : null;
 
   const normalizedPermissionKeys = useMemo(
-    () => (Array.isArray(roleForm.permissionKeys) ? roleForm.permissionKeys : []),
+    () =>
+      Array.isArray(roleForm.permissionKeys) ? roleForm.permissionKeys : [],
     [roleForm.permissionKeys],
   );
 
   const serviceOptions = useMemo<SelectOption[]>(
     () => [
       { value: '', content: 'Все сервисы' },
-      ...Array.from(new Set(roles.map((item) => item.service))).map((service) => ({
-        value: service,
-        content: service,
-      })),
+      ...Array.from(new Set(roles.map((item) => item.service))).map(
+        (service) => ({
+          value: service,
+          content: serviceLabel(service),
+        }),
+      ),
     ],
     [roles],
   );
@@ -393,10 +488,12 @@ export const TenantAdminPage: React.FC = () => {
   const permissionServiceOptions = useMemo<SelectOption[]>(
     () => [
       { value: '', content: 'Все сервисы' },
-      ...Array.from(new Set(permissions.map((item) => item.service))).map((service) => ({
-        value: service,
-        content: service,
-      })),
+      ...Array.from(new Set(permissions.map((item) => item.service))).map(
+        (service) => ({
+          value: service,
+          content: serviceLabel(service),
+        }),
+      ),
     ],
     [permissions],
   );
@@ -405,7 +502,7 @@ export const TenantAdminPage: React.FC = () => {
     () =>
       roles.map((item) => ({
         value: String(item.id),
-        content: `${item.name} (${item.service})`,
+        content: `${roleLabel(item.name)} · ${serviceLabel(item.service)}`,
       })),
     [roles],
   );
@@ -414,23 +511,38 @@ export const TenantAdminPage: React.FC = () => {
     () =>
       members.map((item) => ({
         value: item.user_id,
-        content: `${formatMemberName(item)} · ${item.user_id}`,
+        content: memberName(item.user_id),
       })),
-    [members],
+    [members, memberName],
   );
 
-  const filteredRoles = useMemo(() => {
-    if (roleScopeFilter === 'all') return roles;
-    if (roleScopeFilter === 'template') return roles.filter((role) => role.tenant_id === null);
-    return roles.filter((role) => role.tenant_id !== null);
-  }, [roleScopeFilter, roles]);
+  const filteredRoles = useMemo(
+    () =>
+      roles.filter((role) => {
+        if (roleScopeFilter === 'template' && role.tenant_id !== null)
+          return false;
+        if (roleScopeFilter === 'tenant' && role.tenant_id === null)
+          return false;
+        if (roleServiceFilter && role.service !== roleServiceFilter)
+          return false;
+        return normalize(
+          `${role.name} ${roleLabel(role.name)} ${serviceLabel(role.service)}`,
+        ).includes(normalize(debouncedRoleQuery));
+      }),
+    [debouncedRoleQuery, roleScopeFilter, roleServiceFilter, roles],
+  );
 
   const filteredPermissions = useMemo(() => {
     const query = normalize(debouncedPermissionQuery);
     return permissions.filter((permission) => {
-      if (permissionServiceFilter && permission.service !== permissionServiceFilter) return false;
+      if (
+        permissionServiceFilter &&
+        permission.service !== permissionServiceFilter
+      )
+        return false;
       if (!query) return true;
-      const haystack = `${permission.key} ${permission.description}`.toLocaleLowerCase();
+      const haystack =
+        `${permission.key} ${permission.description} ${permissionLabel(permission)}`.toLocaleLowerCase();
       return haystack.includes(query);
     });
   }, [debouncedPermissionQuery, permissionServiceFilter, permissions]);
@@ -443,9 +555,14 @@ export const TenantAdminPage: React.FC = () => {
   const rolePermissionGroups = useMemo(() => {
     const query = normalize(debouncedRolePermissionQuery);
     const filtered = permissions.filter((permission) => {
-      if (rolePermissionServiceFilter && permission.service !== rolePermissionServiceFilter) return false;
+      if (
+        rolePermissionServiceFilter &&
+        permission.service !== rolePermissionServiceFilter
+      )
+        return false;
       if (!query) return true;
-      const haystack = `${permission.key} ${permission.description}`.toLocaleLowerCase();
+      const haystack =
+        `${permission.key} ${permission.description} ${permissionLabel(permission)}`.toLocaleLowerCase();
       return haystack.includes(query);
     });
     return buildPermissionGroups(filtered);
@@ -455,8 +572,13 @@ export const TenantAdminPage: React.FC = () => {
     const query = normalize(debouncedAuditQuery);
     if (!query) return events;
     return events.filter((event) => {
-      const metadata = event.metadata ? JSON.stringify(event.metadata).toLocaleLowerCase() : '';
+      const metadata = event.metadata
+        ? JSON.stringify(event.metadata).toLocaleLowerCase()
+        : '';
       return (
+        normalize(
+          Object.values(presentAuditEvent(event, roles, memberName)).join(' '),
+        ).includes(query) ||
         event.action.toLocaleLowerCase().includes(query) ||
         event.target_type.toLocaleLowerCase().includes(query) ||
         (event.target_id ?? '').toLocaleLowerCase().includes(query) ||
@@ -464,7 +586,7 @@ export const TenantAdminPage: React.FC = () => {
         metadata.includes(query)
       );
     });
-  }, [debouncedAuditQuery, events]);
+  }, [debouncedAuditQuery, events, roles, memberName]);
 
   const roleSearchGroups = useMemo(() => {
     const groups = new Map<string, typeof roleSearchBindings>();
@@ -474,20 +596,29 @@ export const TenantAdminPage: React.FC = () => {
       existing.push(binding);
       groups.set(key, existing);
     });
-    return Array.from(groups.entries()).map(([roleName, bindings]) => ({ roleName, bindings }));
+    return Array.from(groups.entries()).map(([roleName, bindings]) => ({
+      roleName,
+      bindings,
+    }));
   }, [roleSearchBindings]);
 
   const memberRows = useMemo<MemberRow[]>(
     () =>
-      members.map((member) => ({
-        id: member.user_id,
-        displayName: formatMemberName(member),
-        userId: member.user_id,
-        createdAt: formatIsoDate(member.created_at),
-        updatedAt: formatIsoDate(member.updated_at),
-        initials: getInitials(member),
-      })),
-    [members],
+      members
+        .filter((member) =>
+          normalize(`${memberName(member.user_id)} ${member.user_id}`).includes(
+            normalize(debouncedMemberQuery),
+          ),
+        )
+        .map((member) => ({
+          id: member.user_id,
+          displayName: memberName(member.user_id),
+          userId: member.user_id,
+          createdAt: formatIsoDate(member.created_at),
+          updatedAt: formatIsoDate(member.updated_at),
+          initials: getInitials(member),
+        })),
+    [members, memberName, debouncedMemberQuery],
   );
 
   const memberColumns = useMemo<TableColumnConfig<MemberRow>[]>(
@@ -500,22 +631,25 @@ export const TenantAdminPage: React.FC = () => {
             <Avatar size="m" text={row.initials} />
             <div>
               <div className="tenant-admin__member-name">{row.displayName}</div>
-              <div className="tenant-admin__member-meta">{row.userId}</div>
             </div>
           </div>
         ),
       },
       {
         id: 'createdAt',
-        name: 'В тенанте с',
+        name: 'В сообществе с',
         width: 190,
-        template: (row) => <span className="tenant-admin__member-meta">{row.createdAt}</span>,
+        template: (row) => (
+          <span className="tenant-admin__member-meta">{row.createdAt}</span>
+        ),
       },
       {
         id: 'updatedAt',
         name: 'Обновлено',
         width: 190,
-        template: (row) => <span className="tenant-admin__member-meta">{row.updatedAt}</span>,
+        template: (row) => (
+          <span className="tenant-admin__member-meta">{row.updatedAt}</span>
+        ),
       },
       {
         id: 'actions',
@@ -542,7 +676,8 @@ export const TenantAdminPage: React.FC = () => {
   );
 
   const getRoleColor = useCallback(
-    (role: TenantRole) => roleColors[role.id] ?? getRoleFallbackColor(role.name),
+    (role: TenantRole) =>
+      roleColors[role.id] ?? getRoleFallbackColor(role.name),
     [roleColors],
   );
 
@@ -553,6 +688,7 @@ export const TenantAdminPage: React.FC = () => {
   const handleRoleSelect = useCallback(
     (role: TenantRole) => {
       setSelectedRole(role);
+      setRoleEditing(false);
       setRoleTemplate(role.tenant_id === null ? role : null);
       const isTemplate = role.tenant_id === null;
       setRoleFormMode(isTemplate ? 'clone' : 'edit');
@@ -569,6 +705,7 @@ export const TenantAdminPage: React.FC = () => {
 
   const resetRoleForm = useCallback(() => {
     setSelectedRole(null);
+    setRoleEditing(true);
     setRoleTemplate(null);
     setRoleFormMode('create');
     setRoleForm({ service: 'portal', name: '', permissionKeys: [] });
@@ -577,7 +714,8 @@ export const TenantAdminPage: React.FC = () => {
   }, []);
 
   const handleRoleSubmit = async () => {
-    if (!canManageRoles || !roleForm.service.trim() || !roleForm.name.trim()) return;
+    if (!canManageRoles || !roleForm.service.trim() || !roleForm.name.trim())
+      return;
 
     setSavingRole(true);
     try {
@@ -602,7 +740,9 @@ export const TenantAdminPage: React.FC = () => {
         toaster.add({
           name: `role-${Date.now()}`,
           title: 'Роль создана',
-          content: roleTemplate ? 'Копия роли добавлена в каталог' : 'Роль добавлена в каталог',
+          content: roleTemplate
+            ? 'Копия роли добавлена в каталог'
+            : 'Роль добавлена в каталог',
           theme: 'success',
         });
       }
@@ -624,12 +764,16 @@ export const TenantAdminPage: React.FC = () => {
   const handleRoleDelete = async (role: TenantRole) => {
     if (!canManageRoles || role.tenant_id === null) return;
 
-    if (!window.confirm(`Удалить роль «${role.name}»?`)) return;
+    if (!(await confirm(`Удалить роль «${role.name}»?`))) return;
 
     setDeletingRoleId(role.id);
     try {
       await deleteTenantRole(role.id);
-      toaster.add({ name: `role-${Date.now()}`, title: 'Роль удалена', theme: 'success' });
+      toaster.add({
+        name: `role-${Date.now()}`,
+        title: 'Роль удалена',
+        theme: 'success',
+      });
       setRoleColors((prev) => {
         const next = { ...prev };
         delete next[role.id];
@@ -665,7 +809,11 @@ export const TenantAdminPage: React.FC = () => {
         role_id: bindingForm.roleId,
       });
 
-      toaster.add({ name: `binding-${Date.now()}`, title: 'Назначение создано', theme: 'success' });
+      toaster.add({
+        name: `binding-${Date.now()}`,
+        title: 'Назначение создано',
+        theme: 'success',
+      });
 
       setBindingForm((prev) => ({ ...prev, roleId: null }));
 
@@ -683,12 +831,16 @@ export const TenantAdminPage: React.FC = () => {
   const handleBindingDelete = async (bindingId: number) => {
     if (!canManageBindings) return;
 
-    if (!window.confirm('Удалить назначение?')) return;
+    if (!(await confirm('Удалить назначение?'))) return;
 
     setBindingDeletingId(bindingId);
     try {
       await deleteRoleBinding(bindingId);
-      toaster.add({ name: `binding-${Date.now()}`, title: 'Назначение удалено', theme: 'success' });
+      toaster.add({
+        name: `binding-${Date.now()}`,
+        title: 'Назначение удалено',
+        theme: 'success',
+      });
       reloadMemberBindings();
       reloadRoleSearch();
       reloadRoleBindings();
@@ -710,17 +862,20 @@ export const TenantAdminPage: React.FC = () => {
     [roleBindings, selectedRole],
   );
 
-  const handlePermissionToggle = useCallback((key: string, checked: boolean) => {
-    setRoleForm((prev) => {
-      const next = new Set(prev.permissionKeys ?? []);
-      if (checked) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
-      return { ...prev, permissionKeys: Array.from(next) };
-    });
-  }, []);
+  const handlePermissionToggle = useCallback(
+    (key: string, checked: boolean) => {
+      setRoleForm((prev) => {
+        const next = new Set(prev.permissionKeys ?? []);
+        if (checked) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+        return { ...prev, permissionKeys: Array.from(next) };
+      });
+    },
+    [],
+  );
 
   if (!user) return <StatusView kind="loading" />;
 
@@ -728,21 +883,17 @@ export const TenantAdminPage: React.FC = () => {
     return (
       <StatusView
         kind="no-access"
-        description="Только администраторы тенанта могут управлять доступом"
+        description="Только администраторы сообщества могут управлять доступом"
       />
     );
   }
 
   return (
     <div className="tenant-admin">
+      {confirmationDialog}
       <div className="tenant-admin__hero">
         <div>
-          <div className="tenant-admin__kicker">Tenant Admin</div>
-          <h1 className="tenant-admin__title">Роли, доступы и аудит</h1>
-          <p className="tenant-admin__subtitle">
-            Управляйте составом и правами без лишних форм — быстрая выдача ролей, аудит,
-            группировка permission-ключей.
-          </p>
+          <h1 className="tenant-admin__title">Управление сообществом</h1>
         </div>
         <div className="tenant-admin__hero-actions">
           {!canManageRoles && !canManageBindings ? (
@@ -757,69 +908,27 @@ export const TenantAdminPage: React.FC = () => {
       </div>
 
       <div className="tenant-admin__layout">
-        <aside className="tenant-admin__sidebar">
-          <div className="tenant-admin__nav">
-            {TAB_OPTIONS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`tenant-admin__nav-item ${
-                  activeTab === tab.id ? 'is-active' : ''
-                }`}
-              >
-                <span className="tenant-admin__nav-icon">
-                  <Icon data={tab.icon} size={18} />
-                </span>
-                <span>
-                  <span className="tenant-admin__nav-title">{tab.label}</span>
-                  <span className="tenant-admin__nav-subtitle">{tab.description}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <Card className="tenant-admin__sidebar-card">
-            <div className="tenant-admin__sidebar-title">Статус</div>
-            <div className="tenant-admin__sidebar-metric">
-              <span>Участники</span>
-              <strong>{members.length}</strong>
-            </div>
-            <div className="tenant-admin__sidebar-metric">
-              <span>Роли</span>
-              <strong>{roles.length}</strong>
-            </div>
-            <div className="tenant-admin__sidebar-metric">
-              <span>Последнее событие</span>
-              <strong>{events[0]?.action ?? 'Нет данных'}</strong>
-            </div>
-            <div className="tenant-admin__sidebar-meta">
-              {formatIsoDate(events[0]?.created_at)}
-            </div>
-          </Card>
-        </aside>
-
+        <SectionTabs
+          label="Управление сообществом"
+          value={activeTab}
+          items={TAB_OPTIONS}
+          onChange={setActiveTab}
+        />
         <section className="tenant-admin__content">
           {activeTab === 'members' && (
             <div className="tenant-admin__panel">
               <div className="tenant-admin__panel-header">
                 <div>
                   <h2>Участники</h2>
-                  <p>Ищите людей, смотрите активные роли и выдавайте доступы.</p>
                 </div>
               </div>
 
               <div className="tenant-admin__panel-grid">
                 <Card className="tenant-admin__card">
                   <div className="tenant-admin__card-head">
-                    <div>
-                      <div className="tenant-admin__card-title">Состав тенанта</div>
-                      <div className="tenant-admin__card-subtitle">
-                        Подберите участника и переходите к назначению ролей справа.
-                      </div>
-                    </div>
                     <div className="tenant-admin__search">
                       <TextInput
+                        size="xl"
                         value={memberQuery}
                         placeholder="Поиск по имени или ID"
                         onUpdate={(value) => setMemberQuery(value)}
@@ -834,7 +943,23 @@ export const TenantAdminPage: React.FC = () => {
                       <span>Загружаем участников...</span>
                     </div>
                   ) : members.length === 0 ? (
-                    <div className="tenant-admin__empty">Никого не нашли. Попробуйте изменить запрос.</div>
+                    <div className="tenant-admin__empty">
+                      Никого не нашли. Попробуйте изменить запрос.
+                    </div>
+                  ) : compact ? (
+                    <div className="tenant-admin__mobile-members">
+                      {memberRows.map((member) => (
+                        <button
+                          type="button"
+                          key={member.id}
+                          onClick={() => setSelectedMemberId(member.userId)}
+                        >
+                          <Avatar size="m" text={member.initials} />
+                          <span>{member.displayName}</span>
+                          <span aria-hidden="true">→</span>
+                        </button>
+                      ))}
+                    </div>
                   ) : (
                     <Table
                       columns={memberColumns}
@@ -852,16 +977,28 @@ export const TenantAdminPage: React.FC = () => {
                   )}
                 </Card>
 
-                <Card className="tenant-admin__card tenant-admin__card--sticky">
+                <AdminDetailPanel
+                  title="Участник сообщества"
+                  open={Boolean(selectedMemberId)}
+                  busy={bindingSaving || Boolean(bindingDeletingId)}
+                  onClose={() => setSelectedMemberId(null)}
+                >
                   <div className="tenant-admin__card-head">
                     <div>
-                      <div className="tenant-admin__card-title">Профиль участника</div>
+                      <div className="tenant-admin__card-title">
+                        Профиль участника
+                      </div>
                       <div className="tenant-admin__card-subtitle">
-                        Управляйте ролями и областями для выбранного пользователя.
+                        Управляйте ролями и областями для выбранного
+                        пользователя.
                       </div>
                     </div>
                     {selectedMemberId && (
-                      <Button view="flat" size="s" onClick={() => setSelectedMemberId(null)}>
+                      <Button
+                        view="flat"
+                        size="s"
+                        onClick={() => setSelectedMemberId(null)}
+                      >
                         Сбросить
                       </Button>
                     )}
@@ -872,13 +1009,13 @@ export const TenantAdminPage: React.FC = () => {
                     <div>
                       <div className="tenant-admin__member-name">
                         {selectedMember
-                          ? formatMemberName(selectedMember)
-                          : selectedMemberId ?? 'Не выбран'}
+                          ? memberName(selectedMember.user_id)
+                          : (selectedMemberId ?? 'Не выбран')}
                       </div>
                       <div className="tenant-admin__member-meta">
                         {selectedMember
-                          ? selectedMember.user_id
-                          : selectedMemberId ?? 'Выберите пользователя из списка'}
+                          ? 'Участник сообщества'
+                          : 'Выберите пользователя из списка'}
                       </div>
                     </div>
                   </div>
@@ -894,22 +1031,36 @@ export const TenantAdminPage: React.FC = () => {
                     </div>
 
                     {!selectedBindingUserId ? (
-                      <div className="tenant-admin__empty">Сначала выберите пользователя.</div>
+                      <div className="tenant-admin__empty">
+                        Сначала выберите пользователя.
+                      </div>
                     ) : loadingMemberBindings ? (
                       <div className="tenant-admin__loader">
                         <Loader size="s" />
                         <span>Загружаем назначения...</span>
                       </div>
                     ) : memberBindings.length === 0 ? (
-                      <div className="tenant-admin__empty">Назначений пока нет.</div>
+                      <div className="tenant-admin__empty">
+                        Назначений пока нет.
+                      </div>
                     ) : (
                       <div className="tenant-admin__binding-list">
                         {memberBindings.map((binding) => (
-                          <div key={binding.id} className="tenant-admin__binding-item">
+                          <div
+                            key={binding.id}
+                            className="tenant-admin__binding-item"
+                          >
                             <div>
-                              <div className="tenant-admin__binding-title">{binding.role_name}</div>
+                              <div className="tenant-admin__binding-title">
+                                {roleLabel(binding.role_name)}
+                              </div>
                               <div className="tenant-admin__binding-meta">
-                                {binding.role_service} · {binding.scope_type}/{binding.scope_id}
+                                {serviceLabel(binding.role_service)} ·{' '}
+                                {scopeLabel(
+                                  binding.scope_type,
+                                  binding.scope_id,
+                                  tenantId,
+                                )}
                               </div>
                             </div>
                             {canManageBindings && (
@@ -919,7 +1070,9 @@ export const TenantAdminPage: React.FC = () => {
                                 disabled={bindingDeletingId === binding.id}
                                 onClick={() => handleBindingDelete(binding.id)}
                               >
-                                {bindingDeletingId === binding.id ? 'Удаление…' : 'Удалить'}
+                                {bindingDeletingId === binding.id
+                                  ? 'Удаление…'
+                                  : 'Удалить'}
                               </Button>
                             )}
                           </div>
@@ -929,13 +1082,19 @@ export const TenantAdminPage: React.FC = () => {
                   </div>
 
                   <div className="tenant-admin__section">
-                    <div className="tenant-admin__section-head">Назначить роль</div>
+                    <div className="tenant-admin__section-head">
+                      Назначить роль
+                    </div>
 
                     <Select
+                      size="xl"
                       options={memberOptions}
                       value={bindingForm.userId ? [bindingForm.userId] : []}
                       onUpdate={(value) =>
-                        setBindingForm((prev) => ({ ...prev, userId: value[0] ?? '' }))
+                        setBindingForm((prev) => ({
+                          ...prev,
+                          userId: value[0] ?? '',
+                        }))
                       }
                       placeholder="Выберите участника"
                       width="max"
@@ -944,8 +1103,11 @@ export const TenantAdminPage: React.FC = () => {
                     />
 
                     <Select
+                      size="xl"
                       options={bindingRoleOptions}
-                      value={bindingForm.roleId ? [String(bindingForm.roleId)] : []}
+                      value={
+                        bindingForm.roleId ? [String(bindingForm.roleId)] : []
+                      }
                       onUpdate={(value) =>
                         setBindingForm((prev) => ({
                           ...prev,
@@ -959,21 +1121,33 @@ export const TenantAdminPage: React.FC = () => {
 
                     <div className="tenant-admin__scope-grid">
                       <Select
-                        options={SCOPE_TYPES.map((type) => ({ value: type, content: SCOPE_LABELS[type] }))}
+                        size="xl"
+                        options={SCOPE_TYPES.map((type) => ({
+                          value: type,
+                          content: SCOPE_LABELS[type],
+                        }))}
                         value={[bindingForm.scopeType]}
                         onUpdate={(value) =>
                           setBindingForm((prev) => ({
                             ...prev,
-                            scopeType: (value[0] ?? prev.scopeType) as ScopeType,
-                            scopeId: value[0] === 'TENANT' ? tenantId : prev.scopeId,
+                            scopeType: (value[0] ??
+                              prev.scopeType) as ScopeType,
+                            scopeId:
+                              value[0] === 'TENANT' ? tenantId : prev.scopeId,
                           }))
                         }
                         disabled={!canManageBindings}
                       />
                       <TextInput
+                        size="xl"
                         placeholder="Scope ID"
                         value={bindingForm.scopeId}
-                        onUpdate={(value) => setBindingForm((prev) => ({ ...prev, scopeId: value }))}
+                        onUpdate={(value) =>
+                          setBindingForm((prev) => ({
+                            ...prev,
+                            scopeId: value,
+                          }))
+                        }
                         disabled={!canManageBindings}
                       />
                     </div>
@@ -989,8 +1163,11 @@ export const TenantAdminPage: React.FC = () => {
                   </div>
 
                   <div className="tenant-admin__section">
-                    <div className="tenant-admin__section-head">Поиск по роли</div>
+                    <div className="tenant-admin__section-head">
+                      Поиск по роли
+                    </div>
                     <TextInput
+                      size="xl"
                       value={roleSearchQuery}
                       placeholder="Например: Модератор"
                       onUpdate={(value) => setRoleSearchQuery(value)}
@@ -999,7 +1176,8 @@ export const TenantAdminPage: React.FC = () => {
 
                     {!roleSearchEnabled ? (
                       <div className="tenant-admin__empty">
-                        Введите название роли, чтобы увидеть всех участников с ней.
+                        Введите название роли, чтобы увидеть всех участников с
+                        ней.
                       </div>
                     ) : loadingRoleSearch ? (
                       <div className="tenant-admin__loader">
@@ -1007,27 +1185,33 @@ export const TenantAdminPage: React.FC = () => {
                         <span>Ищем совпадения...</span>
                       </div>
                     ) : roleSearchBindings.length === 0 ? (
-                      <div className="tenant-admin__empty">Совпадений по ролям не найдено.</div>
+                      <div className="tenant-admin__empty">
+                        Совпадений по ролям не найдено.
+                      </div>
                     ) : (
                       <div className="tenant-admin__role-search-results">
                         {roleSearchGroups.map((group) => (
-                          <div key={group.roleName} className="tenant-admin__role-search-group">
+                          <div
+                            key={group.roleName}
+                            className="tenant-admin__role-search-group"
+                          >
                             <div className="tenant-admin__role-search-head">
-                              <span>{group.roleName}</span>
+                              <span>{roleLabel(group.roleName)}</span>
                               <Label theme="info" size="s">
                                 {group.bindings.length}
                               </Label>
                             </div>
                             <div className="tenant-admin__role-search-body">
                               {group.bindings.map((binding) => {
-                                const member = membersById.get(binding.user_id);
-                                const label = member ? formatMemberName(member) : binding.user_id;
+                                const label = memberName(binding.user_id);
                                 return (
                                   <Button
                                     key={`${binding.id}-${binding.user_id}`}
                                     view="outlined"
                                     size="s"
-                                    onClick={() => setSelectedMemberId(binding.user_id)}
+                                    onClick={() =>
+                                      setSelectedMemberId(binding.user_id)
+                                    }
                                   >
                                     {label}
                                   </Button>
@@ -1039,7 +1223,7 @@ export const TenantAdminPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                </Card>
+                </AdminDetailPanel>
               </div>
             </div>
           )}
@@ -1049,7 +1233,6 @@ export const TenantAdminPage: React.FC = () => {
               <div className="tenant-admin__panel-header">
                 <div>
                   <h2>Роли и доступы</h2>
-                  <p>Переосмысливаем права как в Discord: список ролей слева, детали справа.</p>
                 </div>
                 <Button
                   view="action"
@@ -1063,32 +1246,30 @@ export const TenantAdminPage: React.FC = () => {
 
               <div className="tenant-admin__panel-grid">
                 <Card className="tenant-admin__card">
-                  <div className="tenant-admin__card-head">
-                    <div>
-                      <div className="tenant-admin__card-title">Каталог ролей</div>
-                      <div className="tenant-admin__card-subtitle">
-                        Быстро выбирайте роль для просмотра прав и участников.
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="tenant-admin__role-filters">
                     <TextInput
+                      size="xl"
                       value={roleQuery}
                       placeholder="Поиск по названию роли"
                       onUpdate={(value) => setRoleQuery(value)}
                       startContent={<Icon data={Magnifier} size={16} />}
                     />
                     <Select
+                      size="xl"
                       options={serviceOptions}
                       value={roleServiceFilter ? [roleServiceFilter] : []}
                       onUpdate={(value) => setRoleServiceFilter(value[0] ?? '')}
                       placeholder="Сервис"
                     />
                     <Select
+                      size="xl"
                       options={ROLE_SCOPE_OPTIONS}
                       value={[roleScopeFilter]}
-                      onUpdate={(value) => setRoleScopeFilter((value[0] ?? 'all') as typeof roleScopeFilter)}
+                      onUpdate={(value) =>
+                        setRoleScopeFilter(
+                          (value[0] ?? 'all') as typeof roleScopeFilter,
+                        )
+                      }
                     />
                   </div>
 
@@ -1104,7 +1285,8 @@ export const TenantAdminPage: React.FC = () => {
                       {filteredRoles.map((role) => {
                         const isTemplate = role.tenant_id === null;
                         const isSelected = selectedRole?.id === role.id;
-                        const permissionCount = role.permission_keys?.length ?? 0;
+                        const permissionCount =
+                          role.permission_keys?.length ?? 0;
                         return (
                           <button
                             key={role.id}
@@ -1117,8 +1299,12 @@ export const TenantAdminPage: React.FC = () => {
                               style={{ background: getRoleColor(role) }}
                             />
                             <span className="tenant-admin__role-body">
-                              <span className="tenant-admin__role-title">{role.name}</span>
-                              <span className="tenant-admin__role-meta">{role.service}</span>
+                              <span className="tenant-admin__role-title">
+                                {roleLabel(role.name)}
+                              </span>
+                              <span className="tenant-admin__role-meta">
+                                {serviceLabel(role.service)}
+                              </span>
                             </span>
                             <span className="tenant-admin__role-tags">
                               {isTemplate ? (
@@ -1127,7 +1313,7 @@ export const TenantAdminPage: React.FC = () => {
                                 </Label>
                               ) : null}
                               <Label theme="info" size="s">
-                                {permissionCount} прав
+                                Права: {permissionCount}
                               </Label>
                             </span>
                           </button>
@@ -1137,266 +1323,416 @@ export const TenantAdminPage: React.FC = () => {
                   )}
                 </Card>
 
-                <Card className="tenant-admin__card tenant-admin__card--sticky">
+                <AdminDetailPanel
+                  title={
+                    selectedRole ? roleLabel(selectedRole.name) : 'Новая роль'
+                  }
+                  open={Boolean(selectedRole || roleEditing)}
+                  busy={savingRole}
+                  onClose={() =>
+                    void (async () => {
+                      if (
+                        roleEditing &&
+                        !(await confirm(
+                          'Закрыть редактирование роли? Несохранённые изменения будут потеряны.',
+                        ))
+                      )
+                        return;
+                      setSelectedRole(null);
+                      setRoleEditing(false);
+                    })()
+                  }
+                >
                   <div className="tenant-admin__card-head">
                     <div>
                       <div className="tenant-admin__card-title">
-                        {selectedRole ? 'Настройка роли' : 'Создание роли'}
+                        {selectedRole
+                          ? roleLabel(selectedRole.name)
+                          : roleEditing
+                            ? 'Создание роли'
+                            : 'Информация о роли'}
                       </div>
                       <div className="tenant-admin__card-subtitle">
                         {selectedRole
-                          ? `Выбрана роль: ${selectedRole.name}`
-                          : 'Создайте новую роль для тенанта.'}
+                          ? `Выбрана роль: ${roleLabel(selectedRole.name)}`
+                          : roleEditing
+                            ? 'Создайте новую роль для сообщества.'
+                            : 'Выберите роль в каталоге.'}
                       </div>
                     </div>
                     {selectedRole && (
-                      <Button view="flat" size="s" onClick={resetRoleForm}>
-                        Сбросить
+                      <Button
+                        view="outlined"
+                        size="s"
+                        disabled={!canManageRoles}
+                        onClick={() =>
+                          roleEditing
+                            ? handleRoleSelect(selectedRole)
+                            : setRoleEditing(true)
+                        }
+                      >
+                        {roleEditing
+                          ? 'Отменить'
+                          : isTemplateSelected
+                            ? 'Создать на основе'
+                            : 'Редактировать'}
                       </Button>
                     )}
                   </div>
 
-                  <div className="tenant-admin__role-tabs">
-                    {(['overview', 'permissions', 'members'] as RolePanelTab[]).map((tab) => (
-                      <Button
-                        key={tab}
-                        view={rolePanelTab === tab ? 'action' : 'outlined'}
-                        size="s"
-                        onClick={() => setRolePanelTab(tab)}
-                      >
-                        {tab === 'overview'
-                          ? 'Общее'
-                          : tab === 'permissions'
-                            ? 'Права'
-                            : 'Участники'}
-                      </Button>
-                    ))}
-                  </div>
-
-                  {rolePanelTab === 'overview' && (
-                    <div className="tenant-admin__role-overview">
-                      <div className="tenant-admin__role-highlight">
-                        <span
-                          className="tenant-admin__role-dot"
-                          style={{ background: roleColorDraft }}
-                        />
-                        <div>
-                          <div className="tenant-admin__role-title">{roleForm.name || 'Новая роль'}</div>
-                          <div className="tenant-admin__role-meta">{roleForm.service}</div>
-                        </div>
+                  {(selectedRole || roleEditing) && (
+                    <>
+                      <div className="tenant-admin__role-tabs">
+                        {(
+                          [
+                            'overview',
+                            'permissions',
+                            'members',
+                          ] as RolePanelTab[]
+                        ).map((tab) => (
+                          <Button
+                            key={tab}
+                            view={rolePanelTab === tab ? 'action' : 'outlined'}
+                            size="s"
+                            onClick={() => setRolePanelTab(tab)}
+                          >
+                            {tab === 'overview'
+                              ? 'Общее'
+                              : tab === 'permissions'
+                                ? 'Права'
+                                : 'Участники'}
+                          </Button>
+                        ))}
                       </div>
 
-                      {isTemplateSelected && (
-                        <Label theme="normal" size="s">
-                          Шаблон системы — редактируется как копия
-                        </Label>
+                      {rolePanelTab === 'overview' && (
+                        <div className="tenant-admin__role-overview">
+                          <div className="tenant-admin__role-highlight">
+                            <span
+                              className="tenant-admin__role-dot"
+                              style={{ background: roleColorDraft }}
+                            />
+                            <div>
+                              <div className="tenant-admin__role-title">
+                                {roleForm.name
+                                  ? roleLabel(roleForm.name)
+                                  : 'Новая роль'}
+                              </div>
+                              <div className="tenant-admin__role-meta">
+                                {serviceLabel(roleForm.service)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isTemplateSelected && (
+                            <Label theme="normal" size="s">
+                              Системный шаблон для создания собственных ролей
+                            </Label>
+                          )}
+
+                          {roleEditing && (
+                            <>
+                              <div className="tenant-admin__field">
+                                <label className="tenant-admin__field-label">
+                                  Название роли
+                                </label>
+                                <TextInput
+                                  size="xl"
+                                  value={roleForm.name}
+                                  onUpdate={(value) =>
+                                    setRoleForm((prev) => ({
+                                      ...prev,
+                                      name: value,
+                                    }))
+                                  }
+                                  disabled={!canManageRoles}
+                                />
+                              </div>
+
+                              <div className="tenant-admin__field">
+                                <label className="tenant-admin__field-label">
+                                  Раздел платформы
+                                </label>
+                                <Select
+                                  size="xl"
+                                  options={permissionServiceOptions.filter(
+                                    (option) => option.value,
+                                  )}
+                                  value={[roleForm.service]}
+                                  onUpdate={(value) =>
+                                    setRoleForm((prev) => ({
+                                      ...prev,
+                                      service: value[0] ?? prev.service,
+                                    }))
+                                  }
+                                  disabled={!canManageRoles}
+                                />
+                              </div>
+
+                              <div className="tenant-admin__field">
+                                <label className="tenant-admin__field-label">
+                                  Цвет роли
+                                </label>
+                                <div className="tenant-admin__color-field">
+                                  <input
+                                    className="tenant-admin__color-input"
+                                    type="color"
+                                    value={roleColorDraft}
+                                    onChange={(event) =>
+                                      setRoleColorDraft(event.target.value)
+                                    }
+                                    disabled={!canManageRoles}
+                                  />
+                                  <span className="tenant-admin__field-hint">
+                                    Цвет хранится локально, чтобы сразу видеть
+                                    роли в списке.
+                                  </span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          <div className="tenant-admin__field">
+                            <label className="tenant-admin__field-label">
+                              Доступные действия
+                            </label>
+                            <div className="tenant-admin__permission-preview">
+                              {normalizedPermissionKeys.length === 0 ? (
+                                <div className="tenant-admin__empty">
+                                  Пока нет прав.
+                                </div>
+                              ) : (
+                                normalizedPermissionKeys.map((permission) => (
+                                  <Label key={permission} theme="info" size="s">
+                                    {permissionLabel(permission)}
+                                  </Label>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       )}
 
-                      <div className="tenant-admin__field">
-                        <label className="tenant-admin__field-label">Название роли</label>
-                        <TextInput
-                          value={roleForm.name}
-                          onUpdate={(value) => setRoleForm((prev) => ({ ...prev, name: value }))}
-                          disabled={!canManageRoles}
-                        />
-                      </div>
+                      {rolePanelTab === 'permissions' && (
+                        <div className="tenant-admin__role-permissions">
+                          <div className="tenant-admin__permission-toolbar">
+                            <TextInput
+                              size="xl"
+                              value={rolePermissionQuery}
+                              placeholder="Поиск по ключу или описанию"
+                              onUpdate={(value) =>
+                                setRolePermissionQuery(value)
+                              }
+                              startContent={<Icon data={Magnifier} size={16} />}
+                            />
+                            <Select
+                              size="xl"
+                              options={permissionServiceOptions}
+                              value={
+                                rolePermissionServiceFilter
+                                  ? [rolePermissionServiceFilter]
+                                  : []
+                              }
+                              onUpdate={(value) =>
+                                setRolePermissionServiceFilter(value[0] ?? '')
+                              }
+                              placeholder="Сервис"
+                            />
+                            <Button
+                              view="flat"
+                              size="s"
+                              disabled={!canManageRoles || !roleEditing}
+                              onClick={() =>
+                                setRoleForm((prev) => ({
+                                  ...prev,
+                                  permissionKeys: [],
+                                }))
+                              }
+                            >
+                              Очистить
+                            </Button>
+                          </div>
 
-                      <div className="tenant-admin__field">
-                        <label className="tenant-admin__field-label">Сервис</label>
-                        <TextInput
-                          value={roleForm.service}
-                          onUpdate={(value) => setRoleForm((prev) => ({ ...prev, service: value }))}
-                          disabled={!canManageRoles}
-                        />
-                      </div>
-
-                      <div className="tenant-admin__field">
-                        <label className="tenant-admin__field-label">Цвет роли</label>
-                        <div className="tenant-admin__color-field">
-                          <input
-                            className="tenant-admin__color-input"
-                            type="color"
-                            value={roleColorDraft}
-                            onChange={(event) => setRoleColorDraft(event.target.value)}
-                            disabled={!canManageRoles}
-                          />
-                          <span className="tenant-admin__field-hint">
-                            Цвет хранится локально, чтобы сразу видеть роли в списке.
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="tenant-admin__field">
-                        <label className="tenant-admin__field-label">Права (выбрано)</label>
-                        <div className="tenant-admin__permission-preview">
-                          {normalizedPermissionKeys.length === 0 ? (
-                            <div className="tenant-admin__empty">Пока нет прав.</div>
+                          {loadingPermissions ? (
+                            <div className="tenant-admin__loader">
+                              <Loader size="s" />
+                              <span>Загружаем права...</span>
+                            </div>
+                          ) : rolePermissionGroups.length === 0 ? (
+                            <div className="tenant-admin__empty">
+                              Совпадений не найдено.
+                            </div>
                           ) : (
-                            normalizedPermissionKeys.map((permission) => (
-                              <Label key={permission} theme="info" size="s">
-                                {permission}
-                              </Label>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {rolePanelTab === 'permissions' && (
-                    <div className="tenant-admin__role-permissions">
-                      <div className="tenant-admin__permission-toolbar">
-                        <TextInput
-                          value={rolePermissionQuery}
-                          placeholder="Поиск по ключу или описанию"
-                          onUpdate={(value) => setRolePermissionQuery(value)}
-                          startContent={<Icon data={Magnifier} size={16} />}
-                        />
-                        <Select
-                          options={permissionServiceOptions}
-                          value={rolePermissionServiceFilter ? [rolePermissionServiceFilter] : []}
-                          onUpdate={(value) => setRolePermissionServiceFilter(value[0] ?? '')}
-                          placeholder="Сервис"
-                        />
-                        <Button
-                          view="flat"
-                          size="s"
-                          disabled={!canManageRoles}
-                          onClick={() =>
-                            setRoleForm((prev) => ({ ...prev, permissionKeys: [] }))
-                          }
-                        >
-                          Очистить
-                        </Button>
-                      </div>
-
-                      {loadingPermissions ? (
-                        <div className="tenant-admin__loader">
-                          <Loader size="s" />
-                          <span>Загружаем права...</span>
-                        </div>
-                      ) : rolePermissionGroups.length === 0 ? (
-                        <div className="tenant-admin__empty">Совпадений не найдено.</div>
-                      ) : (
-                        <div className="tenant-admin__permission-groups">
-                          {rolePermissionGroups.map((group) => (
-                            <div key={group.service} className="tenant-admin__permission-service">
-                              <div className="tenant-admin__permission-service-head">
-                                <span>{group.service}</span>
-                                <Label theme="normal" size="s">
-                                  {group.resources.reduce(
-                                    (acc, resource) => acc + resource.items.length,
-                                    0,
-                                  )}
-                                </Label>
-                              </div>
-                              {group.resources.map((resource) => (
-                                <div key={resource.resource} className="tenant-admin__permission-group">
-                                  <div className="tenant-admin__permission-group-title">
-                                    {resource.resource}
+                            <div className="tenant-admin__permission-groups">
+                              {rolePermissionGroups.map((group) => (
+                                <div
+                                  key={group.service}
+                                  className="tenant-admin__permission-service"
+                                >
+                                  <div className="tenant-admin__permission-service-head">
+                                    <span>{serviceLabel(group.service)}</span>
+                                    <Label theme="normal" size="s">
+                                      {group.resources.reduce(
+                                        (acc, resource) =>
+                                          acc + resource.items.length,
+                                        0,
+                                      )}
+                                    </Label>
                                   </div>
-                                  <div className="tenant-admin__permission-list">
-                                    {resource.items.map((permission) => {
-                                      const isSelected = normalizedPermissionKeys.includes(
-                                        permission.key,
-                                      );
-                                      return (
-                                        <div
-                                          key={permission.key}
-                                          className="tenant-admin__permission-row"
-                                        >
-                                          <div>
-                                            <div className="tenant-admin__permission-key">
-                                              {permission.key}
+                                  {group.resources.map((resource) => (
+                                    <div
+                                      key={resourceLabel(resource.resource)}
+                                      className="tenant-admin__permission-group"
+                                    >
+                                      <div className="tenant-admin__permission-group-title">
+                                        {resourceLabel(resource.resource)}
+                                      </div>
+                                      <div className="tenant-admin__permission-list">
+                                        {resource.items.map((permission) => {
+                                          const isSelected =
+                                            normalizedPermissionKeys.includes(
+                                              permission.key,
+                                            );
+                                          return (
+                                            <div
+                                              key={permission.key}
+                                              className="tenant-admin__permission-row"
+                                            >
+                                              <div>
+                                                <div className="tenant-admin__permission-key">
+                                                  {permissionLabel(permission)}
+                                                </div>
+                                                <div className="tenant-admin__permission-desc">
+                                                  <details>
+                                                    <summary>
+                                                      Технический ключ
+                                                    </summary>
+                                                    <code>
+                                                      {permission.key}
+                                                    </code>
+                                                  </details>
+                                                </div>
+                                              </div>
+                                              <Switch
+                                                size="m"
+                                                aria-label={permissionLabel(
+                                                  permission,
+                                                )}
+                                                checked={isSelected}
+                                                disabled={
+                                                  !canManageRoles ||
+                                                  !roleEditing
+                                                }
+                                                onUpdate={(checked) =>
+                                                  handlePermissionToggle(
+                                                    permission.key,
+                                                    checked,
+                                                  )
+                                                }
+                                              />
                                             </div>
-                                            <div className="tenant-admin__permission-desc">
-                                              {permission.description}
-                                            </div>
-                                          </div>
-                                          <Switch
-                                            size="m"
-                                            checked={isSelected}
-                                            disabled={!canManageRoles}
-                                            onUpdate={(checked) =>
-                                              handlePermissionToggle(permission.key, checked)
-                                            }
-                                          />
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
-                    </div>
-                  )}
 
-                  {rolePanelTab === 'members' && (
-                    <div className="tenant-admin__role-members">
-                      {selectedRole ? (
-                        loadingRoleBindings ? (
-                          <div className="tenant-admin__loader">
-                            <Loader size="s" />
-                            <span>Загружаем участников роли...</span>
-                          </div>
-                        ) : roleBindingsForSelected.length === 0 ? (
-                          <div className="tenant-admin__empty">Эта роль никому не назначена.</div>
-                        ) : (
-                          <div className="tenant-admin__role-members-list">
-                            {roleBindingsForSelected.map((binding) => {
-                              const member = membersById.get(binding.user_id);
-                              return (
-                                <div key={binding.id} className="tenant-admin__role-member">
-                                  <Avatar size="s" text={getInitials(member)} />
-                                  <div>
-                                    <div className="tenant-admin__member-name">
-                                      {member ? formatMemberName(member) : binding.user_id}
+                      {rolePanelTab === 'members' && (
+                        <div className="tenant-admin__role-members">
+                          {selectedRole ? (
+                            loadingRoleBindings ? (
+                              <div className="tenant-admin__loader">
+                                <Loader size="s" />
+                                <span>Загружаем участников роли...</span>
+                              </div>
+                            ) : roleBindingsForSelected.length === 0 ? (
+                              <div className="tenant-admin__empty">
+                                Эта роль никому не назначена.
+                              </div>
+                            ) : (
+                              <div className="tenant-admin__role-members-list">
+                                {roleBindingsForSelected.map((binding) => {
+                                  const member = membersById.get(
+                                    binding.user_id,
+                                  );
+                                  return (
+                                    <div
+                                      key={binding.id}
+                                      className="tenant-admin__role-member"
+                                    >
+                                      <Avatar
+                                        size="s"
+                                        text={getInitials(member)}
+                                      />
+                                      <div>
+                                        <div className="tenant-admin__member-name">
+                                          {memberName(binding.user_id)}
+                                        </div>
+                                        <div className="tenant-admin__member-meta">
+                                          {scopeLabel(
+                                            binding.scope_type,
+                                            binding.scope_id,
+                                            tenantId,
+                                          )}
+                                        </div>
+                                      </div>
+                                      <Button
+                                        view="flat"
+                                        size="s"
+                                        onClick={() =>
+                                          setSelectedMemberId(binding.user_id)
+                                        }
+                                      >
+                                        Открыть
+                                      </Button>
                                     </div>
-                                    <div className="tenant-admin__member-meta">
-                                      {binding.scope_type}/{binding.scope_id}
-                                    </div>
-                                  </div>
-                                  <Button
-                                    view="flat"
-                                    size="s"
-                                    onClick={() => setSelectedMemberId(binding.user_id)}
-                                  >
-                                    Открыть
-                                  </Button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )
-                      ) : (
-                        <div className="tenant-admin__empty">Выберите роль слева, чтобы увидеть участников.</div>
+                                  );
+                                })}
+                              </div>
+                            )
+                          ) : (
+                            <div className="tenant-admin__empty">
+                              Выберите роль слева, чтобы увидеть участников.
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
 
-                  <div className="tenant-admin__role-actions">
-                    <Button
-                      view="action"
-                      loading={savingRole}
-                      onClick={handleRoleSubmit}
-                      disabled={!canManageRoles}
-                    >
-                      {roleFormMode === 'edit' ? 'Сохранить изменения' : 'Создать роль'}
-                    </Button>
-                    {selectedRole && !isTemplateSelected && (
-                      <Button
-                        view="outlined"
-                        disabled={Boolean(deletingRoleId) || !canManageRoles}
-                        onClick={() => handleRoleDelete(selectedRole)}
-                      >
-                        {deletingRoleId === selectedRole.id ? 'Удаление…' : 'Удалить роль'}
-                      </Button>
-                    )}
-                  </div>
-                </Card>
+                      {roleEditing && (
+                        <div className="tenant-admin__role-actions">
+                          <Button
+                            view="action"
+                            loading={savingRole}
+                            onClick={handleRoleSubmit}
+                            disabled={!canManageRoles}
+                          >
+                            {roleFormMode === 'edit'
+                              ? 'Сохранить изменения'
+                              : 'Создать роль'}
+                          </Button>
+                          {selectedRole && !isTemplateSelected && (
+                            <Button
+                              view="outlined"
+                              disabled={
+                                Boolean(deletingRoleId) || !canManageRoles
+                              }
+                              onClick={() => handleRoleDelete(selectedRole)}
+                            >
+                              {deletingRoleId === selectedRole.id
+                                ? 'Удаление…'
+                                : 'Удалить роль'}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </AdminDetailPanel>
               </div>
             </div>
           )}
@@ -1406,26 +1742,35 @@ export const TenantAdminPage: React.FC = () => {
               <div className="tenant-admin__panel-header">
                 <div>
                   <h2>Каталог прав</h2>
-                  <p>Структурированный список permission-ключей по сервисам и модулям.</p>
                 </div>
               </div>
 
               <Card className="tenant-admin__card">
                 {!canViewPermissions ? (
-                  <div className="tenant-admin__empty">Нет доступа к каталогу прав.</div>
+                  <div className="tenant-admin__empty">
+                    Нет доступа к каталогу прав.
+                  </div>
                 ) : (
                   <>
                     <div className="tenant-admin__permission-toolbar">
                       <TextInput
+                        size="xl"
                         value={permissionQuery}
                         placeholder="Поиск по ключу или описанию"
                         onUpdate={(value) => setPermissionQuery(value)}
                         startContent={<Icon data={Magnifier} size={16} />}
                       />
                       <Select
+                        size="xl"
                         options={permissionServiceOptions}
-                        value={permissionServiceFilter ? [permissionServiceFilter] : []}
-                        onUpdate={(value) => setPermissionServiceFilter(value[0] ?? '')}
+                        value={
+                          permissionServiceFilter
+                            ? [permissionServiceFilter]
+                            : []
+                        }
+                        onUpdate={(value) =>
+                          setPermissionServiceFilter(value[0] ?? '')
+                        }
                         placeholder="Сервис"
                       />
                     </div>
@@ -1436,39 +1781,54 @@ export const TenantAdminPage: React.FC = () => {
                         <span>Загружаем права...</span>
                       </div>
                     ) : permissionGroups.length === 0 ? (
-                      <div className="tenant-admin__empty">Ничего не найдено.</div>
+                      <div className="tenant-admin__empty">
+                        Ничего не найдено.
+                      </div>
                     ) : (
                       <div className="tenant-admin__permission-groups">
                         {permissionGroups.map((group) => (
-                          <div key={group.service} className="tenant-admin__permission-service">
+                          <div
+                            key={group.service}
+                            className="tenant-admin__permission-service"
+                          >
                             <div className="tenant-admin__permission-service-head">
-                              <span>{group.service}</span>
+                              <span>{serviceLabel(group.service)}</span>
                               <Label theme="normal" size="s">
                                 {group.resources.reduce(
-                                  (acc, resource) => acc + resource.items.length,
+                                  (acc, resource) =>
+                                    acc + resource.items.length,
                                   0,
                                 )}
                               </Label>
                             </div>
                             {group.resources.map((resource) => (
-                              <div key={resource.resource} className="tenant-admin__permission-group">
-                                <div className="tenant-admin__permission-group-title">
-                                  {resource.resource}
-                                </div>
+                              <div
+                                key={resourceLabel(resource.resource)}
+                                className="tenant-admin__permission-group"
+                              >
+                                {resourceLabel(resource.resource) !==
+                                  serviceLabel(group.service) && (
+                                  <div className="tenant-admin__permission-group-title">
+                                    {resourceLabel(resource.resource)}
+                                  </div>
+                                )}
                                 <div className="tenant-admin__permission-list">
                                   {resource.items.map((permission) => (
-                                    <div key={permission.key} className="tenant-admin__permission-row">
+                                    <div
+                                      key={permission.key}
+                                      className="tenant-admin__permission-row"
+                                    >
                                       <div>
                                         <div className="tenant-admin__permission-key">
-                                          {permission.key}
+                                          {permissionLabel(permission)}
                                         </div>
                                         <div className="tenant-admin__permission-desc">
-                                          {permission.description}
+                                          <details>
+                                            <summary>Технический ключ</summary>
+                                            <code>{permission.key}</code>
+                                          </details>
                                         </div>
                                       </div>
-                                      <Label theme="info" size="s">
-                                        {permission.service}
-                                      </Label>
                                     </div>
                                   ))}
                                 </div>
@@ -1489,15 +1849,13 @@ export const TenantAdminPage: React.FC = () => {
               <div className="tenant-admin__panel-header">
                 <div>
                   <h2>Аудит действий</h2>
-                  <p>Кто и когда менял роли, права и назначения в тенанте.</p>
+                  <p>Последние 50 изменений ролей и прав участников.</p>
                 </div>
-                <Button view="outlined" size="m" onClick={reloadEvents}>
-                  Обновить
-                </Button>
               </div>
 
               <Card className="tenant-admin__card">
                 <TextInput
+                  size="xl"
                   value={auditQuery}
                   placeholder="Поиск по действию, пользователю или роли"
                   onUpdate={(value) => setAuditQuery(value)}
@@ -1513,28 +1871,58 @@ export const TenantAdminPage: React.FC = () => {
                   <div className="tenant-admin__empty">Событий пока нет.</div>
                 ) : (
                   <div className="tenant-admin__audit-list">
-                    {filteredEvents.map((event) => (
-                      <div key={event.id} className="tenant-admin__audit-item">
-                        <div className="tenant-admin__audit-head">
-                          <span className="tenant-admin__audit-action">{event.action}</span>
-                          <span className="tenant-admin__audit-time">{formatIsoDate(event.created_at)}</span>
-                        </div>
-                        <div className="tenant-admin__audit-body">
-                          <div className="tenant-admin__audit-target">
-                            {event.target_type}
-                            {event.target_id ? ` · ${event.target_id}` : ''}
+                    {filteredEvents.map((event) => {
+                      const summary = presentAuditEvent(
+                        event,
+                        roles,
+                        memberName,
+                      );
+                      return (
+                        <article
+                          key={event.id}
+                          className="tenant-admin__audit-item"
+                        >
+                          <div className="tenant-admin__audit-head">
+                            <h3 className="tenant-admin__audit-action">
+                              {summary.title}
+                            </h3>
+                            <time dateTime={event.created_at}>
+                              {formatIsoDate(event.created_at)}
+                            </time>
                           </div>
-                          <div className="tenant-admin__audit-meta">
-                            Исполнитель: {event.performed_by}
-                          </div>
-                          {event.metadata && Object.keys(event.metadata).length > 0 ? (
-                            <pre className="tenant-admin__audit-meta tenant-admin__audit-meta--code">
-                              {JSON.stringify(event.metadata, null, 2)}
-                            </pre>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
+                          <p className="tenant-admin__audit-description">
+                            {summary.description}
+                          </p>
+                          <p className="tenant-admin__audit-meta">
+                            Изменил: {summary.actor}
+                          </p>
+                          <details className="tenant-admin__technical-details">
+                            <summary>Технические данные</summary>
+                            <dl>
+                              <div>
+                                <dt>Код события</dt>
+                                <dd>{event.action}</dd>
+                              </div>
+                              <div>
+                                <dt>Идентификатор</dt>
+                                <dd>{event.id}</dd>
+                              </div>
+                              <div>
+                                <dt>Исполнитель</dt>
+                                <dd>{event.performed_by}</dd>
+                              </div>
+                              <div>
+                                <dt>Объект</dt>
+                                <dd>
+                                  {event.target_type} · {event.target_id ?? '—'}
+                                </dd>
+                              </div>
+                            </dl>
+                            <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
+                          </details>
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
               </Card>

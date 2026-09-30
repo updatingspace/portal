@@ -1,11 +1,14 @@
+import {I18nProvider} from '../../../app/providers/I18nProvider';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
 
 import { GamificationDashboardPage } from './GamificationDashboardPage';
 import { AchievementFormPage } from './AchievementFormPage';
 import { AchievementDetailPage } from './AchievementDetailPage';
 
+const render = (ui: React.ReactElement) => rtlRender(<I18nProvider>{ui}</I18nProvider>);
+vi.mock('../../../contexts/TenantContext', () => ({useTenantContext: () => ({activeTenant:{tenant_id:'t1',tenant_slug:'alpha'}}), useTenant: () => ({tenant_id:'t1',tenant_slug:'alpha'})}));
 const mockNavigate = vi.fn();
 const mockUpdateAchievement = vi.fn(async () => ({}));
 const mockCreateAchievement = vi.fn(async () => ({ id: 'created-id' }));
@@ -144,8 +147,8 @@ vi.mock('@gravity-ui/uikit', () => {
     void size;
     return <button type="button" onClick={onClick} {...props}>{children}</button>;
   };
-  const Select = ({ options = [], value = [], onUpdate }: { options?: Array<{ value: string; content: string }>; value?: string[]; onUpdate?: (v: string[]) => void }) => (
-    <select value={value[0] ?? ''} onChange={(e) => onUpdate?.([e.target.value])}>
+  const Select = ({ id, options = [], value = [], onUpdate }: { id?:string; options?: Array<{ value: string; content: string }>; value?: string[]; onUpdate?: (v: string[]) => void }) => (
+    <select id={id} value={value[0] ?? ''} onChange={(e) => onUpdate?.([e.target.value])}>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>{opt.content}</option>
       ))}
@@ -180,10 +183,10 @@ vi.mock('@gravity-ui/uikit', () => {
   const DropdownMenu = ({ items }: { items: Array<{ text: string; action?: () => void }> }) => (
     <div>{items.map((item) => <button key={item.text} onClick={item.action}>{item.text}</button>)}</div>
   );
-  const Dialog = ({ open = true, children }: { open?: boolean; children?: React.ReactNode }) => (open ? <div>{children}</div> : null);
+  const Dialog = ({ open = true, children }: { open?: boolean; children?: React.ReactNode }) => (open ? <div role="dialog">{children}</div> : null);
   Dialog.Header = ({ caption }: { caption?: React.ReactNode }) => <div>{caption}</div>;
   Dialog.Body = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
-  Dialog.Footer = ({ onClickButtonApply, onClickButtonCancel, textButtonApply, textButtonCancel }: { onClickButtonApply?: () => void; onClickButtonCancel?: () => void; textButtonApply?: string; textButtonCancel?: string }) => (
+  Dialog.Footer = ({ children, onClickButtonApply, onClickButtonCancel, textButtonApply, textButtonCancel }: { children?: React.ReactNode; onClickButtonApply?: () => void; onClickButtonCancel?: () => void; textButtonApply?: string; textButtonCancel?: string }) => children ?? (
     <div>
       <button onClick={onClickButtonCancel}>{textButtonCancel ?? 'Cancel'}</button>
       <button onClick={onClickButtonApply}>{textButtonApply ?? 'Apply'}</button>
@@ -192,6 +195,7 @@ vi.mock('@gravity-ui/uikit', () => {
 
   return {
     Button,
+    Loader:()=> <span>Загрузка</span>,
     Card: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     DropdownMenu,
     Icon: () => <span />,
@@ -199,11 +203,11 @@ vi.mock('@gravity-ui/uikit', () => {
     Select,
     Table: RichTable,
     Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
-    TextInput: ({ value = '', onUpdate, placeholder }: { value?: string; onUpdate?: (v: string) => void; placeholder?: string }) => (
-      <input value={value} placeholder={placeholder} onChange={(e) => onUpdate?.(e.target.value)} />
+    TextInput: ({ id, value = '', onUpdate, placeholder }: { id?:string; value?: string; onUpdate?: (v: string) => void; placeholder?: string }) => (
+      <input id={id} value={value} placeholder={placeholder} onChange={(e) => onUpdate?.(e.target.value)} />
     ),
-    TextArea: ({ value = '', onUpdate }: { value?: string; onUpdate?: (v: string) => void }) => (
-      <textarea value={value} onChange={(e) => onUpdate?.(e.target.value)} />
+    TextArea: ({ id, value = '', onUpdate }: { id?:string; value?: string; onUpdate?: (v: string) => void }) => (
+      <textarea id={id} value={value} onChange={(e) => onUpdate?.(e.target.value)} />
     ),
     Dialog,
   };
@@ -270,21 +274,21 @@ describe('Gamification pages edge cases', () => {
   it('shows access denied on dashboard without user', () => {
     mockUser = null;
     render(<GamificationDashboardPage />);
-    expect(screen.getByText('ACCESS_DENIED')).toBeInTheDocument();
+    expect(screen.getByText('Достижения недоступны')).toBeInTheDocument();
   });
 
-  it('renders dashboard metrics and scenario guidance', () => {
+  it('opens directly on the catalog without decorative counts or instructions', () => {
     render(<GamificationDashboardPage />);
-    expect(screen.getByText('Центр геймификации')).toBeInTheDocument();
-    expect(screen.getByText('Всего ачивок')).toBeInTheDocument();
-    expect(screen.getByText('Контент-менеджер создаёт черновик и заполняет медиа/локализации.')).toBeInTheDocument();
-    expect(screen.getByText('rows:2')).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'Достижения'})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'A1',exact:true})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'A2',exact:true})).toBeInTheDocument();
+    expect(screen.queryByText('Загружено достижений')).not.toBeInTheDocument();
   });
 
   it('executes dashboard row actions and reset filters', async () => {
     render(<GamificationDashboardPage />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Открыть' })[0] as HTMLButtonElement);
+    fireEvent.click(screen.getByRole('button', {name:'A1',exact:true}));
     fireEvent.click(screen.getAllByRole('button', { name: 'Редактировать' })[0] as HTMLButtonElement);
     fireEvent.click(screen.getAllByRole('button', { name: 'Опубликовать' })[0] as HTMLButtonElement);
     fireEvent.click(screen.getAllByRole('button', { name: 'Скрыть' })[0] as HTMLButtonElement);
@@ -296,6 +300,7 @@ describe('Gamification pages edge cases', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Поиск по названию'), { target: { value: 'abc' } });
     expect((screen.getByPlaceholderText('Поиск по названию') as HTMLInputElement).value).toBe('abc');
+    fireEvent.click(screen.getByRole('button', { name: /^Фильтры/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Сбросить' }));
     expect((screen.getByPlaceholderText('Поиск по названию') as HTMLInputElement).value).toBe('');
   });
@@ -311,11 +316,11 @@ describe('Gamification pages edge cases', () => {
     mockDashboardIsLoading = true;
     mockAchievementsPages = [{ items: [] }];
     const { rerender } = render(<GamificationDashboardPage />);
-    expect(screen.getByText('Загружаем...')).toBeInTheDocument();
+    expect(screen.getByText('Загружаем достижения')).toBeInTheDocument();
 
     mockDashboardIsLoading = false;
     rerender(<GamificationDashboardPage />);
-    expect(screen.getByText('Пока нет ачивок')).toBeInTheDocument();
+    expect(screen.getByText('Достижений пока нет')).toBeInTheDocument();
   });
 
   it('shows access denied on form when permission is missing', () => {
@@ -333,9 +338,7 @@ describe('Gamification pages edge cases', () => {
   it('requires category before submit and image for published status', async () => {
     render(<AchievementFormPage />);
 
-    const localeInput = screen.getAllByPlaceholderText('ru')[0] as HTMLInputElement;
-    const nameInput = screen.getByPlaceholderText('Название');
-    fireEvent.change(localeInput, { target: { value: 'ru' } });
+    const nameInput = screen.getByLabelText('Название', {exact:true});
     fireEvent.change(nameInput, { target: { value: 'Новая ачивка' } });
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '' } });
 
@@ -352,10 +355,10 @@ describe('Gamification pages edge cases', () => {
     render(<AchievementFormPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Добавить категорию' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Создать' })[1] as HTMLButtonElement);
-    expect(await screen.findByText('Заполните slug и название категории.')).toBeInTheDocument();
+    expect(await screen.findByText('Заполните название и адрес категории.')).toBeInTheDocument();
 
-    const slugInput = screen.getByPlaceholderText('event');
-    const titleInput = screen.getByPlaceholderText('События');
+    const slugInput = screen.getByLabelText('Адрес категории');
+    const titleInput = screen.getByLabelText('Название категории');
     fireEvent.change(slugInput, { target: { value: 'news' } });
     fireEvent.change(titleInput, { target: { value: 'Новости' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Создать' })[1] as HTMLButtonElement);
@@ -368,9 +371,7 @@ describe('Gamification pages edge cases', () => {
   it('creates achievement when minimal data is provided', async () => {
     render(<AchievementFormPage />);
 
-    const localeInput = screen.getAllByPlaceholderText('ru')[0] as HTMLInputElement;
-    const nameInput = screen.getByPlaceholderText('Название');
-    fireEvent.change(localeInput, { target: { value: 'ru' } });
+    const nameInput = screen.getByLabelText('Название', {exact:true});
     fireEvent.change(nameInput, { target: { value: 'Новая ачивка' } });
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'cat' } });
 
@@ -386,7 +387,7 @@ describe('Gamification pages edge cases', () => {
     mockAchievementData = { ...mockAchievementData, status: 'draft' };
     render(<AchievementFormPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(mockNavigate).toHaveBeenCalledWith('/app/gamification');
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
@@ -405,19 +406,20 @@ describe('Gamification pages edge cases', () => {
   it('edits locale rows and image fields in form', () => {
     render(<AchievementFormPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Добавить язык' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить' })[0] as HTMLButtonElement);
-    fireEvent.change(screen.getByPlaceholderText('URL small'), { target: { value: '/s.png' } });
-    fireEvent.change(screen.getByPlaceholderText('URL medium'), { target: { value: '/m.png' } });
-    fireEvent.change(screen.getByPlaceholderText('URL large'), { target: { value: '/l.png' } });
-    expect((screen.getByPlaceholderText('URL small') as HTMLInputElement).value).toBe('/s.png');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить' })[1] as HTMLButtonElement);
+    fireEvent.change(screen.getByLabelText('Маленькое изображение'), { target: { value: '/s.png' } });
+    fireEvent.change(screen.getByLabelText('Изображение',{exact:true}), { target: { value: '/m.png' } });
+    fireEvent.change(screen.getByLabelText('Большое изображение'), { target: { value: '/l.png' } });
+    expect((screen.getByLabelText('Маленькое изображение') as HTMLInputElement).value).toBe('/s.png');
   });
 
   it('validates grant recipient in detail flow', async () => {
     mockParams = { id: 'a1' };
     render(<AchievementDetailPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Выдать' }));
-    expect(await screen.findByText('Укажите user_id получателя.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать награду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать',exact:true }));
+    expect(await screen.findByText('Выберите участника из результатов поиска.')).toBeInTheDocument();
     expect(mockCreateGrant).not.toHaveBeenCalled();
   });
 
@@ -425,7 +427,7 @@ describe('Gamification pages edge cases', () => {
     mockAchievementById = false;
     mockParams = { id: 'a404' };
     render(<AchievementDetailPage />);
-    expect(screen.getByText('Ачивка не найдена.')).toBeInTheDocument();
+    expect(screen.getByText('Достижение не найдено')).toBeInTheDocument();
   });
 
   it('renders detail media/status variants and history pagination', () => {
@@ -441,12 +443,12 @@ describe('Gamification pages edge cases', () => {
     mockGrantsIsLoading = true;
     render(<AchievementDetailPage />);
 
-    expect(screen.getByAltText('small')).toBeInTheDocument();
-    expect(screen.getByAltText('medium')).toBeInTheDocument();
-    expect(screen.getByAltText('large')).toBeInTheDocument();
+    expect(screen.getByAltText('Тестовая ачивка')).toHaveAttribute('src','/l.png');
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button',{name:'История выдач'}));
     expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
-    expect(screen.getByText('Загрузка...')).toBeInTheDocument();
-    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'private' } });
+    expect(screen.getByText('Загружаем историю…')).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'private' } });
     fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }));
     expect(mockGrantsFetchNextPage).toHaveBeenCalled();
   });
@@ -456,6 +458,7 @@ describe('Gamification pages edge cases', () => {
     mockProfiles = [{ userId: 'u77', firstName: 'Ivan', lastName: 'Petrov', username: 'ivan' }];
     render(<AchievementDetailPage />);
 
+    fireEvent.click(screen.getByRole('button',{name:'Выдать награду'}));
     fireEvent.change(screen.getByPlaceholderText('Введите имя или username'), { target: { value: 'Iv' } });
     fireEvent.click(screen.getByRole('button', { name: 'Ivan Petrov @ivan' }));
     fireEvent.click(screen.getByRole('button', { name: 'Выдать' }));
@@ -466,7 +469,10 @@ describe('Gamification pages edge cases', () => {
         payload: { recipientId: 'u77', reason: undefined, visibility: 'public' },
       });
     });
+    fireEvent.click(screen.getByRole('button',{name:'История выдач'}));
     fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }));
+    expect(mockRevokeGrant).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm', exact: true }));
     await vi.waitFor(() => expect(mockRevokeGrant).toHaveBeenCalledWith({ grantId: 'g1' }));
   });
 
@@ -474,8 +480,31 @@ describe('Gamification pages edge cases', () => {
     mockParams = { id: 'a1' };
     permissionMap.set('gamification.achievements.assign', false);
     render(<AchievementDetailPage />);
-    expect(screen.queryByText('Выдать ачивку')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'Выдать награду'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(mockNavigate).toHaveBeenCalledWith('/app/gamification');
   });
+  it('keeps form fields after a failed write', async()=>{
+    mockCreateAchievement.mockRejectedValueOnce(new Error('Offline'));
+    render(<AchievementFormPage/>);
+    fireEvent.change(screen.getByLabelText('Название',{exact:true}),{target:{value:'Помощь команде'}});
+    fireEvent.change(screen.getByLabelText('Категория'),{target:{value:'cat'}});
+    fireEvent.click(screen.getByRole('button',{name:'Создать',exact:true}));
+    await screen.findByRole('alert');
+    expect(screen.getByLabelText('Название',{exact:true})).toHaveValue('Помощь команде');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+  it('requires selecting a recipient again when the search is edited', async()=>{
+    mockParams={id:'a1'};
+    mockProfiles=[{userId:'u77',firstName:'Ivan',lastName:'Petrov'}];
+    render(<AchievementDetailPage/>);
+    fireEvent.click(screen.getByRole('button',{name:'Выдать награду'}));
+    fireEvent.change(screen.getByLabelText('Участник'),{target:{value:'Ivan'}});
+    fireEvent.click(screen.getByRole('button',{name:'Ivan Petrov'}));
+    fireEvent.change(screen.getByLabelText('Участник'),{target:{value:'Другой'}});
+    fireEvent.click(screen.getByRole('button',{name:'Выдать',exact:true}));
+    await screen.findByText('Выберите участника из результатов поиска.');
+    expect(mockCreateGrant).not.toHaveBeenCalled();
+  });
+
 });

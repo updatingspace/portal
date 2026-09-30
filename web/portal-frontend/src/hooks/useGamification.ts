@@ -36,6 +36,7 @@ export function useAchievementsList(params?: {
   category?: string[];
   q?: string;
   created_by?: 'me' | 'any';
+  earned?: boolean;
   limit?: number;
 }) {
   return useInfiniteQuery({

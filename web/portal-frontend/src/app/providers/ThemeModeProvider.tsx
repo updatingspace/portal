@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {I18nContext} from './i18nContext';
+import {getLocale} from '../../shared/lib/locale';
 import { ThemeProvider } from '@gravity-ui/uikit';
 import { KEY, LEGACY_KEYS, type ThemeMode } from './themeMode.types';
 import { ThemeModeContext } from './themeModeContext';
@@ -28,7 +30,8 @@ const readStoredMode = (): ThemeMode => {
     return 'auto';
   }
 
-  const stored = normalizeThemeMode(window.localStorage.getItem(KEY));
+  try {
+  const stored = normalizeThemeMode(window.localStorage?.getItem(KEY) ?? null);
   if (stored) {
     return stored;
   }
@@ -40,6 +43,7 @@ const readStoredMode = (): ThemeMode => {
     }
   }
 
+  } catch { /* Storage can be unavailable in private browsing. */ }
   return 'auto';
 };
 
@@ -62,13 +66,14 @@ const applyThemeToDocument = (resolvedMode: 'light' | 'dark') => {
 };
 
 export const ThemeModeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const locale = useContext(I18nContext)?.locale ?? getLocale();
   const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode());
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => getSystemTheme());
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(KEY, next);
+      try { window.localStorage?.setItem(KEY, next); } catch { /* Theme still applies in memory. */ }
     }
   }, []);
 
@@ -125,7 +130,7 @@ export const ThemeModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return (
     <ThemeModeContext.Provider value={contextValue}>
-      <ThemeProvider theme={resolvedMode}>{children}</ThemeProvider>
+      <ThemeProvider theme={resolvedMode} lang={locale}>{children}</ThemeProvider>
     </ThemeModeContext.Provider>
   );
 };

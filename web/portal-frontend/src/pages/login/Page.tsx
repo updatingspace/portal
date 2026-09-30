@@ -1,78 +1,28 @@
-import React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Card } from '@gravity-ui/uikit';
-
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Button } from '@gravity-ui/uikit';
 import { redirectToLogin } from '../../modules/portal/auth';
 import { sanitizeInternalPath } from '../../shared/lib/tenant';
+import { InlineError, useUITranslation } from '../../shared/ui/portal/PortalUI';
 
-export const LoginPage: React.FC = () => {
-  const navigate = useNavigate();
+export function LoginPage() {
   const [params] = useSearchParams();
-  // Санитизируем next из query, чтобы не пробрасывать open redirect
-  // (внешние URL/схемы отбрасываются на безопасный внутренний путь).
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const t = useUITranslation();
   const next = sanitizeInternalPath(params.get('next'), '/choose-tenant');
-  const authErrorCode = (params.get('auth_error') ?? '').trim().toUpperCase();
-  const requestId = (params.get('request_id') ?? '').trim();
-
-  const authErrorMessage = (() => {
-    if (!authErrorCode) return null;
-    switch (authErrorCode) {
-      case 'INVALID_STATE':
-        return 'Сессия входа истекла или уже была использована. Попробуйте войти снова.';
-      case 'OAUTH_ERROR':
-        return 'Авторизация в UpdSpaceID была отклонена.';
-      case 'TOKEN_EXCHANGE_FAILED':
-      case 'USERINFO_FAILED':
-      case 'UPSTREAM_UNAVAILABLE':
-      case 'UPSTREAM_NOT_CONFIGURED':
-        return 'Не удалось завершить вход через UpdSpaceID. Попробуйте ещё раз.';
-      case 'TENANT_MISMATCH':
-      case 'TENANT_NOT_FOUND':
-        return 'Не удалось определить tenant для текущего входа.';
-      default:
-        return 'Не удалось завершить вход. Повторите попытку.';
-    }
-  })();
-
-  return (
-    <div className="container py-5">
-      <div className="row">
-        <div className="col-12 col-lg-8 mx-auto">
-          <Card view="filled" className="p-4">
-            <div className="text-muted small mb-1">Auth</div>
-            <h1 className="h3 fw-semibold mb-2">Login</h1>
-            <p className="text-muted mb-4">
-              This starts the UpdSpaceID flow via BFF (same-origin).
-            </p>
-
-            {authErrorMessage && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="login-auth-error"
-              >
-                <div className="login-auth-error__title">
-                  Не удалось завершить вход
-                </div>
-                <div>{authErrorMessage}</div>
-                {requestId && (
-                  <div className="login-auth-error__request-id">
-                    Request ID: {requestId}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="d-flex flex-wrap gap-2">
-              <Button view="action" size="l" onClick={() => redirectToLogin(next)}>
-                Continue with UpdSpaceID
-              </Button>
-              <Button view="outlined" size="l" onClick={() => navigate('/')}>Back</Button>
-            </div>
-
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-};
+  const code = params.get('auth_error')?.toUpperCase();
+  const requestId = params.get('request_id');
+  const message = code === 'INVALID_STATE'
+    ? t('Сессия входа истекла или уже была использована. Попробуйте войти снова.', 'This sign-in attempt expired or has already been used. Please try again.')
+    : code === 'OAUTH_ERROR'
+      ? t('Авторизация в UpdSpaceID была отклонена. Вы можете начать вход снова.', 'Sign-in was cancelled. You can start again.')
+      : t('Не удалось завершить вход через UpdSpaceID. Попробуйте ещё раз.', 'Could not complete sign-in with UpdSpaceID. Please try again.');
+  return <div className="portal-login"><section className="portal-card">
+    <span className="portal-eyebrow">UpdSpaceID</span><h1>{t('Вход в UpdSpace', 'Sign in to UpdSpace')}</h1>
+    <p>{t('Один аккаунт для ваших сообществ. Продолжите в UpdSpaceID — после входа вы вернётесь сюда.', 'One account for your communities. Continue with UpdSpaceID and return here after signing in.')}</p>
+    {(code || failed) && <InlineError><strong>{t('Не удалось завершить вход', 'Unable to sign in')}</strong><p>{message}</p>{requestId && <details><summary>{t('Сведения для поддержки', 'Support details')}</summary><code>Request ID: {requestId}</code></details>}</InlineError>}
+    <div className="portal-actions"><Button view="action" size="l" loading={pending} disabled={pending} onClick={() => {setPending(true); try {redirectToLogin(next);} catch {setFailed(true); setPending(false);}}}>{t('Продолжить с UpdSpaceID', 'Continue with UpdSpaceID')}</Button><Button href="/" size="l" view="flat">{t('На главную', 'Back')}</Button></div>
+    <p>{t('Нет аккаунта? Получите приглашение у администратора сообщества.', 'Need an account? Ask your community administrator for an invitation.')}</p>
+  </section></div>;
+}

@@ -104,6 +104,7 @@ const mapSubscription = (item: SubscriptionApi): Subscription => ({
  */
 function buildFeedQuery(params?: FeedParams): string {
   const queryParams = new URLSearchParams();
+  if (params?.actorUserId) queryParams.set('actor_user_id', params.actorUserId);
   if (params?.from) queryParams.set('from', params.from);
   if (params?.to) queryParams.set('to', params.to);
   if (params?.types) queryParams.set('types', params.types);

@@ -6,9 +6,18 @@ import {
   getTenantAliasFromHost,
   getTenantFromHost,
   toCanonicalTenantPath,
+  sanitizeInternalPath,
 } from './tenant';
 
 describe('tenant host helpers', () => {
+  it.each(['127.0.0.1:4173', '[::1]:4173', '192.168.1.7', 'id.updspace.com', 'unknown.example.org'])('does not redirect infrastructure or unrecognized host %s', (host) => {
+    expect(getTenantAliasFromHost(host)).toBeNull();
+    expect(getLegacyTenantAliasRedirectUrl({protocol: 'http:', host, pathname: '/login', search: '', hash: ''})).toBeNull();
+  });
+
+  it.each(['//evil.example', '/\\evil.example', '/\n/evil.example', 'https://evil.example'])('rejects unsafe return path %s', (path) => {
+    expect(sanitizeInternalPath(path, '/choose-tenant')).toBe('/choose-tenant');
+  });
   it('maps legacy /app routes to canonical tenant paths', () => {
     expect(toCanonicalTenantPath('/app/feed?x=1#focus', 'aef')).toBe('/t/aef/feed?x=1#focus');
     expect(toCanonicalTenantPath('/app', 'aef')).toBe('/t/aef/');

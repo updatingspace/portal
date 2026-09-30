@@ -19,7 +19,7 @@ export interface FeedFiltersProps {
 }
 
 const SORT_OPTIONS = [
-  { value: 'best', content: 'Лучшее' },
+  { value: 'best', content: 'Популярное из загруженного' },
   { value: 'recent', content: 'Свежее' },
 ];
 
@@ -47,7 +47,7 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
   onReset,
   qa,
 }) => {
-  const hasFilters = sortValue !== 'recent' || sourceValue !== 'all' || timeValue !== 'week';
+  const hasFilters = sortValue !== 'best' || sourceValue !== 'all' || timeValue !== 'week';
 
   return (
     <div className="feed-filters" data-qa={qa}>
@@ -56,6 +56,8 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
           Сортировка
         </Text>
         <Select
+          size="xl"
+          aria-label="Сортировка"
           value={[sortValue]}
           onUpdate={(values) => onSortChange((values[0] ?? 'recent') as string)}
           options={SORT_OPTIONS}
@@ -68,6 +70,8 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
           Источник
         </Text>
         <Select
+          size="xl"
+          aria-label="Источник"
           value={[sourceValue]}
           onUpdate={(values) => onSourceChange((values[0] ?? 'all') as string)}
           options={SOURCE_OPTIONS}
@@ -80,6 +84,8 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
           Время
         </Text>
         <Select
+          size="xl"
+          aria-label="Время"
           value={[timeValue]}
           onUpdate={(values) => onTimeChange((values[0] ?? 'week') as string)}
           options={TIME_OPTIONS}
@@ -88,7 +94,7 @@ export const FeedFilters: React.FC<FeedFiltersProps> = ({
       </div>
 
       {hasFilters && onReset && (
-        <Button view="flat" size="m" className="feed-filters__reset" onClick={onReset}>
+        <Button view="flat" size="xl" className="feed-filters__reset" onClick={onReset}>
           Сбросить фильтры
         </Button>
       )}

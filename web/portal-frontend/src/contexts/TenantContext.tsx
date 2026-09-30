@@ -12,6 +12,8 @@ import React, {
   useContext,
   useMemo,
   useState,
+  useEffect,
+  useRef,
 } from 'react';
 
 import {
@@ -33,7 +35,10 @@ export type TenantState =
   | 'no-memberships'
   | 'error';
 
+export type TenantSwitchResult = {ok: true; tenant: ActiveTenant} | {ok: false; reason: 'forbidden' | 'unauthenticated' | 'conflict' | 'unavailable'; message: string};
+
 type TenantContextValue = {
+  switchTenant: (slug: string) => Promise<TenantSwitchResult>;
   /** Current active tenant (null when tenantless). */
   activeTenant: ActiveTenant | null;
   /** All tenants the user has membership in. */
@@ -63,6 +68,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [availableTenants, setAvailableTenants] = useState<TenantSummary[]>([]);
   const [state, setState] = useState<TenantState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const broadcast = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('portal-community');
+    broadcast.current = channel;
+    channel.onmessage = (event) => {
+      if (activeTenant && typeof event.data?.slug === 'string' && event.data.slug !== activeTenant.tenant_slug) {
+        window.dispatchEvent(new Event('portal:context-changed'));
+      }
+    };
+    return () => {channel.close();broadcast.current=null;};
+  }, [activeTenant]);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   const refreshTenants = useCallback(async (): Promise<TenantSummary[]> => {
     try {
@@ -71,12 +89,13 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return tenants;
     } catch (err) {
       logger.error('Failed to refresh tenants', { error: err });
-      return [];
+      setErrorMessage('Не удалось обновить список сообществ.');
+      throw err;
     }
   }, []);
 
-  const doSwitchTenant = useCallback(
-    async (slug: string): Promise<boolean> => {
+  const performSwitch = useCallback(
+    async (slug: string): Promise<TenantSwitchResult> => {
       setState('switching');
       setErrorMessage(null);
 
@@ -84,12 +103,13 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const result = await apiSwitchTenant(slug);
         setActiveTenant(result.active_tenant);
         setState('ready');
+        broadcast.current?.postMessage({slug: result.active_tenant.tenant_slug});
         logger.info('Tenant switched', {
           area: 'tenant',
           event: 'switch',
           data: { slug, tenant_id: result.active_tenant.tenant_id },
         });
-        return true;
+        return {ok: true, tenant: result.active_tenant};
       } catch (err: unknown) {
         const apiErr = err as { code?: string; status?: number; message?: string };
         if (apiErr.code === 'TENANT_FORBIDDEN' || apiErr.status === 403) {
@@ -104,11 +124,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           event: 'switch_error',
           error: err,
         });
-        return false;
+        return {ok: false, reason: apiErr.status === 401 ? 'unauthenticated' : apiErr.status === 403 || apiErr.code === 'TENANT_FORBIDDEN' ? 'forbidden' : apiErr.status === 409 ? 'conflict' : 'unavailable', message: apiErr.message ?? 'Не удалось переключить сообщество.'};
       }
     },
     [],
   );
+
+  const switchTenant = useCallback((slug: string): Promise<TenantSwitchResult> => {
+    const next = queue.current.then(() => performSwitch(slug));
+    queue.current = next.catch(() => undefined);
+    return next;
+  }, [performSwitch]);
+  // Compatibility for callers that only navigate after success.
+  const doSwitchTenant = useCallback(async (slug: string) => (await switchTenant(slug)).ok, [switchTenant]);
 
   const value = useMemo<TenantContextValue>(
     () => ({
@@ -117,12 +145,13 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       state,
       errorMessage,
       doSwitchTenant,
+      switchTenant,
       refreshTenants,
       setActiveTenant,
       setAvailableTenants,
       setState,
     }),
-    [activeTenant, availableTenants, state, errorMessage, doSwitchTenant, refreshTenants],
+    [activeTenant, availableTenants, state, errorMessage, doSwitchTenant, switchTenant, refreshTenants],
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

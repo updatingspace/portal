@@ -1,6 +1,7 @@
+import { useUrlState } from '../../../shared/hooks/useUrlState';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Loader, Pagination, Text, TextInput } from '@gravity-ui/uikit';
+import { Button, Loader, Pagination, Text, TextInput } from '@gravity-ui/uikit';
 
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
@@ -44,33 +45,36 @@ const filterByQuery = (polls: Poll[], query: string): Poll[] => {
 
 export const PollsPage: React.FC = () => {
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useUrlState<StatusFilter>(
+    'status',
+    'active',
+    ['active', 'closed', 'draft', 'all'],
+  );
+  const [searchQuery, setSearchQuery] = useUrlState<string>('q', '');
   const { user } = useAuth();
   const routeBase = useRouteBase();
   const { intlLocale } = useFormatters();
 
   const offset = (page - 1) * PAGE_SIZE;
-  const effectiveStatus = statusFilter === 'all' ? undefined : (statusFilter as PollStatus);
+  const effectiveStatus =
+    statusFilter === 'all' ? undefined : (statusFilter as PollStatus);
   const locale = intlLocale;
-  const hasCapabilities = Boolean(user?.capabilities?.length || user?.roles?.length);
-  const canManage = Boolean(user?.isSuperuser || (!hasCapabilities ? true : can(user, ['voting.votings.admin', 'voting.nominations.admin'])));
+  const canManage = Boolean(
+    user?.isSuperuser ||
+      can(user, ['voting.votings.admin', 'voting.nominations.admin']),
+  );
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    isFetching,
-  } = usePolls({
+  const { data, isLoading, isError, error, refetch, isFetching } = usePolls({
     limit: PAGE_SIZE,
     offset,
     status: effectiveStatus,
   });
 
   const polls = useMemo(() => data?.items ?? [], [data?.items]);
-  const filteredPolls = useMemo(() => filterByQuery(polls, searchQuery), [polls, searchQuery]);
+  const filteredPolls = useMemo(
+    () => filterByQuery(polls, searchQuery),
+    [polls, searchQuery],
+  );
   const pagination = data?.pagination;
   const totalPages = pagination ? Math.ceil(pagination.total / PAGE_SIZE) : 1;
 
@@ -87,18 +91,23 @@ export const PollsPage: React.FC = () => {
     });
   }, [data, statusFilter]);
 
-  const handlePageChange: React.ComponentProps<typeof Pagination>['onUpdate'] = (newPage) => {
+  const handlePageChange: React.ComponentProps<
+    typeof Pagination
+  >['onUpdate'] = (newPage) => {
     setPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const statusTabs = useMemo(
     () =>
-      STATUS_OPTIONS.map((option) => (
+      STATUS_OPTIONS.filter(
+        (option) => option.value !== 'draft' || canManage,
+      ).map((option) => (
         <Button
           key={option.value}
-          view={statusFilter === option.value ? 'action' : 'outlined'}
-          size="s"
+          view="flat"
+          size="xl"
+          selected={statusFilter === option.value}
           onClick={() => {
             setStatusFilter(option.value);
             setPage(1);
@@ -107,7 +116,7 @@ export const PollsPage: React.FC = () => {
           {option.label}
         </Button>
       )),
-    [statusFilter],
+    [statusFilter, setStatusFilter, canManage],
   );
 
   if (isLoading && !polls.length) {
@@ -116,7 +125,12 @@ export const PollsPage: React.FC = () => {
 
   if (isError && !polls.length) {
     if (isRateLimitError(error)) {
-      return <VotingRateLimitState retryAfter={error.retryAfter} onRetry={() => refetch()} />;
+      return (
+        <VotingRateLimitState
+          retryAfter={error.retryAfter}
+          onRetry={() => refetch()}
+        />
+      );
     }
 
     return (
@@ -131,49 +145,59 @@ export const PollsPage: React.FC = () => {
   return (
     <VotingPageLayout
       title="Голосования"
-      description="Управляйте опросами и следите за участием сообщества."
       actions={
-        <>
-          {canManage && (
-            <Link to={`${routeBase}/voting/create`}>
-              <Button view="action">Создать опрос</Button>
-            </Link>
-          )}
-          <Link to={`${routeBase}/voting/templates`}>
-            <Button view="outlined">Шаблоны</Button>
-          </Link>
-          <Link to={`${routeBase}/voting/analytics`}>
-            <Button view="outlined">Аналитика</Button>
-          </Link>
-        </>
+        canManage ? (
+          <>
+            {canManage && (
+              <Link to={`${routeBase}/voting/create`}>
+                <Button view="action">Создать опрос</Button>
+              </Link>
+            )}
+            {canManage && (
+              <Link to={`${routeBase}/voting/templates`}>
+                <Button view="outlined">Шаблоны</Button>
+              </Link>
+            )}
+            {canManage && (
+              <Link to={`${routeBase}/voting/analytics`}>
+                <Button view="outlined">Аналитика</Button>
+              </Link>
+            )}
+          </>
+        ) : undefined
       }
     >
-      <Card className="voting-v2__card voting-v2__card--soft">
-        <div className="voting-v2__toolbar">
-          <div>
-            <Text variant="subheader-2" className="voting-v2__section-title">Быстрый обзор</Text>
-            <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
-              Фильтруйте по статусу и находите опрос по названию.
-            </Text>
-          </div>
-          <div className="voting-v2__toolbar-right">{statusTabs}</div>
+      <section className="voting-v2__filters" aria-label="Фильтры голосований">
+        <div
+          className="voting-v2__status-tabs"
+          role="group"
+          aria-label="Статус голосований"
+        >
+          {statusTabs}
         </div>
-
-        <div className="voting-v2__toolbar" style={{ marginTop: 12 }}>
-          <TextInput
-            value={searchQuery}
-            onUpdate={setSearchQuery}
-            placeholder="Поиск по названию или описанию"
-            hasClear
-          />
-          {isFetching ? <Loader size="s" /> : null}
-        </div>
-      </Card>
+        <TextInput
+          size="xl"
+          value={searchQuery}
+          onUpdate={setSearchQuery}
+          placeholder="Найти голосование"
+          controlProps={{
+            'aria-label': 'Поиск голосований на текущей странице',
+          }}
+          hasClear
+        />
+        {isFetching ? <Loader size="s" /> : null}
+      </section>
 
       {!filteredPolls.length ? (
         <VotingEmptyState
           title="Опросы не найдены"
-          message={searchQuery ? 'Очистите строку поиска или выберите другой статус.' : 'Создайте новый опрос или выберите шаблон.'}
+          message={
+            searchQuery
+              ? 'Очистите строку поиска или выберите другой статус.'
+              : canManage
+                ? 'Создайте новый опрос или выберите шаблон.'
+                : 'Когда организаторы опубликуют голосование, оно появится здесь.'
+          }
           action={
             <div className="voting-v2__toolbar-right">
               {canManage && (
@@ -181,9 +205,11 @@ export const PollsPage: React.FC = () => {
                   <Button view="action">Создать опрос</Button>
                 </Link>
               )}
-              <Link to={`${routeBase}/voting/templates`}>
-                <Button view="outlined">Открыть шаблоны</Button>
-              </Link>
+              {canManage && (
+                <Link to={`${routeBase}/voting/templates`}>
+                  <Button view="outlined">Открыть шаблоны</Button>
+                </Link>
+              )}
             </div>
           }
         />
@@ -195,7 +221,8 @@ export const PollsPage: React.FC = () => {
                 poll.status === 'draft' && canManage
                   ? `${routeBase}/voting/${poll.id}/manage`
                   : `${routeBase}/voting/${poll.id}`;
-              const primaryLabel = poll.status === 'draft' && canManage ? 'Настроить' : 'Открыть';
+              const primaryLabel =
+                poll.status === 'draft' && canManage ? 'Настроить' : 'Открыть';
               const showManage = canManage && poll.status !== 'draft';
               const showResults = poll.status === 'closed';
 
@@ -245,7 +272,9 @@ export const PollsPage: React.FC = () => {
 
           {pagination && (
             <Text variant="caption-2" color="secondary">
-              Показано {offset + 1}-{Math.min(offset + PAGE_SIZE, pagination.total)} из {pagination.total}
+              Показано {offset + 1}-
+              {Math.min(offset + PAGE_SIZE, pagination.total)} из{' '}
+              {pagination.total}
             </Text>
           )}
         </>

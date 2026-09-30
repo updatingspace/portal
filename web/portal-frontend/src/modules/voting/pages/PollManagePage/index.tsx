@@ -1,3 +1,11 @@
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../../../contexts/AuthContext';
+import { fetchPortalProfiles } from '../../../portal/api';
+import { FormField, InlineError } from '../../../../shared/ui/portal/PortalUI';
+import '../../styles/voting-workspace.css';
+import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
+import { useUrlState } from '../../../../shared/hooks/useUrlState';
+import { useConfirmation } from '../../../../shared/ui/portal/useConfirmation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -5,16 +13,15 @@ import {
   Button,
   Card,
   Checkbox,
-  Icon,
   Label,
   Loader,
+  DropdownMenu,
   Modal,
   Select,
   Text,
   TextArea,
   TextInput,
 } from '@gravity-ui/uikit';
-import { ArrowRotateRight } from '@gravity-ui/icons';
 import { isApiError } from '../../../../api/client';
 import { NominationForm } from '../../../../features/voting/components/NominationForm';
 import { OptionForm } from '../../../../features/voting/components/OptionForm';
@@ -44,8 +51,19 @@ import {
 } from '../../../../features/voting';
 import { toaster } from '../../../../toaster';
 import { notifyApiError } from '../../../../utils/apiErrorHandling';
-import type { NominationCreatePayload, NominationUpdatePayload, PollUpdatePayload } from '../../../../features/voting/types';
-import { POLL_STATUS_META, RESULTS_VISIBILITY_META, SCOPE_LABELS, VISIBILITY_META, formatDateTime, NOMINATION_KIND_LABELS } from '../../../../features/voting/utils/pollMeta';
+import type {
+  NominationCreatePayload,
+  NominationUpdatePayload,
+  PollUpdatePayload,
+} from '../../../../features/voting/types';
+import {
+  POLL_STATUS_META,
+  RESULTS_VISIBILITY_META,
+  SCOPE_LABELS,
+  VISIBILITY_META,
+  formatDateTime,
+  NOMINATION_KIND_LABELS,
+} from '../../../../features/voting/utils/pollMeta';
 import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 import { useFormatters } from '@/shared/hooks/useFormatters';
 
@@ -61,26 +79,9 @@ const centeredPageShellStyle: React.CSSProperties = {
   justifyContent: 'center',
 };
 
-const pageContentStyle: React.CSSProperties = {
-  maxWidth: 1120,
-  margin: '0 auto',
-};
-
-const settingsColumnsStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 24,
-  gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)',
-};
-
-const participantCreateGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 12,
-  gridTemplateColumns: 'minmax(0, 1fr) 200px auto',
-};
-
 const VISIBILITY_OPTIONS = [
-  { value: 'public', content: 'Публичный' },
-  { value: 'community', content: 'Сообщество' },
+  { value: 'public', content: 'Участники сообщества' },
+  { value: 'community', content: 'Группа' },
   { value: 'team', content: 'Команда' },
   { value: 'private', content: 'Приватный' },
 ];
@@ -99,10 +100,13 @@ const PARTICIPANT_OPTIONS = [
 ];
 
 export const PollManagePage: React.FC = () => {
+  const { user } = useAuth();
+  const { confirm, confirmationDialog } = useConfirmation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { intlLocale } = useFormatters();
+  const routeBase = useRouteBase();
   const pollId = id ?? '';
   const locale = intlLocale;
   const [liveUpdates, setLiveUpdates] = useState(true);
@@ -123,6 +127,8 @@ export const PollManagePage: React.FC = () => {
     data: participants = [],
     refetch: refetchParticipants,
     isFetching: isFetchingParticipants,
+    isLoading: participantsLoading,
+    isError: participantsError,
   } = usePollParticipants(pollId, {
     refetchInterval: liveUpdates ? 20_000 : false,
     refetchIntervalInBackground: true,
@@ -139,9 +145,16 @@ export const PollManagePage: React.FC = () => {
   const addParticipantMutation = useAddParticipant();
   const removeParticipantMutation = useRemoveParticipant();
 
-  const initialTab = (location.state as { tab?: string } | null | undefined)?.tab;
-  const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'participants'>(
-    initialTab === 'questions' || initialTab === 'participants' ? initialTab : 'settings',
+  const initialTab = (location.state as { tab?: string } | null | undefined)
+    ?.tab;
+  const [activeTab, setActiveTab] = useUrlState<
+    'settings' | 'questions' | 'participants'
+  >(
+    'tab',
+    initialTab === 'questions' || initialTab === 'participants'
+      ? initialTab
+      : 'settings',
+    ['settings', 'questions', 'participants'],
   );
 
   const [settingsDraft, setSettingsDraft] = useState<{
@@ -181,8 +194,26 @@ export const PollManagePage: React.FC = () => {
     | null
   >(null);
 
+  const [participantError, setParticipantError] = useState<string | null>(null);
   const [participantUserId, setParticipantUserId] = useState('');
-  const [participantRole, setParticipantRole] = useState<PollRole>('participant');
+  const [participantSearch, setParticipantSearch] = useState('');
+  const participantProfiles = useQuery({
+    queryKey: [
+      'portal',
+      'profiles',
+      user?.tenant?.id,
+      user?.id,
+      participantSearch,
+    ],
+    queryFn: () =>
+      fetchPortalProfiles({ q: participantSearch.trim(), limit: 10 }),
+    enabled:
+      activeTab === 'participants' &&
+      participantSearch.trim().length >= 2 &&
+      !participantUserId,
+  });
+  const [participantRole, setParticipantRole] =
+    useState<PollRole>('participant');
 
   useEffect(() => {
     if (!pollInfo) return;
@@ -202,14 +233,20 @@ export const PollManagePage: React.FC = () => {
   }, [pollInfo, settingsDirty]);
 
   const sortedNominations = useMemo(() => {
-    return [...(pollInfo?.nominations ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+    return [...(pollInfo?.nominations ?? [])].sort(
+      (a, b) => a.sort_order - b.sort_order,
+    );
   }, [pollInfo?.nominations]);
 
   const poll = pollInfo?.poll;
   const statusMeta = poll ? POLL_STATUS_META[poll.status] : null;
   const visibilityMeta = poll ? VISIBILITY_META[poll.visibility] : null;
-  const resultsMeta = poll ? RESULTS_VISIBILITY_META[poll.results_visibility] : null;
-  useDocumentTitle(poll ? `${poll.title} · Управление опросом` : 'Управление опросом');
+  const resultsMeta = poll
+    ? RESULTS_VISIBILITY_META[poll.results_visibility]
+    : null;
+  useDocumentTitle(
+    poll ? `${poll.title} · Управление опросом` : 'Управление опросом',
+  );
 
   const isDraft = poll?.status === 'draft';
   const isActive = poll?.status === 'active';
@@ -222,7 +259,9 @@ export const PollManagePage: React.FC = () => {
     }
     for (const nomination of sortedNominations) {
       if (!nomination.options || nomination.options.length === 0) {
-        issues.push(`Вопрос «${nomination.title}» должен иметь хотя бы один вариант.`);
+        issues.push(
+          `Вопрос «${nomination.title}» должен иметь хотя бы один вариант.`,
+        );
       }
     }
     return issues;
@@ -248,7 +287,9 @@ export const PollManagePage: React.FC = () => {
     return (
       <div className="p-4" style={centeredPageShellStyle}>
         <Card className="max-w-md w-full p-6 text-center">
-          <Text variant="subheader-2" className="mb-2">Не удалось загрузить опрос</Text>
+          <Text variant="subheader-2" className="mb-2">
+            Не удалось загрузить опрос
+          </Text>
           <Text variant="body-2" color="secondary" className="mb-4">
             {error instanceof Error ? error.message : 'Попробуйте снова.'}
           </Text>
@@ -264,11 +305,19 @@ export const PollManagePage: React.FC = () => {
     return null;
   }
 
+  const invalidSchedule = Boolean(
+    settingsDraft?.starts_at &&
+      settingsDraft.ends_at &&
+      Date.parse(settingsDraft.ends_at) <= Date.parse(settingsDraft.starts_at),
+  );
   const saveSettings = () => {
+    if (invalidSchedule || updatePollMutation.isPending) return;
     if (!settingsDraft) return;
     const payload: PollUpdatePayload = {
       title: settingsDraft.title.trim() || poll.title,
-      description: settingsDraft.description.trim() ? settingsDraft.description : null,
+      description: settingsDraft.description.trim()
+        ? settingsDraft.description
+        : null,
       visibility: settingsDraft.visibility,
       allow_revoting: settingsDraft.allow_revoting,
       anonymous: settingsDraft.anonymous,
@@ -292,7 +341,7 @@ export const PollManagePage: React.FC = () => {
     );
   };
 
-  const handleDeletePoll = () => {
+  const handleDeletePoll = async () => {
     if (!isDraft) {
       toaster.add({
         name: 'poll-delete-locked',
@@ -301,7 +350,8 @@ export const PollManagePage: React.FC = () => {
       });
       return;
     }
-    if (!window.confirm('Удалить черновик? Это действие нельзя отменить.')) return;
+    if (!(await confirm('Удалить черновик? Это действие нельзя отменить.')))
+      return;
     deletePollMutation.mutate(pollId, {
       onSuccess: () => {
         toaster.add({
@@ -309,13 +359,13 @@ export const PollManagePage: React.FC = () => {
           title: 'Опрос удалён',
           theme: 'success',
         });
-        navigate('/app/voting');
+        navigate(`${routeBase}/voting`);
       },
       onError: (err) => notifyApiError(err, 'Не удалось удалить опрос'),
     });
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!isDraft) return;
     if (!canPublish) {
       setActiveTab('questions');
@@ -327,7 +377,12 @@ export const PollManagePage: React.FC = () => {
       });
       return;
     }
-    if (!window.confirm('Опубликовать опрос? Вопросы и варианты будут заблокированы.')) return;
+    if (
+      !(await confirm(
+        'Опубликовать опрос? Вопросы и варианты будут заблокированы.',
+      ))
+    )
+      return;
     updatePollMutation.mutate(
       { pollId, payload: { status: 'active' } },
       {
@@ -349,9 +404,10 @@ export const PollManagePage: React.FC = () => {
     );
   };
 
-  const handleClosePoll = () => {
+  const handleClosePoll = async () => {
     if (!isActive) return;
-    if (!window.confirm('Закрыть опрос? Голосование будет остановлено.')) return;
+    if (!(await confirm('Закрыть опрос? Голосование будет остановлено.')))
+      return;
     updatePollMutation.mutate(
       { pollId, payload: { status: 'closed' } },
       {
@@ -403,11 +459,19 @@ export const PollManagePage: React.FC = () => {
 
     if (optionEditor.mode === 'create') {
       createOptionMutation.mutate(
-        { pollId, nominationId: optionEditor.nominationId, payload: optionEditor.payload },
+        {
+          pollId,
+          nominationId: optionEditor.nominationId,
+          payload: optionEditor.payload,
+        },
         {
           onSuccess: () => {
             setOptionEditor(null);
-            toaster.add({ name: 'option-created', title: 'Вариант добавлен', theme: 'success' });
+            toaster.add({
+              name: 'option-created',
+              title: 'Вариант добавлен',
+              theme: 'success',
+            });
           },
           onError: (err) => notifyApiError(err, 'Не удалось добавить вариант'),
         },
@@ -416,18 +480,26 @@ export const PollManagePage: React.FC = () => {
     }
 
     updateOptionMutation.mutate(
-      { pollId, optionId: optionEditor.optionId, payload: optionEditor.payload },
+      {
+        pollId,
+        optionId: optionEditor.optionId,
+        payload: optionEditor.payload,
+      },
       {
         onSuccess: () => {
           setOptionEditor(null);
-          toaster.add({ name: 'option-updated', title: 'Вариант обновлён', theme: 'success' });
+          toaster.add({
+            name: 'option-updated',
+            title: 'Вариант обновлён',
+            theme: 'success',
+          });
         },
         onError: (err) => notifyApiError(err, 'Не удалось обновить вариант'),
       },
     );
   };
 
-  const deleteOption = (optionId: string) => {
+  const deleteOption = async (optionId: string) => {
     if (!isDraft) {
       toaster.add({
         name: 'options-locked',
@@ -436,11 +508,16 @@ export const PollManagePage: React.FC = () => {
       });
       return;
     }
-    if (!window.confirm('Удалить вариант?')) return;
+    if (!(await confirm('Удалить вариант?'))) return;
     deleteOptionMutation.mutate(
       { pollId, optionId },
       {
-        onSuccess: () => toaster.add({ name: 'option-deleted', title: 'Вариант удалён', theme: 'success' }),
+        onSuccess: () =>
+          toaster.add({
+            name: 'option-deleted',
+            title: 'Вариант удалён',
+            theme: 'success',
+          }),
         onError: (err) => notifyApiError(err, 'Не удалось удалить вариант'),
       },
     );
@@ -458,7 +535,9 @@ export const PollManagePage: React.FC = () => {
     setCreateQuestionOpen(true);
   };
 
-  const handleCreateNomination = (data: NominationCreatePayload | NominationUpdatePayload) => {
+  const handleCreateNomination = (
+    data: NominationCreatePayload | NominationUpdatePayload,
+  ) => {
     if (!isDraft) return;
     const payload = data as NominationCreatePayload;
     if (!payload.title?.trim()) return;
@@ -467,7 +546,11 @@ export const PollManagePage: React.FC = () => {
       {
         onSuccess: () => {
           setCreateQuestionOpen(false);
-          toaster.add({ name: 'question-created', title: 'Вопрос добавлен', theme: 'success' });
+          toaster.add({
+            name: 'question-created',
+            title: 'Вопрос добавлен',
+            theme: 'success',
+          });
         },
         onError: (err) => notifyApiError(err, 'Не удалось добавить вопрос'),
       },
@@ -502,7 +585,9 @@ export const PollManagePage: React.FC = () => {
         nominationId: editingNomination.nominationId,
         payload: {
           title: editingNomination.title.trim(),
-          description: editingNomination.description.trim() ? editingNomination.description : null,
+          description: editingNomination.description.trim()
+            ? editingNomination.description
+            : null,
           kind: editingNomination.kind,
           max_votes: editingNomination.max_votes,
           is_required: editingNomination.is_required,
@@ -512,14 +597,18 @@ export const PollManagePage: React.FC = () => {
       {
         onSuccess: () => {
           setEditingNomination(null);
-          toaster.add({ name: 'question-updated', title: 'Вопрос обновлён', theme: 'success' });
+          toaster.add({
+            name: 'question-updated',
+            title: 'Вопрос обновлён',
+            theme: 'success',
+          });
         },
         onError: (err) => notifyApiError(err, 'Не удалось обновить вопрос'),
       },
     );
   };
 
-  const deleteNomination = (nominationId: string) => {
+  const deleteNomination = async (nominationId: string) => {
     if (!isDraft) {
       toaster.add({
         name: 'questions-locked',
@@ -528,11 +617,16 @@ export const PollManagePage: React.FC = () => {
       });
       return;
     }
-    if (!window.confirm('Удалить вопрос и все варианты?')) return;
+    if (!(await confirm('Удалить вопрос и все варианты?'))) return;
     deleteNominationMutation.mutate(
       { pollId, nominationId },
       {
-        onSuccess: () => toaster.add({ name: 'question-deleted', title: 'Вопрос удалён', theme: 'success' }),
+        onSuccess: () =>
+          toaster.add({
+            name: 'question-deleted',
+            title: 'Вопрос удалён',
+            theme: 'success',
+          }),
         onError: (err) => notifyApiError(err, 'Не удалось удалить вопрос'),
       },
     );
@@ -540,25 +634,39 @@ export const PollManagePage: React.FC = () => {
 
   const addParticipant = () => {
     const userId = participantUserId.trim();
-    if (!userId) return;
+    if (!userId || addParticipantMutation.isPending) return;
+    setParticipantError(null);
     addParticipantMutation.mutate(
       { pollId, payload: { user_id: userId, role: participantRole } },
       {
         onSuccess: () => {
           setParticipantUserId('');
-          toaster.add({ name: 'participant-added', title: 'Участник добавлен', theme: 'success' });
+          setParticipantSearch('');
+          toaster.add({
+            name: 'participant-added',
+            title: 'Участник добавлен',
+            theme: 'success',
+          });
         },
-        onError: (err) => notifyApiError(err, 'Не удалось добавить участника'),
+        onError: () =>
+          setParticipantError(
+            'Не удалось добавить участника. Проверьте, не добавлен ли он уже, и повторите.',
+          ),
       },
     );
   };
 
-  const removeParticipant = (userId: string) => {
-    if (!window.confirm('Удалить участника?')) return;
+  const removeParticipant = async (userId: string) => {
+    if (!(await confirm('Удалить участника?'))) return;
     removeParticipantMutation.mutate(
       { pollId, userId },
       {
-        onSuccess: () => toaster.add({ name: 'participant-removed', title: 'Участник удалён', theme: 'success' }),
+        onSuccess: () =>
+          toaster.add({
+            name: 'participant-removed',
+            title: 'Участник удалён',
+            theme: 'success',
+          }),
         onError: (err) => notifyApiError(err, 'Не удалось удалить участника'),
       },
     );
@@ -567,98 +675,86 @@ export const PollManagePage: React.FC = () => {
   const tabItems = [
     { id: 'settings', label: 'Настройки' },
     { id: 'questions', label: `Вопросы (${sortedNominations.length})` },
-    { id: 'participants', label: `Участники (${participants.length})` },
+    {
+      id: 'participants',
+      label: participantsError
+        ? 'Участники'
+        : `Участники (${participants.length})`,
+    },
   ] as const;
 
   return (
-    <div style={pageShellStyle}>
-      <div className="bg-white border-b border-slate-200">
-        <div className="container px-4 py-6" style={pageContentStyle}>
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Text variant="header-1" className="text-slate-900">{poll.title}</Text>
-                <Label theme={statusMeta.theme} size="s" title={statusMeta.description}>
-                  {statusMeta.label}
-                </Label>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Label theme={visibilityMeta.theme} size="xs">
-                  {visibilityMeta.label}
-                </Label>
-                <Label theme={resultsMeta.theme} size="xs">
-                  {resultsMeta.label}
-                </Label>
-                {poll.allow_revoting && <Label theme="info" size="xs">Переголосование</Label>}
-                {poll.anonymous && <Label theme="utility" size="xs">Анонимно</Label>}
-              </div>
-              <Text variant="body-2" color="secondary">
-                Черновик → добавьте вопросы → опубликуйте. После публикации вопросы блокируются.
-              </Text>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button view="outlined" onClick={() => navigate('/app/voting')}>
-                К списку
-              </Button>
-              <Button
-                view="flat-secondary"
-                onClick={handleRefresh}
-                loading={isFetchingPollInfo || isFetchingParticipants}
-                disabled={isFetchingPollInfo || isFetchingParticipants}
-              >
-                <Icon data={ArrowRotateRight} size={16} />
-                <span className="ms-1">Обновить</span>
-              </Button>
-              <Button view="outlined" href={`/app/voting/${pollId}`}>
-                Просмотр
-              </Button>
-              {poll.status === 'closed' && (
-                <Button view="outlined" href={`/app/voting/${pollId}/results`}>
-                  Результаты
-                </Button>
-              )}
-              <Button
-                view="outlined-danger"
-                onClick={handleDeletePoll}
-                loading={deletePollMutation.isPending}
-                disabled={!isDraft}
-              >
-                Удалить
-              </Button>
-              {isDraft && (
-                <Button view="action" onClick={handlePublish} disabled={!canPublish} loading={updatePollMutation.isPending}>
-                  Опубликовать
-                </Button>
-              )}
-              {isActive && (
-                <Button view="action" onClick={handleClosePoll} loading={updatePollMutation.isPending}>
-                  Закрыть
-                </Button>
-              )}
-            </div>
-          </div>
+    <div className="voting-workspace">
+      {confirmationDialog}
+      <header className="voting-workspace-header">
+        <div>
+          <h1>{poll.title}</h1>
+          <p>
+            <Label theme={statusMeta.theme}>{statusMeta.label}</Label> ·
+            Управление
+          </p>
         </div>
-      </div>
-
-      <div className="container px-4 py-6 d-grid gap-4" style={pageContentStyle}>
-        <Card className="p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="text-sm text-slate-600">
-              <span className="font-semibold text-slate-800">Live-обновление:</span>{' '}
-              {liveUpdates ? 'включено (15-20с)' : 'выключено'}
-              {' · '}
-              <span className="font-semibold text-slate-800">Последнее обновление:</span>{' '}
-              {formatDateTime(lastRefreshAt)}
-            </div>
-            <Checkbox
-              checked={liveUpdates}
-              onUpdate={setLiveUpdates}
-              content="Автообновление dashboard"
-            />
-          </div>
-        </Card>
-
+        <div className="voting-workspace-header__actions">
+          <Button
+            size="xl"
+            view="outlined"
+            onClick={() => navigate(`${routeBase}/voting/${pollId}`)}
+          >
+            Просмотр
+          </Button>
+          {isDraft && (
+            <Button
+              size="xl"
+              view="action"
+              onClick={handlePublish}
+              disabled={!canPublish}
+              loading={updatePollMutation.isPending}
+            >
+              Опубликовать
+            </Button>
+          )}
+          <DropdownMenu
+            defaultSwitcherProps={{
+              size: 'xl',
+              'aria-label': 'Действия с опросом',
+            }}
+            items={[
+              {
+                text: 'Обновить',
+                action: handleRefresh,
+                disabled: isFetchingPollInfo || isFetchingParticipants,
+              },
+              {
+                text: 'К списку',
+                action: () => navigate(`${routeBase}/voting`),
+              },
+              {
+                text: 'Результаты',
+                action: () => navigate(`${routeBase}/voting/${pollId}/results`),
+              },
+              ...(isActive
+                ? [
+                    {
+                      text: 'Закрыть голосование',
+                      action: handleClosePoll,
+                      disabled: updatePollMutation.isPending,
+                    },
+                  ]
+                : []),
+              ...(isDraft
+                ? [
+                    {
+                      text: 'Удалить опрос',
+                      action: handleDeletePoll,
+                      disabled: deletePollMutation.isPending,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+      </header>
+      <div className="voting-workspace__body">
         {isDraft && publishIssues.length > 0 && (
           <Alert
             theme="warning"
@@ -667,7 +763,11 @@ export const PollManagePage: React.FC = () => {
           />
         )}
 
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Разделы управления опросом">
+        <div
+          className="portal-section-tabs"
+          role="tablist"
+          aria-label="Разделы управления опросом"
+        >
           {tabItems.map((tab) => (
             <Button
               key={tab.id}
@@ -675,7 +775,8 @@ export const PollManagePage: React.FC = () => {
               id={`poll-manage-tab-${tab.id}`}
               aria-selected={activeTab === tab.id}
               aria-controls={`poll-manage-panel-${tab.id}`}
-              view={activeTab === tab.id ? 'action' : 'outlined'}
+              view="flat"
+              selected={activeTab === tab.id}
               size="s"
               onClick={() => setActiveTab(tab.id)}
             >
@@ -689,33 +790,38 @@ export const PollManagePage: React.FC = () => {
             role="tabpanel"
             id="poll-manage-panel-settings"
             aria-labelledby="poll-manage-tab-settings"
-            style={settingsColumnsStyle}
+            className="voting-workspace__columns"
           >
             <Card className="p-6 space-y-5">
-              <div>
-                <Text variant="subheader-2">Настройки опроса</Text>
-                <Text variant="body-2" color="secondary" className="mt-1">
-                  Задайте общие параметры, видимость и расписание.
-                </Text>
-              </div>
-
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Название</div>
+                <label htmlFor="manage-poll-title" className="text-sm">
+                  Название
+                </label>
                 <TextInput
+                  id="manage-poll-title"
+                  size="xl"
                   value={settingsDraft.title}
                   onUpdate={(value) => {
-                    setSettingsDraft((prev) => (prev ? { ...prev, title: value } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, title: value } : prev,
+                    );
                     setSettingsDirty(true);
                   }}
                 />
               </div>
 
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Описание</div>
+                <label htmlFor="manage-poll-description" className="text-sm">
+                  Описание
+                </label>
                 <TextArea
+                  id="manage-poll-description"
+                  size="xl"
                   value={settingsDraft.description}
                   onUpdate={(value) => {
-                    setSettingsDraft((prev) => (prev ? { ...prev, description: value } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, description: value } : prev,
+                    );
                     setSettingsDirty(true);
                   }}
                   rows={3}
@@ -724,12 +830,21 @@ export const PollManagePage: React.FC = () => {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Видимость</div>
+                  <div className="text-sm font-medium text-gray-700">
+                    Видимость
+                  </div>
                   <Select
+                    size="xl"
                     value={[settingsDraft.visibility]}
                     onUpdate={(value) => {
                       setSettingsDraft((prev) =>
-                        prev ? { ...prev, visibility: (value[0] ?? prev.visibility) as PollVisibility } : prev,
+                        prev
+                          ? {
+                              ...prev,
+                              visibility: (value[0] ??
+                                prev.visibility) as PollVisibility,
+                            }
+                          : prev,
                       );
                       setSettingsDirty(true);
                     }}
@@ -738,15 +853,19 @@ export const PollManagePage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Результаты</div>
+                  <div className="text-sm font-medium text-gray-700">
+                    Результаты
+                  </div>
                   <Select
+                    size="xl"
                     value={[settingsDraft.results_visibility]}
                     onUpdate={(value) => {
                       setSettingsDraft((prev) =>
                         prev
                           ? {
                               ...prev,
-                              results_visibility: (value[0] ?? prev.results_visibility) as ResultsVisibility,
+                              results_visibility: (value[0] ??
+                                prev.results_visibility) as ResultsVisibility,
                             }
                           : prev,
                       );
@@ -761,7 +880,9 @@ export const PollManagePage: React.FC = () => {
                 <Checkbox
                   checked={settingsDraft.allow_revoting}
                   onUpdate={(checked) => {
-                    setSettingsDraft((prev) => (prev ? { ...prev, allow_revoting: checked } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, allow_revoting: checked } : prev,
+                    );
                     setSettingsDirty(true);
                   }}
                   content="Разрешить переголосование"
@@ -769,7 +890,9 @@ export const PollManagePage: React.FC = () => {
                 <Checkbox
                   checked={settingsDraft.anonymous}
                   onUpdate={(checked) => {
-                    setSettingsDraft((prev) => (prev ? { ...prev, anonymous: checked } : prev));
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, anonymous: checked } : prev,
+                    );
                     setSettingsDirty(true);
                   }}
                   content="Анонимное голосование"
@@ -777,13 +900,21 @@ export const PollManagePage: React.FC = () => {
               </div>
 
               <div>
-                <Text variant="subheader-2" className="mb-2">Расписание</Text>
+                <Text variant="subheader-2" className="mb-2">
+                  Расписание
+                </Text>
                 <ScheduleForm
                   initialStartsAt={settingsDraft.starts_at}
                   initialEndsAt={settingsDraft.ends_at}
                   onUpdate={(payload) => {
                     setSettingsDraft((prev) =>
-                      prev ? { ...prev, starts_at: payload.starts_at, ends_at: payload.ends_at } : prev,
+                      prev
+                        ? {
+                            ...prev,
+                            starts_at: payload.starts_at,
+                            ends_at: payload.ends_at,
+                          }
+                        : prev,
                     );
                     setSettingsDirty(true);
                   }}
@@ -810,47 +941,81 @@ export const PollManagePage: React.FC = () => {
                 >
                   Сбросить
                 </Button>
-                <Button view="action" onClick={saveSettings} disabled={!settingsDirty} loading={updatePollMutation.isPending}>
+                <Button
+                  view="action"
+                  onClick={saveSettings}
+                  disabled={!settingsDirty || invalidSchedule}
+                  loading={updatePollMutation.isPending}
+                >
                   Сохранить
                 </Button>
               </div>
             </Card>
 
-            <div className="space-y-4">
-              <Card className="p-5">
-                <Text variant="subheader-2">Служебная информация</Text>
-                <div className="mt-3 space-y-2 text-sm text-slate-600">
-                  <div>
-                    <span className="font-semibold text-slate-800">Область:</span> {SCOPE_LABELS[poll.scope_type]}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-slate-800">Scope ID:</span> {poll.scope_id}
-                  </div>
-                  {poll.template && (
-                    <div>
-                      <span className="font-semibold text-slate-800">Шаблон:</span> {poll.template}
-                    </div>
+            <details className="portal-disclosure">
+              <summary>Дополнительно</summary>
+              <div className="space-y-4">
+                <Card className="p-5">
+                  <Text variant="subheader-2">Сведения об опросе</Text>
+                  <Checkbox checked={liveUpdates} onUpdate={setLiveUpdates}>
+                    Обновлять автоматически
+                  </Checkbox>
+                  {lastRefreshAt && (
+                    <Text variant="body-1">
+                      Обновлено: {lastRefreshAt.toLocaleTimeString()}
+                    </Text>
                   )}
-                  <div>
-                    <span className="font-semibold text-slate-800">Создан:</span> {formatDateTime(poll.created_at, locale)}
+                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                    <div>
+                      <span className="font-semibold text-slate-800">
+                        Область:
+                      </span>{' '}
+                      {SCOPE_LABELS[poll.scope_type]}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800">
+                        Scope ID:
+                      </span>{' '}
+                      {poll.scope_id}
+                    </div>
+                    {poll.template && (
+                      <div>
+                        <span className="font-semibold text-slate-800">
+                          Шаблон:
+                        </span>{' '}
+                        {poll.template}
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-semibold text-slate-800">
+                        Создан:
+                      </span>{' '}
+                      {formatDateTime(poll.created_at, locale)}
+                    </div>
                   </div>
-                </div>
-              </Card>
-
-              {isDraft && publishIssues.length > 0 && (
-                <Card className="p-5 border border-amber-200 bg-amber-50">
-                  <Text variant="subheader-2" className="text-amber-800">Чеклист публикации</Text>
-                  <ul className="mt-3 list-disc list-inside text-sm text-amber-700 space-y-1">
-                    {publishIssues.map((issue) => (
-                      <li key={issue}>{issue}</li>
-                    ))}
-                  </ul>
-                  <Button view="action" className="mt-4" onClick={() => setActiveTab('questions')}>
-                    Исправить вопросы
-                  </Button>
                 </Card>
-              )}
-            </div>
+
+                {isDraft && publishIssues.length > 0 && (
+                  <Card className="p-5 border border-amber-200 bg-amber-50">
+                    <Text variant="subheader-2" className="text-amber-800">
+                      Чеклист публикации
+                    </Text>
+                    <ul className="mt-3 list-disc list-inside text-sm text-amber-700 space-y-1">
+                      {publishIssues.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                    <Button
+                      view="action"
+                      className="mt-4"
+                      onClick={() => setActiveTab('questions')}
+                    >
+                      Исправить вопросы
+                    </Button>
+                  </Card>
+                )}
+              </div>
+            </details>
           </div>
         )}
 
@@ -861,15 +1026,20 @@ export const PollManagePage: React.FC = () => {
             id="poll-manage-panel-questions"
             aria-labelledby="poll-manage-tab-questions"
           >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <Text variant="subheader-2">Вопросы</Text>
-                <Text variant="body-2" color="secondary">Каждому вопросу нужен хотя бы один вариант ответа.</Text>
+            {sortedNominations.length > 0 && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <Text variant="subheader-2">Вопросы</Text>
+                </div>
+                <Button
+                  view="action"
+                  onClick={openCreateNomination}
+                  disabled={!isDraft}
+                >
+                  Добавить вопрос
+                </Button>
               </div>
-              <Button view="action" onClick={openCreateNomination} disabled={!isDraft}>
-                Добавить вопрос
-              </Button>
-            </div>
+            )}
 
             {!isDraft && (
               <Alert
@@ -881,39 +1051,69 @@ export const PollManagePage: React.FC = () => {
 
             {sortedNominations.length === 0 ? (
               <Card className="p-8 text-center">
-                <Text variant="subheader-2" className="mb-2">Вопросов пока нет</Text>
+                <Text variant="subheader-2" className="mb-2">
+                  Вопросов пока нет
+                </Text>
                 <Text variant="body-2" color="secondary" className="mb-4">
                   Добавьте первый вопрос, чтобы подготовить опрос к публикации.
                 </Text>
-                <Button view="action" onClick={openCreateNomination} disabled={!isDraft}>
+                <Button
+                  view="action"
+                  onClick={openCreateNomination}
+                  disabled={!isDraft}
+                >
                   Добавить вопрос
                 </Button>
               </Card>
             ) : (
               <div className="space-y-4">
                 {sortedNominations.map((nomination) => {
-                  const options = [...(nomination.options ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+                  const options = [...(nomination.options ?? [])].sort(
+                    (a, b) => a.sort_order - b.sort_order,
+                  );
                   return (
                     <Card key={nomination.id} className="p-6 space-y-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="space-y-1">
                           <Text variant="subheader-2">{nomination.title}</Text>
                           {nomination.description && (
-                            <Text variant="body-2" color="secondary">{nomination.description}</Text>
+                            <Text variant="body-2" color="secondary">
+                              {nomination.description}
+                            </Text>
                           )}
                           <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                            <Label theme="normal" size="xs">{NOMINATION_KIND_LABELS[nomination.kind]}</Label>
-                            <Label theme="utility" size="xs">Макс. выборов: {nomination.max_votes}</Label>
-                            {nomination.is_required && <Label theme="warning" size="xs">Обязательный</Label>}
-                            <Label theme="info" size="xs">Вариантов: {options.length}</Label>
+                            <Label theme="normal" size="xs">
+                              {NOMINATION_KIND_LABELS[nomination.kind]}
+                            </Label>
+                            <Label theme="utility" size="xs">
+                              Макс. выборов: {nomination.max_votes}
+                            </Label>
+                            {nomination.is_required && (
+                              <Label theme="warning" size="xs">
+                                Обязательный
+                              </Label>
+                            )}
+                            <Label theme="info" size="xs">
+                              Вариантов: {options.length}
+                            </Label>
                           </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <Button view="outlined" size="s" onClick={() => openEditNomination(nomination)} disabled={!isDraft}>
+                          <Button
+                            view="outlined"
+                            size="s"
+                            onClick={() => openEditNomination(nomination)}
+                            disabled={!isDraft}
+                          >
                             Редактировать
                           </Button>
-                          <Button view="outlined-danger" size="s" onClick={() => deleteNomination(nomination.id)} disabled={!isDraft}>
+                          <Button
+                            view="outlined-danger"
+                            size="s"
+                            onClick={() => deleteNomination(nomination.id)}
+                            disabled={!isDraft}
+                          >
                             Удалить
                           </Button>
                         </div>
@@ -922,7 +1122,12 @@ export const PollManagePage: React.FC = () => {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Text variant="caption-2">Варианты ответа</Text>
-                          <Button view="outlined" size="s" onClick={() => openCreateOption(nomination.id)} disabled={!isDraft}>
+                          <Button
+                            view="outlined"
+                            size="s"
+                            onClick={() => openCreateOption(nomination.id)}
+                            disabled={!isDraft}
+                          >
                             Добавить вариант
                           </Button>
                         </div>
@@ -939,15 +1144,25 @@ export const PollManagePage: React.FC = () => {
                                 className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
                               >
                                 <div className="space-y-1">
-                                  <div className="font-medium text-slate-900">{option.title}</div>
+                                  <div className="font-medium text-slate-900">
+                                    {option.title}
+                                  </div>
                                   {option.description && (
-                                    <div className="text-sm text-slate-600">{option.description}</div>
+                                    <div className="text-sm text-slate-600">
+                                      {option.description}
+                                    </div>
                                   )}
                                   {(option.media_url || option.game_id) && (
                                     <div className="text-xs text-slate-500">
-                                      {option.media_url ? `Медиа: ${option.media_url}` : null}
-                                      {option.media_url && option.game_id ? ' · ' : null}
-                                      {option.game_id ? `Game ID: ${option.game_id}` : null}
+                                      {option.media_url
+                                        ? `Медиа: ${option.media_url}`
+                                        : null}
+                                      {option.media_url && option.game_id
+                                        ? ' · '
+                                        : null}
+                                      {option.game_id
+                                        ? `Game ID: ${option.game_id}`
+                                        : null}
                                     </div>
                                   )}
                                 </div>
@@ -955,7 +1170,9 @@ export const PollManagePage: React.FC = () => {
                                   <Button
                                     view="outlined"
                                     size="s"
-                                    onClick={() => openEditOption(nomination.id, option)}
+                                    onClick={() =>
+                                      openEditOption(nomination.id, option)
+                                    }
                                     disabled={!isDraft}
                                   >
                                     Редактировать
@@ -990,51 +1207,114 @@ export const PollManagePage: React.FC = () => {
             aria-labelledby="poll-manage-tab-participants"
           >
             <Card className="p-6">
-              <Text variant="subheader-2">Участники и роли</Text>
+              <Text variant="subheader-2">Добавить участника</Text>
+              {participantError && (
+                <InlineError>{participantError}</InlineError>
+              )}
               <Text variant="body-2" color="secondary" className="mt-1">
                 Используйте для приватных опросов или выдачи ролей модераторов.
               </Text>
 
-              <div className="mt-4" style={participantCreateGridStyle}>
-                  <TextInput
-                    placeholder="UUID пользователя"
-                    value={participantUserId}
-                    onUpdate={setParticipantUserId}
-                  />
-                  <Select
-                    value={[participantRole]}
-                    onUpdate={(value) => setParticipantRole((value[0] ?? 'participant') as PollRole)}
-                    options={PARTICIPANT_OPTIONS}
-                  />
-                  <Button view="action" onClick={addParticipant} loading={addParticipantMutation.isPending}>
-                    Добавить
-                  </Button>
+              <div className="voting-workspace__participant-form">
+                <FormField label="Участник">
+                  {(props) => (
+                    <div className="portal-stack">
+                      <TextInput
+                        {...props}
+                        size="xl"
+                        placeholder="Имя или username"
+                        value={participantSearch}
+                        onUpdate={(value) => {
+                          setParticipantSearch(value);
+                          setParticipantUserId('');
+                        }}
+                      />
+                      {participantUserId ? (
+                        <span>Выбран: {participantSearch}</span>
+                      ) : (
+                        participantSearch.trim().length >= 2 && (
+                          <div className="voting-member-results">
+                            {participantProfiles.isLoading && (
+                              <p role="status">Ищем участников…</p>
+                            )}
+                            {participantProfiles.isError && (
+                              <InlineError
+                                onRetry={() =>
+                                  void participantProfiles.refetch()
+                                }
+                              >
+                                Не удалось загрузить участников.
+                              </InlineError>
+                            )}
+                            {participantProfiles.data?.map((profile) => {
+                              const name =
+                                profile.displayName ||
+                                [profile.firstName, profile.lastName]
+                                  .filter(Boolean)
+                                  .join(' ') ||
+                                profile.username ||
+                                'Без имени';
+                              return (
+                                <button
+                                  type="button"
+                                  key={profile.userId}
+                                  onClick={() => {
+                                    setParticipantUserId(profile.userId);
+                                    setParticipantSearch(name);
+                                  }}
+                                >
+                                  {name}
+                                  {profile.username && ` @${profile.username}`}
+                                </button>
+                              );
+                            })}
+                            {!participantProfiles.isLoading &&
+                              !participantProfiles.isError &&
+                              participantProfiles.data?.length === 0 && (
+                                <p>Участники не найдены.</p>
+                              )}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+                </FormField>
+                <Select
+                  size="xl"
+                  value={[participantRole]}
+                  onUpdate={(value) =>
+                    setParticipantRole((value[0] ?? 'participant') as PollRole)
+                  }
+                  options={PARTICIPANT_OPTIONS}
+                />
+                <Button
+                  view="action"
+                  disabled={
+                    !participantUserId || addParticipantMutation.isPending
+                  }
+                  onClick={addParticipant}
+                  loading={addParticipantMutation.isPending}
+                >
+                  Добавить
+                </Button>
               </div>
             </Card>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="p-4">
-                <Text variant="caption-2" color="secondary">Всего участников</Text>
-                <Text variant="header-2">{participants.length}</Text>
-              </Card>
-              <Card className="p-4">
-                <Text variant="caption-2" color="secondary">Приняли участие</Text>
-                <Text variant="header-2">
-                  {participants.filter((p) => p.status === 'accepted').length}
-                </Text>
-              </Card>
-              <Card className="p-4">
-                <Text variant="caption-2" color="secondary">В ожидании</Text>
-                <Text variant="header-2">
-                  {participants.filter((p) => p.status === 'pending').length}
-                </Text>
-              </Card>
-            </div>
-
             <Card className="p-6">
-              <Text variant="subheader-2" className="mb-4">Текущие участники</Text>
-              {participants.length === 0 ? (
-                <Text variant="body-2" color="secondary">Пока никто не добавлен.</Text>
+              <Text variant="subheader-2" className="mb-4">
+                Текущие участники
+              </Text>
+              {participantsError && (
+                <InlineError onRetry={() => void refetchParticipants()}>
+                  Не удалось загрузить участников опроса.
+                </InlineError>
+              )}
+              {participantsLoading ? (
+                <p role="status">Загружаем участников…</p>
+              ) : participants.length === 0 && !participantsError ? (
+                <Text variant="body-2" color="secondary">
+                  Пока никто не добавлен.
+                </Text>
               ) : (
                 <div className="space-y-2">
                   {participants.map((participant) => (
@@ -1043,12 +1323,29 @@ export const PollManagePage: React.FC = () => {
                       className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="space-y-1">
-                        <div className="font-medium text-slate-900">{participant.user_id}</div>
+                        <div className="font-medium">Участник опроса</div>
+                        <details>
+                          <summary>Идентификатор участника</summary>
+                          <code>{participant.user_id}</code>
+                        </details>
                         <div className="text-sm text-slate-600">
-                          Роль: {participant.role} · Статус: {participant.status}
+                          Роль:{' '}
+                          {PARTICIPANT_OPTIONS.find(
+                            (item) => item.value === participant.role,
+                          )?.content || 'Уточняется'}{' '}
+                          ·{' '}
+                          {{
+                            accepted: 'Участие подтверждено',
+                            pending: 'Ожидает ответа',
+                            declined: 'Отказался',
+                          }[participant.status] || 'Статус уточняется'}
                         </div>
                       </div>
-                      <Button view="outlined-danger" size="s" onClick={() => removeParticipant(participant.user_id)}>
+                      <Button
+                        view="outlined-danger"
+                        size="s"
+                        onClick={() => removeParticipant(participant.user_id)}
+                      >
                         Удалить
                       </Button>
                     </div>
@@ -1064,9 +1361,9 @@ export const PollManagePage: React.FC = () => {
         open={createQuestionOpen}
         onClose={() => setCreateQuestionOpen(false)}
         aria-labelledby="create-question-title"
-        style={{ '--g-modal-width': '760px' }}
+        contentClassName="voting-workspace voting-workspace-modal"
       >
-        <div style={{ padding: 24, display: 'grid', gap: 16 }}>
+        <div className="portal-stack">
           <Text variant="subheader-2" id="create-question-title">
             Новый вопрос
           </Text>
@@ -1083,31 +1380,41 @@ export const PollManagePage: React.FC = () => {
         open={Boolean(editingNomination)}
         onClose={() => setEditingNomination(null)}
         aria-labelledby="edit-question-title"
-        style={{ '--g-modal-width': '720px' }}
+        contentClassName="voting-workspace voting-workspace-modal"
       >
         {editingNomination && (
-          <div style={{ padding: 24, display: 'grid', gap: 16 }}>
+          <div className="portal-stack">
             <Text variant="subheader-2" id="edit-question-title">
               Редактировать вопрос
             </Text>
 
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Название</div>
+                <div className="text-sm font-medium text-gray-700">
+                  Название
+                </div>
                 <TextInput
+                  size="xl"
                   value={editingNomination.title}
                   onUpdate={(value) =>
-                    setEditingNomination((prev) => (prev ? { ...prev, title: value } : prev))
+                    setEditingNomination((prev) =>
+                      prev ? { ...prev, title: value } : prev,
+                    )
                   }
                 />
               </div>
 
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Описание</div>
+                <div className="text-sm font-medium text-gray-700">
+                  Описание
+                </div>
                 <TextArea
+                  size="xl"
                   value={editingNomination.description}
                   onUpdate={(value) =>
-                    setEditingNomination((prev) => (prev ? { ...prev, description: value } : prev))
+                    setEditingNomination((prev) =>
+                      prev ? { ...prev, description: value } : prev,
+                    )
                   }
                   rows={3}
                 />
@@ -1117,10 +1424,16 @@ export const PollManagePage: React.FC = () => {
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-700">Тип</div>
                   <Select
+                    size="xl"
                     value={[editingNomination.kind]}
                     onUpdate={(value) =>
                       setEditingNomination((prev) =>
-                        prev ? { ...prev, kind: (value[0] ?? prev.kind) as NominationKind } : prev,
+                        prev
+                          ? {
+                              ...prev,
+                              kind: (value[0] ?? prev.kind) as NominationKind,
+                            }
+                          : prev,
                       )
                     }
                     options={[
@@ -1133,8 +1446,11 @@ export const PollManagePage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Макс. выборов</div>
+                  <div className="text-sm font-medium text-gray-700">
+                    Макс. выборов
+                  </div>
                   <TextInput
+                    size="xl"
                     type="number"
                     value={String(editingNomination.max_votes)}
                     controlProps={{ min: 1 }}
@@ -1142,7 +1458,13 @@ export const PollManagePage: React.FC = () => {
                       const parsed = Number.parseInt(value, 10);
                       setEditingNomination((prev) =>
                         prev
-                          ? { ...prev, max_votes: Number.isFinite(parsed) && parsed > 0 ? parsed : 1 }
+                          ? {
+                              ...prev,
+                              max_votes:
+                                Number.isFinite(parsed) && parsed > 0
+                                  ? parsed
+                                  : 1,
+                            }
                           : prev,
                       );
                     }}
@@ -1153,17 +1475,26 @@ export const PollManagePage: React.FC = () => {
               <Checkbox
                 checked={editingNomination.is_required}
                 onUpdate={(checked) =>
-                  setEditingNomination((prev) => (prev ? { ...prev, is_required: checked } : prev))
+                  setEditingNomination((prev) =>
+                    prev ? { ...prev, is_required: checked } : prev,
+                  )
                 }
                 content="Обязательный вопрос"
               />
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button view="outlined" onClick={() => setEditingNomination(null)}>
+              <Button
+                view="outlined"
+                onClick={() => setEditingNomination(null)}
+              >
                 Отмена
               </Button>
-              <Button view="action" onClick={saveNomination} loading={updateNominationMutation.isPending}>
+              <Button
+                view="action"
+                onClick={saveNomination}
+                loading={updateNominationMutation.isPending}
+              >
                 Сохранить
               </Button>
             </div>
@@ -1175,17 +1506,25 @@ export const PollManagePage: React.FC = () => {
         open={Boolean(optionEditor)}
         onClose={() => setOptionEditor(null)}
         aria-labelledby="option-modal-title"
-        style={{ '--g-modal-width': '720px' }}
+        contentClassName="voting-workspace voting-workspace-modal"
       >
         {optionEditor && (
-          <div style={{ padding: 24, display: 'grid', gap: 16 }}>
+          <div className="portal-stack">
             <Text variant="subheader-2" id="option-modal-title">
-              {optionEditor.mode === 'create' ? 'Новый вариант' : 'Редактировать вариант'}
+              {optionEditor.mode === 'create'
+                ? 'Новый вариант'
+                : 'Редактировать вариант'}
             </Text>
             <OptionForm
-              key={optionEditor.mode === 'create' ? `create-${optionEditor.nominationId}` : `edit-${optionEditor.optionId}`}
-              initialData={optionEditor.payload}
-              onChange={(payload) => setOptionEditor((prev) => (prev ? { ...prev, payload } : prev))}
+              key={
+                optionEditor.mode === 'create'
+                  ? `create-${optionEditor.nominationId}`
+                  : `edit-${optionEditor.optionId}`
+              }
+              value={optionEditor.payload}
+              onChange={(payload) =>
+                setOptionEditor((prev) => (prev ? { ...prev, payload } : prev))
+              }
             />
             <div className="flex justify-end gap-2">
               <Button view="outlined" onClick={() => setOptionEditor(null)}>
@@ -1194,7 +1533,10 @@ export const PollManagePage: React.FC = () => {
               <Button
                 view="action"
                 onClick={saveOption}
-                loading={createOptionMutation.isPending || updateOptionMutation.isPending}
+                loading={
+                  createOptionMutation.isPending ||
+                  updateOptionMutation.isPending
+                }
                 disabled={!optionEditor.payload.title.trim()}
               >
                 Сохранить

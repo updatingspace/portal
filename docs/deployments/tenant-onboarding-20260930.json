@@ -1,0 +1,91 @@
+{
+  "date": "2026-09-30",
+  "services": {
+    "id": {
+      "container_id": "bbab7jbbhqhupu9idvh0",
+      "revision_id": "bba0s1b9ukeljpecnt9g",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-id-backend:tenant-onboarding-20260930-7177ade58e2c",
+      "digest": "sha256:737f4f4a1c319514394ee81d8149c873386f46fad705773dc32d0f37b5779eaf",
+      "previous_revision": "bbaie93nhk2ed4rgqvsg",
+      "base_digest": "sha256:d0ab587ab7f82ab0d5116d1138f2ba120864d261607ad13572ae9b2429cba827",
+      "overlay_sha256": {
+        "Dockerfile": "50f358130d55a1b53bfd299f5b3a4b1a74300bae11af4f8db88ed11db30b8cbc",
+        "src/updspaceid/api.py": "000b23ce96000b6f7fb974c65fc62bb6ac4ed94d405330b8b28a37e634356688",
+        "src/updspaceid/management/commands/export_portal_memberships.py": "171dd58b91ed53b05a5bee365ef8ccafec9cdfc0ab476b470d7e01ab23812b2c",
+        "src/updspaceid/schemas.py": "169228b6fe4b76faa89f4d605721adfdb77a968da5b7959706cf14141fa0ad60"
+      }
+    },
+    "portal": {
+      "container_id": "bba6qpkh7jinunl08lpa",
+      "revision_id": "bban68hhhoht3lq823qr",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-portal:tenant-onboarding-20260930-ca8dbb2d22e9",
+      "digest": "sha256:07a2d6888741b734cd2e39e351938e3bfc63ca9d5e10de58e42e45af3055d036",
+      "previous_revision": "bbaq6defilhre6jh6381",
+      "base_digest": "sha256:e74ca25600609e797fcbb7f68bca1127e163ee0ade22028904903b078739f73a",
+      "overlay_sha256": {
+        "Dockerfile": "58806b693dfa031a9bd747a481df2d94482e3d5089b59c26403b90b830d1b3d5",
+        "bin/serverless-task.sh": "853976f7510d4827b7800d8bcdbe354101756a6bd3358d8472013c0afbd0695d",
+        "src/app/cloud_runtime.py": "3b3b9b571429e6bd8fdcae28cfa8f1075a67f0ab0ad1fd75540fbad3052fec0c",
+        "src/app/settings.py": "13bc9f0f57fa7d5d83e41604c98afe4516a30de36db19545aecbfcc0878800da",
+        "src/app/urls.py": "8ac93a135c7ee46f216a25298164d499c740ffaf1b1d574a5e01f9cf88e30b77",
+        "src/app/ydb_compat.py": "ee4ea8ce9ac881850a593a77b0309ba98c8695bfd007ad45e8c8f589ea19c9d9",
+        "src/portal/dsar.py": "0334f158b8814255807367078f91e07078a5f04460132969f8c12196846ed980",
+        "src/portal/entry_api.py": "6a98a22c928e3343518ce27e37d82ec0af34cb32a8666e90e243e801fe2bb581",
+        "src/portal/management/commands/import_tenant_memberships.py": "209ae698bc563c0117e182e87b6eea0d7d6fd1fd31bdc73b39437a0c7eb1eda1",
+        "src/portal/management/commands/process_outbox.py": "72adaa43b87c1043c5452ee13e40a14733e51e7ebcdedd2bb7a05feb8db6a4d2",
+        "src/portal/migrations/0006_tenant_onboarding.py": "ab4d844cdda81aca5b861f06e5f0f49aef85ebfc8408b856141082285e5c18da",
+        "src/portal/models.py": "827d5bc6b6c1ab064bc7e83be49c6d920fc32c61923d7b52941bdd8e7a64ff5f",
+        "src/portal/provisioning.py": "80560b6e29bc919828225fb845fe434fe4a36c82adb3bd52788cd69ecb8bc28b",
+        "src/portal/services.py": "f8d459c8dc3cd6447b932bb85b843d614eb9e342f55fadd2df6b87ec2a4d3e08",
+        "src/portal/tenant_applications.py": "560d9f0270b096a51b0e55b248428aeafadb2f78ae0bcab6cdcafc13a2577ee7"
+      }
+    },
+    "access": {
+      "container_id": "bbanklnq9mebvvu2s0fn",
+      "revision_id": "bbaeeepf6hptqj3n8d3u",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-access:tenant-onboarding-20260930-bfccdd2443f8",
+      "digest": "sha256:d367d1df970c255a3926df58193e8bdef484f8c993faa8d28ca70ad38078b585",
+      "previous_revision": "bbaphtlc4ol4q0he2dnm",
+      "base_digest": "sha256:e656c5400605dec476a00575e5cdf10e0dc9299e5eb86c331a149beb4c3710c8",
+      "overlay_sha256": {
+        "Dockerfile": "a3db426a885fe73f6a04e606af3062a6b7e2a524e85d1036f49cbd311622a784",
+        "src/access_control/api.py": "0da60ded60e7df6a0eb42e6a70bf94efb00ab5228ddcbcf8975b81bee6d0b229",
+        "src/access_control/migrations/0017_tenant_application_review_permission.py": "c04194f92b7a7109e2189742e88196c9c75716c5c2926c5c6d4ea04e9246ad9a",
+        "src/access_control/permissions_mvp.py": "22f7a314b4824ebc5cb3583ca78b6344cef4f7a6ef55564eebe4346d8358b758",
+        "src/app/cloud_runtime.py": "3b3b9b571429e6bd8fdcae28cfa8f1075a67f0ab0ad1fd75540fbad3052fec0c",
+        "src/app/ydb_compat.py": "ee4ea8ce9ac881850a593a77b0309ba98c8695bfd007ad45e8c8f589ea19c9d9"
+      }
+    },
+    "bff": {
+      "container_id": "bba3jn2tlbb96cpjc2sg",
+      "revision_id": "bba8t6sr0l2flpqkgq2m",
+      "image": "cr.yandex/crp0hcf5a7de4tunssc4/updatingspace-portal-bff:tenant-onboarding-20260930-0de689c11022",
+      "digest": "sha256:3f7cf5065939e85af6d594dd285573304f0820d1c90aeb82d84f9ed08f05bc75",
+      "previous_revision": "bbapc2allj1s87n6cds3",
+      "base_digest": "sha256:2fe9b7a65239b75bab669253090eba9b074475d22d88e0662affaabf32e96ff4",
+      "overlay_sha256": {
+        "Dockerfile": "d03ce9191b4aa494ee4f067e34b5e92e86451071107c869fe356f3121007649d",
+        "src/app/cloud_runtime.py": "3fe053cfd9b9c08cd06b49a5eb05325a511fc9202ed598d06475da015b80639b",
+        "src/app/ydb_compat.py": "ee4ea8ce9ac881850a593a77b0309ba98c8695bfd007ad45e8c8f589ea19c9d9",
+        "src/bff/api.py": "87f233df7d7521d9e8c1efb71da81e32eb487bc160d139a4e01af90ba4a7f8d4"
+      }
+    }
+  },
+  "worker": {
+    "function_id": "d4e139a07ahc7jgfdlqu",
+    "version_id": "d4eaa1rfjpr99m334cr6",
+    "trigger_id": "a1s30tucfpcid4tsgd2q",
+    "zip_sha256": "8d98c8fbc31a3b02818b2fd06703254b1200916b2a8cdc57796d1e7134892a53"
+  },
+  "frontend": {
+    "bucket": "updspace-portal-prod-d97a0810",
+    "build_id": "2026.09.30-tenant-onboarding",
+    "files_uploaded": 229,
+    "index_sha256": "5da1c2ffbbaf21f2fd8dffad6bdbf19d8d943ac3e726217d91a86e7f83af0b5b"
+  },
+  "migrations": {
+    "created_tables": 4,
+    "existing_tables_unchanged": 12,
+    "legacy_memberships_imported": 0
+  }
+}

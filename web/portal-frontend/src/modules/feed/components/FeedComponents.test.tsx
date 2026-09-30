@@ -1,3 +1,4 @@
+import {I18nProvider} from '../../../app/providers/I18nProvider';
 /**
  * Feed Components Unit Tests
  *
@@ -39,9 +40,9 @@ function renderWithTheme(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme="light">
+      <ThemeProvider theme="light"><I18nProvider>
         {ui}
-      </ThemeProvider>
+      </I18nProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -100,14 +101,14 @@ describe('FeedItem', () => {
     expect(screen.getByText(/Голосование/i)).toBeInTheDocument();
   });
 
-  it('should render scope type when it exists', () => {
+  it('does not expose technical scope keys in the reading view', () => {
     const itemWithScope: ActivityEvent = {
       ...mockItem,
       scopeType: 'COMMUNITY',
     };
     renderFeedItem({ item: itemWithScope });
 
-    expect(screen.getByText('COMMUNITY')).toBeInTheDocument();
+    expect(screen.queryByText('COMMUNITY')).not.toBeInTheDocument();
   });
 
   it('should render payload when showPayload is true', () => {
@@ -237,9 +238,9 @@ describe('FeedComposerPanel', () => {
     handleRemoveMedia: vi.fn(),
   };
 
-  it('shows access-locked state when user cannot create', () => {
+  it('hides the composer when the user cannot create', () => {
     renderWithTheme(<FeedComposerPanel {...baseProps} canCreateNews={false} />);
-    expect(screen.getByText('Публикация новостей недоступна.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Текст новости')).not.toBeInTheDocument();
   });
 
   it('calls handleComposerKeyDown on key press', () => {
@@ -316,8 +317,8 @@ describe('FeedStreamView', () => {
 
   it('renders updated unread copy', () => {
     renderWithTheme(<FeedStreamView {...baseProps} unreadCount={3} />);
-    expect(screen.getByText('Новых событий: 3')).toBeInTheDocument();
-    expect(screen.getByText('Обновите ленту или отметьте события прочитанными.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name:'Новые записи · 3'})).toBeInTheDocument();
+    expect(screen.queryByText('Обновите ленту или отметьте события прочитанными.')).not.toBeInTheDocument();
   });
 
   it('renders updated empty copy for filtered state', () => {
@@ -331,7 +332,7 @@ describe('FeedStreamView', () => {
       />,
     );
     expect(screen.getByText('Нет событий под выбранные фильтры.')).toBeInTheDocument();
-    expect(screen.getByText('Попробуйте сменить фильтры или зайдите позже.')).toBeInTheDocument();
+    expect(screen.getByText('Выберите другой источник в фильтрах.')).toBeInTheDocument();
   });
 
   it('shows moderation controls with accessibility label', () => {

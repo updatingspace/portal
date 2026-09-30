@@ -365,6 +365,8 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
   const url = `${baseUrl}${normalizedPath}`;
   const method = (options.method ?? 'GET').toUpperCase();
   const routeSnapshot = getCurrentRouteSnapshot();
+  // Capture before awaiting CSRF: navigation must not retarget an in-flight action.
+  const expectedTenant = typeof window === 'undefined' ? undefined : window.location.pathname.match(/^\/t\/([^/]+)/)?.[1];
   const csrfHeaders = await getCsrfHeaders(method);
   const isFormDataBody =
     typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -372,7 +374,7 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
   const requestId = ensureRequestId();
 
   // Retry configuration
-  const retryEnabled = !options.noRetry;
+  const retryEnabled = !options.noRetry && ['GET', 'HEAD', 'OPTIONS'].includes(method);
   const maxAttempts = options.retry?.maxAttempts ?? 3;
   const baseDelayMs = options.retry?.baseDelayMs ?? 1000;
   const retryServerErrors = options.retry?.retryServerErrors ?? true;
@@ -406,11 +408,13 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
           'X-Request-Id': requestId,
           ...csrfHeaders,
           ...(options.headers ?? {}),
+          ...(expectedTenant ? { 'X-Portal-Expected-Tenant': expectedTenant } : {}),
         },
         credentials: 'include',
         body: serializedBody,
       });
     } catch (error) {
+      if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error;
       lastError = error as Error;
       lastResponse = null;
 
@@ -443,6 +447,10 @@ export async function requestResult<T>(path: string, options: RequestOptions = {
     const durationMs = Math.round(nowMs() - startedAt);
     const { message: messageFromBody, details } = await parseErrorMessage(response);
     const codeFromBody = extractApiErrorCode(details) ?? undefined;
+    if (response.status === 401 && !normalizedPath.startsWith('/session/') && !normalizedPath.startsWith('/auth/') && typeof window !== 'undefined') window.dispatchEvent(new Event('portal:session-expired'));
+    if (codeFromBody === 'TENANT_CONTEXT_CHANGED' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('portal:context-changed'));
+    }
     const requestIdFromBody = extractApiRequestId(details) ?? undefined;
     const reqIdHeader = response.headers.get('x-request-id');
     const requestIdFromHeader = reqIdHeader ?? undefined;

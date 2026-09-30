@@ -1,0 +1,229 @@
+.portal-settings {
+  max-width: 1000px;
+  margin-inline: auto;
+  padding-block: 8px 32px;
+}
+.portal-settings__heading {
+  margin-bottom: 32px;
+}
+.portal-settings__heading h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  margin: 0;
+}
+.portal-settings__layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+.portal-settings__navigation {
+  min-width: 0;
+}
+.portal-settings__account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 24px;
+  color: var(--portal-text);
+  text-decoration: none;
+}
+.portal-settings__account-row strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.portal-settings__rows {
+  display: grid;
+}
+.portal-settings__row {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  color: var(--portal-text);
+  text-decoration: none;
+  border-radius: 8px;
+}
+.portal-settings__row span {
+  flex: 1;
+}
+.portal-settings__row > .g-icon {
+  flex-shrink: 0;
+  color: var(--portal-muted);
+}
+.portal-settings__row:hover,
+.portal-settings__row[aria-current] {
+  background: var(--portal-surface-alt);
+}
+.portal-settings__detail {
+  min-width: 0;
+}
+.portal-settings__detail-title {
+  margin: 0 0 24px;
+  font-size: 24px;
+}
+.portal-settings__back {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  color: var(--portal-muted);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.portal-settings__community-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+.portal-settings__caption {
+  color: var(--portal-muted);
+  font-size: 14px;
+  margin: 0;
+}
+.portal-settings__section {
+  padding: 0;
+}
+.portal-settings__section p {
+  color: var(--portal-muted);
+  margin: 16px 0;
+  line-height: 1.6;
+}
+.portal-settings__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.portal-settings__identity p {
+  margin: 0;
+}
+.portal-settings__notice {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--portal-surface-alt);
+}
+.portal-settings .user-settings-panel {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+}
+.portal-settings .user-settings-panel__loading {
+  min-height: 80px;
+}
+.portal-settings .user-settings-panel__header {
+  padding: 0;
+  border: 0;
+  min-height: 0;
+  margin: 0;
+}
+.portal-settings .user-settings-panel__status:empty,
+.portal-settings .user-settings-panel__actions:empty {
+  display: none;
+}
+.portal-settings .user-settings-panel__content {
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+.portal-settings .settings-section {
+  padding: 0 0 24px;
+  margin-bottom: 24px;
+  border: 0;
+  border-bottom: 1px solid var(--portal-line);
+  background: transparent;
+  border-radius: 0;
+}
+.portal-settings .settings-section__header {
+  margin-bottom: 16px;
+}
+.portal-settings .settings-section__title {
+  font-size: 16px;
+}
+.portal-settings .settings-row {
+  padding: 12px 0;
+}
+.portal-settings .theme-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.portal-settings .theme-option {
+  min-width: 0;
+  padding: 16px 8px;
+}
+.portal-settings .theme-option__icon {
+  width: 36px;
+  height: 36px;
+}
+.portal-settings
+  .settings-section__content
+  > .settings-row:has(+ .font-size-selector) {
+  display: none;
+}
+@media (max-width: 719px) {
+  .portal-settings {
+    padding-top: 0;
+  }
+  .portal-settings__heading {
+    margin-bottom: 24px;
+  }
+  .portal-settings__layout {
+    display: block;
+  }
+  .portal-settings__row {
+    min-height: 60px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--portal-line);
+    padding-inline: 0;
+  }
+  .portal-settings__row:nth-child(4),
+  .portal-settings__row:nth-child(6) {
+    margin-top: 20px;
+  }
+  .portal-settings__account-row {
+    padding: 0 0 24px;
+    margin-bottom: 4px;
+  }
+  .portal-settings__heading h1 {
+    font-size: 28px;
+  }
+  .portal-settings__detail .settings-row {
+    gap: 12px;
+  }
+  .portal-settings .user-settings-panel__actions {
+    justify-content: flex-start;
+  }
+}
+.portal-settings .theme-option {flex-direction: column; align-items: center;}
+.portal-settings .theme-option__icon {background: transparent; border: 0; color: var(--portal-text);}
+.portal-settings .color-picker__presets {flex-wrap: wrap; gap: 12px;}
+.portal-settings .color-picker__preset {width: 36px; height: 36px;}
+.portal-settings .color-picker__swatch {border-radius: 50%;}
+.portal-settings .settings-row__label {font-size: 16px; line-height: 1.4;}
+.portal-settings .settings-row__description {font-size: 13px; line-height: 1.5; display: block; margin-top: 4px;}
+.portal-settings .settings-row--toggle {flex-direction: row; align-items: center;}
+.portal-settings .settings-row--toggle .settings-row__control {width: auto; flex-shrink: 0;}
+.portal-settings .g-switch {min-height: 44px; display: inline-flex; align-items: center;}
+.portal-settings .g-radio-group__option {min-height: 44px; display: flex; align-items: center;}
+.settings-disclosure {border-bottom: 1px solid var(--portal-line); margin-bottom: 16px; padding-bottom: 16px;}
+.settings-disclosure > summary {display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; list-style: none; font-size: 16px; font-weight: 600; cursor: pointer;}
+.settings-disclosure > summary::after {content: '+'; color: var(--portal-muted); font-size: 22px; font-weight: 400;}
+.settings-disclosure[open] > summary::after {content: '−';}
+.settings-disclosure > summary::-webkit-details-marker {display: none;}
+.settings-disclosure__description {color: var(--portal-muted); font-size: 14px; line-height: 1.5; margin: 8px 0 16px;}
+.settings-disclosure--advanced > summary {font-size: 14px; color: var(--portal-muted); font-weight: 400;}
+.settings-disclosure--advanced .g-button {margin-top: 16px;}
+.portal-settings__row, .portal-settings__account-row {font-size: 16px; line-height: 1.4;}
+@media (max-width: 719px) {
+  .portal-settings .color-picker__presets {display: grid; grid-template-columns: repeat(4, 44px); gap: 12px;}
+  .portal-settings .color-picker__preset {width: 44px; height: 44px;}
+}

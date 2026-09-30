@@ -103,6 +103,7 @@ export const listAchievements = async (params?: {
   category?: string[];
   q?: string;
   created_by?: 'me' | 'any';
+  earned?: boolean;
   limit?: number;
   cursor?: string;
 }): Promise<AchievementListResponse> => {
@@ -111,6 +112,7 @@ export const listAchievements = async (params?: {
     category: params?.category?.join(','),
     q: params?.q,
     created_by: params?.created_by,
+    earned: params?.earned ? 'true' : undefined,
     limit: params?.limit,
     cursor: params?.cursor,
   });

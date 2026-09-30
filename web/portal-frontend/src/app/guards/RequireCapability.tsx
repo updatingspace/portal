@@ -1,9 +1,12 @@
+import {Button} from '@gravity-ui/uikit';
+import {PageState,useUITranslation} from '../../shared/ui/portal/PortalUI';
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 
 import { createClientAccessDeniedError } from '../../api/accessDenied';
 import { useAuth } from '../../contexts/AuthContext';
 import { AccessDeniedScreen } from '../../features/access-denied';
+import { AppLoader } from '../../shared/ui/AppLoader';
 import { can } from '../../features/rbac/can';
 
 type RequireCapabilityProps = {
@@ -17,10 +20,11 @@ export const RequireCapability: React.FC<RequireCapabilityProps> = ({
   mode = 'all',
   children,
 }) => {
-  const { user, isLoading, isInitialized } = useAuth();
+  const { user, isLoading, isInitialized, refreshProfile } = useAuth();
 
+  const t = useUITranslation();
   if (!isInitialized || isLoading || !user) {
-    return null;
+    return <AppLoader />;
   }
 
   const requiredList = Array.isArray(required) ? required : [required];
@@ -29,6 +33,7 @@ export const RequireCapability: React.FC<RequireCapabilityProps> = ({
       ? requiredList.some((permission) => can(user, permission))
       : can(user, requiredList);
 
+  if (!allowed && user.accessSnapshotStatus && user.accessSnapshotStatus !== 'ready') return <PageState kind="error" title={t('Не удалось проверить права', 'Unable to verify permissions')} description={t('Ваши разрешения загружены не полностью. Повторите проверку.', 'Your permissions could not be fully loaded. Try again.')} action={<Button onClick={() => void refreshProfile()}>{t('Повторить', 'Try again')}</Button>} />;
   if (!allowed) {
     return (
       <AccessDeniedScreen

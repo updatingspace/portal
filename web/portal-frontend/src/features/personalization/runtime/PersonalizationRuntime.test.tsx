@@ -18,6 +18,7 @@ vi.mock('../api/personalizationApi', () => ({
 
 const authUser = {
   id: 'user-1',
+  tenant: {id:'tenant-1',slug:'alpha'},
   username: 'member',
   email: 'member@example.com',
   displayName: 'Portal Member',

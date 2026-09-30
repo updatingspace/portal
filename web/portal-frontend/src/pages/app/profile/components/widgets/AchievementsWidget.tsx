@@ -18,7 +18,6 @@ export const AchievementsWidget: React.FC<AchievementsWidgetProps> = ({ items })
     <Card view="filled" className="profile-widget">
       <div className="profile-widget__head">
         <Text variant="subheader-2">{profileHubStrings.achievements.title}</Text>
-        <Text variant="caption-2" color="secondary">{items.length}</Text>
       </div>
       {items.length === 0 ? (
         <Text variant="body-2" color="secondary">{profileHubStrings.achievements.empty}</Text>

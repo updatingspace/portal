@@ -11,6 +11,7 @@ class PermissionSpec:
 
 
 MVP_PERMISSIONS: list[PermissionSpec] = [
+    PermissionSpec(key="portal.tenant_applications.review", description="Review tenant creation applications", service="portal"),
     # portal (base)
     PermissionSpec(key="portal.profile.read_self", description="Access /me", service="portal"),
     PermissionSpec(key="portal.profile.edit_self", description="Edit /me", service="portal"),

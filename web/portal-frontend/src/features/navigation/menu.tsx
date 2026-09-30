@@ -67,9 +67,6 @@ export const buildAsideMenuItems = (params: {
     route.startsWith('/app') ? route.replace(/^\/app\b/, routeBase) : route;
 
   const visible = (item: NavItemConfig) => {
-    if (!user?.capabilities?.length && !user?.roles?.length) {
-      return item.id !== 'admin';
-    }
     return can(user, item.required);
   };
 

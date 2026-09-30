@@ -140,6 +140,38 @@ class BffProxyRoutingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(captured["upstream_path"], "access/roles")
 
+    def test_personalization_reads_reach_access(self):
+        for resource in ("preferences", "preferences/defaults", "admin/dashboards/layouts"):
+            with self.subTest(resource=resource):
+                resp, captured = self._call_proxy(
+                    f"/api/v1/personalization/{resource}",
+                    {"BFF_UPSTREAM_ACCESS_URL": "http://access:8002/api/v1"},
+                )
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(captured["upstream_base_url"], "http://access:8002/api/v1")
+                self.assertEqual(captured["upstream_path"], f"personalization/{resource}")
+
+    def test_serverless_live_response_switches_to_polling_without_stream(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        with self.settings(BFF_FEED_STREAMING_ENABLED=False, BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1"), patch("bff.api.proxy_request") as proxy:
+            response = self.client.get("/api/v1/activity/feed/live", HTTP_HOST=self.host, HTTP_ACCEPT="text/event-stream")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.streaming)
+        self.assertIn(b"event: close", response.content)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(int(response["Content-Length"]), len(response.content))
+        proxy.assert_not_called()
+
+    def test_live_polling_response_still_requires_session_and_matching_tenant(self):
+        with self.settings(BFF_FEED_STREAMING_ENABLED=False, BFF_UPSTREAM_FEED_URL="http://activity:8006/api/v1"), patch("bff.api.proxy_request") as proxy:
+            anonymous = self.client.get("/api/v1/activity/feed/live", HTTP_HOST=self.host)
+            self.assertEqual(anonymous.status_code, 401)
+            Tenant.objects.create(slug="other")
+            self.client.cookies[self.cookie_name] = self.session.session_id
+            other = self.client.get("/api/v1/activity/feed/live", HTTP_HOST="other.updspace.com")
+            self.assertEqual(other.status_code, 403)
+        proxy.assert_not_called()
+
     def test_access_proxy_preserves_prefix_if_present(self):
         resp, captured = self._call_proxy(
             "/api/v1/access/roles",
@@ -215,6 +247,12 @@ class BffApplicationApproveProvisioningTests(TestCase):
                     },
                 )
 
+            if upstream_base_url.endswith(":8003/api/v1"):
+                self.assertEqual(upstream_path, "portal/tenant-memberships")
+                self.assertEqual(json.loads(body), {"user_id": "11111111-1111-1111-1111-111111111111"})
+                self.assertEqual(context_headers["X-Tenant-Id"], str(self.tenant.id))
+                return httpx.Response(200, json={"status": "active"})
+
             if upstream_base_url.endswith(":8002/api/v1"):
                 if upstream_path == "access/admin/roles" and method == "GET":
                     return httpx.Response(
@@ -260,6 +298,7 @@ class BffApplicationApproveProvisioningTests(TestCase):
 
         with self.settings(
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
             BFF_TENANT_HOST_SUFFIX="updspace.com",
         ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
@@ -310,6 +349,12 @@ class BffApplicationApproveProvisioningTests(TestCase):
                     },
                 )
 
+            if upstream_base_url.endswith(":8003/api/v1"):
+                self.assertEqual(upstream_path, "portal/tenant-memberships")
+                self.assertEqual(json.loads(body), {"user_id": "11111111-1111-1111-1111-111111111111"})
+                self.assertEqual(context_headers["X-Tenant-Id"], str(self.tenant.id))
+                return httpx.Response(200, json={"status": "active"})
+
             if upstream_base_url.endswith(":8002/api/v1"):
                 if upstream_path == "access/admin/roles" and method == "GET":
                     return httpx.Response(
@@ -346,6 +391,7 @@ class BffApplicationApproveProvisioningTests(TestCase):
 
         with self.settings(
             BFF_UPSTREAM_ID_URL="http://id:8001/api/v1",
+            BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1",
             BFF_UPSTREAM_ACCESS_URL="http://access:8002/api/v1",
             BFF_TENANT_HOST_SUFFIX="updspace.com",
         ), patch("bff.api.proxy_request", side_effect=_mocked_proxy):
@@ -363,6 +409,20 @@ class BffApplicationApproveProvisioningTests(TestCase):
                 for method, path, _ in calls
             )
         )
+
+    def test_approved_account_enrollment_failure_is_actionable(self):
+        self.client.cookies[self.cookie_name] = self.session.session_id
+        user_id = str(uuid.uuid4())
+        def upstream(**kwargs):
+            if kwargs["upstream_path"] == "applications/42/approve":
+                return httpx.Response(200, json={"user_id": user_id})
+            return httpx.Response(503, json={})
+        with self.settings(BFF_UPSTREAM_ID_URL="http://id:8001/api/v1", BFF_UPSTREAM_PORTAL_URL="http://portal:8003/api/v1", BFF_TENANT_HOST_SUFFIX="updspace.com"), patch("bff.api.proxy_request", side_effect=upstream):
+            response = self.client.post("/api/v1/portal/applications/42/approve", data=b"{}", content_type="application/json", HTTP_HOST=self.host)
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"]["code"], "MEMBERSHIP_ENROLLMENT_PENDING")
+        self.assertEqual(response.json()["error"]["details"]["user_id"], user_id)
+
 
 
 class BffAccountDeletionTests(TestCase):
@@ -560,7 +620,9 @@ class BffSessionProfileSyncTests(TestCase):
                     200,
                     json={"first_name": "", "last_name": "", "bio": None},
                 )
-            if upstream_path == "me" and method == "GET":
+            if upstream_path == "portal/entry/memberships" and method == "GET":
+                return httpx.Response(200, json=[])
+            if upstream_path == "internal/identity/me" and method == "GET":
                 return httpx.Response(
                     200,
                     json={
@@ -610,7 +672,9 @@ class BffSessionProfileSyncTests(TestCase):
             if upstream_path == "portal/me" and method == "GET":
                 return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
 
-            if upstream_path == "me" and method == "GET":
+            if upstream_path == "portal/entry/memberships" and method == "GET":
+                return httpx.Response(200, json=[])
+            if upstream_path == "internal/identity/me" and method == "GET":
                 return httpx.Response(200, json={"user": {"first_name": "Max", "last_name": "Doe"}, "memberships": []})
 
             if upstream_path == "access/check" and method == "POST":
@@ -733,7 +797,28 @@ class BffSessionProfileSyncTests(TestCase):
         ):
             if upstream_path == "portal/me" and method == "GET":
                 return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
-            if upstream_path == "me" and method == "GET":
+            if upstream_path == "portal/entry/memberships" and method == "GET":
+                return httpx.Response(200, json=[
+                            {
+                                "tenant_id": str(self.tenant.id),
+                                "tenant_slug": "aef",
+                                "status": "active",
+                                "base_role": "member",
+                            },
+                            {
+                                "tenant_id": other_tenant_id,
+                                "tenant_slug": "wolves",
+                                "status": "active",
+                                "base_role": "member",
+                            },
+                            {
+                                "tenant_id": str(uuid.uuid4()),
+                                "tenant_slug": "disabled",
+                                "status": "disabled",
+                                "base_role": "member",
+                            },
+                        ])
+            if upstream_path == "internal/identity/me" and method == "GET":
                 return httpx.Response(
                     200,
                     json={
@@ -800,7 +885,16 @@ class BffSessionProfileSyncTests(TestCase):
         ):
             if upstream_path == "portal/me" and method == "GET":
                 return httpx.Response(200, json={"first_name": "", "last_name": "", "bio": None})
-            if upstream_path == "me" and method == "GET":
+            if upstream_path == "portal/entry/memberships" and method == "GET":
+                return httpx.Response(200, json=[
+                            {
+                                "tenant_id": str(uuid.uuid4()),
+                                "tenant_slug": "wolves",
+                                "status": "active",
+                                "base_role": "member",
+                            }
+                        ])
+            if upstream_path == "internal/identity/me" and method == "GET":
                 return httpx.Response(
                     200,
                     json={
