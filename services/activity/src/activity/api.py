@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID
 
 from botocore.exceptions import BotoCoreError, ClientError
+from core.errors import error_payload
+from core.schemas import ErrorOut
 from django.conf import settings
 from django.core import signing
 from django.db import models, transaction
@@ -69,8 +71,6 @@ from activity.services import (
     upsert_subscription,
     verify_hmac_signature,
 )
-from core.errors import error_payload
-from core.schemas import ErrorOut
 
 router = Router(tags=["Activity"], auth=None)
 REQUIRED_BODY = Body(...)
@@ -495,6 +495,7 @@ def feed_get(
     from_: datetime | None = None,
     to: datetime | None = None,
     types: str | None = None,
+    actor_user_id: UUID | None = None,
     scope_type: str | None = None,
     scope_id: str | None = None,
     limit: int = 100,
@@ -535,6 +536,7 @@ def feed_get(
         from_dt=from_,
         to_dt=to,
         types=parse_csv(types),
+        actor_user_id=actor_user_id,
         scope_type=scope_type,
         scope_id=scope_id,
     )
@@ -1492,6 +1494,7 @@ def feed_get_v2(
     from_: datetime | None = None,
     to: datetime | None = None,
     types: str | None = None,
+    actor_user_id: UUID | None = None,
     scope_type: str | None = None,
     scope_id: str | None = None,
     limit: int = 50,
@@ -1543,6 +1546,7 @@ def feed_get_v2(
         from_dt=from_,
         to_dt=to,
         types=parse_csv(types),
+        actor_user_id=actor_user_id,
         scope_type=scope_type,
         scope_id=scope_id,
     )

@@ -1,12 +1,15 @@
+import {TenantProvider} from '../../../contexts/TenantContext';
+import {I18nProvider} from '../../../app/providers/I18nProvider';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { vi } from 'vitest';
 
 import { EventPage } from './EventPage';
 
 vi.mock('@gravity-ui/uikit', () => ({
-  Button: ({ ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => <button {...props} />,
+  DropdownMenu: ({items}: {items:{text:string;action:()=>void}[]}) => <div>{items.map(item=><button key={item.text} onClick={item.action}>{item.text}</button>)}</div>,
+  Button: ({ selected, ...props }: React.ComponentProps<'button'> & { loading?: boolean; selected?:boolean }) => <button aria-pressed={selected} {...props} />,
   Card: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Text: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Icon: () => <span data-testid="icon" />,
@@ -28,6 +31,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 const mockMutate = vi.fn();
+const mockRefetch = vi.fn(async()=>({isError:false}));
 
 vi.mock('../../../features/events', () => ({
   useEvent: () => ({
@@ -51,6 +55,7 @@ vi.mock('../../../features/events', () => ({
     },
     isLoading: false,
     isError: false,
+    refetch: mockRefetch,
   }),
   useSetRsvp: () => ({
     mutate: mockMutate,
@@ -76,18 +81,32 @@ vi.mock('../../../toaster', () => ({
 
 describe('EventPage', () => {
   it('renders event details and RSVP actions', () => {
+    localStorage.setItem('portal_locale_v1','ru');
     render(
-      <MemoryRouter initialEntries={['/app/events/event-1']}>
+      <MemoryRouter initialEntries={['/app/events/event-1']}><I18nProvider>
         <Routes>
-          <Route path="/app/events/:id" element={<EventPage />} />
+          <Route path="/app/events/:id" element={<TenantProvider><EventPage /></TenantProvider>} />
         </Routes>
-      </MemoryRouter>,
+      </I18nProvider></MemoryRouter>,
     );
 
     expect(screen.getByText('Community Meetup')).toBeInTheDocument();
-    expect(screen.getByText('RSVP')).toBeInTheDocument();
-    expect(screen.getByText('Иду')).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'Мой ответ'})).toBeInTheDocument();
+    expect(screen.getByText('Пойду')).toBeInTheDocument();
     expect(screen.getByText('Интересно')).toBeInTheDocument();
     expect(screen.getByText('Не пойду')).toBeInTheDocument();
+  });
+
+  it('preserves the confirmed response on failure and reconciles before another write',async()=>{
+    localStorage.setItem('portal_locale_v1','ru');
+    mockMutate.mockClear();mockRefetch.mockClear();
+    render(<MemoryRouter initialEntries={['/app/events/event-1']}><I18nProvider><Routes><Route path="/app/events/:id" element={<TenantProvider><EventPage/></TenantProvider>}/></Routes></I18nProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button',{name:'Не пойду'}));
+    fireEvent.click(screen.getByRole('button',{name:'Интересно'}));
+    expect(mockMutate).toHaveBeenCalledTimes(1);
+    await act(async()=>{await mockMutate.mock.calls[0][1].onError(new Error('offline'));});
+    await waitFor(()=>expect(mockRefetch).toHaveBeenCalled());
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось подтвердить');
+    expect(screen.getByRole('button',{name:'Пойду'})).toHaveAttribute('aria-pressed','true');
   });
 });

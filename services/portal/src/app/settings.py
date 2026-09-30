@@ -83,6 +83,7 @@ BFF_INTERNAL_HMAC_SECRET = require_env(
     insecure_default="portal-internal-hmac-secret",
 )
 PORTAL_RETENTION_AUDIT_DAYS = int(os.getenv("PORTAL_RETENTION_AUDIT_DAYS", "365"))
+ACCESS_PRIVATE_INVOKE_AUTH = read_env_flag("ACCESS_PRIVATE_INVOKE_AUTH")
 
 INSTALLED_APPS = [
     "django.contrib.auth",

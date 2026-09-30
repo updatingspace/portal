@@ -9,7 +9,7 @@ from portal.models import Tenant
 
 def _sync_tenant_fields(tenant: Tenant, tenant_slug: str) -> Tenant:
     updates: dict[str, str] = {}
-    if tenant.name != tenant_slug:
+    if tenant.name == tenant.slug and tenant.name != tenant_slug:
         updates["name"] = tenant_slug
 
     if tenant.slug != tenant_slug:

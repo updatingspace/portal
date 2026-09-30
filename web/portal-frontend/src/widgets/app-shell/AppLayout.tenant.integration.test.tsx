@@ -1,7 +1,7 @@
 /**
  * AppLayout — tenant routing integration tests.
  *
- * Verifies routeBase computation, TenantSwitcher rendering, and
+ * Verifies routeBase computation, Account navigation, and
  * logo navigation under both /t/:tenantSlug and legacy /app routes.
  */
 import React, { useEffect } from 'react';
@@ -121,17 +121,17 @@ describe('AppLayout tenant integration', () => {
   });
 
   // ----------------------------------------------------------------
-  // TenantSwitcher rendering via AppHeader tenantSwitcher slot
+  // Account navigation via AppHeader tenantSwitcher slot
   // ----------------------------------------------------------------
 
-  it('renders TenantSwitcher via AppHeader when multiple tenants are available', () => {
+  it('keeps infrequent community selection out of the page header', () => {
     renderLayout('/t/aef', testUser, [
       { id: 't1', slug: 'aef', name: 'AEF', role: 'owner' },
       { id: 't2', slug: 'beta', name: 'Beta', role: 'member' },
     ]);
     // TenantSwitcher renders the dropdown button with display_name
-    expect(screen.getByText('AEF')).toBeInTheDocument();
-    expect(screen.getByText('▼')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', {name: 'Основные разделы'})).not.toBeInTheDocument();
   });
 
   it('does not render TenantSwitcher dropdown when single tenant', () => {
@@ -170,7 +170,7 @@ describe('AppLayout tenant integration', () => {
   it('renders child page through Outlet under tenant route', () => {
     renderLayout('/t/aef', testUser, [{ id: 't1', slug: 'aef', name: 'AEF', role: 'owner' }]);
     expect(screen.getByTestId('page')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByTestId('page')).toHaveTextContent('Dashboard');
   });
 
   it('renders child page through Outlet under legacy /app route', () => {

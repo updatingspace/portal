@@ -1,337 +1,156 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, Card, Loader, Text } from '@gravity-ui/uikit';
+import { Button } from '@gravity-ui/uikit';
 import { PollForm } from '../../../../features/voting/components/PollForm';
 import { useCreatePoll, usePollTemplates } from '../../../../features/voting';
-import { toaster } from '../../../../toaster';
-import { notifyApiError } from '../../../../utils/apiErrorHandling';
-import type { PollCreatePayload, PollTemplate, PollUpdatePayload, ResultsVisibility } from '../../../../features/voting/types';
+import type {
+  PollCreatePayload,
+  PollTemplate,
+  PollUpdatePayload,
+  ResultsVisibility,
+} from '../../../../features/voting/types';
+import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
+import { ContentDialog } from '../../../../shared/ui/portal/ContentDialog';
+import {
+  PageLayout,
+  PageState,
+  InlineError,
+} from '../../../../shared/ui/portal/PortalUI';
+import { useConfirmation } from '../../../../shared/ui/portal/useConfirmation';
+import '../../styles/voting-workspace.css';
 
-const pageShellStyle: React.CSSProperties = {
-  minHeight: 'calc(100vh - 64px)',
-  backgroundColor: 'var(--g-color-base-background)',
-};
-
-const centeredPageShellStyle: React.CSSProperties = {
-  ...pageShellStyle,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-const pageContentStyle: React.CSSProperties = {
-  maxWidth: 1120,
-  margin: '0 auto',
-};
-
-const templateFormGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 24,
-  gridTemplateColumns: 'minmax(0, 1.6fr) minmax(320px, 1fr)',
-};
-
-const creationSteps = [
-  {
-    title: 'Выберите старт',
-    detail: 'Возьмите шаблон или начните с пустого опроса.',
-  },
-  {
-    title: 'Настройте параметры',
-    detail: 'Определите видимость, расписание и правила результатов.',
-  },
-  {
-    title: 'Добавьте вопросы',
-    detail: 'Создайте вопросы и варианты ответов перед публикацией.',
-  },
-];
-
-const featureHighlights = [
-  {
-    title: 'Шаблоны под игровые события',
-    description: 'Готовые сценарии для наград, турниров и быстрых опросов.',
-  },
-  {
-    title: 'Контроль результатов',
-    description: 'Настройте, когда участники смогут увидеть итоги.',
-  },
-  {
-    title: 'Роли внутри опроса',
-    description: 'Назначайте модераторов и наблюдателей прямо в интерфейсе.',
-  },
-];
-
-export const PollCreatePage: React.FC = () => {
+export function PollCreatePage() {
   const navigate = useNavigate();
+  const base = useRouteBase();
   const location = useLocation();
-  const { data: templates = [], isLoading: templatesLoading } = usePollTemplates();
-  const createPollMutation = useCreatePoll();
-  const [selectedTemplate, setSelectedTemplate] = useState<PollTemplate | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const templateCount = templates.length;
-  const featuredTemplates = useMemo(() => templates.slice(0, 3), [templates]);
-
-  useEffect(() => {
-    const templateSlug = (location.state as { template?: string } | null | undefined)?.template;
-    if (!templateSlug || templates.length === 0) return;
-
-    const template = templates.find((item) => item.slug === templateSlug) ?? null;
-    if (!template) return;
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedTemplate(template);
-    setShowForm(true);
-  }, [location.state, templates]);
-
-  const templateDefaults = useMemo(() => {
-    if (!selectedTemplate) return null;
-    const rawAllowRevoting = (selectedTemplate.settings as { allow_revoting?: unknown }).allow_revoting;
-    const rawResultsVisibility = (selectedTemplate.settings as { results_visibility?: unknown }).results_visibility;
-
-    const allow_revoting = typeof rawAllowRevoting === 'boolean' ? rawAllowRevoting : undefined;
-    const results_visibility: ResultsVisibility | undefined =
-      rawResultsVisibility === 'always' || rawResultsVisibility === 'after_closed' || rawResultsVisibility === 'admins_only'
-        ? rawResultsVisibility
-        : undefined;
-
+  const {
+    data: templates = [],
+    isLoading,
+    isError,
+    refetch,
+  } = usePollTemplates();
+  const mutation = useCreatePoll();
+  const { confirm, confirmationDialog } = useConfirmation();
+  const [selection, setSelection] = useState<PollTemplate | null | undefined>();
+  const [formRevision, setFormRevision] = useState(0);
+  const [picker, setPicker] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requested = (location.state as { template?: string } | null)?.template;
+  const selected =
+    selection === undefined
+      ? (templates.find((item) => item.slug === requested) ?? null)
+      : selection;
+  const defaults = useMemo(() => {
+    const result = selected?.settings.results_visibility;
     return {
-      allow_revoting,
-      results_visibility,
+      visibility: selected?.visibility ?? ('public' as const),
+      template: selected?.slug,
+      allow_revoting: selected?.settings.allow_revoting === true,
+      results_visibility: (['always', 'after_closed', 'admins_only'].includes(
+        String(result),
+      )
+        ? result
+        : 'after_closed') as ResultsVisibility,
     };
-  }, [selectedTemplate]);
-
-  const handleCreatePoll = (data: PollCreatePayload | PollUpdatePayload) => {
-    if (!('title' in data) || typeof data.title !== 'string') {
-      toaster.add({
-        name: 'poll-create-error',
-        title: 'Некорректные данные',
-        theme: 'danger',
-      });
+  }, [selected]);
+  const choose = async (template: PollTemplate | null) => {
+    if (
+      dirty &&
+      !(await confirm(
+        'Заменить введённые параметры настройками шаблона? Текущий ввод будет потерян.',
+      ))
+    )
       return;
-    }
-
-    createPollMutation.mutate(data as PollCreatePayload, {
-      onSuccess: (poll) => {
-        toaster.add({
-          name: 'poll-created',
-          title: 'Опрос создан',
-          theme: 'success',
-        });
-        navigate(`/app/voting/${poll.id}/manage`, { state: { tab: 'questions' } });
-      },
-      onError: (error) => {
-        notifyApiError(error, 'Не удалось создать опрос');
-      },
+    setSelection(template);
+    setFormRevision((revision) => revision + 1);
+    setDirty(false);
+    setPicker(false);
+    setError(null);
+  };
+  const cancel = async () => {
+    if (
+      dirty &&
+      !(await confirm(
+        'Выйти без создания опроса? Введённые параметры не сохранятся.',
+      ))
+    )
+      return;
+    navigate(`${base}/voting`);
+  };
+  const submit = (data: PollCreatePayload | PollUpdatePayload) => {
+    if (!data.title || mutation.isPending) return;
+    setError(null);
+    mutation.mutate(data as PollCreatePayload, {
+      onSuccess: (poll) =>
+        navigate(`${base}/voting/${poll.id}/manage?tab=questions`, {
+          state: { tab: 'questions' },
+        }),
+      onError: () =>
+        setError(
+          'Не удалось подтвердить создание опроса. Введённые параметры сохранены; проверьте список перед повторной отправкой.',
+        ),
     });
   };
-
-  const handleTemplateSelect = (template: PollTemplate) => {
-    setSelectedTemplate(template);
-    setShowForm(true);
-  };
-
-  const handleBlankPoll = () => {
-    setSelectedTemplate(null);
-    setShowForm(true);
-  };
-
-  const handleCancel = () => {
-    setShowForm(false);
-    setSelectedTemplate(null);
-  };
-
-  if (templatesLoading) {
-    return (
-      <div style={centeredPageShellStyle}>
-        <div className="flex flex-col items-center gap-3">
-          <Loader size="l" />
-          <Text variant="body-2" color="secondary">
-            Загружаем шаблоны опросов…
-          </Text>
-        </div>
-      </div>
-    );
-  }
-
-  if (showForm) {
-    return (
-      <div style={pageShellStyle}>
-        <div className="bg-white border-b border-slate-200">
-          <div className="container px-4 py-6" style={pageContentStyle}>
-            <Text variant="header-1" className="text-slate-900">
-              {selectedTemplate ? `Создание по шаблону «${selectedTemplate.title}»` : 'Новый опрос'}
-            </Text>
-            <Text variant="body-2" color="secondary" className="mt-1">
-              Настройте параметры и создайте опрос. Вопросы можно будет добавить сразу после сохранения.
-            </Text>
-          </div>
-        </div>
-
-        <div className="container px-4 py-6" style={{ ...pageContentStyle, ...templateFormGridStyle }}>
-          <Card className="p-6">
-            <PollForm
-              initialData={
-                selectedTemplate
-                  ? {
-                      visibility: selectedTemplate.visibility,
-                      allow_revoting: templateDefaults?.allow_revoting,
-                      results_visibility: templateDefaults?.results_visibility,
-                      template: selectedTemplate.slug,
-                    }
-                  : { visibility: 'public' }
-              }
-              templates={[]}
-              onSubmit={handleCreatePoll}
-              onCancel={handleCancel}
-              isSubmitting={createPollMutation.isPending}
-              submitLabel="Создать опрос"
-            />
-          </Card>
-
-          <div className="d-grid gap-4">
-            <Card className="p-5 border border-dashed border-slate-200">
-              <Text variant="subheader-2">Шаблон</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
-                {selectedTemplate
-                  ? selectedTemplate.description
-                  : 'Шаблон не выбран. Можно выбрать позже в списке.'}
-              </Text>
-              {selectedTemplate && (
-                <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                  <li>
-                    <span className="font-semibold text-slate-800">Видимость:</span> {selectedTemplate.visibility}
-                  </li>
-                  <li>
-                    <span className="font-semibold text-slate-800">Вопросов:</span> {selectedTemplate.questions?.length ?? 0}
-                  </li>
-                  <li>
-                    <span className="font-semibold text-slate-800">ID шаблона:</span> {selectedTemplate.slug}
-                  </li>
-                </ul>
-              )}
-            </Card>
-
-            <Card className="p-5 bg-slate-50">
-              <Text variant="subheader-2">Что дальше</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
-                После создания перейдите к настройке вопросов и участников.
-              </Text>
-              <ul className="mt-4 space-y-2 text-sm text-slate-600 list-disc list-inside">
-                <li>Добавьте вопросы и варианты ответа</li>
-                <li>Пригласите участников для приватных опросов</li>
-                <li>Опубликуйте опрос, когда всё готово</li>
-              </ul>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  if (requested && selection === undefined && isLoading)
+    return <PageState kind="loading" title="Загружаем выбранный шаблон" />;
   return (
-    <div style={pageShellStyle}>
-      <div className="bg-white border-b border-slate-200">
-        <div className="container px-4 py-6" style={pageContentStyle}>
-          <Text variant="header-1" className="text-slate-900">
-            Создание опроса
-          </Text>
-          <Text variant="body-2" color="secondary" className="mt-1">
-            Запустите голосование за несколько минут — выберите шаблон или начните с нуля.
-          </Text>
-        </div>
-      </div>
-
-      <div className="container px-4 py-6 d-grid gap-4" style={pageContentStyle}>
-        <Card className="p-5">
-          <Text variant="subheader-2">Как это работает</Text>
-          <ol className="mt-3 space-y-3 list-decimal list-inside text-sm text-slate-600">
-            {creationSteps.map((step) => (
-              <li key={step.title}>
-                <span className="font-semibold text-slate-800">{step.title}:</span> {step.detail}
-              </li>
-            ))}
-          </ol>
-        </Card>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card className="p-6 border border-dashed border-slate-200">
-            <div className="flex flex-col h-full justify-between gap-4">
-              <div>
-                <Text variant="subheader-2">Пустой опрос</Text>
-                <Text variant="body-2" color="secondary" className="mt-1">
-                  Полный контроль над настройками, видимостью и вопросами.
-                </Text>
-              </div>
-              <Button view="action" onClick={handleBlankPoll} width="max">
-                Начать с нуля
+    <div className="voting-workspace voting-workspace--form">
+      <PageLayout
+        title="Новый опрос"
+        actions={
+          <Button
+            size="xl"
+            view="flat"
+            disabled={mutation.isPending}
+            onClick={() => setPicker(true)}
+          >
+            Выбрать шаблон
+          </Button>
+        }
+      >
+        {selected && (
+          <p className="voting-form-context">Шаблон: {selected.title}</p>
+        )}
+        {error && <InlineError>{error}</InlineError>}
+        <PollForm
+          key={`${selected?.slug ?? 'blank'}-${formRevision}`}
+          initialData={defaults}
+          onDirtyChange={setDirty}
+          onSubmit={submit}
+          onCancel={() => void cancel()}
+          isSubmitting={mutation.isPending}
+        />
+        {picker && (
+          <ContentDialog title="Шаблон опроса" onClose={() => setPicker(false)}>
+            {isLoading && <p role="status">Загружаем шаблоны опросов…</p>}
+            {isError && (
+              <InlineError onRetry={() => void refetch()}>
+                Не удалось загрузить шаблоны. Можно начать с пустого опроса.
+              </InlineError>
+            )}
+            <div className="portal-stack">
+              <Button
+                size="xl"
+                view="outlined"
+                onClick={() => void choose(null)}
+              >
+                Пустой опрос
               </Button>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex flex-col h-full justify-between gap-4">
-              <div>
-                <Text variant="subheader-2">Шаблоны</Text>
-                <Text variant="body-2" color="secondary" className="mt-1">
-                  {templateCount ? `${templateCount} готовых сценария` : 'Шаблоны пока не настроены.'}
-                </Text>
-              </div>
-              <Button view="outlined" onClick={() => templates[0] && handleTemplateSelect(templates[0])} width="max" disabled={!templateCount}>
-                Выбрать шаблон
-              </Button>
-            </div>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-3">
-          {featureHighlights.map((highlight) => (
-            <Card key={highlight.title} className="p-5">
-              <Text variant="subheader-2">{highlight.title}</Text>
-              <Text variant="body-2" color="secondary" className="mt-2">
-                {highlight.description}
-              </Text>
-            </Card>
-          ))}
-        </div>
-
-        {featuredTemplates.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Text variant="subheader-2">Популярные шаблоны</Text>
-              <Text variant="caption-2" color="secondary">Всего {templateCount}</Text>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {featuredTemplates.map((template) => (
-                <Card
-                  key={template.slug}
-                  className="p-5 hover:shadow-md transition cursor-pointer"
-                  onClick={() => handleTemplateSelect(template)}
-                >
-                  <Text variant="subheader-2">{template.title}</Text>
-                  <Text variant="body-2" color="secondary" className="mt-1">
-                    {template.description}
-                  </Text>
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded-full border border-slate-200 px-3 py-1">{template.visibility}</span>
-                    <span className="rounded-full border border-slate-200 px-3 py-1">{template.questions?.length ?? 0} вопросов</span>
-                  </div>
-                  <Button
-                    view="normal"
-                    width="max"
-                    className="mt-4"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleTemplateSelect(template);
-                    }}
-                  >
-                    Использовать шаблон
+              {templates.map((template) => (
+                <article className="voting-template" key={template.slug}>
+                  <h2>{template.title}</h2>
+                  <p>{template.description}</p>
+                  <Button size="xl" onClick={() => void choose(template)}>
+                    Использовать «{template.title}»
                   </Button>
-                </Card>
+                </article>
               ))}
             </div>
-          </div>
+          </ContentDialog>
         )}
-      </div>
+        {confirmationDialog}
+      </PageLayout>
     </div>
   );
-};
+}

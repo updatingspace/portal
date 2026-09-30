@@ -1,8 +1,13 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import {I18nProvider} from '../../../app/providers/I18nProvider';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import { vi } from 'vitest';
 
 import { EventForm } from './EventForm';
+const render=(ui:React.ReactElement)=>rtlRender(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><I18nProvider>{ui}</I18nProvider></QueryClientProvider>);
+const create=vi.fn();
+beforeEach(()=>{localStorage.setItem('portal_locale_v1','ru');sessionStorage.clear();create.mockClear();});
 
 vi.mock('@gravity-ui/uikit', () => ({
   Button: ({ ...props }: React.ComponentProps<'button'> & { loading?: boolean; view?: string; size?: string }) => (
@@ -25,9 +30,6 @@ vi.mock('@gravity-ui/uikit', () => ({
   ),
 }));
 
-vi.mock('@gravity-ui/date-utils', () => ({
-  settings: { loadLocale: vi.fn(() => Promise.resolve()) },
-}));
 
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -40,7 +42,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../hooks', () => ({
-  useCreateEvent: () => ({ isPending: false, mutate: vi.fn() }),
+  useCreateEvent: () => ({ isPending: false, mutate: create }),
   useUpdateEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 
@@ -50,5 +52,16 @@ describe('EventForm', () => {
 
     expect(screen.getAllByText('Создать событие').length).toBeGreaterThan(0);
     expect(screen.getByText('Предпросмотр')).toBeInTheDocument();
+  });
+  it('keeps the draft after a failed save and prevents duplicate submissions',async()=>{
+    render(<EventForm onSuccess={vi.fn()} onCancel={vi.fn()}/>);
+    fireEvent.change(screen.getByLabelText('Название'),{target:{value:'Новая встреча'}});
+    fireEvent.click(screen.getByRole('button',{name:'Создать событие'}));
+    await waitFor(()=>expect(create).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button',{name:'Создать событие'}));
+    expect(create).toHaveBeenCalledTimes(1);
+    await act(async()=>create.mock.calls[0][1].onError(new Error('Не удалось сохранить')));
+    expect(screen.getByLabelText('Название')).toHaveValue('Новая встреча');
+    expect(screen.getByRole('alert')).toBeVisible();
   });
 });

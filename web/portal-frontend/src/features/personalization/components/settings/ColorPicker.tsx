@@ -12,6 +12,7 @@ export interface ColorPickerProps {
   value: string;
   onChange: (color: string) => void;
   disabled?: boolean;
+  showPreview?: boolean;
 }
 
 const COLOR_PRESETS = [
@@ -27,7 +28,12 @@ const COLOR_PRESETS = [
 
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 
-export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
+export function ColorPicker({
+  value,
+  onChange,
+  disabled,
+  showPreview = true,
+}: ColorPickerProps) {
   const { t } = usePersonalizationI18n();
   const [inputValue, setInputValue] = useState(value);
   const previewStyle = {
@@ -38,12 +44,12 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = e.target.value;
       setInputValue(newValue);
-      
+
       if (HEX_COLOR_REGEX.test(newValue)) {
         onChange(newValue.toUpperCase());
       }
     },
-    [onChange]
+    [onChange],
   );
 
   const handlePresetClick = useCallback(
@@ -51,7 +57,7 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
       setInputValue(color);
       onChange(color);
     },
-    [onChange]
+    [onChange],
   );
 
   const handlePresetKeyDown = useCallback(
@@ -61,7 +67,7 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
         handlePresetClick(color);
       }
     },
-    [handlePresetClick]
+    [handlePresetClick],
   );
 
   return (
@@ -77,14 +83,18 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
           value={inputValue}
           onChange={handleInputChange}
           disabled={disabled}
-          size="m"
+          size="xl"
           placeholder="#2563EB"
           aria-label={t('colors.aria.input')}
           data-testid="color-input"
           style={{ width: 112 }}
         />
 
-        <div className="color-picker__presets" role="listbox" aria-label={t('colors.aria.presets')}>
+        <div
+          className="color-picker__presets"
+          role="listbox"
+          aria-label={t('colors.aria.presets')}
+        >
           {COLOR_PRESETS.map((preset) => (
             <button
               key={preset.value}
@@ -107,25 +117,32 @@ export function ColorPicker({ value, onChange, disabled }: ColorPickerProps) {
         </div>
       </div>
 
-      <div className="color-picker__preview" style={previewStyle} aria-hidden="true" data-testid="accent-preview">
-        <div className="color-picker__preview-shell">
-          <div className="color-picker__preview-header">
-            <div className="color-picker__preview-pill color-picker__preview-pill--brand" />
-            <div className="color-picker__preview-pill color-picker__preview-pill--ghost" />
-          </div>
-          <div className="color-picker__preview-body">
-            <div className="color-picker__preview-card">
-              <div className="color-picker__preview-placeholder color-picker__preview-placeholder--title" />
-              <div className="color-picker__preview-placeholder" />
-              <div className="color-picker__preview-placeholder color-picker__preview-placeholder--chip" />
+      {showPreview && (
+        <div
+          className="color-picker__preview"
+          style={previewStyle}
+          aria-hidden="true"
+          data-testid="accent-preview"
+        >
+          <div className="color-picker__preview-shell">
+            <div className="color-picker__preview-header">
+              <div className="color-picker__preview-pill color-picker__preview-pill--brand" />
+              <div className="color-picker__preview-pill color-picker__preview-pill--ghost" />
             </div>
-            <div className="color-picker__preview-card color-picker__preview-card--secondary">
-              <div className="color-picker__preview-placeholder color-picker__preview-placeholder--short" />
-              <div className="color-picker__preview-outline" />
+            <div className="color-picker__preview-body">
+              <div className="color-picker__preview-card">
+                <div className="color-picker__preview-placeholder color-picker__preview-placeholder--title" />
+                <div className="color-picker__preview-placeholder" />
+                <div className="color-picker__preview-placeholder color-picker__preview-placeholder--chip" />
+              </div>
+              <div className="color-picker__preview-card color-picker__preview-card--secondary">
+                <div className="color-picker__preview-placeholder color-picker__preview-placeholder--short" />
+                <div className="color-picker__preview-outline" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

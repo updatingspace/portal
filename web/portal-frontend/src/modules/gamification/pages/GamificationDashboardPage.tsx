@@ -1,302 +1,319 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
-  Card,
   DropdownMenu,
-  Icon,
   Label,
   Select,
-  Table,
-  Text,
   TextInput,
   type DropdownMenuItem,
-  type TableColumnConfig,
 } from '@gravity-ui/uikit';
-import { Plus } from '@gravity-ui/icons';
-
 import { useAuth } from '../../../contexts/AuthContext';
-import { createClientAccessDeniedError } from '../../../api/accessDenied';
-import { AccessDeniedScreen } from '../../../features/access-denied';
 import { can } from '../../../features/rbac/can';
-import { useAchievementsList, useCategories, useUpdateAchievement } from '../../../hooks/useGamification';
-import type { Achievement, AchievementStatus } from '../../../types/gamification';
-import { formatDateTime } from '@/shared/lib/formatters';
+import {
+  useAchievementsList,
+  useCategories,
+  useUpdateAchievement,
+} from '../../../hooks/useGamification';
+import type {
+  Achievement,
+  AchievementStatus,
+} from '../../../types/gamification';
+import { useRouteBase } from '../../../shared/hooks/useRouteBase';
+import {
+  PageLayout,
+  PageState,
+  InlineError,
+  FormField,
+} from '../../../shared/ui/portal/PortalUI';
+import { ContentDialog } from '../../../shared/ui/portal/ContentDialog';
+import { SectionTabs } from '../../../shared/ui/portal/SectionTabs';
+import { MediaFallback } from '../../../shared/ui/portal/MediaFallback';
 import './gamification.css';
 
-type StatusFilter = 'all' | AchievementStatus;
-
-const STATUS_OPTIONS: { value: StatusFilter; content: string }[] = [
-  { value: 'all', content: 'Все статусы' },
-  { value: 'draft', content: 'Черновик' },
-  { value: 'published', content: 'Опубликовано' },
-  { value: 'hidden', content: 'Скрыто' },
-  { value: 'active', content: 'Активно' },
-];
-
-const statusLabelMap: Record<AchievementStatus, { text: string; theme: 'info' | 'success' | 'warning' | 'unknown' }> = {
-  draft: { text: 'Черновик', theme: 'warning' },
-  published: { text: 'Опубликовано', theme: 'success' },
-  hidden: { text: 'Скрыто', theme: 'unknown' },
-  active: { text: 'Активно', theme: 'info' },
+const achievementStatus = {
+  draft: 'Черновик',
+  published: 'Опубликовано',
+  hidden: 'Скрыто',
+  active: 'Активно',
 };
-
-const formatDate = (value?: string | null) => {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return formatDateTime(date);
-};
-
-const getAchievementTitle = (achievement: Achievement) =>
-  achievement.nameI18n.ru ?? achievement.nameI18n.en ?? 'Без названия';
-
-export const GamificationDashboardPage: React.FC = () => {
+export function GamificationDashboardPage() {
   const { user } = useAuth();
+  const base = useRouteBase();
   const navigate = useNavigate();
+  const [view, setView] = useState<'catalog' | 'earned'>('catalog');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [category, setCategory] = useState('all');
+  const [ownership, setOwnership] = useState('all');
+  const [actionError, setActionError] = useState<string | null>(null);
   const canCreate = can(user, 'gamification.achievements.create');
   const canEdit = can(user, 'gamification.achievements.edit');
   const canPublish = can(user, 'gamification.achievements.publish');
   const canHide = can(user, 'gamification.achievements.hide');
-  const hasAccess = Boolean(user);
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [search, setSearch] = useState('');
-  const [ownership, setOwnership] = useState<'all' | 'me'>('all');
-
-  const { data: categoriesData } = useCategories();
-  const categoryOptions = useMemo(
-    () => [
-      { value: 'all', content: 'Все категории' },
-      ...(categoriesData?.items ?? []).map((cat) => ({
-        value: cat.id,
-        content: cat.nameI18n.ru ?? cat.nameI18n.en ?? cat.id,
-      })),
-    ],
-    [categoriesData?.items],
-  );
-
-  const statusParam = statusFilter === 'all' ? undefined : [statusFilter];
-  const categoryParam = categoryFilter === 'all' ? undefined : [categoryFilter];
-
-  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useAchievementsList({
-    status: statusParam,
-    category: categoryParam,
+  const manager = canCreate || canEdit || canPublish || canHide;
+  const categories = useCategories();
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useAchievementsList({
+    earned: view === 'earned',
     q: search || undefined,
+    status: status === 'all' ? undefined : [status],
+    category: category === 'all' ? undefined : [category],
     created_by: ownership === 'me' ? 'me' : 'any',
     limit: 20,
   });
-
-  const { mutateAsync: updateAchievement, isPending: isUpdating } = useUpdateAchievement();
-
-  const items = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
-
-  const handleStatusChange = useCallback(
-    async (achievement: Achievement, nextStatus: AchievementStatus) => {
-      await updateAchievement({
-        id: achievement.id,
-        payload: { status: nextStatus },
-      });
-    },
-    [updateAchievement],
+  const items = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
   );
-
-  const kpis = useMemo(() => {
-    const total = items.length;
-    const published = items.filter((item) => item.status === 'published').length;
-    const drafts = items.filter((item) => item.status === 'draft').length;
-    const active = items.filter((item) => item.status === 'active').length;
-    return [
-      { key: 'total', title: 'Всего ачивок', value: total, hint: 'В текущей выборке' },
-      { key: 'published', title: 'Опубликовано', value: published, hint: 'Готовы к выдаче' },
-      { key: 'drafts', title: 'Черновики', value: drafts, hint: 'Требуют ревью' },
-      { key: 'active', title: 'Активные', value: active, hint: 'Используются в сценариях' },
-    ];
-  }, [items]);
-
-  const columns = useMemo<TableColumnConfig<Achievement>[]>(
-    () => [
-      {
-        id: 'title',
-        name: 'Ачивка',
-        template: (item) => (
-          <div className="gamification-table-title">
-            <Text variant="body-2">{getAchievementTitle(item)}</Text>
-            <Text variant="caption-2" color="secondary">
-              {item.category || 'Без категории'}
-            </Text>
-          </div>
-        ),
-      },
-      {
-        id: 'status',
-        name: 'Статус',
-        template: (item) => {
-          const meta = statusLabelMap[item.status];
-          return (
-            <Label size="xs" theme={meta.theme}>
-              {meta.text}
-            </Label>
-          );
-        },
-      },
-      {
-        id: 'updated',
-        name: 'Обновлено',
-        template: (item) => <Text variant="caption-2">{formatDate(item.updatedAt)}</Text>,
-      },
-      {
-        id: 'actions',
-        name: '',
-        align: 'end',
-        template: (item) => {
-          const actions: DropdownMenuItem[] = [
-            {
-              text: 'Открыть',
-              action: () => navigate(`/app/gamification/achievements/${item.id}`),
-            },
-            {
+  const { mutateAsync: update, isPending } = useUpdateAchievement();
+  const changeStatus = async (item: Achievement, next: AchievementStatus) => {
+    if (isPending) return;
+    setActionError(null);
+    try {
+      await update({ id: item.id, payload: { status: next } });
+    } catch {
+      setActionError(
+        'Не удалось изменить статус. Обновите данные перед повтором.',
+      );
+    }
+  };
+  const hasFilters =
+    status !== 'all' || category !== 'all' || ownership !== 'all';
+  const reset = () => {
+    setSearch('');
+    setStatus('all');
+    setCategory('all');
+    setOwnership('all');
+  };
+  if (!user)
+    return <PageState kind="forbidden" title="Достижения недоступны" />;
+  return (
+    <PageLayout
+      title="Достижения"
+      actions={
+        canCreate && (
+          <Button
+            size="xl"
+            view="action"
+            onClick={() => navigate(`${base}/gamification/achievements/new`)}
+          >
+            Создать
+          </Button>
+        )
+      }
+    >
+      <SectionTabs
+        label="Витрина достижений"
+        value={view}
+        onChange={setView}
+        items={[
+          { id: 'catalog', label: 'Каталог' },
+          { id: 'earned', label: 'Мои награды' },
+        ]}
+      />
+      <div className="achievement-search">
+        <TextInput
+          size="xl"
+          aria-label="Поиск достижений"
+          placeholder="Поиск по названию"
+          value={search}
+          onUpdate={setSearch}
+        />
+        <Button size="xl" view="outlined" onClick={() => setFiltersOpen(true)}>
+          Фильтры{hasFilters ? ' •' : ''}
+        </Button>
+      </div>
+      {isError && (
+        <InlineError onRetry={() => void refetch()}>
+          Не удалось загрузить достижения.
+        </InlineError>
+      )}
+      {actionError && <InlineError>{actionError}</InlineError>}
+      {isLoading && <PageState kind="loading" title="Загружаем достижения" />}
+      {!isLoading && !isError && !items.length && (
+        <PageState
+          kind="empty"
+          title={
+            search || hasFilters
+              ? 'Ничего не найдено'
+              : view === 'earned'
+                ? 'У вас пока нет наград'
+                : 'Достижений пока нет'
+          }
+          description={
+            search || hasFilters
+              ? 'Измените поиск или сбросьте фильтры.'
+              : undefined
+          }
+          action={
+            (search || hasFilters) && (
+              <Button onClick={reset}>Сбросить фильтры</Button>
+            )
+          }
+        />
+      )}
+      <div className="achievement-catalog">
+        {items.map((item) => {
+          const title = item.nameI18n.ru || item.nameI18n.en || 'Без названия';
+          const actions: DropdownMenuItem[] = [];
+          if (canEdit && item.canEdit !== false)
+            actions.push({
               text: 'Редактировать',
-              action: () => navigate(`/app/gamification/achievements/${item.id}/edit`),
-              disabled: !canEdit || item.canEdit === false,
-            },
-          ];
-          if (canPublish && item.canPublish) {
+              action: () =>
+                navigate(`${base}/gamification/achievements/${item.id}/edit`),
+            });
+          if (canPublish && item.canPublish)
             actions.push({
               text: 'Опубликовать',
-              action: () => handleStatusChange(item, 'published'),
+              disabled: isPending,
+              action: () => void changeStatus(item, 'published'),
             });
-          }
-          if (canHide && item.canHide) {
+          if (canHide && item.canHide)
             actions.push({
               text: 'Скрыть',
-              action: () => handleStatusChange(item, 'hidden'),
+              disabled: isPending,
+              action: () => void changeStatus(item, 'hidden'),
             });
-          }
-          return <DropdownMenu items={actions} />;
-        },
-      },
-    ],
-    [canEdit, canHide, canPublish, handleStatusChange, navigate],
-  );
-
-  return (
-    <div className="gamification-page" data-qa="gamification-page">
-      {!hasAccess ? (
-        <AccessDeniedScreen
-          error={createClientAccessDeniedError({
-            requiredPermission: 'gamification.achievements.*',
-            tenant: user?.tenant,
-            reason: 'Ой... мы и сами в шоке, но у вашего аккаунта нет прав на раздел геймификации.',
-          })}
-        />
-      ) : (
-        <>
-          <div className="gamification-header">
-            <div className="gamification-header__text">
-              <Text variant="header-1">Центр геймификации</Text>
-              <Text variant="body-2" color="secondary">
-                Управляйте жизненным циклом ачивок: от идеи и ревью до публикации и выдач.
-              </Text>
-            </div>
-            <div className="gamification-toolbar">
-              {canCreate && (
-                <Button view="action" size="m" onClick={() => navigate('/app/gamification/achievements/new')}>
-                  <Icon data={Plus} />
-                  Создать ачивку
-                </Button>
+          return (
+            <article key={item.id} className="achievement-catalog__item">
+              <MediaFallback
+                src={item.images?.medium || item.images?.small}
+                alt={title}
+              />
+              <div className="achievement-catalog__content">
+                <h2>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`${base}/gamification/achievements/${item.id}`)
+                    }
+                  >
+                    {title}
+                  </button>
+                </h2>
+                {item.description && <p>{item.description}</p>}
+                <div className="achievement-catalog__meta">
+                  {view === 'earned' && <Label theme="success">Получено</Label>}
+                  {manager && (
+                    <Label>
+                      {achievementStatus[item.status] || 'Статус уточняется'}
+                    </Label>
+                  )}
+                </div>
+              </div>
+              {actions.length > 0 && (
+                <DropdownMenu
+                  items={actions}
+                  defaultSwitcherProps={{
+                    size: 'xl',
+                    'aria-label': `Действия с достижением «${title}»`,
+                  }}
+                />
               )}
-            </div>
-          </div>
-
-          <div className="gamification-kpis">
-            {kpis.map((kpi) => (
-              <Card key={kpi.key} view="filled" className="gamification-kpi-card">
-                <Text variant="caption-2" color="secondary">
-                  {kpi.title}
-                </Text>
-                <Text variant="header-2">{kpi.value}</Text>
-                <Text variant="caption-2" color="secondary">
-                  {kpi.hint}
-                </Text>
-              </Card>
-            ))}
-          </div>
-
-          <Card view="filled">
-            <div className="gamification-scenarios">
-              <Text variant="subheader-2">Базовые сценарии работы</Text>
-              <ul className="gamification-scenarios__list">
-                <li>Контент-менеджер создаёт черновик и заполняет медиа/локализации.</li>
-                <li>Модератор переводит готовые карточки в published/active.</li>
-                <li>Оператор отслеживает статусы и переходит в детальную карточку для выдач.</li>
-              </ul>
-            </div>
-          </Card>
-
-          <Card view="filled">
-            <div className="gamification-filters">
-              <TextInput value={search} onUpdate={(value) => setSearch(value)} placeholder="Поиск по названию" />
-              <Select
-                options={STATUS_OPTIONS}
-                value={[statusFilter]}
-                onUpdate={(values) => setStatusFilter((values[0] as StatusFilter) ?? 'all')}
-              />
-              <Select
-                options={categoryOptions}
-                value={[categoryFilter]}
-                onUpdate={(values) => setCategoryFilter((values[0] as string) ?? 'all')}
-              />
-              <Select
-                options={[
-                  { value: 'all', content: 'Все' },
-                  { value: 'me', content: 'Мои' },
-                ]}
-                value={[ownership]}
-                onUpdate={(values) => setOwnership((values[0] as 'all' | 'me') ?? 'all')}
-              />
+            </article>
+          );
+        })}
+      </div>
+      {hasNextPage && (
+        <Button
+          size="xl"
+          disabled={isFetchingNextPage}
+          loading={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
+        >
+          Загрузить ещё
+        </Button>
+      )}
+      {filtersOpen && (
+        <ContentDialog
+          title="Фильтры достижений"
+          onClose={() => setFiltersOpen(false)}
+        >
+          <div className="portal-stack">
+            {categories.isError && (
+              <InlineError onRetry={() => void categories.refetch()}>
+                Не удалось загрузить категории.
+              </InlineError>
+            )}
+            <FormField label="Категория">
+              {(props) => (
+                <Select
+                  {...props}
+                  size="xl"
+                  width="max"
+                  value={[category]}
+                  onUpdate={([value]) => setCategory(value)}
+                  options={[
+                    { value: 'all', content: 'Все категории' },
+                    ...(categories.data?.items ?? []).map((item) => ({
+                      value: item.id,
+                      content: item.nameI18n.ru || item.nameI18n.en || item.id,
+                    })),
+                  ]}
+                />
+              )}
+            </FormField>
+            {manager && (
+              <>
+                <FormField label="Статус">
+                  {(props) => (
+                    <Select
+                      {...props}
+                      size="xl"
+                      width="max"
+                      value={[status]}
+                      onUpdate={([value]) => setStatus(value)}
+                      options={[
+                        { value: 'all', content: 'Все статусы' },
+                        ...Object.entries(achievementStatus).map(
+                          ([value, content]) => ({ value, content }),
+                        ),
+                      ]}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Автор">
+                  {(props) => (
+                    <Select
+                      {...props}
+                      size="xl"
+                      width="max"
+                      value={[ownership]}
+                      onUpdate={([value]) => setOwnership(value)}
+                      options={[
+                        { value: 'all', content: 'Все' },
+                        { value: 'me', content: 'Созданные мной' },
+                      ]}
+                    />
+                  )}
+                </FormField>
+              </>
+            )}
+            <div className="portal-actions">
               <Button
-                view="flat"
-                size="m"
-                onClick={() => {
-                  setSearch('');
-                  setStatusFilter('all');
-                  setCategoryFilter('all');
-                  setOwnership('all');
-                }}
+                size="xl"
+                view="action"
+                onClick={() => setFiltersOpen(false)}
               >
+                Показать достижения
+              </Button>
+              <Button size="xl" view="flat" onClick={reset}>
                 Сбросить
               </Button>
             </div>
-          </Card>
-
-          <Card view="filled">
-            <Table
-              columns={columns}
-              data={items}
-              emptyMessage={isLoading ? 'Загружаем...' : 'Пока нет ачивок'}
-              getRowDescriptor={(row) => ({ id: row.id })}
-              width="max"
-            />
-            {hasNextPage && (
-              <div className="gamification-empty">
-                <Button
-                  view="flat"
-                  size="m"
-                  loading={isFetchingNextPage}
-                  disabled={isUpdating}
-                  onClick={() => fetchNextPage()}
-                >
-                  Загрузить ещё
-                </Button>
-              </div>
-            )}
-          </Card>
-        </>
+          </div>
+        </ContentDialog>
       )}
-    </div>
+    </PageLayout>
   );
-};
-
+}
 export default GamificationDashboardPage;

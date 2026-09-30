@@ -1,3 +1,4 @@
+import {I18nProvider} from '../../../app/providers/I18nProvider';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -86,14 +87,15 @@ vi.mock('../../../features/rbac/can', () => ({
 
 describe('EventsPage', () => {
   it('renders events list', () => {
+    localStorage.setItem('portal_locale_v1','ru');
     render(
-      <MemoryRouter>
+      <MemoryRouter><I18nProvider>
         <EventsPage />
-      </MemoryRouter>,
+      </I18nProvider></MemoryRouter>,
     );
 
-    expect(screen.getByText('Мероприятия')).toBeInTheDocument();
-    expect(screen.getByText('Создать')).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'События',level:1})).toBeInTheDocument();
+    expect(screen.getByText('Создать событие')).toBeInTheDocument();
     expect(screen.getAllByText('Raid Night').length).toBeGreaterThan(0);
   });
 });

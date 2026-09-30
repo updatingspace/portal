@@ -1,19 +1,34 @@
-import React from 'react';
-import { Button, Card, Text } from '@gravity-ui/uikit';
+import type { ReactNode } from 'react';
+import { Button } from '@gravity-ui/uikit';
+import { Link, useNavigate } from 'react-router-dom';
+import { useRouteBase } from '../../../../../shared/hooks/useRouteBase';
+import {
+  PageLayout,
+  PageState,
+  InlineError,
+  useUITranslation,
+} from '../../../../../shared/ui/portal/PortalUI';
+import { MediaFallback } from '../../../../../shared/ui/portal/MediaFallback';
 import '../../profile-hub.css';
-import { profileHubStrings } from '../../strings/ru';
 
 type ListPageLayoutProps = {
   title: string;
   isLoading?: boolean;
   isError?: boolean;
   emptyText: string;
-  items: { id: string; title: string; subtitle?: string; meta?: string }[];
+  items: {
+    id: string;
+    title: string;
+    subtitle?: string;
+    meta?: string;
+    href?: string;
+    image?: string | null;
+  }[];
   onRetry?: () => void;
-  leadSlot?: React.ReactNode;
+  leadSlot?: ReactNode;
+  footer?: ReactNode;
 };
-
-export const ListPageLayout: React.FC<ListPageLayoutProps> = ({
+export function ListPageLayout({
   title,
   isLoading,
   isError,
@@ -21,36 +36,61 @@ export const ListPageLayout: React.FC<ListPageLayoutProps> = ({
   items,
   onRetry,
   leadSlot,
-}) => {
+  footer,
+}: ListPageLayoutProps) {
+  const base = useRouteBase();
+  const navigate = useNavigate();
+  const t = useUITranslation();
   return (
-    <div className="profile-list-page">
-      <h1 className="profile-list-page__title">{title}</h1>
-      <Card view="filled" className="profile-list-page__search-slot">
-        {leadSlot ?? <Text variant="body-2" color="secondary">{profileHubStrings.listPage.searchBacklogHint}</Text>}
-      </Card>
-
-      {isLoading ? (
-        <Card view="filled"><Text variant="body-2" color="secondary">{profileHubStrings.listPage.loading}</Text></Card>
-      ) : isError ? (
-        <Card view="filled" className="profile-list-page__state">
-          <Text variant="subheader-2">{profileHubStrings.listPage.errorTitle}</Text>
-          {onRetry && <Button view="outlined" size="m" onClick={onRetry}>Повторить</Button>}
-        </Card>
-      ) : items.length === 0 ? (
-        <Card view="filled" className="profile-list-page__state">
-          <Text variant="body-2" color="secondary">{emptyText}</Text>
-        </Card>
+    <PageLayout
+      title={title}
+      actions={
+        <Button
+          size="xl"
+          view="flat"
+          onClick={() => navigate(`${base}/profile`)}
+        >
+          {t('К профилю', 'Back to profile')}
+        </Button>
+      }
+    >
+      {leadSlot}
+      {isError && (
+        <InlineError onRetry={onRetry}>
+          {t('Не удалось загрузить список.', 'Unable to load this list.')}
+        </InlineError>
+      )}
+      {isLoading && !items.length ? (
+        <PageState
+          kind="loading"
+          title={t('Загружаем список', 'Loading list')}
+        />
+      ) : !isError && !items.length ? (
+        <PageState kind="empty" title={emptyText} />
       ) : (
-        <div className="profile-list-page__items">
+        <div className="profile-entity-list">
           {items.map((item) => (
-            <Card key={item.id} view="filled" className="profile-list-page__item">
-              <Text variant="body-1">{item.title}</Text>
-              {item.subtitle && <Text variant="body-2" color="secondary">{item.subtitle}</Text>}
-              {item.meta && <Text variant="caption-2" color="secondary">{item.meta}</Text>}
-            </Card>
+            <article key={item.id} className="profile-entity-list__item">
+              <MediaFallback src={item.image} alt={item.title} />
+              <div>
+                <h2>
+                  {item.href ? (
+                    <Link to={item.href}>
+                      {item.title}
+                      <span aria-hidden="true"> →</span>
+                    </Link>
+                  ) : (
+                    item.title
+                  )}
+                </h2>
+                {item.subtitle && <p>{item.subtitle}</p>}
+                {item.meta && <span>{item.meta}</span>}
+              </div>
+            </article>
           ))}
         </div>
       )}
-    </div>
+      {footer}
+    </PageLayout>
   );
-};
+}

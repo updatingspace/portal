@@ -1,101 +1,68 @@
-import React, { useMemo, useState } from 'react';
-import { Avatar, Button, Card, DropdownMenu, Label, Text, type DropdownMenuItem } from '@gravity-ui/uikit';
+import { Avatar, Button, Icon } from '@gravity-ui/uikit';
+import { Gear } from '@gravity-ui/icons';
 import { useNavigate } from 'react-router-dom';
-
 import { useRouteBase } from '../../../../shared/hooks/useRouteBase';
-import { toaster } from '../../../../toaster';
+import { useUITranslation } from '../../../../shared/ui/portal/PortalUI';
 import type { ProfileOwnerVM } from '../model/types';
-import { profileHubStrings } from '../strings/ru';
 
 type ProfileHeaderCardProps = {
   owner: ProfileOwnerVM;
   isSelf: boolean;
   canEditProfile: boolean;
+  onDetails: () => void;
 };
 
-export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
+export function ProfileHeaderCard({
   owner,
   isSelf,
   canEditProfile,
-}) => {
+  onDetails,
+}: ProfileHeaderCardProps) {
   const navigate = useNavigate();
   const routeBase = useRouteBase();
-  const [expanded, setExpanded] = useState(false);
-
-  const initials = useMemo(() => owner.tenantDisplayName.charAt(0).toUpperCase() || 'U', [owner.tenantDisplayName]);
-  const bio = owner.bio || profileHubStrings.bioMissing;
-  const collapsed = bio.length > 120 && !expanded;
-  const bioText = collapsed ? `${bio.slice(0, 120)}...` : bio;
-
-  const copyProfileLink = async () => {
-    const href = typeof window === 'undefined' ? `${routeBase}/profile` : window.location.href;
-    try {
-      await navigator.clipboard.writeText(href);
-      toaster.add({
-        name: `profile-link-${Date.now()}`,
-        title: profileHubStrings.common.copied,
-        theme: 'success',
-      });
-    } catch {
-      toaster.add({
-        name: `profile-link-failed-${Date.now()}`,
-        title: profileHubStrings.common.copyFailed,
-        theme: 'danger',
-      });
-    }
+  const t = useUITranslation();
+  const roles: Record<string, string> = {
+    member: t('Участник', 'Member'),
+    admin: t('Администратор', 'Administrator'),
+    owner: t('Владелец', 'Owner'),
   };
-
-  const menuItems: DropdownMenuItem[] = [
-    {
-      text: profileHubStrings.common.copyLink,
-      action: () => {
-        void copyProfileLink();
-      },
-    },
-    ...(isSelf
-      ? [
-          {
-            text: profileHubStrings.common.privacySettings,
-            action: () => navigate(`${routeBase}/settings`),
-          } satisfies DropdownMenuItem,
-        ]
-      : []),
-  ];
-
   return (
-    <Card view="filled" className="profile-hub__header-card">
-      <div className="profile-hub__header-main">
-        <Avatar imgUrl={owner.avatarUrl} size="xl" text={initials} />
-        <div className="profile-hub__header-meta">
-          <h1 className="profile-hub__title">{owner.tenantDisplayName}</h1>
-          <div className="profile-hub__badges">
-            {owner.roleBadge && <Label size="s">{owner.roleBadge}</Label>}
-            {owner.statusBadge && <Label size="s" theme="info">{owner.statusBadge}</Label>}
-            {owner.handle && <Text variant="body-2" color="secondary">@{owner.handle}</Text>}
-          </div>
-          <Text variant="body-2" className="profile-hub__bio">{bioText}</Text>
-          {bio.length > 120 && (
-            <Button view="flat" size="s" onClick={() => setExpanded((prev) => !prev)}>
-              {expanded ? profileHubStrings.collapse : profileHubStrings.showMore}
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="profile-hub__header-actions">
+    <header className="profile-identity">
+      <div className="profile-identity__top">
+        <Avatar
+          size="xl"
+          imgUrl={owner.avatarUrl}
+          text={owner.tenantDisplayName}
+        />
         {isSelf && canEditProfile && (
-          <Button view="outlined" size="m" onClick={() => navigate(`${routeBase}/settings`)}>
-            {profileHubStrings.common.editProfile}
+          <Button
+            view="flat"
+            size="xl"
+            aria-label={t('Настройки профиля', 'Profile settings')}
+            onClick={() => navigate(`${routeBase}/settings`)}
+          >
+            <Icon data={Gear} size={20} />
           </Button>
         )}
-        <DropdownMenu
-          items={menuItems}
-          renderSwitcher={(props) => (
-            <Button {...props} view="flat" size="m" aria-label="Меню профиля">
-              ...
-            </Button>
-          )}
-        />
       </div>
-    </Card>
+      <h1>{owner.tenantDisplayName}</h1>
+      {(owner.handle || owner.roleBadge) && (
+        <p className="profile-identity__meta">
+          {owner.handle && `@${owner.handle}`}
+          {owner.handle && owner.roleBadge && ' · '}
+          {owner.roleBadge && (roles[owner.roleBadge] || owner.roleBadge)}
+        </p>
+      )}
+      {owner.bio && <p className="profile-identity__bio">{owner.bio}</p>}
+      <Button
+        size="xl"
+        view="flat"
+        className="profile-identity__details"
+        onClick={onDetails}
+      >
+        {t('О профиле', 'Profile details')}
+        <span aria-hidden="true">›</span>
+      </Button>
+    </header>
   );
-};
+}

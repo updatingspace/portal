@@ -1,17 +1,35 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Button, Card, Icon, Label, Text, useToaster } from '@gravity-ui/uikit';
-import { ArrowsOppositeToDots, Eye, Gear, GripHorizontal, Plus, TrashBin } from '@gravity-ui/icons';
-import { useNavigate } from 'react-router-dom';
+import {
+  ArrowsOppositeToDots,
+  Eye,
+  Gear,
+  GripHorizontal,
+  Plus,
+  TrashBin,
+} from '@gravity-ui/icons';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDocumentTitle } from '@/shared/hooks/useDocumentTitle';
 
 import { usePortalI18n } from '../../../shared/i18n/usePortalI18n';
-import { useFormatters } from '../../../shared/hooks/useFormatters';
 import { useRouteBase } from '../../../shared/hooks/useRouteBase';
-import { DashboardCard } from './ui/DashboardCard';
+import { CommunityWidget } from './ui/CommunityWidget';
 import { DashboardHero } from './ui/DashboardHero';
-import { useDashboardStats } from './model/useDashboardStats';
-import { useDashboards, useDashboardWidgets } from '../../../features/personalization/hooks/useDashboards';
-import type { DashboardLayoutInput, DashboardWidget, DashboardWidgetInput } from '../../../features/personalization/types';
+import {
+  useDashboards,
+  useDashboardWidgets,
+} from '../../../features/personalization/hooks/useDashboards';
+import type {
+  DashboardLayoutInput,
+  DashboardWidget,
+  DashboardWidgetInput,
+} from '../../../features/personalization/types';
 import { createDashboardWidget as createDashboardWidgetRequest } from '../../../features/personalization/api/contentApi';
 
 import './dashboard.css';
@@ -41,7 +59,10 @@ type DeletedWidgetRecord = {
 
 type LayoutConfigV1 = {
   version: number;
-  breakpoints: Record<DashboardBreakpoint, { cols: number; items: Record<string, LayoutPosition> }>;
+  breakpoints: Record<
+    DashboardBreakpoint,
+    { cols: number; items: Record<string, LayoutPosition> }
+  >;
 };
 
 type WidgetDefinition = {
@@ -61,21 +82,6 @@ const BREAKPOINT_COLUMNS: Record<DashboardBreakpoint, number> = {
 const EDITOR_GRID_GAP_PX = 16;
 const EDITOR_ROW_HEIGHT_PX = 112;
 const DEFAULT_LAYOUT_NAME = 'My dashboard';
-const DEMO_ACTIVITY_ITEMS = [
-  { title: 'Patch notes synced', at: new Date('2026-01-15T12:00:00.000Z') },
-  { title: 'Moderator approved a request', at: new Date('2026-01-15T11:00:00.000Z') },
-  { title: 'Feed digest refreshed', at: new Date('2026-01-15T10:00:00.000Z') },
-] as const;
-const DEMO_UPCOMING_EVENTS = [
-  { title: 'Raid planning', at: new Date('2026-01-15T14:00:00.000Z') },
-  { title: 'Recruitment interview', at: new Date('2026-01-15T19:00:00.000Z') },
-] as const;
-const DEMO_ACTIVE_POLLS = [
-  { title: 'Officer rotation vote', at: new Date('2026-01-15T14:00:00.000Z') },
-  { title: 'New raid slot poll', at: new Date('2026-01-15T16:00:00.000Z') },
-  { title: 'Community feedback', at: new Date('2026-01-15T18:00:00.000Z') },
-] as const;
-
 const WIDGET_DEFINITIONS: WidgetDefinition[] = [
   {
     key: 'overview-hero',
@@ -169,7 +175,10 @@ const createEmptyLayoutConfig = (): LayoutConfigV1 => ({
   },
 });
 
-const clampPosition = (position: LayoutPosition, breakpoint: DashboardBreakpoint): LayoutPosition => {
+const clampPosition = (
+  position: LayoutPosition,
+  breakpoint: DashboardBreakpoint,
+): LayoutPosition => {
   void breakpoint;
   return {
     x: Math.max(0, position.x),
@@ -188,8 +197,8 @@ const stableStringify = (value: unknown): string => {
     return JSON.stringify(value) ?? 'undefined';
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
-    left.localeCompare(right),
+  const entries = Object.entries(value as Record<string, unknown>).sort(
+    ([left], [right]) => left.localeCompare(right),
   );
 
   return `{${entries
@@ -210,7 +219,9 @@ const getRuntimeBreakpoint = (): DashboardBreakpoint => {
   return 'desktop';
 };
 
-const parseLayoutConfig = (value: Record<string, unknown> | null | undefined): LayoutConfigV1 => {
+const parseLayoutConfig = (
+  value: Record<string, unknown> | null | undefined,
+): LayoutConfigV1 => {
   const base = createEmptyLayoutConfig();
   if (!value || typeof value !== 'object') {
     return base;
@@ -225,41 +236,47 @@ const parseLayoutConfig = (value: Record<string, unknown> | null | undefined): L
   }
 
   const breakpoints = { ...base.breakpoints };
-  (['desktop', 'tablet', 'mobile'] as DashboardBreakpoint[]).forEach((breakpoint) => {
-    const rawBreakpoint = (rawBreakpoints as Record<string, unknown>)[breakpoint];
-    if (!rawBreakpoint || typeof rawBreakpoint !== 'object') {
-      return;
-    }
-    const rawItems = (rawBreakpoint as { items?: unknown }).items;
-    const nextItems: Record<string, LayoutPosition> = {};
-    if (rawItems && typeof rawItems === 'object') {
-      Object.entries(rawItems as Record<string, unknown>).forEach(([widgetId, rawPosition]) => {
-        if (!rawPosition || typeof rawPosition !== 'object') {
-          return;
-        }
-        const position = rawPosition as Partial<LayoutPosition>;
-        if (
-          typeof position.x === 'number' &&
-          typeof position.y === 'number' &&
-          typeof position.w === 'number' &&
-          typeof position.h === 'number'
-        ) {
-          nextItems[widgetId] = clampPosition(
-            { x: position.x, y: position.y, w: position.w, h: position.h },
-            breakpoint,
-          );
-        }
-      });
-    }
+  (['desktop', 'tablet', 'mobile'] as DashboardBreakpoint[]).forEach(
+    (breakpoint) => {
+      const rawBreakpoint = (rawBreakpoints as Record<string, unknown>)[
+        breakpoint
+      ];
+      if (!rawBreakpoint || typeof rawBreakpoint !== 'object') {
+        return;
+      }
+      const rawItems = (rawBreakpoint as { items?: unknown }).items;
+      const nextItems: Record<string, LayoutPosition> = {};
+      if (rawItems && typeof rawItems === 'object') {
+        Object.entries(rawItems as Record<string, unknown>).forEach(
+          ([widgetId, rawPosition]) => {
+            if (!rawPosition || typeof rawPosition !== 'object') {
+              return;
+            }
+            const position = rawPosition as Partial<LayoutPosition>;
+            if (
+              typeof position.x === 'number' &&
+              typeof position.y === 'number' &&
+              typeof position.w === 'number' &&
+              typeof position.h === 'number'
+            ) {
+              nextItems[widgetId] = clampPosition(
+                { x: position.x, y: position.y, w: position.w, h: position.h },
+                breakpoint,
+              );
+            }
+          },
+        );
+      }
 
-    breakpoints[breakpoint] = {
-      cols:
-        typeof (rawBreakpoint as { cols?: unknown }).cols === 'number'
-          ? (rawBreakpoint as { cols: number }).cols
-          : BREAKPOINT_COLUMNS[breakpoint],
-      items: nextItems,
-    };
-  });
+      breakpoints[breakpoint] = {
+        cols:
+          typeof (rawBreakpoint as { cols?: unknown }).cols === 'number'
+            ? (rawBreakpoint as { cols: number }).cols
+            : BREAKPOINT_COLUMNS[breakpoint],
+        items: nextItems,
+      };
+    },
+  );
 
   return {
     version: typeof value.version === 'number' ? value.version : 1,
@@ -268,18 +285,30 @@ const parseLayoutConfig = (value: Record<string, unknown> | null | undefined): L
 };
 
 const buildDefaultDraftWidgets = (): DraftWidget[] =>
-  WIDGET_DEFINITIONS.slice(0, 4).map((definition, index) => ({
-    clientId: `draft-${definition.key}-${index}`,
-    persistedId: null,
-    widget_key: definition.key,
-    settings: definition.defaultSettings,
-    is_visible: true,
-    positions: {
-      desktop: definition.defaultPositions.desktop,
-      tablet: definition.defaultPositions.tablet,
-      mobile: definition.defaultPositions.mobile,
-    },
-  }));
+  ['overview-hero', 'upcoming-events', 'active-polls', 'activity-feed']
+    .map((key) => WIDGET_DEFINITION_MAP[key])
+    .map((definition, index) => ({
+      clientId: `draft-${definition.key}-${index}`,
+      persistedId: null,
+      widget_key: definition.key,
+      settings: definition.defaultSettings,
+      is_visible: true,
+      positions: {
+        desktop:
+          index === 0
+            ? { x: 0, y: 0, w: 12, h: 1 }
+            : index === 3
+              ? { x: 0, y: 3, w: 12, h: 2 }
+              : { x: (index - 1) * 6, y: 1, w: 6, h: 2 },
+        tablet: {
+          x: 0,
+          y: index === 0 ? 0 : 1 + (index - 1) * 2,
+          w: 8,
+          h: index === 0 ? 1 : 2,
+        },
+        mobile: { x: 0, y: index * 3, w: 4, h: index === 0 ? 1 : 3 },
+      },
+    }));
 
 const buildDraftWidgets = (
   widgets: DashboardWidget[],
@@ -292,12 +321,29 @@ const buildDraftWidgets = (
   return widgets.map((widget) => {
     const definition = WIDGET_DEFINITION_MAP[widget.widget_key];
     const fallback = definition?.defaultPositions ?? {
-      desktop: { x: widget.position_x, y: widget.position_y, w: widget.width, h: widget.height },
-      tablet: { x: 0, y: widget.position_y, w: Math.min(widget.width, BREAKPOINT_COLUMNS.tablet), h: widget.height },
-      mobile: { x: 0, y: widget.position_y, w: Math.min(widget.width, BREAKPOINT_COLUMNS.mobile), h: widget.height },
+      desktop: {
+        x: widget.position_x,
+        y: widget.position_y,
+        w: widget.width,
+        h: widget.height,
+      },
+      tablet: {
+        x: 0,
+        y: widget.position_y,
+        w: Math.min(widget.width, BREAKPOINT_COLUMNS.tablet),
+        h: widget.height,
+      },
+      mobile: {
+        x: 0,
+        y: widget.position_y,
+        w: Math.min(widget.width, BREAKPOINT_COLUMNS.mobile),
+        h: widget.height,
+      },
     };
 
-    const resolvePosition = (breakpoint: DashboardBreakpoint): LayoutPosition => {
+    const resolvePosition = (
+      breakpoint: DashboardBreakpoint,
+    ): LayoutPosition => {
       const stored = layoutConfig.breakpoints[breakpoint]?.items?.[widget.id];
       if (stored) {
         return clampPosition(stored, breakpoint);
@@ -305,7 +351,12 @@ const buildDraftWidgets = (
 
       if (breakpoint === 'desktop') {
         return clampPosition(
-          { x: widget.position_x, y: widget.position_y, w: widget.width, h: widget.height },
+          {
+            x: widget.position_x,
+            y: widget.position_y,
+            w: widget.width,
+            h: widget.height,
+          },
           breakpoint,
         );
       }
@@ -331,12 +382,12 @@ const buildDraftWidgets = (
 const serializeLayoutConfig = (draftWidgets: DraftWidget[]): LayoutConfigV1 => {
   const layoutConfig = createEmptyLayoutConfig();
   draftWidgets.forEach((widget) => {
-    (['desktop', 'tablet', 'mobile'] as DashboardBreakpoint[]).forEach((breakpoint) => {
-      layoutConfig.breakpoints[breakpoint].items[widget.clientId] = clampPosition(
-        widget.positions[breakpoint],
-        breakpoint,
-      );
-    });
+    (['desktop', 'tablet', 'mobile'] as DashboardBreakpoint[]).forEach(
+      (breakpoint) => {
+        layoutConfig.breakpoints[breakpoint].items[widget.clientId] =
+          clampPosition(widget.positions[breakpoint], breakpoint);
+      },
+    );
   });
   return layoutConfig;
 };
@@ -351,7 +402,11 @@ const toWidgetInput = (draftWidget: DraftWidget): DashboardWidgetInput => ({
   is_visible: draftWidget.is_visible,
 });
 
-const compareWidgetOrder = (left: DraftWidget, right: DraftWidget, breakpoint: DashboardBreakpoint) => {
+const compareWidgetOrder = (
+  left: DraftWidget,
+  right: DraftWidget,
+  breakpoint: DashboardBreakpoint,
+) => {
   const leftPosition = left.positions[breakpoint];
   const rightPosition = right.positions[breakpoint];
   if (leftPosition.y === rightPosition.y) {
@@ -360,9 +415,14 @@ const compareWidgetOrder = (left: DraftWidget, right: DraftWidget, breakpoint: D
   return leftPosition.y - rightPosition.y;
 };
 
-const getOverlapArea = (left: LayoutPosition, right: LayoutPosition): number => {
-  const overlapWidth = Math.min(left.x + left.w, right.x + right.w) - Math.max(left.x, right.x);
-  const overlapHeight = Math.min(left.y + left.h, right.y + right.h) - Math.max(left.y, right.y);
+const getOverlapArea = (
+  left: LayoutPosition,
+  right: LayoutPosition,
+): number => {
+  const overlapWidth =
+    Math.min(left.x + left.w, right.x + right.w) - Math.max(left.x, right.x);
+  const overlapHeight =
+    Math.min(left.y + left.h, right.y + right.h) - Math.max(left.y, right.y);
   if (overlapWidth <= 0 || overlapHeight <= 0) {
     return 0;
   }
@@ -394,7 +454,10 @@ const findSwapCandidate = (
   return bestCandidate;
 };
 
-const positionsOverlap = (left: LayoutPosition, right: LayoutPosition): boolean =>
+const positionsOverlap = (
+  left: LayoutPosition,
+  right: LayoutPosition,
+): boolean =>
   left.x < right.x + right.w &&
   left.x + left.w > right.x &&
   left.y < right.y + right.h &&
@@ -418,17 +481,24 @@ const packBreakpointWidgets = (
   const placedPositions: LayoutPosition[] = [];
 
   return orderedWidgets.map((widget) => {
-    const basePosition = clampPosition(widget.positions[breakpoint], breakpoint);
+    const basePosition = clampPosition(
+      widget.positions[breakpoint],
+      breakpoint,
+    );
     let nextPosition = basePosition;
     let attempts = 0;
 
     while (attempts < 100) {
-      const collidingPositions = placedPositions.filter((position) => positionsOverlap(nextPosition, position));
+      const collidingPositions = placedPositions.filter((position) =>
+        positionsOverlap(nextPosition, position),
+      );
       if (!collidingPositions.length) {
         break;
       }
 
-      const nextY = Math.max(...collidingPositions.map((position) => position.y + position.h));
+      const nextY = Math.max(
+        ...collidingPositions.map((position) => position.y + position.h),
+      );
       nextPosition = {
         ...nextPosition,
         y: nextY,
@@ -453,21 +523,32 @@ const packBreakpointWidgetsWithReservations = (
   breakpoint: DashboardBreakpoint,
   reservedPositions: LayoutPosition[],
 ): DraftWidget[] => {
-  const orderedWidgets = [...widgets].sort((left, right) => compareWidgetOrder(left, right, breakpoint));
-  const placedPositions = reservedPositions.map((position) => clampPosition(position, breakpoint));
+  const orderedWidgets = [...widgets].sort((left, right) =>
+    compareWidgetOrder(left, right, breakpoint),
+  );
+  const placedPositions = reservedPositions.map((position) =>
+    clampPosition(position, breakpoint),
+  );
 
   return orderedWidgets.map((widget) => {
-    const basePosition = clampPosition(widget.positions[breakpoint], breakpoint);
+    const basePosition = clampPosition(
+      widget.positions[breakpoint],
+      breakpoint,
+    );
     let nextPosition = basePosition;
     let attempts = 0;
 
     while (attempts < 100) {
-      const collidingPositions = placedPositions.filter((position) => positionsOverlap(nextPosition, position));
+      const collidingPositions = placedPositions.filter((position) =>
+        positionsOverlap(nextPosition, position),
+      );
       if (!collidingPositions.length) {
         break;
       }
 
-      const nextY = Math.max(...collidingPositions.map((position) => position.y + position.h));
+      const nextY = Math.max(
+        ...collidingPositions.map((position) => position.y + position.h),
+      );
       nextPosition = {
         ...nextPosition,
         y: nextY,
@@ -491,8 +572,12 @@ const getMovePreviewPosition = (
   interaction: DashboardInteraction,
   breakpoint: DashboardBreakpoint,
 ): LayoutPosition => {
-  const finalDeltaColumns = Math.round(interaction.currentOffsetX / interaction.columnStep);
-  const finalDeltaRows = Math.round(interaction.currentOffsetY / interaction.rowStep);
+  const finalDeltaColumns = Math.round(
+    interaction.currentOffsetX / interaction.columnStep,
+  );
+  const finalDeltaRows = Math.round(
+    interaction.currentOffsetY / interaction.rowStep,
+  );
 
   return clampPosition(
     {
@@ -510,7 +595,9 @@ const buildMovePreviewWidgets = (
   interaction: DashboardInteraction,
   breakpoint: DashboardBreakpoint,
 ): DraftWidget[] => {
-  const activeWidget = widgets.find((widget) => widget.clientId === interaction.widgetId);
+  const activeWidget = widgets.find(
+    (widget) => widget.clientId === interaction.widgetId,
+  );
   if (!activeWidget) {
     return widgets;
   }
@@ -526,15 +613,23 @@ const buildMovePreviewWidgets = (
 const WidgetSurface: React.FC<{
   title: string;
   description: string;
+  href?: string;
   children: React.ReactNode;
-}> = ({ title, description, children }) => (
+}> = ({ title, description, href, children }) => (
   <Card view="filled" className="dashboard-widget-surface h-100 p-4">
     <div className="dashboard-widget-surface__header">
       <div>
-        <Text variant="subheader-2">{title}</Text>
-        <Text variant="body-2" color="secondary">
-          {description}
-        </Text>
+        <h2>
+          {href ? (
+            <Link to={href}>
+              {title}
+              <span aria-hidden="true"> →</span>
+            </Link>
+          ) : (
+            title
+          )}
+        </h2>
+        {description && <p>{description}</p>}
       </div>
     </div>
     <div className="dashboard-widget-surface__content">{children}</div>
@@ -562,27 +657,29 @@ export const DashboardPage: React.FC = () => {
   const routeBase = useRouteBase();
   const { add } = useToaster();
   const { t } = usePortalI18n();
-  const { formatDateTime, formatRelativeTime } = useFormatters();
-  const { stats } = useDashboardStats();
   const { layouts, isForbidden, createLayout, updateLayout } = useDashboards();
   const selectedLayout = useMemo(
     () => layouts.find((layout) => layout.is_default) ?? layouts[0] ?? null,
     [layouts],
   );
-  const {
-    widgets,
-    createWidget,
-    updateWidget,
-    deleteWidget,
-  } = useDashboardWidgets(selectedLayout?.id ?? null, false, !isForbidden);
+  const { widgets, createWidget, updateWidget, deleteWidget } =
+    useDashboardWidgets(selectedLayout?.id ?? null, false, !isForbidden);
   const [isEditing, setIsEditing] = useState(false);
-  const [previewBreakpoint, setPreviewBreakpoint] = useState<DashboardBreakpoint>(() => getRuntimeBreakpoint());
-  const [deletedWidgets, setDeletedWidgets] = useState<DeletedWidgetRecord[]>([]);
+  const [previewBreakpoint, setPreviewBreakpoint] =
+    useState<DashboardBreakpoint>(() => getRuntimeBreakpoint());
+  const [deletedWidgets, setDeletedWidgets] = useState<DeletedWidgetRecord[]>(
+    [],
+  );
   const dashboardGridRef = useRef<HTMLDivElement | null>(null);
   const lastSyncedServerStateRef = useRef<string | null>(null);
-  const [interaction, setInteraction] = useState<DashboardInteraction | null>(null);
+  const [interaction, setInteraction] = useState<DashboardInteraction | null>(
+    null,
+  );
   const serverLayoutConfig = useMemo(
-    () => parseLayoutConfig(selectedLayout?.layout_config as Record<string, unknown> | undefined),
+    () =>
+      parseLayoutConfig(
+        selectedLayout?.layout_config as Record<string, unknown> | undefined,
+      ),
     [selectedLayout?.layout_config],
   );
   const serverDraftWidgets = useMemo(
@@ -605,13 +702,19 @@ export const DashboardPage: React.FC = () => {
       }),
     [selectedLayout?.id, selectedLayout?.layout_name, serverDraftWidgets],
   );
-  const [draftWidgets, setDraftWidgets] = useState<DraftWidget[]>(serverDraftWidgets);
-  const [layoutName, setLayoutName] = useState(selectedLayout?.layout_name ?? DEFAULT_LAYOUT_NAME);
+  const [draftWidgets, setDraftWidgets] =
+    useState<DraftWidget[]>(serverDraftWidgets);
+  const [layoutName, setLayoutName] = useState(
+    selectedLayout?.layout_name ?? DEFAULT_LAYOUT_NAME,
+  );
 
   useDocumentTitle(t('dashboard.title'));
 
   useEffect(() => {
-    if (!isEditing && lastSyncedServerStateRef.current !== serverStateSignature) {
+    if (
+      !isEditing &&
+      lastSyncedServerStateRef.current !== serverStateSignature
+    ) {
       lastSyncedServerStateRef.current = serverStateSignature;
       const nextLayoutName = selectedLayout?.layout_name ?? DEFAULT_LAYOUT_NAME;
       const syncId = window.setTimeout(() => {
@@ -621,7 +724,12 @@ export const DashboardPage: React.FC = () => {
       }, 0);
       return () => window.clearTimeout(syncId);
     }
-  }, [isEditing, selectedLayout?.layout_name, serverDraftWidgets, serverStateSignature]);
+  }, [
+    isEditing,
+    selectedLayout?.layout_name,
+    serverDraftWidgets,
+    serverStateSignature,
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -634,15 +742,56 @@ export const DashboardPage: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [isEditing]);
 
-  const handleOpenFeed = useCallback(() => navigate(`${routeBase}/feed`), [navigate, routeBase]);
-  const handleOpenEvents = useCallback(() => navigate(`${routeBase}/events`), [navigate, routeBase]);
-  const handleOpenVoting = useCallback(() => navigate(`${routeBase}/voting`), [navigate, routeBase]);
+  const handleOpenFeed = useCallback(
+    () => navigate(`${routeBase}/feed`),
+    [navigate, routeBase],
+  );
+  const handleOpenEvents = useCallback(
+    () => navigate(`${routeBase}/events`),
+    [navigate, routeBase],
+  );
+  const handleOpenVoting = useCallback(
+    () => navigate(`${routeBase}/voting`),
+    [navigate, routeBase],
+  );
 
-  const updateDraftWidget = useCallback((clientId: string, updater: (widget: DraftWidget) => DraftWidget) => {
+  const updateDraftWidget = useCallback(
+    (clientId: string, updater: (widget: DraftWidget) => DraftWidget) => {
+      setDraftWidgets((current) =>
+        current.map((widget) =>
+          widget.clientId === clientId ? updater(widget) : widget,
+        ),
+      );
+    },
+    [],
+  );
+
+  const moveWithKeyboard = (clientId: string, dx: number, dy: number) => {
     setDraftWidgets((current) =>
-      current.map((widget) => (widget.clientId === clientId ? updater(widget) : widget)),
+      packBreakpointWidgets(
+        current.map((widget) =>
+          widget.clientId !== clientId
+            ? widget
+            : {
+                ...widget,
+                positions: {
+                  ...widget.positions,
+                  [previewBreakpoint]: clampPosition(
+                    {
+                      ...widget.positions[previewBreakpoint],
+                      x: widget.positions[previewBreakpoint].x + dx,
+                      y: widget.positions[previewBreakpoint].y + dy,
+                    },
+                    previewBreakpoint,
+                  ),
+                },
+              },
+        ),
+        previewBreakpoint,
+        clientId,
+      ),
     );
-  }, []);
+  };
 
   const handleToggleVisibility = useCallback(
     (clientId: string) => {
@@ -654,47 +803,68 @@ export const DashboardPage: React.FC = () => {
     [updateDraftWidget],
   );
 
-  const handleRemoveWidget = useCallback((clientId: string) => {
-    const target = draftWidgets.find((widget) => widget.clientId === clientId);
-    if (!target) {
-      return;
-    }
-    setDraftWidgets((current) => current.filter((widget) => widget.clientId !== clientId));
-    setDeletedWidgets((current) => [...current, { clientId, widgetKey: target.widget_key }]);
-  }, [draftWidgets]);
+  const handleRemoveWidget = useCallback(
+    (clientId: string) => {
+      const target = draftWidgets.find(
+        (widget) => widget.clientId === clientId,
+      );
+      if (!target) {
+        return;
+      }
+      setDraftWidgets((current) =>
+        current.filter((widget) => widget.clientId !== clientId),
+      );
+      setDeletedWidgets((current) => [
+        ...current,
+        { clientId, widgetKey: target.widget_key },
+      ]);
+    },
+    [draftWidgets],
+  );
 
-  const handleAddWidget = useCallback((widgetKey: string) => {
-    const definition = WIDGET_DEFINITION_MAP[widgetKey];
-    if (!definition) {
-      return;
-    }
-    const draftId = `draft-${widgetKey}-${Date.now()}`;
-    setDraftWidgets((current) => {
-      const nextY =
-        current.reduce(
-          (max, widget) => Math.max(max, widget.positions[previewBreakpoint].y + widget.positions[previewBreakpoint].h),
+  const handleAddWidget = useCallback(
+    (widgetKey: string) => {
+      const definition = WIDGET_DEFINITION_MAP[widgetKey];
+      if (!definition) {
+        return;
+      }
+      const draftId = `draft-${widgetKey}-${Date.now()}`;
+      setDraftWidgets((current) => {
+        const nextY = current.reduce(
+          (max, widget) =>
+            Math.max(
+              max,
+              widget.positions[previewBreakpoint].y +
+                widget.positions[previewBreakpoint].h,
+            ),
           0,
         );
 
-      const nextWidget: DraftWidget = {
-        clientId: draftId,
-        persistedId: null,
-        widget_key: widgetKey,
-        settings: definition.defaultSettings,
-        is_visible: true,
-        positions: {
-          ...definition.defaultPositions,
-          [previewBreakpoint]: {
-            ...definition.defaultPositions[previewBreakpoint],
-            x: 0,
-            y: nextY,
+        const nextWidget: DraftWidget = {
+          clientId: draftId,
+          persistedId: null,
+          widget_key: widgetKey,
+          settings: definition.defaultSettings,
+          is_visible: true,
+          positions: {
+            ...definition.defaultPositions,
+            [previewBreakpoint]: {
+              ...definition.defaultPositions[previewBreakpoint],
+              x: 0,
+              y: nextY,
+            },
           },
-        },
-      };
+        };
 
-      return packBreakpointWidgets([...current, nextWidget], previewBreakpoint, draftId);
-    });
-  }, [previewBreakpoint]);
+        return packBreakpointWidgets(
+          [...current, nextWidget],
+          previewBreakpoint,
+          draftId,
+        );
+      });
+    },
+    [previewBreakpoint],
+  );
 
   const beginInteraction = useCallback(
     (widgetId: string, mode: DashboardInteractionMode) =>
@@ -714,7 +884,10 @@ export const DashboardPage: React.FC = () => {
 
         const rect = grid.getBoundingClientRect();
         const cols = BREAKPOINT_COLUMNS[previewBreakpoint];
-        const availableWidth = Math.max(1, rect.width - EDITOR_GRID_GAP_PX * (cols - 1));
+        const availableWidth = Math.max(
+          1,
+          rect.width - EDITOR_GRID_GAP_PX * (cols - 1),
+        );
 
         setInteraction({
           widgetId,
@@ -772,7 +945,12 @@ export const DashboardPage: React.FC = () => {
             );
 
       if (interaction.mode === 'move') {
-        const swapTarget = findSwapCandidate(draftWidgets, interaction.widgetId, nextPosition, previewBreakpoint);
+        const swapTarget = findSwapCandidate(
+          draftWidgets,
+          interaction.widgetId,
+          nextPosition,
+          previewBreakpoint,
+        );
         setInteraction((current) =>
           current && current.widgetId === interaction.widgetId
             ? {
@@ -814,14 +992,21 @@ export const DashboardPage: React.FC = () => {
 
       if (interaction.mode === 'move') {
         setDraftWidgets((current) => {
-          const activeWidget = current.find((widget) => widget.clientId === interaction.widgetId);
+          const activeWidget = current.find(
+            (widget) => widget.clientId === interaction.widgetId,
+          );
           if (!activeWidget) {
             return current;
           }
 
-          const finalPosition = getMovePreviewPosition(interaction, previewBreakpoint);
+          const finalPosition = getMovePreviewPosition(
+            interaction,
+            previewBreakpoint,
+          );
           const packedWidgets = packBreakpointWidgetsWithReservations(
-            current.filter((widget) => widget.clientId !== interaction.widgetId),
+            current.filter(
+              (widget) => widget.clientId !== interaction.widgetId,
+            ),
             previewBreakpoint,
             [finalPosition],
           );
@@ -900,11 +1085,16 @@ export const DashboardPage: React.FC = () => {
         } satisfies DashboardLayoutInput);
       }
 
-      for (const widget of resolvedWidgets.filter((item) => item.persistedId === null)) {
+      for (const widget of resolvedWidgets.filter(
+        (item) => item.persistedId === null,
+      )) {
         const created =
           selectedLayout?.id === layout.id
             ? await createWidget(toWidgetInput(widget))
-            : await createDashboardWidgetRequest(layout.id, toWidgetInput(widget));
+            : await createDashboardWidgetRequest(
+                layout.id,
+                toWidgetInput(widget),
+              );
         resolvedWidgets = resolvedWidgets.map((item) =>
           item.clientId === widget.clientId
             ? { ...item, clientId: created.id, persistedId: created.id }
@@ -912,18 +1102,26 @@ export const DashboardPage: React.FC = () => {
         );
       }
 
-      for (const widget of resolvedWidgets.filter((item) => item.persistedId !== null)) {
+      for (const widget of resolvedWidgets.filter(
+        (item) => item.persistedId !== null,
+      )) {
         await updateWidget(widget.persistedId as string, toWidgetInput(widget));
       }
 
       for (const deletedWidget of deletedWidgets) {
-        if (resolvedWidgets.some((widget) => widget.widget_key === deletedWidget.widgetKey)) {
+        if (
+          resolvedWidgets.some(
+            (widget) => widget.widget_key === deletedWidget.widgetKey,
+          )
+        ) {
           continue;
         }
 
         const persistedId =
           widgets.find((widget) => widget.id === deletedWidget.clientId)?.id ??
-          resolvedWidgets.find((widget) => widget.clientId === deletedWidget.clientId)?.persistedId;
+          resolvedWidgets.find(
+            (widget) => widget.clientId === deletedWidget.clientId,
+          )?.persistedId;
         if (persistedId) {
           await deleteWidget(persistedId);
         }
@@ -939,7 +1137,11 @@ export const DashboardPage: React.FC = () => {
       setDraftWidgets(resolvedWidgets);
       setDeletedWidgets([]);
       setIsEditing(false);
-      add({ name: 'dashboard-saved', title: t('dashboard.save'), theme: 'success' });
+      add({
+        name: 'dashboard-saved',
+        title: t('dashboard.save'),
+        theme: 'success',
+      });
     } catch (error) {
       add({
         name: 'dashboard-save-error',
@@ -965,130 +1167,131 @@ export const DashboardPage: React.FC = () => {
 
   const activeMoveWidget =
     interaction?.mode === 'move'
-      ? draftWidgets.find((widget) => widget.clientId === interaction.widgetId) ?? null
+      ? (draftWidgets.find(
+          (widget) => widget.clientId === interaction.widgetId,
+        ) ?? null)
       : null;
   const renderedWidgets = useMemo(() => {
     if (!isEditing) {
       return [...serverDraftWidgets]
         .filter((widget) => widget.is_visible)
-        .sort((left, right) => compareWidgetOrder(left, right, previewBreakpoint));
+        .sort((left, right) =>
+          compareWidgetOrder(left, right, previewBreakpoint),
+        );
     }
 
     if (interaction?.mode === 'move') {
-      return buildMovePreviewWidgets(draftWidgets, interaction, previewBreakpoint).sort((left, right) =>
+      return buildMovePreviewWidgets(
+        draftWidgets,
+        interaction,
+        previewBreakpoint,
+      ).sort((left, right) =>
         compareWidgetOrder(left, right, previewBreakpoint),
       );
     }
 
-    return [...draftWidgets].sort((left, right) => compareWidgetOrder(left, right, previewBreakpoint));
-  }, [draftWidgets, interaction, isEditing, previewBreakpoint, serverDraftWidgets]);
-  const moveOverlayOrigin = activeMoveWidget?.positions[previewBreakpoint] ?? null;
+    return [...draftWidgets].sort((left, right) =>
+      compareWidgetOrder(left, right, previewBreakpoint),
+    );
+  }, [
+    draftWidgets,
+    interaction,
+    isEditing,
+    previewBreakpoint,
+    serverDraftWidgets,
+  ]);
+  const moveOverlayOrigin =
+    activeMoveWidget?.positions[previewBreakpoint] ?? null;
 
   const availableWidgetDefinitions = useMemo(
     () =>
       WIDGET_DEFINITIONS.filter(
-        (definition) => !draftWidgets.some((widget) => widget.widget_key === definition.key),
+        (definition) =>
+          !['overview-stats', 'team-stats'].includes(definition.key) &&
+          !draftWidgets.some((widget) => widget.widget_key === definition.key),
       ),
     [draftWidgets],
   );
 
   const renderWidgetContent = (widget: DraftWidget) => {
-    const title = t(WIDGET_DEFINITION_MAP[widget.widget_key]?.titleKey ?? 'dashboard.title');
-    const description = t(WIDGET_DEFINITION_MAP[widget.widget_key]?.descriptionKey ?? 'dashboard.subtitle');
+    const title = t(
+      WIDGET_DEFINITION_MAP[widget.widget_key]?.titleKey ?? 'dashboard.title',
+    );
+    const description = t(
+      WIDGET_DEFINITION_MAP[widget.widget_key]?.descriptionKey ??
+        'dashboard.subtitle',
+    );
 
     switch (widget.widget_key) {
       case 'overview-hero':
-        return (
-          <DashboardHero
-            onOpenFeed={handleOpenFeed}
-            onOpenEvents={handleOpenEvents}
-            onOpenVoting={handleOpenVoting}
-          />
-        );
+        return <DashboardHero />;
       case 'overview-stats':
         return (
-          <div className="row g-3">
-            {stats.map((stat) => (
-              <div key={stat.title} className="col-12 col-md-4">
-                <DashboardCard stat={stat} />
-              </div>
-            ))}
-          </div>
+          <WidgetSurface
+            title={t('dashboard.widgets.stats.title')}
+            description=""
+          >
+            <Text color="secondary">
+              Откройте раздел, чтобы увидеть актуальные данные сообщества.
+            </Text>
+          </WidgetSurface>
         );
       case 'activity-feed':
         return (
-          <WidgetSurface title={title} description={description}>
-            <div className="dashboard-list">
-              {DEMO_ACTIVITY_ITEMS.map((item) => (
-                <div key={item.title} className="dashboard-list__item">
-                  <Text variant="body-2">{item.title}</Text>
-                  <Text variant="caption-1" color="secondary">
-                    {formatRelativeTime(item.at)}
-                  </Text>
-                </div>
-              ))}
-            </div>
+          <WidgetSurface
+            title={title}
+            description=""
+            href={`${routeBase}/feed`}
+          >
+            <CommunityWidget kind="feed" />
           </WidgetSurface>
         );
       case 'upcoming-events':
         return (
-          <WidgetSurface title={title} description={description}>
-            <div className="dashboard-list">
-              {DEMO_UPCOMING_EVENTS.map((item) => (
-                <div key={item.title} className="dashboard-list__item">
-                  <Text variant="body-2">{item.title}</Text>
-                  <Text variant="caption-1" color="secondary">
-                    {formatDateTime(item.at)}
-                  </Text>
-                </div>
-              ))}
-            </div>
+          <WidgetSurface
+            title={title}
+            description=""
+            href={`${routeBase}/events`}
+          >
+            <CommunityWidget kind="events" />
           </WidgetSurface>
         );
       case 'active-polls':
         return (
-          <WidgetSurface title={title} description={description}>
-            <div className="dashboard-list">
-              {DEMO_ACTIVE_POLLS.map((item) => (
-                <div key={item.title} className="dashboard-list__item">
-                  <Text variant="body-2">{item.title}</Text>
-                  <Label theme="warning" size="xs">
-                    {formatRelativeTime(item.at)}
-                  </Label>
-                </div>
-              ))}
-            </div>
+          <WidgetSurface
+            title={title}
+            description=""
+            href={`${routeBase}/voting`}
+          >
+            <CommunityWidget kind="voting" />
           </WidgetSurface>
         );
       case 'team-stats':
         return (
-          <WidgetSurface title={title} description={description}>
-            <div className="dashboard-metric-stack">
-              <div>
-                <Text variant="header-2">94%</Text>
-                <Text variant="caption-1" color="secondary">Attendance rate</Text>
-              </div>
-              <div>
-                <Text variant="header-2">18</Text>
-                <Text variant="caption-1" color="secondary">Open tasks</Text>
-              </div>
-            </div>
+          <WidgetSurface title={title} description="">
+            <Text color="secondary">Статистика команд пока недоступна.</Text>
           </WidgetSurface>
         );
       case 'quick-links':
         return (
           <WidgetSurface title={title} description={description}>
             <div className="dashboard-link-stack">
-              <Button view="outlined" onClick={handleOpenFeed}>Feed</Button>
-              <Button view="outlined" onClick={handleOpenEvents}>Events</Button>
-              <Button view="outlined" onClick={handleOpenVoting}>Voting</Button>
+              <Button view="outlined" onClick={handleOpenFeed}>
+                {t('navigation.feed.title')}
+              </Button>
+              <Button view="outlined" onClick={handleOpenEvents}>
+                {t('navigation.events.title')}
+              </Button>
+              <Button view="outlined" onClick={handleOpenVoting}>
+                {t('navigation.voting.title')}
+              </Button>
             </div>
           </WidgetSurface>
         );
       default:
         return (
           <WidgetSurface title={title} description={description}>
-            <Text variant="body-2">{formatDateTime(new Date())}</Text>
+            <Text variant="body-2">Этот блок пока недоступен.</Text>
           </WidgetSurface>
         );
     }
@@ -1142,11 +1345,49 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="s"
                 view="flat"
+                aria-label="Переместить влево"
+                onClick={() => moveWithKeyboard(widget.clientId, -1, 0)}
+              >
+                ←
+              </Button>
+              <Button
+                size="s"
+                view="flat"
+                aria-label="Переместить вверх"
+                onClick={() => moveWithKeyboard(widget.clientId, 0, -1)}
+              >
+                ↑
+              </Button>
+              <Button
+                size="s"
+                view="flat"
+                aria-label="Переместить вниз"
+                onClick={() => moveWithKeyboard(widget.clientId, 0, 1)}
+              >
+                ↓
+              </Button>
+              <Button
+                size="s"
+                view="flat"
+                aria-label="Переместить вправо"
+                onClick={() => moveWithKeyboard(widget.clientId, 1, 0)}
+              >
+                →
+              </Button>
+              <Button
+                size="s"
+                view="flat"
                 onClick={() => handleToggleVisibility(widget.clientId)}
-                title={widget.is_visible ? t('dashboard.widgetActions.hide') : t('dashboard.widgetActions.show')}
+                title={
+                  widget.is_visible
+                    ? t('dashboard.widgetActions.hide')
+                    : t('dashboard.widgetActions.show')
+                }
               >
                 <Icon data={Eye} />
-                {widget.is_visible ? t('dashboard.widgetActions.hide') : t('dashboard.widgetActions.show')}
+                {widget.is_visible
+                  ? t('dashboard.widgetActions.hide')
+                  : t('dashboard.widgetActions.show')}
               </Button>
               <Button
                 size="s"
@@ -1175,18 +1416,17 @@ export const DashboardPage: React.FC = () => {
             {t('dashboard.widgetState.hidden')}
           </Label>
         ) : null}
-        <div className="dashboard-grid__content">{renderWidgetContent(widget)}</div>
+        <div className="dashboard-grid__content">
+          {renderWidgetContent(widget)}
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="dashboard-page container-fluid">
+    <div className="dashboard-page">
       <div className="dashboard-page__header">
         <div>
-          <Text variant="caption-2" color="secondary">
-            {t('dashboard.kicker')}
-          </Text>
           <Text variant="display-1" as="h1">
             {t('dashboard.title')}
           </Text>
@@ -1206,9 +1446,13 @@ export const DashboardPage: React.FC = () => {
                 </Button>
               </>
             ) : (
-              <Button view="action" onClick={() => setIsEditing(true)}>
+              <Button
+                size="xl"
+                view="flat"
+                aria-label={t('dashboard.edit')}
+                onClick={() => setIsEditing(true)}
+              >
                 <Icon data={Gear} />
-                {t('dashboard.edit')}
               </Button>
             )
           ) : null}
@@ -1224,19 +1468,27 @@ export const DashboardPage: React.FC = () => {
             </Text>
           </div>
           <div className="dashboard-editor-toolbar__section">
-            {(Object.keys(BREAKPOINT_COLUMNS) as DashboardBreakpoint[]).map((breakpoint) => (
-              <Button
-                key={breakpoint}
-                view={previewBreakpoint === breakpoint ? 'action' : 'outlined'}
-                onClick={() => setPreviewBreakpoint(breakpoint)}
-              >
-                {t(`dashboard.breakpoint.${breakpoint}`)}
-              </Button>
-            ))}
+            {(Object.keys(BREAKPOINT_COLUMNS) as DashboardBreakpoint[]).map(
+              (breakpoint) => (
+                <Button
+                  key={breakpoint}
+                  view={
+                    previewBreakpoint === breakpoint ? 'action' : 'outlined'
+                  }
+                  onClick={() => setPreviewBreakpoint(breakpoint)}
+                >
+                  {t(`dashboard.breakpoint.${breakpoint}`)}
+                </Button>
+              ),
+            )}
           </div>
           <div className="dashboard-editor-toolbar__section">
             {availableWidgetDefinitions.map((definition) => (
-              <Button key={definition.key} view="flat" onClick={() => handleAddWidget(definition.key)}>
+              <Button
+                key={definition.key}
+                view="flat"
+                onClick={() => handleAddWidget(definition.key)}
+              >
                 <Icon data={Plus} />
                 {t(definition.titleKey)}
               </Button>
@@ -1248,12 +1500,20 @@ export const DashboardPage: React.FC = () => {
       <div
         ref={dashboardGridRef}
         className={`dashboard-grid dashboard-grid--${previewBreakpoint}${isEditing ? ' dashboard-grid--editing' : ''}`}
-        style={{ ['--dashboard-cols' as string]: BREAKPOINT_COLUMNS[previewBreakpoint] }}
+        style={{
+          ['--dashboard-cols' as string]: BREAKPOINT_COLUMNS[previewBreakpoint],
+        }}
       >
         {renderedWidgets.map((widget) => {
-          const isMoveInteraction = interaction?.widgetId === widget.clientId && interaction.mode === 'move';
-          const isResizeInteraction = interaction?.widgetId === widget.clientId && interaction.mode === 'resize';
-          const isDropTarget = interaction?.swapTargetId === widget.clientId && interaction.mode === 'move';
+          const isMoveInteraction =
+            interaction?.widgetId === widget.clientId &&
+            interaction.mode === 'move';
+          const isResizeInteraction =
+            interaction?.widgetId === widget.clientId &&
+            interaction.mode === 'resize';
+          const isDropTarget =
+            interaction?.swapTargetId === widget.clientId &&
+            interaction.mode === 'move';
 
           return renderWidgetFrame(widget, {
             isEditing,
@@ -1275,11 +1535,11 @@ export const DashboardPage: React.FC = () => {
           >
             {renderWidgetFrame(activeMoveWidget, {
               isEditing,
-            isMoveInteraction: true,
-            isResizeInteraction: false,
-            isDropTarget: false,
-            isOverlay: true,
-            style: {
+              isMoveInteraction: true,
+              isResizeInteraction: false,
+              isDropTarget: false,
+              isOverlay: true,
+              style: {
                 gridColumn: 'auto',
                 gridRow: 'auto',
                 width: '100%',

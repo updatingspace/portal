@@ -71,6 +71,21 @@ const performUnsafeFormDataRequest = async () => {
 };
 
 describe('requestResult business handling', () => {
+  it('never repeats a write whose response was lost', async () => {
+    document.cookie = 'updspace_csrf=token; path=/';
+    vi.mocked(fetch).mockRejectedValue(new TypeError('network interrupted'));
+    await expect(request('/events/events', {method: 'POST', body: {title: 'Meetup'}, retry: {baseDelayMs: 1}})).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the displayed community as the expected context', async () => {
+    window.history.replaceState(null, '', '/t/first/events');
+    mockFetchResponse();
+    await request('/events/events');
+    expect(new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers).get('X-Portal-Expected-Tenant')).toBe('first');
+    window.history.replaceState(null, '', '/');
+  });
+
   afterEach(() => {
     vi.resetAllMocks();
     document.cookie = 'updspace_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';

@@ -1,68 +1,20 @@
-import React, { useMemo } from 'react';
-import { Text } from '@gravity-ui/uikit';
-import { useFormatters } from '@/shared/hooks/useFormatters';
-import type { EventWithCounts } from '../types';
-import { EventCard } from './EventCard';
+import {useMemo} from 'react';
+import {useFormatters} from '../../../shared/hooks/useFormatters';
+import type {EventWithCounts} from '../types';
+import {EventCard} from './EventCard';
 
-function dayKey(d: Date) {
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+export function EventsTimeline({events, onEdit}: {events: EventWithCounts[]; onEdit?: (event: EventWithCounts) => void}) {
+  const {formatDate, timezone} = useFormatters();
+  const grouped = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'});
+    const days = new Map<string, EventWithCounts[]>();
+    for (const event of [...events].sort((a,b) => Date.parse(a.startsAt)-Date.parse(b.startsAt))) {
+      const day = formatter.format(new Date(event.startsAt));
+      days.set(day,[...(days.get(day) ?? []),event]);
+    }
+    return [...days.entries()];
+  },[events,timezone]);
+  return <div className="portal-stack">{grouped.map(([day, items]) => <section key={day} className="portal-stack">
+    <h2 className="portal-event-day-heading">{formatDate(items[0].startsAt,{weekday:'long',day:'numeric',month:'long'})}</h2>
+    {items.map(event => <EventCard key={event.id} event={event} onEdit={onEdit}/>)}</section>)}</div>;
 }
-
-function dayTitle(d: Date, locale: string) {
-    const today = new Date();
-    const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const diffDays = Math.round((d0.getTime() - t0.getTime()) / 86_400_000);
-
-    if (diffDays === 0) return 'Сегодня';
-    if (diffDays === 1) return 'Завтра';
-    return new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(d);
-}
-
-export const EventsTimeline: React.FC<{
-    events: EventWithCounts[];
-    onEdit?: (e: EventWithCounts) => void;
-}> = ({ events, onEdit }) => {
-    const { intlLocale } = useFormatters();
-    const grouped = useMemo(() => {
-        const map = new Map<string, { date: Date; items: EventWithCounts[] }>();
-
-        const sorted = [...events].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
-        for (const ev of sorted) {
-            const d = new Date(ev.startsAt);
-            const k = dayKey(d);
-            const entry = map.get(k) || { date: new Date(d.getFullYear(), d.getMonth(), d.getDate()), items: [] };
-            entry.items.push(ev);
-            map.set(k, entry);
-        }
-
-        return Array.from(map.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
-    }, [events]);
-
-    if (events.length === 0) return null;
-
-    return (
-        <div className="space-y-6">
-            {grouped.map((g) => (
-                <section key={g.date.toISOString()} className="space-y-2">
-                    <div className="sticky top-0 z-10 bg-white/80 dark:bg-slate-950/60 backdrop-blur border-b border-slate-200/60 dark:border-white/10 py-2">
-                        <div className="flex items-baseline justify-between">
-                            <Text variant="subheader-1" className="capitalize">
-                                {dayTitle(g.date, intlLocale)}
-                            </Text>
-                            <Text variant="caption-2" color="secondary">
-                                {g.items.length} {g.items.length === 1 ? 'событие' : g.items.length < 5 ? 'события' : 'событий'}
-                            </Text>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        {g.items.map((ev) => (
-                            <EventCard key={ev.id} event={ev} onEdit={onEdit} variant="list" />
-                        ))}
-                    </div>
-                </section>
-            ))}
-        </div>
-    );
-};

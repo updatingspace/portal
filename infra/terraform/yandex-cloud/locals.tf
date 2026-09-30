@@ -119,15 +119,15 @@ locals {
   id_public_base_url  = trimsuffix(var.id_public_base_url, "/")
   id_internal_api_url = var.id_internal_api_url != "" ? trimsuffix(var.id_internal_api_url, "/") : "${local.id_public_base_url}/api/v1"
 
-  access_api_url       = "${yandex_serverless_container.access.url}/api/v1"
+  access_api_url       = "${trimsuffix(yandex_serverless_container.access.url, "/")}/api/v1"
   access_service_url   = yandex_serverless_container.access.url
-  portal_api_url       = "${yandex_serverless_container.portal.url}/api/v1"
-  featureflags_api_url = "${yandex_serverless_container.featureflags.url}/api/v1"
-  activity_api_url     = "${yandex_serverless_container.activity.url}/api/v1"
+  portal_api_url       = "${trimsuffix(yandex_serverless_container.portal.url, "/")}/api/v1"
+  featureflags_api_url = "${trimsuffix(yandex_serverless_container.featureflags.url, "/")}/api/v1"
+  activity_api_url     = "${trimsuffix(yandex_serverless_container.activity.url, "/")}/api/v1"
   activity_service_url = yandex_serverless_container.activity.url
-  events_api_url       = "${yandex_serverless_container.events.url}/api/v1"
-  gamification_api_url = "${yandex_serverless_container.gamification.url}/api/v1"
-  voting_api_url       = "${yandex_serverless_container.voting.url}/api/v1"
+  events_api_url       = "${trimsuffix(yandex_serverless_container.events.url, "/")}/api/v1"
+  gamification_api_url = "${trimsuffix(yandex_serverless_container.gamification.url, "/")}/api/v1"
+  voting_api_url       = "${trimsuffix(yandex_serverless_container.voting.url, "/")}/api/v1"
 
   access_env = merge(
     local.common_service_env,
@@ -139,6 +139,7 @@ locals {
     {
       ACCESS_BASE_URL    = local.access_api_url
       ACCESS_SERVICE_URL = local.access_service_url
+      ACCESS_PRIVATE_INVOKE_AUTH = "true"
     },
     lookup(var.service_environment, "portal", {}),
   )
@@ -208,6 +209,7 @@ locals {
       BFF_UPSTREAM_PORTAL_INVOKE_URL       = local.portal_api_url
       BFF_UPSTREAM_VOTING_INVOKE_URL       = local.voting_api_url
       BFF_SESSION_RATE_LIMIT_PER_MIN       = "60"
+      BFF_FEED_STREAMING_ENABLED           = "false"
       ID_BASE_URL                          = local.id_internal_api_url
       ID_PUBLIC_BASE_URL                   = local.id_public_base_url
       YC_API_GATEWAY_DOMAIN                = local.tenant_gateway_domain
@@ -218,8 +220,9 @@ locals {
     lookup(var.service_environment, "bff", {}),
   )
 
-  outbox_services    = var.outbox_services
-  retention_services = var.retention_services
+  outbox_services      = var.outbox_services
+  outbox_task_services = var.portal_outbox_function_zip == null ? var.outbox_services : setsubtract(var.outbox_services, toset(["portal"]))
+  retention_services   = var.retention_services
 
   api_gateway_spec = templatefile("${path.module}/templates/api-gateway.openapi.yaml.tftpl", {
     bff_container_id           = yandex_serverless_container.bff.id

@@ -1,14 +1,8 @@
-import React from 'react';
-import { Card } from '@gravity-ui/uikit';
-
-export const PlaceholderPage: React.FC<{ title: string; description?: string }> = ({ title, description }) => {
-  return (
-    <div className="container-fluid">
-      <div className="text-muted small">Coming soon</div>
-      <h1 className="h3 fw-semibold mb-3">{title}</h1>
-      <Card view="filled" className="p-4">
-        <div className="text-muted">{description ?? 'This section will be implemented in the next iterations.'}</div>
-      </Card>
-    </div>
-  );
-};
+import { Button } from '@gravity-ui/uikit';
+import { useRouteBase } from '../../shared/hooks/useRouteBase';
+import { PageState, useUITranslation } from '../../shared/ui/portal/PortalUI';
+export function PlaceholderPage({title, description}: {title: string; description?: string}) {
+  const t = useUITranslation();
+  const base = useRouteBase();
+  return <PageState kind="unavailable" title={t('Функция пока недоступна', 'This feature is not available yet')} description={description ?? `${title}. ${t('Мы добавим этот раздел после подключения всех необходимых возможностей.', 'This section will become available once its supporting features are ready.')}`} action={<Button href={base}>{t('В обзор', 'Overview')}</Button>} />;
+}

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Button, Card, Label, Text } from '@gravity-ui/uikit';
+import { useNavigate } from 'react-router-dom';
+import { Button, Card, Label } from '@gravity-ui/uikit';
 
 import { usePollTemplates } from '../../../../features/voting';
 import { VISIBILITY_META } from '../../../../features/voting/utils/pollMeta';
@@ -14,8 +14,15 @@ import {
 } from '../../ui';
 
 export const PollTemplatesPage: React.FC = () => {
+  const navigate = useNavigate();
   const routeBase = useRouteBase();
-  const { data: templates = [], isLoading, isError, error, refetch } = usePollTemplates();
+  const {
+    data: templates = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = usePollTemplates();
 
   useEffect(() => {
     logger.info('Voting v2 page loaded', {
@@ -36,7 +43,11 @@ export const PollTemplatesPage: React.FC = () => {
     return (
       <VotingErrorState
         title="Не удалось загрузить шаблоны"
-        message={error instanceof Error ? error.message : 'Проверьте соединение и попробуйте снова.'}
+        message={
+          error instanceof Error
+            ? error.message
+            : 'Проверьте соединение и попробуйте снова.'
+        }
         onRetry={() => refetch()}
       />
     );
@@ -47,9 +58,12 @@ export const PollTemplatesPage: React.FC = () => {
       title="Шаблоны опросов"
       description="Быстрый старт для регулярных голосований."
       actions={
-        <Link to={`${routeBase}/voting/create`}>
-          <Button view="action">Создать опрос</Button>
-        </Link>
+        <Button
+          view="action"
+          onClick={() => navigate(`${routeBase}/voting/create`)}
+        >
+          Создать опрос
+        </Button>
       }
     >
       {templates.length === 0 ? (
@@ -57,9 +71,12 @@ export const PollTemplatesPage: React.FC = () => {
           title="Шаблонов пока нет"
           message="Создайте первый опрос вручную или дождитесь добавления шаблонов."
           action={
-            <Link to={`${routeBase}/voting/create`}>
-              <Button view="action">Создать опрос</Button>
-            </Link>
+            <Button
+              view="action"
+              onClick={() => navigate(`${routeBase}/voting/create`)}
+            >
+              Создать опрос
+            </Button>
           }
         />
       ) : (
@@ -78,14 +95,23 @@ export const PollTemplatesPage: React.FC = () => {
                     </Label>
                   </div>
 
-                  <Text variant="subheader-2" className="voting-v2__section-title">{template.title}</Text>
-                  <Text variant="body-2" color="secondary" className="voting-v2__section-subtitle">
+                  <h2 className="voting-v2__section-title">{template.title}</h2>
+                  <p className="voting-v2__section-subtitle">
                     {template.description}
-                  </Text>
+                  </p>
 
-                  <Link to={`${routeBase}/voting/create`} state={{ template: template.slug }}>
-                    <Button view="action">Использовать шаблон</Button>
-                  </Link>
+                  <div>
+                    <Button
+                      view="action"
+                      onClick={() =>
+                        navigate(`${routeBase}/voting/create`, {
+                          state: { template: template.slug },
+                        })
+                      }
+                    >
+                      Использовать шаблон
+                    </Button>
+                  </div>
                 </div>
               </Card>
             );

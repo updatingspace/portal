@@ -4,7 +4,13 @@
  * Renders a single activity event in the feed.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Avatar,
   Button,
@@ -40,13 +46,28 @@ import {
   type NewsCommentDetail,
   type NewsReactionDetail,
 } from '../../../api/activity';
+import { Icon } from '@gravity-ui/uikit';
+import { Comment, Eye, FaceSmile } from '@gravity-ui/icons';
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
+import '../pages/feed-page.css';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useFormatters } from '../../../shared/hooks/useFormatters';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { MarkdownPreview } from '../../../features/events/components/MarkdownPreview';
 import { getEventMeta } from '../utils';
-import { extractTags, extractTitle, extractYoutubeIds, TITLE_REGEX } from '../utils/composer';
-import { patchActivityFeedCaches, removeDraftItem, removeFeedNews, upsertDraftItem, upsertFeedItem } from '../cache';
+import {
+  extractTags,
+  extractTitle,
+  extractYoutubeIds,
+  TITLE_REGEX,
+} from '../utils/composer';
+import {
+  patchActivityFeedCaches,
+  removeDraftItem,
+  removeFeedNews,
+  upsertDraftItem,
+  upsertFeedItem,
+} from '../cache';
 
 const DEFAULT_REACTIONS = ['❤️', '😂', '🔥', '😍', '😮', '😡'] as const;
 
@@ -60,56 +81,53 @@ const getNewsPayload = (item: ActivityEvent): NewsPayload | null => {
     title: payload.title ?? null,
     body: payload.body,
     tags: Array.isArray(payload.tags) ? payload.tags : [],
-    media: Array.isArray(payload.media) ? (payload.media as NewsMediaItem[]) : [],
+    media: Array.isArray(payload.media)
+      ? (payload.media as NewsMediaItem[])
+      : [],
     status: payload.status === 'draft' ? 'draft' : 'published',
     permalink:
       payload.permalink && typeof payload.permalink === 'object'
         ? {
             news_id:
-              typeof (payload.permalink as { news_id?: unknown }).news_id === 'string'
+              typeof (payload.permalink as { news_id?: unknown }).news_id ===
+              'string'
                 ? (payload.permalink as { news_id: string }).news_id
-                : (typeof payload.news_id === 'string' ? payload.news_id : ''),
+                : typeof payload.news_id === 'string'
+                  ? payload.news_id
+                  : '',
             path:
               typeof (payload.permalink as { path?: unknown }).path === 'string'
                 ? (payload.permalink as { path: string }).path
-                : (typeof payload.news_id === 'string' ? `/feed/${payload.news_id}` : '/feed'),
+                : typeof payload.news_id === 'string'
+                  ? `/feed/${payload.news_id}`
+                  : '/feed',
           }
         : null,
-    comments_count: typeof payload.comments_count === 'number' ? payload.comments_count : undefined,
-    reactions_count: typeof payload.reactions_count === 'number' ? payload.reactions_count : undefined,
-    views_count: typeof payload.views_count === 'number' ? payload.views_count : undefined,
+    comments_count:
+      typeof payload.comments_count === 'number'
+        ? payload.comments_count
+        : undefined,
+    reactions_count:
+      typeof payload.reactions_count === 'number'
+        ? payload.reactions_count
+        : undefined,
+    views_count:
+      typeof payload.views_count === 'number' ? payload.views_count : undefined,
     reaction_counts: Array.isArray(payload.reaction_counts)
       ? (payload.reaction_counts as NewsReactionSummary[])
       : [],
     my_reactions: Array.isArray(payload.my_reactions)
-      ? payload.my_reactions.filter((value): value is string => typeof value === 'string')
+      ? payload.my_reactions.filter(
+          (value): value is string => typeof value === 'string',
+        )
       : [],
   };
 };
 
-const getVisibilityIndicator = (
-  status: 'published' | 'draft' | undefined,
-  visibility?: string | null,
-): { emoji: string; tooltip: string } => {
-  if (status === 'draft') {
-    return {
-      emoji: '📝',
-      tooltip: 'Черновик: пост сохранён, но не опубликован для аудитории.',
-    };
-  }
-  if (visibility === 'private') {
-    return {
-      emoji: '🔒',
-      tooltip: 'Приватная публикация: пост виден только автору.',
-    };
-  }
-  return {
-    emoji: '🌍',
-    tooltip: 'Публичная публикация: пост виден в общей ленте по выбранному scope.',
-  };
-};
-
-const resolvePermalinkPath = (news: NewsPayload | null, newsId: string | null): string | null => {
+const resolvePermalinkPath = (
+  news: NewsPayload | null,
+  newsId: string | null,
+): string | null => {
   const raw = news?.permalink?.path || (newsId ? `/feed/${newsId}` : null);
   if (!raw) return null;
 
@@ -136,11 +154,18 @@ const getDisplayName = (
   fallbackId: string | null | undefined,
   currentUser?: { id: string; displayName: string } | null,
 ) => {
-  if (fallbackId && currentUser?.id === fallbackId && currentUser.displayName.trim()) {
+  if (
+    fallbackId &&
+    currentUser?.id === fallbackId &&
+    currentUser.displayName.trim()
+  ) {
     return currentUser.displayName.trim();
   }
   const fullName = [profile?.first_name, profile?.last_name]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .filter(
+      (value): value is string =>
+        typeof value === 'string' && value.trim().length > 0,
+    )
     .join(' ')
     .trim();
   return (
@@ -152,9 +177,12 @@ const getDisplayName = (
   );
 };
 
-const stripMarkdownHeading = (markup: string) => markup.replace(TITLE_REGEX, '').trim();
+const stripMarkdownHeading = (markup: string) =>
+  markup.replace(TITLE_REGEX, '').trim();
 
-const mergeReactionSummary = (news: NewsPayload | null): NewsReactionSummary[] => {
+const mergeReactionSummary = (
+  news: NewsPayload | null,
+): NewsReactionSummary[] => {
   const myReactions = new Set(news?.my_reactions ?? []);
   const byEmoji = new Map<string, NewsReactionSummary>();
 
@@ -179,7 +207,10 @@ const mergeReactionSummary = (news: NewsPayload | null): NewsReactionSummary[] =
   return Array.from(byEmoji.values());
 };
 
-const mergeComments = (current: NewsCommentDetail[], incoming: NewsCommentDetail[]): NewsCommentDetail[] => {
+const mergeComments = (
+  current: NewsCommentDetail[],
+  incoming: NewsCommentDetail[],
+): NewsCommentDetail[] => {
   const byId = new Map<number, NewsCommentDetail>();
   for (const item of current) {
     byId.set(item.id, item);
@@ -241,12 +272,16 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   onModerationToggle,
 }) => {
   const { user } = useAuth();
+  const mobile = useMediaQuery('(max-width: 719px)');
   const { formatDateTime } = useFormatters();
   const queryClient = useQueryClient();
   const meta = getEventMeta(item.type);
   const dateStr = formatDateTime(item.occurredAt);
   const news = useMemo(() => getNewsPayload(item), [item]);
-  const initialReactionSummary = useMemo(() => mergeReactionSummary(news), [news]);
+  const initialReactionSummary = useMemo(
+    () => mergeReactionSummary(news),
+    [news],
+  );
   const fallbackYoutube = useMemo(() => {
     if (!news || (news.media && news.media.length > 0)) return [];
     const ids = extractYoutubeIds(news.body);
@@ -256,28 +291,44 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       video_id: id,
     }));
   }, [news]);
-  const mediaItems = news?.media && news.media.length > 0 ? news.media : fallbackYoutube;
+  const mediaItems =
+    news?.media && news.media.length > 0 ? news.media : fallbackYoutube;
 
-  const [reactionSummary, setReactionSummary] = useState<NewsReactionSummary[]>(initialReactionSummary);
+  const [reactionSummary, setReactionSummary] = useState<NewsReactionSummary[]>(
+    initialReactionSummary,
+  );
   const [commentOpen, setCommentOpen] = useState(Boolean(autoOpenComments));
   const [commentBody, setCommentBody] = useState('');
-  const [commentCount, setCommentCount] = useState<number>(news?.comments_count ?? 0);
+  const [commentCount, setCommentCount] = useState<number>(
+    news?.comments_count ?? 0,
+  );
   const [viewCount, setViewCount] = useState<number>(news?.views_count ?? 0);
-  const [preview, setPreview] = useState<{ src: string; author: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    src: string;
+    author: string;
+  } | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editBody, setEditBody] = useState(news?.body ?? '');
-  const [editVisibility, setEditVisibility] = useState<'public' | 'private' | 'community' | 'team'>(
-    (item.visibility as 'public' | 'private' | 'community' | 'team') ?? 'public',
+  const [editVisibility, setEditVisibility] = useState<
+    'public' | 'private' | 'community' | 'team'
+  >(
+    (item.visibility as 'public' | 'private' | 'community' | 'team') ??
+      'public',
   );
-  const [editStatus, setEditStatus] = useState<'published' | 'draft'>(news?.status ?? 'published');
+  const [editStatus, setEditStatus] = useState<'published' | 'draft'>(
+    news?.status ?? 'published',
+  );
   const [editSaving, setEditSaving] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
 
   const [reactionDialogOpen, setReactionDialogOpen] = useState(false);
-  const [reactionDialogFilter, setReactionDialogFilter] = useState<string>('all');
-  const [reactionDetails, setReactionDetails] = useState<NewsReactionDetail[]>([]);
+  const [reactionDialogFilter, setReactionDialogFilter] =
+    useState<string>('all');
+  const [reactionDetails, setReactionDetails] = useState<NewsReactionDetail[]>(
+    [],
+  );
   const [reactionDetailsLoading, setReactionDetailsLoading] = useState(false);
 
   const [rootComments, setRootComments] = useState<NewsCommentDetail[]>([]);
@@ -295,14 +346,18 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   const [replyHasMore, setReplyHasMore] = useState<CommentFlags>({});
   const [replyBody, setReplyBody] = useState<CommentText>({});
 
-  const [pendingCommentActions, setPendingCommentActions] = useState<CommentFlags>({});
+  const [pendingCommentActions, setPendingCommentActions] =
+    useState<CommentFlags>({});
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'done'>('idle');
 
   const itemRef = useRef<HTMLDivElement | null>(null);
   const viewTrackedRef = useRef(false);
 
   const newsId = news?.news_id ?? null;
-  const permalinkPath = useMemo(() => resolvePermalinkPath(news, newsId), [news, newsId]);
+  const permalinkPath = useMemo(
+    () => resolvePermalinkPath(news, newsId),
+    [news, newsId],
+  );
   const absolutePermalink = useMemo(() => {
     if (!permalinkPath || typeof window === 'undefined') return null;
     return new URL(permalinkPath, window.location.origin).toString();
@@ -320,13 +375,25 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     [reactionSummary],
   );
   const activeReactions = useMemo(
-    () => new Set(reactionSummary.filter((row) => row.my_reacted).map((row) => row.emoji)),
+    () =>
+      new Set(
+        reactionSummary.filter((row) => row.my_reacted).map((row) => row.emoji),
+      ),
     [reactionSummary],
   );
   const authorLabel = getDisplayName(item.actorProfile, item.actorUserId, user);
-  const authorAvatarUrl = item.actorUserId && user?.id === item.actorUserId ? user.avatarUrl : item.actorProfile?.avatar_url;
-  const newsHeading = news ? extractTitle(news.body) || news.title?.trim() || '' : '';
-  const newsBodyMarkup = news ? (newsHeading ? stripMarkdownHeading(news.body) : news.body.trim()) : '';
+  const authorAvatarUrl =
+    item.actorUserId && user?.id === item.actorUserId
+      ? user.avatarUrl
+      : item.actorProfile?.avatar_url;
+  const newsHeading = news
+    ? extractTitle(news.body) || news.title?.trim() || ''
+    : '';
+  const newsBodyMarkup = news
+    ? newsHeading
+      ? stripMarkdownHeading(news.body)
+      : news.body.trim()
+    : '';
   const isModeratable = Boolean(newsId);
   const reactionDetailsFiltered = useMemo(
     () =>
@@ -335,11 +402,6 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         : reactionDetails.filter((row) => row.emoji === reactionDialogFilter),
     [reactionDetails, reactionDialogFilter],
   );
-  const visibilityIndicator = useMemo(
-    () => getVisibilityIndicator(news?.status, item.visibility),
-    [item.visibility, news?.status],
-  );
-
   const patchNewsPayloadInCache = useCallback(
     (updater: (payload: FeedEventPayload) => FeedEventPayload) => {
       if (!newsId) return;
@@ -357,55 +419,71 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     [newsId, queryClient],
   );
 
-  const patchCommentById = useCallback((commentId: number, updater: (item: NewsCommentDetail) => NewsCommentDetail) => {
-    setRootComments((prev) => replaceCommentInList(prev, commentId, updater));
-    setReplyComments((prev) => {
-      let changed = false;
-      const next: CommentCollection = {};
-      for (const [parent, list] of Object.entries(prev)) {
-        const updated = replaceCommentInList(list, commentId, updater);
-        next[Number(parent)] = updated;
-        if (updated !== list) {
-          changed = true;
+  const patchCommentById = useCallback(
+    (
+      commentId: number,
+      updater: (item: NewsCommentDetail) => NewsCommentDetail,
+    ) => {
+      setRootComments((prev) => replaceCommentInList(prev, commentId, updater));
+      setReplyComments((prev) => {
+        let changed = false;
+        const next: CommentCollection = {};
+        for (const [parent, list] of Object.entries(prev)) {
+          const updated = replaceCommentInList(list, commentId, updater);
+          next[Number(parent)] = updated;
+          if (updated !== list) {
+            changed = true;
+          }
         }
+        return changed ? next : prev;
+      });
+    },
+    [],
+  );
+
+  const insertComment = useCallback(
+    (comment: NewsCommentDetail) => {
+      if (typeof comment.parent_id === 'number') {
+        const parentId = comment.parent_id;
+        setReplyComments((prev) => ({
+          ...prev,
+          [parentId]: mergeComments(prev[parentId] ?? [], [comment]),
+        }));
+        patchCommentById(parentId, (parent) => ({
+          ...parent,
+          replies_count: Math.max((parent.replies_count ?? 0) + 1, 0),
+        }));
+        setReplyExpanded((prev) => ({ ...prev, [parentId]: true }));
+        return;
       }
-      return changed ? next : prev;
-    });
-  }, []);
 
-  const insertComment = useCallback((comment: NewsCommentDetail) => {
-    if (typeof comment.parent_id === 'number') {
-      const parentId = comment.parent_id;
-      setReplyComments((prev) => ({
-        ...prev,
-        [parentId]: mergeComments(prev[parentId] ?? [], [comment]),
-      }));
-      patchCommentById(parentId, (parent) => ({
-        ...parent,
-        replies_count: Math.max((parent.replies_count ?? 0) + 1, 0),
-      }));
-      setReplyExpanded((prev) => ({ ...prev, [parentId]: true }));
-      return;
-    }
+      setRootComments((prev) => mergeComments(prev, [comment]));
+    },
+    [patchCommentById],
+  );
 
-    setRootComments((prev) => mergeComments(prev, [comment]));
-  }, [patchCommentById]);
-
-  const replaceComment = useCallback((tempId: number, persisted: NewsCommentDetail) => {
-    setRootComments((prev) => prev.map((item) => (item.id === tempId ? persisted : item)));
-    setReplyComments((prev) => {
-      let changed = false;
-      const next: CommentCollection = {};
-      for (const [parent, list] of Object.entries(prev)) {
-        const mapped = list.map((item) => (item.id === tempId ? persisted : item));
-        next[Number(parent)] = mapped;
-        if (mapped !== list) {
-          changed = true;
+  const replaceComment = useCallback(
+    (tempId: number, persisted: NewsCommentDetail) => {
+      setRootComments((prev) =>
+        prev.map((item) => (item.id === tempId ? persisted : item)),
+      );
+      setReplyComments((prev) => {
+        let changed = false;
+        const next: CommentCollection = {};
+        for (const [parent, list] of Object.entries(prev)) {
+          const mapped = list.map((item) =>
+            item.id === tempId ? persisted : item,
+          );
+          next[Number(parent)] = mapped;
+          if (mapped !== list) {
+            changed = true;
+          }
         }
-      }
-      return changed ? next : prev;
-    });
-  }, []);
+        return changed ? next : prev;
+      });
+    },
+    [],
+  );
 
   const removeComment = useCallback((commentId: number) => {
     setRootComments((prev) => prev.filter((item) => item.id !== commentId));
@@ -434,7 +512,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           limit: 8,
           cursor: reset ? null : rootCursor,
         });
-        setRootComments((prev) => (reset ? page.items : mergeComments(prev, page.items)));
+        setRootComments((prev) =>
+          reset ? page.items : mergeComments(prev, page.items),
+        );
         setRootCursor(page.next_cursor);
         setRootHasMore(page.has_more);
         setRootLoaded(true);
@@ -456,11 +536,13 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         const page = await listNewsCommentsPage(newsId, {
           parentId,
           limit: 8,
-          cursor: reset ? null : replyCursors[parentId] ?? null,
+          cursor: reset ? null : (replyCursors[parentId] ?? null),
         });
         setReplyComments((prev) => ({
           ...prev,
-          [parentId]: reset ? page.items : mergeComments(prev[parentId] ?? [], page.items),
+          [parentId]: reset
+            ? page.items
+            : mergeComments(prev[parentId] ?? [], page.items),
         }));
         setReplyCursors((prev) => ({ ...prev, [parentId]: page.next_cursor }));
         setReplyHasMore((prev) => ({ ...prev, [parentId]: page.has_more }));
@@ -497,13 +579,19 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     [news?.body, news?.tags, patchNewsPayloadInCache],
   );
 
-  const patchCommentCount = useCallback((updater: (value: number) => number) => {
-    setCommentCount((prev) => {
-      const next = Math.max(updater(prev), 0);
-      patchNewsPayloadInCache((payload) => ({ ...payload, comments_count: next }));
-      return next;
-    });
-  }, [patchNewsPayloadInCache]);
+  const patchCommentCount = useCallback(
+    (updater: (value: number) => number) => {
+      setCommentCount((prev) => {
+        const next = Math.max(updater(prev), 0);
+        patchNewsPayloadInCache((payload) => ({
+          ...payload,
+          comments_count: next,
+        }));
+        return next;
+      });
+    },
+    [patchNewsPayloadInCache],
+  );
 
   useEffect(() => {
     setReactionSummary(initialReactionSummary);
@@ -521,7 +609,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
 
   useEffect(() => {
     if (item.visibility) {
-      setEditVisibility(item.visibility as 'public' | 'private' | 'community' | 'team');
+      setEditVisibility(
+        item.visibility as 'public' | 'private' | 'community' | 'team',
+      );
     }
   }, [item.visibility]);
 
@@ -560,14 +650,17 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   }, [autoOpenComments]);
 
   useEffect(() => {
-    if (!newsId || !user?.id || typeof IntersectionObserver === 'undefined') return;
+    if (!newsId || !user?.id || typeof IntersectionObserver === 'undefined')
+      return;
     if (viewTrackedRef.current) return;
     const element = itemRef.current;
     if (!element) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.55);
+        const visible = entries.some(
+          (entry) => entry.isIntersecting && entry.intersectionRatio >= 0.55,
+        );
         if (!visible || viewTrackedRef.current) return;
         viewTrackedRef.current = true;
         setViewCount((prev) => prev + 1);
@@ -607,9 +700,15 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         void loadRootComments(true);
       }
     };
-    window.addEventListener('activity:news-upsert', handleNewsUpsert as EventListener);
+    window.addEventListener(
+      'activity:news-upsert',
+      handleNewsUpsert as EventListener,
+    );
     return () => {
-      window.removeEventListener('activity:news-upsert', handleNewsUpsert as EventListener);
+      window.removeEventListener(
+        'activity:news-upsert',
+        handleNewsUpsert as EventListener,
+      );
     };
   }, [commentOpen, loadRootComments, newsId]);
 
@@ -640,7 +739,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     const rollback = reactionSummary;
     const optimistic = reactionSummary.map((entry) => {
       if (entry.emoji !== emoji) return entry;
-      const nextCount = wasActive ? Math.max((entry.count ?? 0) - 1, 0) : (entry.count ?? 0) + 1;
+      const nextCount = wasActive
+        ? Math.max((entry.count ?? 0) - 1, 0)
+        : (entry.count ?? 0) + 1;
       return { ...entry, count: nextCount, my_reacted: !wasActive };
     });
     applyReactions(optimistic);
@@ -652,7 +753,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         body: news?.body ?? '',
         tags: news?.tags ?? [],
         reaction_counts: result,
-        my_reactions: result.filter((row) => row.my_reacted).map((row) => row.emoji),
+        my_reactions: result
+          .filter((row) => row.my_reacted)
+          .map((row) => row.emoji),
       });
       applyReactions(normalized);
       if (reactionDialogOpen) {
@@ -667,7 +770,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   const submitComment = async (parentId?: number) => {
     if (!newsId) return;
     const key = parentId ?? 0;
-    const rawBody = parentId ? replyBody[parentId] ?? '' : commentBody;
+    const rawBody = parentId ? (replyBody[parentId] ?? '') : commentBody;
     const trimmed = rawBody.trim();
     if (!trimmed) return;
 
@@ -708,7 +811,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     patchCommentCount((prev) => prev + 1);
 
     try {
-      const created = await createNewsComment(newsId, trimmed, parentId ?? null);
+      const created = await createNewsComment(
+        newsId,
+        trimmed,
+        parentId ?? null,
+      );
       replaceComment(tempId, created);
       if (parentId) {
         setReplyOpen((prev) => ({ ...prev, [parentId]: false }));
@@ -733,7 +840,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     if (!newsId || comment.deleted) return;
     const action = comment.my_liked ? 'remove' : 'add';
     const optimisticLiked = !comment.my_liked;
-    const optimisticCount = Math.max((comment.likes_count ?? 0) + (optimisticLiked ? 1 : -1), 0);
+    const optimisticCount = Math.max(
+      (comment.likes_count ?? 0) + (optimisticLiked ? 1 : -1),
+      0,
+    );
     setPendingCommentActions((prev) => ({ ...prev, [comment.id]: true }));
     patchCommentById(comment.id, (item) => ({
       ...item,
@@ -865,7 +975,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     const items: DropdownMenuItem[] = [];
     if (absolutePermalink) {
       items.push({
-        text: copyLinkState === 'done' ? 'Ссылка скопирована' : 'Скопировать ссылку',
+        text:
+          copyLinkState === 'done'
+            ? 'Ссылка скопирована'
+            : 'Скопировать ссылку',
         action: () => {
           void copyPermalink();
         },
@@ -886,7 +999,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   const renderCommentNode = useCallback(
     (comment: NewsCommentDetail, depth = 0): React.ReactNode => {
       const label = getDisplayName(comment.user_profile, comment.user_id, user);
-      const avatarUrl = comment.user_id === user?.id ? user.avatarUrl : comment.user_profile?.avatar_url;
+      const avatarUrl =
+        comment.user_id === user?.id
+          ? user.avatarUrl
+          : comment.user_profile?.avatar_url;
       const hasReplies = (comment.replies_count ?? 0) > 0;
       const isExpanded = replyExpanded[comment.id] === true;
       const children = replyComments[comment.id] ?? [];
@@ -894,18 +1010,36 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       const isActionPending = pendingCommentActions[comment.id] === true;
 
       return (
-        <div key={comment.id} className="feed-comment-tree__node" style={{ marginLeft: Math.min(depth, 4) * 14 }}>
-          <div className={`feed-comment-tree__card${comment.deleted ? ' is-deleted' : ''}`}>
+        <div
+          key={comment.id}
+          className="feed-comment-tree__node"
+          style={{ marginLeft: Math.min(depth, 4) * 14 }}
+        >
+          <div
+            className={`feed-comment-tree__card${comment.deleted ? ' is-deleted' : ''}`}
+          >
             <div className="feed-comment-tree__header">
               <div className="feed-comment-tree__meta">
-                <Avatar size="s" imgUrl={avatarUrl ?? undefined} text={label} title={label} />
+                <Avatar
+                  size="s"
+                  imgUrl={avatarUrl ?? undefined}
+                  text={label}
+                  title={label}
+                />
                 <Text variant="body-2">{label}</Text>
-                <Text variant="caption-2" color="secondary" className="feed-item__time--small">
+                <Text
+                  variant="caption-2"
+                  color="secondary"
+                  className="feed-item__time--small"
+                >
                   {formatDateTime(comment.created_at)}
                 </Text>
               </div>
             </div>
-            <Text variant="body-2" color={comment.deleted ? 'secondary' : 'primary'}>
+            <Text
+              variant="body-2"
+              color={comment.deleted ? 'secondary' : 'primary'}
+            >
               {comment.body}
             </Text>
             <div className="feed-comment-tree__actions">
@@ -913,18 +1047,27 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 type="button"
                 className={`feed-reaction${comment.my_liked ? ' is-active' : ''}`}
                 disabled={isActionPending || comment.deleted}
-                title={comment.my_liked ? 'Нажмите, чтобы убрать лайк' : 'Поставить лайк'}
+                title={
+                  comment.my_liked
+                    ? 'Нажмите, чтобы убрать лайк'
+                    : 'Поставить лайк'
+                }
                 onClick={() => void handleCommentLike(comment)}
               >
                 <span>👍</span>
-                <span className="feed-reaction__count">{comment.likes_count ?? 0}</span>
+                <span className="feed-reaction__count">
+                  {comment.likes_count ?? 0}
+                </span>
               </button>
               {comment.can_reply && !comment.deleted && (
                 <button
                   type="button"
                   className="feed-comment-toggle"
                   onClick={() => {
-                    setReplyOpen((prev) => ({ ...prev, [comment.id]: !prev[comment.id] }));
+                    setReplyOpen((prev) => ({
+                      ...prev,
+                      [comment.id]: !prev[comment.id],
+                    }));
                   }}
                 >
                   Ответить
@@ -946,13 +1089,21 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                   className="feed-comment-toggle"
                   onClick={() => {
                     const next = !isExpanded;
-                    setReplyExpanded((prev) => ({ ...prev, [comment.id]: next }));
-                    if (next && (replyComments[comment.id]?.length ?? 0) === 0) {
+                    setReplyExpanded((prev) => ({
+                      ...prev,
+                      [comment.id]: next,
+                    }));
+                    if (
+                      next &&
+                      (replyComments[comment.id]?.length ?? 0) === 0
+                    ) {
                       void loadReplies(comment.id, true);
                     }
                   }}
                 >
-                  {isExpanded ? 'Скрыть ответы' : `Показать ответы (${comment.replies_count ?? 0})`}
+                  {isExpanded
+                    ? 'Скрыть ответы'
+                    : `Показать ответы (${comment.replies_count ?? 0})`}
                 </button>
               )}
             </div>
@@ -962,7 +1113,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 <textarea
                   value={replyBody[comment.id] ?? ''}
                   onChange={(event) =>
-                    setReplyBody((prev) => ({ ...prev, [comment.id]: event.target.value }))
+                    setReplyBody((prev) => ({
+                      ...prev,
+                      [comment.id]: event.target.value,
+                    }))
                   }
                   placeholder="Ответить на комментарий..."
                   rows={2}
@@ -971,7 +1125,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                   <Button
                     view="normal"
                     size="s"
-                    onClick={() => setReplyOpen((prev) => ({ ...prev, [comment.id]: false }))}
+                    onClick={() =>
+                      setReplyOpen((prev) => ({ ...prev, [comment.id]: false }))
+                    }
                   >
                     Отмена
                   </Button>
@@ -1031,34 +1187,46 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   const body = (
     <div
       ref={itemRef}
-      className={[
-        'feed-item',
-        compact ? 'feed-item--compact' : '',
-      ]
+      className={['feed-item', compact ? 'feed-item--compact' : '']
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="feed-item__icon" aria-hidden="true">
-        {news ? (
-          <Avatar
-            size="l"
-            imgUrl={authorAvatarUrl ?? undefined}
-            text={authorLabel}
-            title={authorLabel}
-          />
-        ) : (
-          meta.icon
-        )}
-      </div>
       <div className="feed-item__content">
         <div className="feed-item__header">
+          <div className="feed-item__icon" aria-hidden="true">
+            {news ? (
+              <Avatar
+                size="l"
+                imgUrl={authorAvatarUrl ?? undefined}
+                text={authorLabel}
+                title={authorLabel}
+              />
+            ) : (
+              meta.icon
+            )}
+          </div>
+
           <div className="feed-item__header-main">
             <Text variant="subheader-2" className="feed-item__author">
               {authorLabel}
             </Text>
-            <Label theme={meta.theme} size={compact ? 'xs' : 's'}>
-              {meta.label}
-            </Label>
+            {!news && (
+              <Label theme={meta.theme} size={compact ? 'xs' : 's'}>
+                {meta.label}
+              </Label>
+            )}
+            <Text
+              variant="caption-2"
+              color="secondary"
+              className="feed-item__time"
+            >
+              {dateStr}
+              {news?.status === 'draft'
+                ? ' · Черновик'
+                : item.visibility === 'private'
+                  ? ' · Только мне'
+                  : ''}
+            </Text>
             {moderationMode && isModeratable && (
               <label className="feed-item__moderation-check">
                 <input
@@ -1074,29 +1242,18 @@ export const FeedItem: React.FC<FeedItemProps> = ({
             )}
           </div>
           <div className="feed-item__header-right">
-            {news && (
-              <span
-                className="feed-item__visibility"
-                aria-label={visibilityIndicator.tooltip}
-                title={visibilityIndicator.tooltip}
-              >
-                {visibilityIndicator.emoji}
-              </span>
-            )}
-            <Text variant="body-2" color="secondary" className="feed-item__time feed-item__time--published">
-              {dateStr}
-            </Text>
-            {!news && item.scopeType && (
-              <Text variant="body-2" color="secondary">
-                {item.scopeType}
-              </Text>
-            )}
             {manageItems.length > 0 && (
               <div className="feed-item__header-actions">
                 <DropdownMenu
                   items={manageItems}
                   renderSwitcher={(props) => (
-                    <Button {...props} view="flat" size="s" className="feed-item__menu">
+                    <Button
+                      {...props}
+                      view="flat"
+                      size="xl"
+                      className="feed-item__menu"
+                      aria-label="Действия публикации"
+                    >
                       ⋯
                     </Button>
                   )}
@@ -1107,7 +1264,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         </div>
 
         {!news && (
-          <Text variant={compact ? 'body-2' : 'subheader-2'} className="feed-item__title">
+          <Text
+            variant={compact ? 'body-2' : 'subheader-2'}
+            className="feed-item__title"
+          >
             {item.title}
           </Text>
         )}
@@ -1115,12 +1275,18 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         {news && (
           <div className="feed-item__news">
             {newsHeading ? (
-              <Text variant={compact ? 'subheader-1' : 'header-2'} className="feed-item__title feed-item__title-highlight">
+              <Text
+                variant={compact ? 'subheader-1' : 'header-2'}
+                className="feed-item__title feed-item__title-highlight"
+              >
                 {newsHeading}
               </Text>
             ) : null}
             {newsBodyMarkup ? (
-              <MarkdownPreview markup={newsBodyMarkup} className="feed-item__news-body" />
+              <MarkdownPreview
+                markup={newsBodyMarkup}
+                className="feed-item__news-body"
+              />
             ) : null}
             {news.tags.length > 0 && (
               <div className="feed-item__news-tags">
@@ -1140,15 +1306,22 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                         key={`${media.key}-${index}`}
                         type="button"
                         className="feed-media feed-media--image"
-                        onClick={() => setPreview({ src: media.url!, author: authorLabel })}
+                        onClick={() =>
+                          setPreview({ src: media.url!, author: authorLabel })
+                        }
                       >
-                        <img src={media.url} alt={media.caption ?? 'news media'} loading="lazy" />
+                        <img
+                          src={media.url}
+                          alt={media.caption ?? 'news media'}
+                          loading="lazy"
+                        />
                       </button>
                     );
                   }
                   if (media.type === 'youtube') {
                     const thumb = `https://img.youtube.com/vi/${media.video_id}/hqdefault.jpg`;
-                    const link = media.url || `https://youtu.be/${media.video_id}`;
+                    const link =
+                      media.url || `https://youtu.be/${media.video_id}`;
                     return (
                       <a
                         key={`${media.video_id}-${index}`}
@@ -1157,7 +1330,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <img src={thumb} alt={media.title ?? 'YouTube'} loading="lazy" />
+                        <img
+                          src={thumb}
+                          alt={media.title ?? 'YouTube'}
+                          loading="lazy"
+                        />
                         <div className="feed-media__youtube">
                           <span>Смотреть видео</span>
                         </div>
@@ -1170,33 +1347,76 @@ export const FeedItem: React.FC<FeedItemProps> = ({
             )}
             <div className="feed-item__news-actions">
               <div className="feed-item__news-reactions">
-                {reactionSummary.map((reaction) => (
-                  <button
-                    key={reaction.emoji}
-                    type="button"
-                    className={`feed-reaction${reaction.my_reacted ? ' is-active' : ''}`}
-                    onClick={() => void handleReaction(reaction.emoji)}
-                    title={reaction.my_reacted ? 'Реакция установлена. Нажмите, чтобы убрать.' : 'Поставить реакцию'}
-                  >
-                    <span>{reaction.emoji}</span>
-                    <span className="feed-reaction__count">{reaction.count}</span>
-                  </button>
-                ))}
+                {reactionSummary
+                  .filter(
+                    (reaction) =>
+                      !mobile || reaction.count > 0 || reaction.my_reacted,
+                  )
+                  .map((reaction) => (
+                    <button
+                      key={reaction.emoji}
+                      type="button"
+                      className={`feed-reaction${reaction.my_reacted ? ' is-active' : ''}`}
+                      onClick={() => void handleReaction(reaction.emoji)}
+                      title={
+                        reaction.my_reacted
+                          ? 'Реакция установлена. Нажмите, чтобы убрать.'
+                          : 'Поставить реакцию'
+                      }
+                    >
+                      <span>{reaction.emoji}</span>
+                      <span className="feed-reaction__count">
+                        {reaction.count}
+                      </span>
+                    </button>
+                  ))}
+                {mobile && (
+                  <DropdownMenu
+                    items={DEFAULT_REACTIONS.map((emoji) => ({
+                      text: emoji,
+                      action: () => {
+                        void handleReaction(emoji);
+                      },
+                    }))}
+                    renderSwitcher={(props) => (
+                      <Button
+                        {...props}
+                        view="flat"
+                        size="xl"
+                        aria-label="Добавить реакцию"
+                      >
+                        <Icon data={FaceSmile} size={20} />
+                      </Button>
+                    )}
+                  />
+                )}
               </div>
               <div className="feed-item__news-tools">
                 <button
                   type="button"
-                  className="feed-comment-toggle"
+                  className="feed-comment-toggle feed-reaction-total"
+                  aria-label={`Кто отреагировал: ${reactionsTotal}`}
                   onClick={() => void refreshReactionDetails('all')}
                   disabled={reactionsTotal === 0}
                 >
-                  Реакции {reactionsTotal}
+                  {mobile ? reactionsTotal : `Реакции ${reactionsTotal}`}
                 </button>
                 <Text variant="caption-2" color="secondary">
-                  Просмотры {viewCount}
+                  <Icon data={Eye} size={16} /> {viewCount}
                 </Text>
-                <button type="button" className="feed-comment-toggle" onClick={() => setCommentOpen((prev) => !prev)}>
-                  Комментарии ({commentCount})
+                <button
+                  type="button"
+                  className="feed-comment-toggle"
+                  aria-label={`Комментарии (${commentCount})`}
+                  onClick={() => setCommentOpen((prev) => !prev)}
+                >
+                  {mobile ? (
+                    <>
+                      <Icon data={Comment} size={20} /> {commentCount}
+                    </>
+                  ) : (
+                    `Комментарии (${commentCount})`
+                  )}
                 </button>
               </div>
             </div>
@@ -1213,11 +1433,17 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                     </Text>
                   ) : (
                     <div className="feed-comment-tree">
-                      {rootComments.map((comment) => renderCommentNode(comment, 0))}
+                      {rootComments.map((comment) =>
+                        renderCommentNode(comment, 0),
+                      )}
                     </div>
                   )}
                   {rootHasMore && !loadingRootComments && (
-                    <button type="button" className="feed-comment-toggle" onClick={() => void loadRootComments()}>
+                    <button
+                      type="button"
+                      className="feed-comment-toggle"
+                      onClick={() => void loadRootComments()}
+                    >
                       Показать ещё комментарии
                     </button>
                   )}
@@ -1229,7 +1455,12 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                   rows={2}
                 />
                 <div className="feed-comment-box__actions">
-                  <Button view="action" size="m" disabled={!commentBody.trim()} onClick={() => void submitComment()}>
+                  <Button
+                    view="action"
+                    size="m"
+                    disabled={!commentBody.trim()}
+                    onClick={() => void submitComment()}
+                  >
                     Отправить
                   </Button>
                 </div>
@@ -1238,11 +1469,14 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </div>
         )}
 
-        {showPayload && !news && item.payloadJson && Object.keys(item.payloadJson).length > 0 && (
-          <div className="feed-item__payload">
-            <pre>{JSON.stringify(item.payloadJson, null, 2)}</pre>
-          </div>
-        )}
+        {showPayload &&
+          !news &&
+          item.payloadJson &&
+          Object.keys(item.payloadJson).length > 0 && (
+            <div className="feed-item__payload">
+              <pre>{JSON.stringify(item.payloadJson, null, 2)}</pre>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -1269,7 +1503,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           {preview && <img src={preview.src} alt="full" />}
           {preview && (
             <div className="feed-media-modal__footer">
-              <Text variant="caption-2" color="secondary">{preview.author}</Text>
+              <Text variant="caption-2" color="secondary">
+                {preview.author}
+              </Text>
             </div>
           )}
         </div>
@@ -1315,8 +1551,15 @@ export const FeedItem: React.FC<FeedItemProps> = ({
             ) : (
               <div className="feed-reaction-roster__list">
                 {reactionDetailsFiltered.map((row) => {
-                  const rowLabel = getDisplayName(row.user_profile, row.user_id, user);
-                  const rowAvatarUrl = row.user_id === user?.id ? user.avatarUrl : row.user_profile?.avatar_url;
+                  const rowLabel = getDisplayName(
+                    row.user_profile,
+                    row.user_id,
+                    user,
+                  );
+                  const rowAvatarUrl =
+                    row.user_id === user?.id
+                      ? user.avatarUrl
+                      : row.user_profile?.avatar_url;
                   return (
                     <div key={row.id} className="feed-reaction-roster__item">
                       <div className="feed-reaction-roster__identity">
@@ -1333,7 +1576,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                           </Text>
                         </div>
                       </div>
-                      <span className="feed-reaction-roster__emoji">{row.emoji}</span>
+                      <span className="feed-reaction-roster__emoji">
+                        {row.emoji}
+                      </span>
                     </div>
                   );
                 })}
@@ -1342,7 +1587,12 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           </div>
         </Dialog.Body>
       </Dialog>
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} size="l" aria-label="Редактировать новость">
+      <Dialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        size="l"
+        aria-label="Редактировать новость"
+      >
         <Dialog.Header caption="Редактировать новость" />
         <Dialog.Body>
           <div className="feed-item__edit">
@@ -1366,7 +1616,12 @@ export const FeedItem: React.FC<FeedItemProps> = ({
             <Select
               value={[editVisibility]}
               onUpdate={(values) => {
-                const next = values[0] as 'public' | 'private' | 'community' | 'team' | undefined;
+                const next = values[0] as
+                  | 'public'
+                  | 'private'
+                  | 'community'
+                  | 'team'
+                  | undefined;
                 if (next) setEditVisibility(next);
               }}
               options={[
@@ -1376,7 +1631,8 @@ export const FeedItem: React.FC<FeedItemProps> = ({
               disabled={editStatus === 'draft'}
             />
             <Text variant="caption-2" color="secondary">
-              Заголовок берётся из первой строки вида `# Заголовок`. Теги и YouTube-видео обновляются автоматически.
+              Заголовок берётся из первой строки вида `# Заголовок`. Теги и
+              YouTube-видео обновляются автоматически.
             </Text>
           </div>
         </Dialog.Body>
@@ -1388,7 +1644,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
           loading={editSaving}
         />
       </Dialog>
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} aria-label="Удалить новость">
+      <Dialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        aria-label="Удалить новость"
+      >
         <Dialog.Header caption="Удалить новость?" />
         <Dialog.Body>
           <Text variant="body-2">

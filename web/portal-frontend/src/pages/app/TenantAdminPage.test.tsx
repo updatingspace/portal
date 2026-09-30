@@ -1,4 +1,5 @@
 import React from 'react';
+import {MemoryRouter} from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 
@@ -122,10 +123,10 @@ describe('TenantAdminPage', () => {
   });
 
   it('renders tenant admin UI', () => {
-    render(<TenantAdminPage />);
-    expect(screen.getByText('Tenant Admin')).toBeInTheDocument();
-    expect(screen.getByText('Роли, доступы и аудит')).toBeInTheDocument();
+    render(<MemoryRouter><TenantAdminPage /></MemoryRouter>);
+    expect(screen.getByRole('heading', {name:'Управление сообществом'})).toBeInTheDocument();
+    expect(screen.getByText('Роли и доступы')).toBeInTheDocument();
     expect(screen.getAllByText('Роли').length).toBeGreaterThan(0);
-    expect(screen.getByText('Каталог ролей')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Поиск по названию роли')).toBeInTheDocument();
   });
 });

@@ -26,13 +26,12 @@ from ninja import NinjaAPI, Router
 from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
-from .models import BffOauthState
+from .models import BffOauthState, Tenant
 from .proxy import proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
 from .tenant import (
     get_or_create_global_tenant,
-    resolve_tenant_by_slug,
     tenant_slug_from_host,
     validate_tenant_slug,
 )
@@ -331,6 +330,51 @@ def _provision_default_tenant_member_binding(
         )
 
 
+def _enroll_approved_member(
+    request: HttpRequest, response: HttpResponse
+) -> HttpResponse | None:
+    if response.status_code >= 400:
+        return None
+    ctx = getattr(request, "auth_ctx", None)
+    approved_user_id = None
+    try:
+        approved_user_id = _extract_user_id_from_approve_payload(
+            json.loads(response.content)
+        )
+        if ctx and approved_user_id:
+            upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "") or ""
+            if upstream:
+                result = proxy_request(
+                    upstream_base_url=upstream,
+                    upstream_path="portal/tenant-memberships",
+                    method="POST",
+                    query_string="",
+                    body=json.dumps({"user_id": approved_user_id}).encode(),
+                    incoming_headers=request.headers,
+                    context_headers={
+                        "X-User-Id": ctx.user_id,
+                        "X-Tenant-Id": ctx.tenant_id,
+                        "X-Tenant-Slug": ctx.tenant_slug,
+                        "X-Master-Flags": json.dumps(ctx.master_flags),
+                    },
+                    request_id=request.request_id,
+                )
+                if result.status_code in {200, 201}:
+                    return None
+    except BFF_RECOVERABLE_EXCEPTIONS:
+        logger.exception(
+            "Approved account enrollment failed",
+            extra={"request_id": request.request_id},
+        )
+    return error_response(
+        code="MEMBERSHIP_ENROLLMENT_PENDING",
+        message="Account approved; retry Portal tenant membership enrollment",
+        request_id=request.request_id,
+        status=502,
+        details={"user_id": approved_user_id, "account_approved": True},
+    )
+
+
 def _maybe_provision_after_application_approve(
     request: HttpRequest,
     response: HttpResponse,
@@ -439,15 +483,15 @@ def _normalize_active_memberships(items: Any) -> list[dict[str, str]]:
 def _load_id_me_payload(
     request: HttpRequest,
     ctx,
-) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+) -> dict[str, Any] | None:
     id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
     if not id_upstream:
-        return None, []
+        return None
 
     try:
         resp = proxy_request(
             upstream_base_url=id_upstream,
-            upstream_path="me",
+            upstream_path="internal/identity/me",
             method="GET",
             query_string="",
             body=b"",
@@ -461,7 +505,7 @@ def _load_id_me_payload(
             extra={"request_id": request.request_id},
             exc_info=True,
         )
-        return None, []
+        return None
 
     if resp.status_code != 200:
         logger.warning(
@@ -471,72 +515,65 @@ def _load_id_me_payload(
                 "status_code": resp.status_code,
             },
         )
-        return None, []
+        return None
 
     try:
         payload = resp.json()
     except BFF_RECOVERABLE_EXCEPTIONS:
-        return None, []
+        return None
 
     if not isinstance(payload, dict):
-        return None, []
+        return None
 
-    memberships = _normalize_active_memberships(payload.get("memberships"))
-    return payload, memberships
+    return payload
 
 
-def _load_tenant_applications(request: HttpRequest, ctx) -> list[dict[str, str]]:
-    id_upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
-    if not id_upstream:
-        return []
+def _portal_entry_headers(request: HttpRequest, ctx) -> dict[str, str]:
+    return {
+        **_tenantless_id_context_headers(request, ctx),
+        "X-Master-Flags": json.dumps(ctx.master_flags, separators=(",", ":")),
+    }
 
+
+def _load_portal_entry_list(request: HttpRequest, ctx, resource: str, *, include_history: bool = False) -> list | None:
+    upstream = str(getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "") or "").strip()
+    if not upstream:
+        return None
     try:
         resp = proxy_request(
-            upstream_base_url=id_upstream,
-            upstream_path="tenant-applications",
+            upstream_base_url=upstream,
+            upstream_path=f"portal/entry/{resource}",
             method="GET",
-            query_string="",
+            query_string="include_history=true" if include_history else "",
             body=b"",
             incoming_headers=request.headers,
-            context_headers=_tenantless_id_context_headers(request, ctx),
+            context_headers=_portal_entry_headers(request, ctx),
             request_id=request.request_id,
         )
+        payload = resp.json()
+        if resp.status_code == 200 and isinstance(payload, list):
+            return payload
     except BFF_RECOVERABLE_EXCEPTIONS:
         logger.warning(
-            "ID tenant-applications fetch failed",
+            "Portal entry fetch failed",
             extra={"request_id": request.request_id},
             exc_info=True,
         )
-        return []
+    return None
 
-    if resp.status_code != 200:
-        return []
 
-    try:
-        payload = resp.json()
-    except BFF_RECOVERABLE_EXCEPTIONS:
-        return []
+def _load_portal_memberships(request: HttpRequest, ctx) -> list[dict[str, str]] | None:
+    items = _load_portal_entry_list(request, ctx, "memberships")
+    return _normalize_active_memberships(items) if items is not None else None
 
-    applications: list[dict[str, str]] = []
-    if not isinstance(payload, list):
-        return applications
 
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        app_id = str(item.get("id") or "").strip()
-        slug = str(item.get("slug") or "").strip().lower()
-        status = str(item.get("status") or "").strip().lower()
-        if not app_id or not slug:
-            continue
-        applications.append(
-            {
-                "id": app_id,
-                "slug": slug,
-                "status": status,
-            }
-        )
-    return applications
+def _portal_entry_unavailable(request: HttpRequest) -> JsonResponse:
+    return error_response(
+        code="UPSTREAM_UNAVAILABLE",
+        message="Portal service unavailable",
+        request_id=request.request_id,
+        status=502,
+    )
 
 
 def _load_rollout_snapshot(
@@ -609,15 +646,16 @@ def _load_rollout_snapshot(
     return feature_flags, experiments
 
 
-def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str]]:
+def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str], list[str], str]:
     access_upstream = str(getattr(settings, "BFF_UPSTREAM_ACCESS_URL", "") or "").strip()
     if not access_upstream:
-        return [], []
+        return [], [], "unavailable"
 
     access_path = _resolve_access_check_path(access_upstream)
     effective_permissions: set[str] = set()
     effective_roles: set[str] = set()
 
+    successful_probes = 0
     for service, probe_permission in SESSION_ME_CAPABILITY_PROBES:
         payload = {
             "tenant_id": str(ctx.tenant_id),
@@ -678,6 +716,7 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
 
         permissions = data.get("effective_permissions") if isinstance(data, dict) else None
         if isinstance(permissions, list):
+            successful_probes += 1
             for permission in permissions:
                 if isinstance(permission, str) and permission.strip():
                     effective_permissions.add(permission.strip())
@@ -697,7 +736,8 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 ):
                     effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
 
-    return sorted(effective_permissions), sorted(effective_roles)
+    status = "ready" if successful_probes == len(SESSION_ME_CAPABILITY_PROBES) else "partial" if successful_probes else "unavailable"
+    return sorted(effective_permissions), sorted(effective_roles), status
 
 
 def _load_feature_flags_snapshot(request: HttpRequest, ctx) -> dict[str, bool]:
@@ -779,35 +819,28 @@ def session_switch_tenant(request: HttpRequest):
             status=400,
         )
 
-    target_tenant = resolve_tenant_by_slug(tenant_slug)
-    if not target_tenant:
-        return error_response(
-            code="TENANT_NOT_FOUND",
-            message="Tenant not found",
-            request_id=getattr(request, "request_id", None),
-            status=404,
-        )
-
-    _id_payload, memberships = _load_id_me_payload(request, ctx)
-    membership = next(
-        (
-            item
-            for item in memberships
-            if item["tenant_id"] == target_tenant.id or item["tenant_slug"] == target_tenant.slug
-        ),
-        None,
-    )
+    memberships = _load_portal_memberships(request, ctx)
+    if memberships is None:
+        return _portal_entry_unavailable(request)
+    membership = next((item for item in memberships if item["tenant_slug"] == tenant_slug), None)
     if membership is None:
         return error_response(
-            code="TENANT_FORBIDDEN",
-            message="You do not have access to this tenant",
-            request_id=getattr(request, "request_id", None),
-            status=403,
+            code="TENANT_FORBIDDEN", message="You do not have access to this tenant",
+            request_id=request.request_id, status=403,
         )
-
+    # Populate the local routing directory from Portal, never from browser input.
+    from django.db import IntegrityError
+    try:
+        target_tenant, _ = Tenant.objects.get_or_create(
+            id=membership["tenant_id"], defaults={"slug": membership["tenant_slug"]},
+        )
+    except IntegrityError:
+        return error_response(code="TENANT_CONTEXT_CONFLICT", message="Tenant directory is inconsistent", request_id=request.request_id, status=409)
+    if target_tenant.slug != membership["tenant_slug"]:
+        return error_response(code="TENANT_CONTEXT_CONFLICT", message="Tenant directory is inconsistent", request_id=request.request_id, status=409)
     updated = SessionStore().set_active_tenant(
         ctx.session_id,
-        tenant_id=target_tenant.id,
+        tenant_id=str(target_tenant.id),
         tenant_slug=target_tenant.slug,
     )
     if updated is None:
@@ -820,7 +853,7 @@ def session_switch_tenant(request: HttpRequest):
 
     return {
         "active_tenant": {
-            "tenant_id": target_tenant.id,
+            "tenant_id": str(target_tenant.id),
             "tenant_slug": target_tenant.slug,
             "display_name": membership["display_name"],
             "base_role": membership["base_role"],
@@ -836,13 +869,9 @@ def session_tenants(request: HttpRequest):
     if err:
         return err
 
-    store = SessionStore()
-    cached = store.get_cached_user_tenants(ctx.user_id)
-    if isinstance(cached, list):
-        return cached
-
-    _id_payload, memberships = _load_id_me_payload(request, ctx)
-    store.cache_user_tenants(ctx.user_id, memberships)
+    memberships = _load_portal_memberships(request, ctx)
+    if memberships is None:
+        return _portal_entry_unavailable(request)
     return memberships
 
 
@@ -878,10 +907,11 @@ def session_me(request: HttpRequest):
             # Keep /me resilient; return user even if portal is down.
             portal_profile = None
 
-    # Optional aggregation: UpdSpaceID /me to expose membership/base_role/system_admin flags
+    # Identity comes from ID; tenant membership comes only from Portal.
     id_upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "")
-    if id_upstream:
-        id_profile, memberships = _load_id_me_payload(request, ctx)
+    id_profile = _load_id_me_payload(request, ctx)
+    memberships = _load_portal_memberships(request, ctx)
+    if memberships is not None:
         available_tenants = [
             {"id": item["tenant_id"], "slug": item["tenant_slug"]} for item in memberships
         ]
@@ -984,12 +1014,12 @@ def session_me(request: HttpRequest):
         id_frontend_base_url = None
 
     if tenant_selected:
-        capabilities, roles = _load_effective_access_snapshot(request, ctx)
+        capabilities, roles, access_snapshot_status = _load_effective_access_snapshot(request, ctx)
         feature_flags, experiments = _load_rollout_snapshot(request, ctx)
         if not feature_flags:
             feature_flags = _load_feature_flags_snapshot(request, ctx)
     else:
-        capabilities, roles = [], []
+        capabilities, roles, access_snapshot_status = [], [], "ready"
         feature_flags, experiments = {}, {}
 
     # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
@@ -1017,6 +1047,7 @@ def session_me(request: HttpRequest):
         "available_tenants": available_tenants,
         "active_tenant": active_tenant,
         "capabilities": capabilities,
+        "access_snapshot_status": access_snapshot_status,
         "roles": roles,
         "feature_flags": feature_flags,
         "experiments": experiments,
@@ -1031,8 +1062,11 @@ def entry_me(request: HttpRequest):
     if err:
         return err
 
-    id_profile, memberships = _load_id_me_payload(request, ctx)
-    pending_tenant_applications = _load_tenant_applications(request, ctx)
+    id_profile = _load_id_me_payload(request, ctx)
+    memberships = _load_portal_memberships(request, ctx)
+    pending_tenant_applications = _load_portal_entry_list(request, ctx, "tenant-applications", include_history=True)
+    if memberships is None or pending_tenant_applications is None:
+        return _portal_entry_unavailable(request)
     session_data = SessionStore().get(ctx.session_id)
     id_user = id_profile.get("user") if isinstance(id_profile, dict) else None
     email = ""
@@ -1050,7 +1084,8 @@ def entry_me(request: HttpRequest):
         },
         "memberships": memberships,
         "last_tenant": last_tenant,
-        "pending_tenant_applications": pending_tenant_applications,
+        "tenant_applications": pending_tenant_applications,
+        "pending_tenant_applications": [item for item in pending_tenant_applications if item.get("status") in {"pending", "provisioning"}],
         "request_id": request.request_id,
     }
 
@@ -1079,62 +1114,26 @@ def entry_tenant_applications(request: HttpRequest):
             status=400,
         )
 
-    routing_tenant_slug = str(ctx.tenant_slug or "").strip().lower()
-    routing_tenant_id = str(ctx.tenant_id or "").strip()
-    if not routing_tenant_slug:
-        resolved_tenant = resolve_tenant_by_slug(requested_slug)
-        routing_tenant_slug = resolved_tenant.slug if resolved_tenant else requested_slug
-        routing_tenant_id = resolved_tenant.id if resolved_tenant else ""
-
-    requested_email = str(payload.get("email") or "").strip()
-    if not requested_email:
-        id_profile, _memberships = _load_id_me_payload(request, ctx)
-        if isinstance(id_profile, dict):
-            user_payload = id_profile.get("user")
-            if isinstance(user_payload, dict):
-                requested_email = str(user_payload.get("email") or "").strip()
-
-    if not requested_email:
-        return error_response(
-            code="EMAIL_REQUIRED",
-            message="Application email is required",
-            request_id=getattr(request, "request_id", None),
-            status=400,
-        )
-
-    upstream = str(getattr(settings, "BFF_UPSTREAM_ID_URL", "") or "").strip()
+    upstream = str(getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "") or "").strip()
     if not upstream:
-        return error_response(
-            code="UPSTREAM_NOT_CONFIGURED",
-            message="ID upstream is not configured",
-            request_id=getattr(request, "request_id", None),
-            status=502,
-        )
+        return _portal_entry_unavailable(request)
 
     application_payload = {
-        "tenant_slug": routing_tenant_slug,
-        "payload_json": {
-            "name": str(payload.get("name") or requested_slug).strip() or requested_slug,
-            "description": str(payload.get("description") or "").strip(),
-            "email": requested_email,
-            "requested_by_user_id": ctx.user_id,
-            "requested_slug": requested_slug,
-        },
+        "slug": requested_slug,
+        "name": str(payload.get("name") or requested_slug).strip() or requested_slug,
+        "description": str(payload.get("description") or "").strip(),
     }
 
+    # Applicant identity comes exclusively from the authenticated BFF session.
     context_headers: dict[str, str] = {
-        "X-Request-Id": request.request_id,
-        "X-User-Id": ctx.user_id,
-        "X-Tenant-Slug": routing_tenant_slug,
+        **_portal_entry_headers(request, ctx),
         "Content-Type": "application/json",
     }
-    if routing_tenant_id:
-        context_headers["X-Tenant-Id"] = routing_tenant_id
 
     try:
         resp = proxy_request(
             upstream_base_url=upstream,
-            upstream_path="applications",
+            upstream_path="portal/entry/tenant-applications",
             method="POST",
             query_string="",
             body=json.dumps(application_payload, separators=(",", ":")).encode("utf-8"),
@@ -1145,7 +1144,7 @@ def entry_tenant_applications(request: HttpRequest):
     except BFF_RECOVERABLE_EXCEPTIONS:
         return error_response(
             code="UPSTREAM_UNAVAILABLE",
-            message="ID service unavailable",
+            message="Portal service unavailable",
             request_id=request.request_id,
             status=502,
         )
@@ -1153,37 +1152,52 @@ def entry_tenant_applications(request: HttpRequest):
     try:
         response_payload = resp.json()
     except BFF_RECOVERABLE_EXCEPTIONS:
-        response_payload = {
-            "slug": requested_slug,
-            "status": "pending",
-        }
-
-    if resp.status_code < 400:
-        pending_entry = {
-            "id": response_payload.get("id") if isinstance(response_payload, dict) else None,
-            "slug": requested_slug,
-            "status": (
-                response_payload.get("status")
-                if isinstance(response_payload, dict)
-                else None
-            )
-            or "pending",
-        }
-        store = SessionStore()
-        existing_pending = store.get_cached_pending_applications(ctx.user_id) or []
-        deduped_pending = [
-            item
-            for item in existing_pending
-            if str(item.get("slug") or "").strip().lower() != requested_slug
-        ]
-        deduped_pending.append(pending_entry)
-        store.cache_pending_applications(ctx.user_id, deduped_pending)
+        return _portal_entry_unavailable(request)
 
     return JsonResponse(
         response_payload,
         status=resp.status_code,
         safe=isinstance(response_payload, dict),
     )
+
+
+@router.api_operation(["GET"], "/entry/admin/tenant-applications")
+def entry_admin_applications(request: HttpRequest):
+    return _proxy_entry_admin(request, "")
+
+
+@router.post("/entry/admin/tenant-applications/{application_id}/{action}")
+def entry_admin_review(request: HttpRequest, application_id: str, action: str):
+    from uuid import UUID
+
+    try:
+        application_id = str(UUID(application_id))
+    except ValueError:
+        return error_response(code="BAD_REQUEST", message="Invalid application ID", request_id=request.request_id, status=400)
+    if action not in {"approve", "reject"}:
+        return error_response(code="NOT_FOUND", message="Unknown action", request_id=request.request_id, status=404)
+    return _proxy_entry_admin(request, f"/{application_id}/{action}")
+
+
+def _proxy_entry_admin(request: HttpRequest, suffix: str):
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+    upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "")
+    if not upstream:
+        return _portal_entry_unavailable(request)
+    try:
+        resp = proxy_request(
+            upstream_base_url=upstream, upstream_path=f"portal/entry/admin/tenant-applications{suffix}",
+            method=request.method, query_string="", body=b"", incoming_headers=request.headers,
+            context_headers=_portal_entry_headers(request, ctx), request_id=request.request_id,
+            # Approval persists the tenant and waits up to 10s for Access. Allow
+            # Portal to return its durable provisioning state after that wait.
+            timeout=httpx.Timeout(10.0, read=30.0),
+        )
+    except BFF_RECOVERABLE_EXCEPTIONS:
+        return _portal_entry_unavailable(request)
+    return HttpResponse(resp.content, status=resp.status_code, content_type="application/json")
 
 
 @router.get("/csrf")
@@ -1769,6 +1783,21 @@ def _proxy_group(
         else:
             upstream_path = f"{ensure_prefix}/{upstream_path}".rstrip("/")
 
+    # Serverless HTTP invocation buffers responses and rejects chunked SSE.
+    # Tell the client to use its normal polling path without opening a stream.
+    if (
+        request.method == "GET"
+        and upstream_setting == "BFF_UPSTREAM_FEED_URL"
+        and upstream_path in {"feed/live", "feed/sse"}
+        and not getattr(settings, "BFF_FEED_STREAMING_ENABLED", True)
+    ):
+        response = HttpResponse(
+            'event: close\ndata: {"reason":"polling","retry_after_seconds":15}\n\n',
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
     body = request.body or b""
     
     # Debug log for master_flags being sent
@@ -1930,6 +1959,9 @@ def proxy_portal_applications_approve(request: HttpRequest, application_id: int)
         "BFF_UPSTREAM_ID_URL",
         f"applications/{application_id}/approve",
     )
+    enrollment_error = _enroll_approved_member(request, response)
+    if enrollment_error is not None:
+        return enrollment_error
     _maybe_provision_after_application_approve(request, response)
     return response
 
@@ -1958,6 +1990,17 @@ def proxy_access_root(request: HttpRequest):
 )
 def proxy_access(request: HttpRequest, path: str):
     return _proxy_group(request, "access", "BFF_UPSTREAM_ACCESS_URL", path, ensure_prefix="access")
+
+
+@router.api_operation(
+    ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    "/personalization/{path:path}",
+)
+def proxy_personalization(request: HttpRequest, path: str):
+    return _proxy_group(
+        request, "personalization", "BFF_UPSTREAM_ACCESS_URL", path,
+        ensure_prefix="personalization",
+    )
 
 
 @router.api_operation(

@@ -44,15 +44,15 @@ jobs:
           - service: activity
             test_target: src
           - service: bff
-            test_target: src/bff/tests.py src/bff/tests_tenant_context.py
+            test_target: src/bff/tests.py src/bff/tests_tenant_context.py src/bff/test_expected_tenant.py src/bff/test_access_snapshot.py
           - service: events
-            test_target: src/events/tests.py src/events/test_settings_security.py
+            test_target: src/events/tests.py src/events/test_settings_security.py src/events/test_list_filters.py
           - service: featureflags
             test_target: src/featureflags/tests.py
           - service: gamification
-            test_target: src/gamification/tests.py src/gamification/test_settings_security.py
+            test_target: src/gamification/tests.py src/gamification/test_settings_security.py src/gamification/test_earned_achievements.py
           - service: portal
-            test_target: src/portal/tests.py
+            test_target: src/portal/tests.py src/portal/test_tenant_onboarding.py src/portal/test_ydb_onboarding.py src/portal/test_outbox_function.py src/portal/test_application_history.py
           - service: voting
             test_target: >-
               src/core/tests/test_production_components.py
@@ -173,8 +173,21 @@ jobs:
         run: pnpm run lint
       - name: Typecheck
         run: pnpm run typecheck
+      - name: Behavior tests
+        run: pnpm exec vitest run
       - name: Build
         run: pnpm run build
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Critical user flows
+        run: pnpm run test:e2e
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-browser-results
+          path: web/portal-frontend/test-results
+          retention-days: 7
 
   terraform-check:
     name: Check OpenTofu

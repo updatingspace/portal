@@ -22,6 +22,8 @@ REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 TENANTLESS_PREFIXES = (
     "/api/v1/entry/",
     "/api/v1/session/me",
+    "/api/v1/session/logout",
+    "/api/v1/logout",
     "/api/v1/session/switch-tenant",
     "/api/v1/session/tenants",
     "/api/v1/csrf",
@@ -203,6 +205,20 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
                 message="No active tenant. Call POST /session/switch-tenant first.",
                 request_id=getattr(request, "request_id", None),
                 status=403,
+            )
+
+        expected_tenant = request.headers.get("X-Portal-Expected-Tenant")
+        if (
+            expected_tenant is not None
+            and not _is_tenantless_endpoint(request.path)
+            and not any(request.path.startswith(p) for p in PUBLIC_PREFIXES)
+            and expected_tenant != effective_tenant_slug
+        ):
+            return error_response(
+                code="TENANT_CONTEXT_CHANGED",
+                message="Community context changed. Confirm the community before continuing.",
+                request_id=getattr(request, "request_id", None),
+                status=409,
             )
 
         request.auth_ctx = AuthContext(

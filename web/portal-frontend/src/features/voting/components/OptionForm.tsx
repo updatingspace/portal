@@ -1,85 +1,88 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { TextArea, TextInput } from '@gravity-ui/uikit';
+import { FormField } from '../../../shared/ui/portal/PortalUI';
 import type { OptionCreatePayload } from '../types';
-
 interface OptionFormProps {
   initialData?: Partial<OptionCreatePayload>;
+  value?: OptionCreatePayload;
   onChange?: (data: OptionCreatePayload) => void;
 }
-
-export const OptionForm: React.FC<OptionFormProps> = ({
+export function OptionForm({
   initialData = {},
+  value,
   onChange,
-}) => {
-  const [title, setTitle] = useState(initialData.title || '');
-  const [description, setDescription] = useState(initialData.description || '');
-  const [mediaUrl, setMediaUrl] = useState(initialData.media_url || '');
-  const [gameId, setGameId] = useState(initialData.game_id || '');
-
-  const handleChange = useCallback(() => {
-    const data: OptionCreatePayload = {
-      title,
-      description: description || undefined,
-      media_url: mediaUrl || undefined,
-      game_id: gameId || undefined,
-    };
-    
-    if (onChange) {
-      onChange(data);
-    }
-  }, [description, gameId, mediaUrl, onChange, title]);
-
-  // Call onChange when any field changes
-  useEffect(() => {
-    handleChange();
-  }, [handleChange]);
-
+}: OptionFormProps) {
+  const [local, setLocal] = useState<OptionCreatePayload>({
+    title: initialData.title || '',
+    description: initialData.description,
+    media_url: initialData.media_url,
+    game_id: initialData.game_id,
+  });
+  const current = value ?? local;
+  const update = (patch: Partial<OptionCreatePayload>) => {
+    const next = { ...current, ...patch };
+    if (!value) setLocal(next);
+    onChange?.(next);
+  };
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Название варианта</div>
+    <div className="portal-stack">
+      <FormField label="Название варианта">
+        {(props) => (
           <TextInput
-            value={title}
-            onUpdate={setTitle}
+            {...props}
+            size="xl"
+            value={current.title}
+            onUpdate={(title) => update({ title })}
             placeholder="Например: Project Zeta"
           />
+        )}
+      </FormField>
+      <details className="portal-disclosure">
+        <summary>Описание и медиа варианта</summary>
+        <div className="portal-stack">
+          <FormField label="Описание варианта">
+            {(props) => (
+              <TextArea
+                {...props}
+                size="xl"
+                rows={2}
+                value={current.description || ''}
+                onUpdate={(description) =>
+                  update({ description: description || undefined })
+                }
+              />
+            )}
+          </FormField>
+          <FormField label="Ссылка на медиа">
+            {(props) => (
+              <TextInput
+                {...props}
+                size="xl"
+                value={current.media_url || ''}
+                onUpdate={(media_url) =>
+                  update({ media_url: media_url || undefined })
+                }
+                placeholder="https://…"
+              />
+            )}
+          </FormField>
+          <FormField
+            label="Идентификатор игры"
+            hint="Необязательно. Заполняется для варианта, связанного с каталогом игр."
+          >
+            {(props) => (
+              <TextInput
+                {...props}
+                size="xl"
+                value={current.game_id || ''}
+                onUpdate={(game_id) =>
+                  update({ game_id: game_id || undefined })
+                }
+              />
+            )}
+          </FormField>
         </div>
-      </div>
-
-      <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Описание</div>
-          <TextArea
-            value={description}
-            onUpdate={setDescription}
-            rows={2}
-            placeholder="Короткое пояснение"
-          />
-        </div>
-      </div>
-
-      <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Ссылка на медиа</div>
-          <TextInput
-            value={mediaUrl}
-            onUpdate={setMediaUrl}
-            placeholder="https://..."
-          />
-        </div>
-      </div>
-
-      <div>
-        <div className="space-y-1">
-          <div className="text-sm font-medium text-gray-700">Game ID</div>
-          <TextInput
-            value={gameId}
-            onUpdate={setGameId}
-            placeholder="ID игры или сущности"
-          />
-        </div>
-      </div>
+      </details>
     </div>
   );
-};
+}

@@ -6,7 +6,7 @@ export type TenantInfo = {
 export type BrowserLocationLike = Pick<Location, 'protocol' | 'host' | 'pathname' | 'search' | 'hash'>;
 
 const LOCALHOST_SUFFIX = '.localhost';
-const RESERVED_HOST_SLUGS = new Set(['portal', 'www', 'admin', 'app']);
+const RESERVED_HOST_SLUGS = new Set(['portal', 'www', 'admin', 'app', 'id', 'api', 'auth', 'docs']);
 const API_HOST_PREFIX = 'api';
 const TENANT_ALIAS_PUBLIC_SUFFIX = 't.updspace.com';
 const DEFAULT_PORTAL_HOST = 'portal.updspace.com';
@@ -59,6 +59,9 @@ const extractTenantSlug = (labels: string[]): string | null => {
 const resolveExplicitTenantHost = (host: string): TenantInfo | null => {
   const { hostname, port } = splitHostPort(host);
 
+  // An address or an unrelated domain is never evidence of community membership.
+  if (hostname.includes(':') || /^[\d.]+$/.test(hostname)) return null;
+
   if (hostname.endsWith(LOCALHOST_SUFFIX)) {
     const labels = hostname
       .slice(0, -LOCALHOST_SUFFIX.length)
@@ -70,6 +73,8 @@ const resolveExplicitTenantHost = (host: string): TenantInfo | null => {
   }
 
   const labels = hostname.split('.').filter(Boolean);
+  const configuredDomain = splitHostPort(getConfiguredPortalHost()).hostname.replace(/^portal\./, '');
+  if (!hostname.endsWith('.updspace.com') && !hostname.endsWith(`.${configuredDomain}`)) return null;
   if (labels.length < 3) {
     return null;
   }
@@ -86,6 +91,7 @@ export const sanitizeInternalPath = (path: string | null | undefined, defaultPat
     candidate.startsWith('http://') ||
     candidate.startsWith('https://') ||
     candidate.startsWith('//') ||
+    (candidate.includes('\\') || [...candidate].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) ||
     !candidate.startsWith('/')
   ) {
     return defaultPath;

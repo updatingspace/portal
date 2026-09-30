@@ -22,6 +22,61 @@ class Tenant(models.Model):
         ]
 
 
+class TenantMembership(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="memberships")
+    user_id = models.UUIDField(db_index=True)
+    status = models.CharField(max_length=16, default="active")
+    base_role = models.CharField(max_length=32, default="member")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "portal_tenant_membership"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "user_id"], name="p_tenant_member_uniq"),
+        ]
+
+
+class TenantApplication(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Reserve the future tenant's identity without creating an accessible tenant.
+    tenant_id = models.UUIDField(default=uuid.uuid4, db_index=True)
+    applicant_user_id = models.UUIDField(db_index=True)
+    slug = models.SlugField(max_length=32)
+    name = models.CharField(max_length=128)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=16, default="pending")
+    created_at = models.DateTimeField(default=timezone.now)
+    reviewed_by_user_id = models.UUIDField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "portal_tenant_application"
+        indexes = [models.Index(fields=["applicant_user_id", "status"], name="p_tapp_user_status_idx")]
+
+
+class TenantSlugClaim(models.Model):
+    slug = models.SlugField(primary_key=True, max_length=32)
+    tenant_id = models.UUIDField(db_index=True)
+    application = models.OneToOneField(TenantApplication, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table = "portal_tenant_slug_claim"
+
+
+class TenantProvisioningOutbox(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant_id = models.UUIDField(db_index=True)
+    application = models.OneToOneField(TenantApplication, on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=64, default="tenant.owner.provision")
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "portal_tenant_provisioning_outbox"
+
+
 class PortalProfile(models.Model):
     id = models.BigAutoField(primary_key=True)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="profiles")

@@ -59,7 +59,7 @@ function renderAppLayout(userOverrides: Partial<typeof BASE_USER> = {}) {
 }
 
 describe('AppLayout Access Denied integration', () => {
-  it('shows AccessDeniedScreen when api 403 error event is emitted', async () => {
+  it('keeps the page available when a local API request is forbidden', async () => {
     renderAppLayout();
 
     expect(await screen.findByText('Feed Content')).toBeInTheDocument();
@@ -76,8 +76,8 @@ describe('AppLayout Access Denied integration', () => {
       );
     });
 
-    expect(await screen.findByRole('heading', { name: 'Доступ ограничен' })).toBeInTheDocument();
-    expect(screen.getAllByText(/request id: req-api-403/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', {name:'Доступ ограничен'})).not.toBeInTheDocument();
+    expect(screen.getByText('Feed Content')).toBeVisible();
   });
 
   it('ignores access denied events for another route path', async () => {

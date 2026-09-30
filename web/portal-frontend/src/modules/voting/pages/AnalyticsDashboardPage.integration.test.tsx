@@ -51,7 +51,7 @@ const buildResponse = (items: Poll[]): PaginatedResponse<Poll> => ({
 });
 
 describe('AnalyticsDashboardPage integration', () => {
-  it('renders metrics and result links', async () => {
+  it('lists completed polls without inventing aggregate metrics', async () => {
     vi.mocked(votingFeature.usePolls).mockReturnValue({
       data: buildResponse([
         buildPoll({ id: 'poll-1', title: 'Winter Cup', settings: { vote_count: 120 } }),
@@ -65,11 +65,9 @@ describe('AnalyticsDashboardPage integration', () => {
 
     renderWithProviders(<AnalyticsDashboardPage />);
 
-    expect(await screen.findByText('Аналитика голосований')).toBeInTheDocument();
-    expect(screen.getByText('Завершённых опросов')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText('200')).toBeInTheDocument();
-    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(await screen.findByText('Итоги голосований')).toBeInTheDocument();
+    expect(screen.queryByText('200')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', {name:'Результаты'})).toHaveLength(2);
     expect(screen.getByText('Winter Cup')).toBeInTheDocument();
     expect(screen.getByText('Spring League')).toBeInTheDocument();
   }, TEST_TIMEOUT_MS);
@@ -86,7 +84,7 @@ describe('AnalyticsDashboardPage integration', () => {
     renderWithProviders(<AnalyticsDashboardPage />);
 
     expect(await screen.findByText('Нет завершённых опросов')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Создать опрос' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'К голосованиям' })).toBeInTheDocument();
   }, TEST_TIMEOUT_MS);
 
   it('renders error state and supports retry action', async () => {
@@ -101,7 +99,7 @@ describe('AnalyticsDashboardPage integration', () => {
 
     renderWithProviders(<AnalyticsDashboardPage />);
 
-    expect(await screen.findByText('Не удалось загрузить аналитику')).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось загрузить итоги')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   }, TEST_TIMEOUT_MS);

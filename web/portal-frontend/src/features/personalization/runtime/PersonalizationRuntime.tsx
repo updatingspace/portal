@@ -1,3 +1,4 @@
+import {accessibleAccent} from '../../../shared/lib/contrast';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '../../../app/providers/i18nContext';
@@ -51,8 +52,6 @@ const applyAppearanceSettings = (appearance?: UserPreferences['appearance']) => 
     documentElement.style.removeProperty('--portal-font-scale');
     documentElement.style.removeProperty('--user-accent-color');
     documentElement.style.removeProperty('--portal-focus-ring-color');
-    documentElement.style.removeProperty('--portal-surface-contrast');
-    documentElement.style.removeProperty('--portal-text-contrast');
     documentElement.dataset.highContrast = 'false';
     documentElement.dataset.reduceMotion = 'false';
     document.body.classList.remove('reduce-motion');
@@ -63,14 +62,6 @@ const applyAppearanceSettings = (appearance?: UserPreferences['appearance']) => 
   documentElement.style.setProperty('--portal-font-scale', fontSizeToScale(appearance.font_size));
   documentElement.style.setProperty('--user-accent-color', appearance.accent_color);
   documentElement.style.setProperty('--portal-focus-ring-color', `${appearance.accent_color}33`);
-  documentElement.style.setProperty(
-    '--portal-surface-contrast',
-    appearance.high_contrast ? 'color-mix(in srgb, #000 8%, #fff)' : 'var(--g-color-base-background, #fff)',
-  );
-  documentElement.style.setProperty(
-    '--portal-text-contrast',
-    appearance.high_contrast ? 'var(--g-color-text-primary, #111)' : 'var(--g-color-text-primary, #111)',
-  );
   documentElement.dataset.highContrast = appearance.high_contrast.toString();
   documentElement.dataset.reduceMotion = appearance.reduce_motion.toString();
 
@@ -84,13 +75,13 @@ const applyAppearanceSettings = (appearance?: UserPreferences['appearance']) => 
 export function PersonalizationRuntime() {
   const { user } = useAuth();
   const { locale, timezone, changeLocale, changeTimezone } = useI18n();
-  const { mode, setMode } = useThemeMode();
+  const { mode, resolvedMode, setMode } = useThemeMode();
   const currentModeRef = useRef<'light' | 'dark' | 'auto'>(mode);
-  const { preferences } = usePreferences({ enabled: Boolean(user) });
-  const [cachedPreferences, setCachedPreferences] = useState(() => readCachedPreferences());
+  const { preferences } = usePreferences({ enabled: Boolean(user), userId: user?.id, tenantId: user?.tenant?.id });
+  const [cachedPreferences, setCachedPreferences] = useState(() => readCachedPreferences(user?.id, user?.tenant?.id));
   const effectivePreferences = useMemo(
     () => {
-      const cachedSnapshot = cachedPreferences ?? (user ? readCachedPreferences() : undefined);
+      const cachedSnapshot = cachedPreferences ?? (user ? readCachedPreferences(user?.id, user?.tenant?.id) : undefined);
       if (!preferences) {
         return cachedSnapshot;
       }
@@ -141,14 +132,15 @@ export function PersonalizationRuntime() {
       if (!detail || typeof detail !== 'object') {
         return;
       }
-      setCachedPreferences(detail as UserPreferences);
+      const next = detail as UserPreferences;
+      if (next.user_id === user?.id && next.tenant_id === user?.tenant?.id) setCachedPreferences(next);
     };
 
     window.addEventListener(PERSONALIZATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
     return () => {
       window.removeEventListener(PERSONALIZATION_PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated);
     };
-  }, []);
+  }, [user?.id, user?.tenant?.id]);
 
   useEffect(() => {
     const themeSource = effectivePreferences?.appearance.theme_source ?? 'portal';
@@ -174,6 +166,18 @@ export function PersonalizationRuntime() {
         ? user.idTheme
         : effectivePreferences?.appearance.theme ?? mode;
   }, [effectivePreferences, mode, user?.idTheme]);
+
+  useEffect(() => {
+    const root=document.documentElement;
+    const color=effectivePreferences?.appearance.accent_color;
+    if (color) {
+      const accent=accessibleAccent(color,resolvedMode);
+      root.style.setProperty('--portal-custom-brand',accent.brand);
+      root.style.setProperty('--portal-custom-brand-text',accent.text);
+      root.style.setProperty('--portal-custom-link',accent.link);
+    }
+    return () => {for(const key of ['--portal-custom-brand','--portal-custom-brand-text','--portal-custom-link']) root.style.removeProperty(key);};
+  }, [effectivePreferences?.appearance.accent_color,resolvedMode]);
 
   return null;
 }

@@ -37,7 +37,7 @@ title: Yandex Cloud Deploy
 - `serverless-task.sh` entrypoint во всех service images;
 - BFF transport для private invoke URL + IAM token из metadata;
 - YDB-safe fallback для hot-path, где использовались `select_for_update`;
-- Terraform scaffold в [`infra/terraform/yandex-cloud`](/infra/terraform/yandex-cloud);
+- Terraform scaffold в [`infra/terraform/yandex-cloud`](https://github.com/updatingspace/portal/tree/HEAD/infra/terraform/yandex-cloud);
 - GitHub Actions workflow для Yandex Cloud deploy;
 - smoke script для публичного gateway.
 
@@ -94,11 +94,11 @@ title: Yandex Cloud Deploy
 
 ## Terraform
 
-Главный source of truth лежит в [`infra/terraform/yandex-cloud`](/infra/terraform/yandex-cloud).
+Главный source of truth лежит в [`infra/terraform/yandex-cloud`](https://github.com/updatingspace/portal/tree/HEAD/infra/terraform/yandex-cloud).
 
 ### Bootstrap
 
-1. Скопировать [`terraform.tfvars.example`](/infra/terraform/yandex-cloud/terraform.tfvars.example) в локальный `.tfvars` файл.
+1. Скопировать [`terraform.tfvars.example`](https://github.com/updatingspace/portal/blob/HEAD/infra/terraform/yandex-cloud/terraform.tfvars.example) в локальный `.tfvars` файл.
 2. Заполнить:
    - `cloud_id`
    - `folder_id`
@@ -133,7 +133,7 @@ terraform -chdir=infra/terraform/yandex-cloud apply
 
 Репозиторий использует два workflow'а:
 
-- [`ci.yml`](/.github/workflows/ci.yml)
+- [`ci.yml`](https://github.com/updatingspace/portal/blob/HEAD/.github/workflows/ci.yml)
   Что делает:
   - Python lint/tests по сервисам
   - YDB-local smoke и `migrate_ydb --dry-run`
@@ -211,7 +211,7 @@ python src/manage.py migrate_ydb
 
 ## Smoke checks
 
-Публичный smoke script: [`scripts/ci/smoke-yc-gateway.sh`](/scripts/ci/smoke-yc-gateway.sh)
+Публичный smoke script: [`scripts/ci/smoke-yc-gateway.sh`](https://github.com/updatingspace/portal/blob/HEAD/scripts/ci/smoke-yc-gateway.sh)
 
 Он проверяет:
 

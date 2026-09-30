@@ -151,6 +151,7 @@ export interface FeedResponseV2 {
  * Параметры запроса feed
  */
 export interface FeedParams {
+  actorUserId?: string;
   from?: string;
   to?: string;
   types?: string;

@@ -1,5 +1,5 @@
+import '../../styles/voting-v2.css';
 import React from 'react';
-import { Text } from '@gravity-ui/uikit';
 
 interface VotingPageLayoutProps {
   title: string;
@@ -20,19 +20,19 @@ export const VotingPageLayout: React.FC<VotingPageLayoutProps> = ({
 
   return (
     <div className={layoutClassName}>
-      <section className="voting-v2__hero" aria-labelledby="voting-v2-page-title">
+      <header className="portal-page__heading" aria-labelledby="voting-v2-page-title">
         <div className="voting-v2__hero-content">
-          <Text variant="header-1" id="voting-v2-page-title" className="voting-v2__title">
+          <h1 id="voting-v2-page-title" className="voting-v2__title">
             {title}
-          </Text>
+          </h1>
           {description ? (
-            <Text variant="body-2" color="secondary" className="voting-v2__description">
+            <p className="voting-v2__description">
               {description}
-            </Text>
+            </p>
           ) : null}
         </div>
         {actions ? <div className="voting-v2__actions">{actions}</div> : null}
-      </section>
+      </header>
 
       <section className="voting-v2__body">{children}</section>
     </div>

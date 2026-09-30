@@ -43,6 +43,7 @@ export function useAutoSave<T>({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousDataRef = useRef<T>(data);
   const dataRef = useRef<T>(data);
+  const savingRef = useRef(false);
 
   // Update data ref when data changes
   useEffect(() => {
@@ -52,34 +53,34 @@ export function useAutoSave<T>({
   // Detect changes
   useEffect(() => {
     const hasChanged = JSON.stringify(data) !== JSON.stringify(previousDataRef.current);
-    if (hasChanged) {
-      setIsDirty(true);
-      setError(null);
-    }
+    setIsDirty(hasChanged);
   }, [data]);
 
   // Perform save
   const performSave = useCallback(async () => {
-    if (!isDirty || isSaving) return;
+    if (savingRef.current || JSON.stringify(dataRef.current) === JSON.stringify(previousDataRef.current)) return;
+    savingRef.current = true;
+    const submitted = dataRef.current;
     
     setIsSaving(true);
     setError(null);
     
     try {
-      await onSave(dataRef.current);
-      previousDataRef.current = dataRef.current;
-      setIsDirty(false);
+      await onSave(submitted);
+      previousDataRef.current = submitted;
+      setIsDirty(JSON.stringify(dataRef.current) !== JSON.stringify(submitted));
       setLastSaved(new Date());
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Save failed'));
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
-  }, [isDirty, isSaving, onSave]);
+  }, [onSave]);
 
   // Debounced auto-save
   useEffect(() => {
-    if (!enabled || !isDirty) return;
+    if (!enabled || !isDirty || isSaving || error) return;
     
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -94,7 +95,7 @@ export function useAutoSave<T>({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [enabled, isDirty, delay, performSave]);
+  }, [data, enabled, isDirty, isSaving, error, delay, performSave]);
 
   // Manual save
   const save = useCallback(async () => {

@@ -7,7 +7,7 @@ import {
   fetchPollInfo,
   fetchPollResults,
   fetchPolls,
-} from './voting';
+} from '../features/voting/api/votingApi';
 
 vi.mock('./client', () => ({ request: vi.fn() }));
 import { request } from './client';

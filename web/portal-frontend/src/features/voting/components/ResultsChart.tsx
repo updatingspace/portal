@@ -3,12 +3,14 @@ import { Text } from '@gravity-ui/uikit';
 import type { PollResults, ResultNomination } from '../types';
 
 export interface ResultsChartProps {
+  showTitle?: boolean;
   results?: PollResults;
   nomination?: ResultNomination;
   totalVotes?: number;
 }
 
 export const ResultsChart: React.FC<ResultsChartProps> = ({
+  showTitle = true,
   results,
   nomination,
   totalVotes,
@@ -17,33 +19,44 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
 
   if (!nominationResults) {
     return (
-      <div className="voting-v2__state-card voting-v2__muted" role="status" aria-live="polite">
+      <div
+        className="voting-v2__state-card voting-v2__muted"
+        role="status"
+        aria-live="polite"
+      >
         Нет данных для отображения
       </div>
     );
   }
 
-  const nominationTotal = totalVotes ?? nominationResults.options.reduce((sum, option) => sum + option.votes, 0);
+  const nominationTotal =
+    totalVotes ??
+    nominationResults.options.reduce((sum, option) => sum + option.votes, 0);
 
   const sortedOptions = [...nominationResults.options].sort(
-    (a, b) => b.votes - a.votes
+    (a, b) => b.votes - a.votes,
   );
 
   return (
     <div className="voting-v2__grid" aria-live="polite">
-      <Text variant="subheader-2">{nominationResults.title}</Text>
+      {showTitle && (
+        <Text variant="subheader-2">{nominationResults.title}</Text>
+      )}
 
       <div className="voting-v2__grid">
         {sortedOptions.map((option) => {
-          const percentage = nominationTotal > 0
-            ? Math.round((option.votes / nominationTotal) * 100)
-            : 0;
+          const percentage =
+            nominationTotal > 0
+              ? Math.round((option.votes / nominationTotal) * 100)
+              : 0;
 
           return (
             <div key={option.option_id} className="voting-v2__chart-row">
               <div className="voting-v2__toolbar voting-v2__small">
                 <span className="voting-v2__option-title">{option.text}</span>
-                <span>{option.votes} голосов ({percentage}%)</span>
+                <span>
+                  {option.votes} голосов ({percentage}%)
+                </span>
               </div>
 
               <div

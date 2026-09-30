@@ -26,7 +26,7 @@ describe('AppHeader', () => {
     window.localStorage.clear();
   });
 
-  it('hides the header theme switcher from regular members even when the flag is enabled', () => {
+  it('offers theme selection to regular members', () => {
     renderWithProviders(<AppHeader />, {
       authUser: {
         ...baseUser,
@@ -36,7 +36,7 @@ describe('AppHeader', () => {
       },
     });
 
-    expect(screen.queryByTestId('app-theme-select')).not.toBeInTheDocument();
+    expect(screen.getByTestId('app-theme-select')).toBeInTheDocument();
   });
 
   it('shows the header theme switcher only for a flagged platform developer', () => {

@@ -1,6 +1,10 @@
 import { lazy } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 
+import { LegacyRedirect } from './LegacyRedirect';
+import { LegacyAppRedirect } from './guards/LegacyAppRedirect';
+import { FeatureGate } from './guards/FeatureGate';
+import {RouteErrorState} from './RouteErrorState';
 import { AppLayout } from '../widgets/app-shell/AppLayout';
 import { RequireCapability } from './guards/RequireCapability';
 import { RequireSession } from './guards/RequireSession';
@@ -21,21 +25,15 @@ const VotingPage = lazy(() => import('../pages/app/VotingPages').then((mod) => (
 const VotingCampaignPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingCampaignPage })));
 const VotingAnalyticsPage = lazy(() => import('../pages/app/VotingPages').then((mod) => ({ default: mod.VotingAnalyticsPage })));
 const ProfilePage = lazy(() => import('../pages/app/profile/Page').then((mod) => ({ default: mod.ProfilePage })));
-const FollowingListPage = lazy(() =>
-  import('../pages/app/profile/components/list-pages/FollowingListPage').then((mod) => ({ default: mod.FollowingListPage })),
-);
-const FollowersListPage = lazy(() =>
-  import('../pages/app/profile/components/list-pages/FollowersListPage').then((mod) => ({ default: mod.FollowersListPage })),
-);
+
+
 const CommunitiesListPage = lazy(() =>
   import('../pages/app/profile/components/list-pages/CommunitiesListPage').then((mod) => ({ default: mod.CommunitiesListPage })),
 );
 const AchievementsListPage = lazy(() =>
   import('../pages/app/profile/components/list-pages/AchievementsListPage').then((mod) => ({ default: mod.AchievementsListPage })),
 );
-const FriendsListPage = lazy(() =>
-  import('../pages/app/profile/components/list-pages/FriendsListPage').then((mod) => ({ default: mod.FriendsListPage })),
-);
+
 const SettingsPage = lazy(() => import('../pages/app/settings/Page').then((mod) => ({ default: mod.SettingsPage })));
 const AdminPage = lazy(() => import('../pages/app/AdminPage').then((mod) => ({ default: mod.AdminPage })));
 const TenantAdminPage = lazy(() => import('../pages/app/TenantAdminPage').then((mod) => ({ default: mod.TenantAdminPage })));
@@ -57,7 +55,7 @@ const AchievementDetailPage = lazy(() =>
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage').then((mod) => ({ default: mod.NotFoundPage })));
 
 const inAppRouteSpecs = [
-  { path: '', element: <DashboardPage />, title: 'Dashboard' },
+  { path: '', element: <DashboardPage />, title: 'Overview' },
   {
     path: 'feed',
     element: (
@@ -85,11 +83,11 @@ const inAppRouteSpecs = [
     ),
     title: 'События',
   },
-  { path: 'events/create', element: <CreateEventPage />, title: 'Создание события' },
+  { path: 'events/create', element: <RequireCapability required="events.event.create"><CreateEventPage /></RequireCapability>, title: 'Создание события' },
   { path: 'events/:id', element: <EventPage />, title: 'Событие' },
-  { path: 'events/:id/edit', element: <EditEventPage />, title: 'Редактирование события' },
-  { path: 'communities', element: <PlaceholderPage title="Communities" />, title: 'Communities' },
-  { path: 'teams', element: <PlaceholderPage title="Teams" />, title: 'Teams' },
+  { path: 'events/:id/edit', element: <RequireCapability required="events.event.manage"><EditEventPage /></RequireCapability>, title: 'Редактирование события' },
+  { path: 'communities', element: <PlaceholderPage title="Группы сообщества" />, title: 'Communities' },
+  { path: 'teams', element: <PlaceholderPage title="Команды" />, title: 'Teams' },
   { path: 'voting', element: <VotingPage />, title: 'Опросы' },
   { path: 'voting/create', element: <PollCreatePage />, title: 'Создание опроса' },
   { path: 'voting/templates', element: <PollTemplatesPage />, title: 'Шаблоны опросов' },
@@ -98,11 +96,11 @@ const inAppRouteSpecs = [
   { path: 'voting/:id/manage', element: <PollManagePage />, title: 'Управление опросом' },
   { path: 'voting/:id/results', element: <PollResultsPage />, title: 'Результаты опроса' },
   { path: 'profile', element: <ProfilePage />, title: 'Профиль' },
-  { path: 'profile/following', element: <FollowingListPage />, title: 'Подписки' },
-  { path: 'profile/followers', element: <FollowersListPage />, title: 'Подписчики' },
+  { path: 'profile/following', element: <PlaceholderPage title="Подписки" />, title: 'Подписки' },
+  { path: 'profile/followers', element: <PlaceholderPage title="Подписчики" />, title: 'Подписчики' },
   { path: 'profile/communities', element: <CommunitiesListPage />, title: 'Сообщества' },
   { path: 'profile/achievements', element: <AchievementsListPage />, title: 'Ачивки' },
-  { path: 'profile/friends', element: <FriendsListPage />, title: 'Друзья' },
+  { path: 'profile/friends', element: <PlaceholderPage title="Друзья" />, title: 'Друзья' },
   { path: 'settings', element: <SettingsPage />, title: 'Настройки' },
   { path: 'admin', element: <AdminPage />, title: 'Администрирование' },
   {
@@ -112,9 +110,9 @@ const inAppRouteSpecs = [
         <TenantAdminPage />
       </RequireCapability>
     ),
-    title: 'Tenant Admin',
+    title: 'Управление сообществом',
   },
-  { path: 'feature-flags', element: <FeatureFlagsPage />, title: 'Feature Flags' },
+  { path: 'feature-flags', element: <FeatureFlagsPage />, title: 'Функции платформы' },
   { path: 'gamification', element: <GamificationDashboardPage />, title: 'Геймификация' },
   { path: 'gamification/achievements/new', element: <AchievementFormPage />, title: 'Новая ачивка' },
   { path: 'gamification/achievements/:id/edit', element: <AchievementFormPage />, title: 'Редактирование ачивки' },
@@ -130,7 +128,7 @@ const createLegacyInAppRoutes = () =>
 
 const createTenantInAppRoutes = () =>
   inAppRouteSpecs.map(({ path, element, title }) =>
-    path ? { path, element, handle: { title } } : { index: true, element, handle: { title } },
+    path ? { path, element: path.startsWith('voting') ? <FeatureGate>{element}</FeatureGate> : element, handle: { title } } : { index: true, element, handle: { title } },
   );
 
 const routeConfig = [
@@ -147,7 +145,7 @@ const routeConfig = [
     children: [
       { path: '/choose-tenant', element: <TenantChooserPage />, handle: { title: 'Выбор сообщества' } },
       {
-        element: <AppLayout />,
+        element: <LegacyAppRedirect />,
         children: createLegacyInAppRoutes(),
       },
       {
@@ -162,19 +160,19 @@ const routeConfig = [
       },
     ],
   },
-  { path: '/feed', element: <Navigate to="/app/feed" replace /> },
-  { path: '/events', element: <Navigate to="/app/events" replace /> },
-  { path: '/events/:id', element: <Navigate to="/app/events/:id" replace /> },
-  { path: '/voting', element: <Navigate to="/app/voting" replace /> },
-  { path: '/voting/:id', element: <Navigate to="/app/voting/:id" replace /> },
-  { path: '/me', element: <Navigate to="/app/profile" replace /> },
-  { path: '/profile', element: <Navigate to="/app/profile" replace /> },
-  { path: '/admin', element: <Navigate to="/app/admin" replace /> },
-  { path: '/admin/applications', element: <Navigate to="/app/admin" replace /> },
-  { path: '/nominations', element: <Navigate to="/app/voting" replace /> },
-  { path: '/nominations/:id', element: <Navigate to="/app/voting/:id" replace /> },
-  { path: '/votings/:votingId', element: <Navigate to="/app/voting/:votingId" replace /> },
+  { path: '/feed', element: <LegacyRedirect to="/app/feed" /> },
+  { path: '/events', element: <LegacyRedirect to="/app/events" /> },
+  { path: '/events/:id', element: <LegacyRedirect to="/app/events/:id" /> },
+  { path: '/voting', element: <LegacyRedirect to="/app/voting" /> },
+  { path: '/voting/:id', element: <LegacyRedirect to="/app/voting/:id" /> },
+  { path: '/me', element: <LegacyRedirect to="/app/profile" /> },
+  { path: '/profile', element: <LegacyRedirect to="/app/profile" /> },
+  { path: '/admin', element: <LegacyRedirect to="/app/admin" /> },
+  { path: '/admin/applications', element: <LegacyRedirect to="/app/admin" /> },
+  { path: '/nominations', element: <LegacyRedirect to="/app/voting" /> },
+  { path: '/nominations/:id', element: <LegacyRedirect to="/app/voting/:id" /> },
+  { path: '/votings/:votingId', element: <LegacyRedirect to="/app/voting/:votingId" /> },
   { path: '*', element: <NotFoundPage /> },
 ];
 
-export const createAppRouter = () => createBrowserRouter(routeConfig);
+export const createAppRouter = () => createBrowserRouter(routeConfig.map(route=>({...route,errorElement:<RouteErrorState/>})));

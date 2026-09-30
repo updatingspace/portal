@@ -21,22 +21,22 @@ export const normalizeTimezone = (value: string | null | undefined): string => {
 
 export const getLocale = (): Locale => {
   if (typeof window === 'undefined') return DEFAULT_LOCALE;
-  return normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY));
+  try { return normalizeLocale(window.localStorage?.getItem(LOCALE_STORAGE_KEY)); } catch { return DEFAULT_LOCALE; }
 };
 
 export const setLocale = (locale: Locale): void => {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+  try { window.localStorage?.setItem(LOCALE_STORAGE_KEY, locale); } catch { /* In-memory locale remains usable. */ }
 };
 
 export const getTimezone = (): string => {
   if (typeof window === 'undefined') {
     return DEFAULT_TIMEZONE;
   }
-  return normalizeTimezone(window.localStorage.getItem(TIMEZONE_STORAGE_KEY));
+  try { return normalizeTimezone(window.localStorage?.getItem(TIMEZONE_STORAGE_KEY)); } catch { return DEFAULT_TIMEZONE; }
 };
 
 export const setTimezone = (timezone: string): void => {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(TIMEZONE_STORAGE_KEY, normalizeTimezone(timezone));
+  try { window.localStorage?.setItem(TIMEZONE_STORAGE_KEY, normalizeTimezone(timezone)); } catch { /* Optional storage. */ }
 };

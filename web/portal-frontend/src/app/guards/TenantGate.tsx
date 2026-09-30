@@ -1,152 +1,50 @@
-/**
- * TenantGate — wrapper for /t/:tenantSlug/* routes.
- *
- * On mount, calls switch-tenant for the slug from URL params,
- * then fetches session/me to hydrate auth context.
- * Handles loading / switching / forbidden / error states.
- */
-import React, { useEffect, useRef, useState } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
-
+import { useEffect, useState } from 'react';
+import { Button } from '@gravity-ui/uikit';
+import { Navigate, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantContext } from '../../contexts/TenantContext';
-import { AppLoader } from '../../shared/ui/AppLoader';
+import { PageState, useUITranslation } from '../../shared/ui/portal/PortalUI';
 
-type GateState = 'idle' | 'switching' | 'ready' | 'forbidden' | 'error';
-
-export const TenantGate: React.FC = () => {
-  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+type Gate = {slug: string; phase: 'loading' | 'ready' | 'forbidden' | 'error'; message?: string};
+export function TenantGate() {
+  const {tenantSlug = ''} = useParams();
+  const {user, refreshProfile} = useAuth();
+  const {switchTenant} = useTenantContext();
   const navigate = useNavigate();
-  const { user, refreshProfile } = useAuth();
-  const { activeTenant, doSwitchTenant, setState: setTenantState } = useTenantContext();
-  const [gateState, setGateState] = useState<GateState>('idle');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const switchingRef = useRef(false);
-  const lastSlugRef = useRef<string | null>(null);
-
+  const t = useUITranslation();
+  const userId = user?.id;
+  const [attempt, setAttempt] = useState(0);
+  const [gate, setGate] = useState<Gate>({slug: tenantSlug, phase: 'loading'});
   useEffect(() => {
-    if (!tenantSlug) {
-      navigate('/choose-tenant', { replace: true });
-      return;
-    }
-
-    if (!user) {
-      // Not yet authenticated — let RequireSession handle redirect
-      return;
-    }
-
-    // Already switched to this tenant (either locally or via TenantContext)
-    if (activeTenant?.tenant_slug === tenantSlug && gateState === 'ready') {
-      return;
-    }
-
-    // If TenantContext already has the correct active tenant (e.g. TenantChooserPage
-    // already called doSwitchTenant), skip the redundant API call.
-    if (activeTenant?.tenant_slug === tenantSlug && gateState === 'idle') {
-      lastSlugRef.current = tenantSlug;
-      setGateState('ready');
-      setTenantState('ready');
-      // Still refresh profile to hydrate user capabilities for this tenant
-      Promise.resolve(refreshProfile()).catch(() => {
-        // Non-critical — capabilities will be fetched on first use
-      });
-      return;
-    }
-
-    // Terminal state for this slug — don't retry until slug changes
-    if (
-      (gateState === 'ready' || gateState === 'forbidden' || gateState === 'error') &&
-      lastSlugRef.current === tenantSlug
-    ) {
-      return;
-    }
-
-    // Prevent concurrent switches
-    if (switchingRef.current && lastSlugRef.current === tenantSlug) {
-      return;
-    }
-
-    const doSwitch = async () => {
-      switchingRef.current = true;
-      lastSlugRef.current = tenantSlug;
-      setGateState('switching');
-      setErrorMsg(null);
-
+    if (!tenantSlug || !userId) return;
+    let cancelled = false;
+    void (async () => {
       try {
-        const success = await doSwitchTenant(tenantSlug);
-        if (!success) {
-          setGateState('forbidden');
+        const result = await switchTenant(tenantSlug);
+        if (cancelled) return;
+        if (!result.ok) {
+          if (result.reason === 'unauthenticated') {
+            navigate(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`, {replace: true});
+            return;
+          }
+          setGate({slug: tenantSlug, phase: result.reason === 'forbidden' ? 'forbidden' : 'error', message: result.message});
           return;
         }
-
-        // Refresh auth context to get updated session/me
-        await refreshProfile();
-        setGateState('ready');
-        setTenantState('ready');
-      } catch (err: unknown) {
-        const apiErr = err as { code?: string; message?: string };
-        if (apiErr.code === 'TENANT_FORBIDDEN') {
-          setGateState('forbidden');
-          setErrorMsg(apiErr.message ?? 'Access denied');
-        } else if (apiErr.code === 'UNAUTHENTICATED') {
-          navigate(`/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
-        } else {
-          setGateState('error');
-          setErrorMsg(apiErr.message ?? 'Failed to switch tenant');
+        const profile = await refreshProfile();
+        if (cancelled) return;
+        if (!profile || profile.tenant?.slug !== tenantSlug) {
+          setGate({slug: tenantSlug, phase: 'error', message: 'Не удалось подтвердить сообщество и права. Повторите загрузку.'});
+          return;
         }
-      } finally {
-        switchingRef.current = false;
+        setGate({slug: tenantSlug, phase: 'ready'});
+      } catch {
+        if (!cancelled) setGate({slug: tenantSlug, phase: 'error'});
       }
-    };
-
-    doSwitch();
-  }, [tenantSlug, user, activeTenant, gateState, doSwitchTenant, refreshProfile, navigate, setTenantState]);
-
-  if (gateState === 'switching' || gateState === 'idle') {
-    return <AppLoader />;
-  }
-
-  if (gateState === 'forbidden') {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', maxWidth: 480, margin: '4rem auto' }}>
-        <h2>Нет доступа</h2>
-        <p>{errorMsg || 'У вас нет доступа к этому tenant.'}</p>
-        <button
-          onClick={() => navigate('/choose-tenant?reason=forbidden', { replace: true })}
-          style={{
-            padding: '0.5rem 1.5rem',
-            cursor: 'pointer',
-            borderRadius: 6,
-            border: '1px solid #ccc',
-            background: '#f0f0f0',
-          }}
-        >
-          Выбрать другой tenant
-        </button>
-      </div>
-    );
-  }
-
-  if (gateState === 'error') {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', maxWidth: 480, margin: '4rem auto' }}>
-        <h2>Ошибка</h2>
-        <p>{errorMsg || 'Произошла ошибка при переключении tenant.'}</p>
-        <button
-          onClick={() => navigate('/choose-tenant', { replace: true })}
-          style={{
-            padding: '0.5rem 1.5rem',
-            cursor: 'pointer',
-            borderRadius: 6,
-            border: '1px solid #ccc',
-            background: '#f0f0f0',
-          }}
-        >
-          Выбрать tenant
-        </button>
-      </div>
-    );
-  }
-
-  return <Outlet />;
-};
+    })();
+    return () => {cancelled = true;};
+  }, [tenantSlug, userId, attempt, switchTenant, refreshProfile, navigate]);
+  if (!tenantSlug) return <Navigate to="/choose-tenant" replace />;
+  if (gate.phase === 'ready' && gate.slug === tenantSlug && user?.tenant?.slug === tenantSlug) return <Outlet />;
+  if (gate.phase === 'loading' || gate.slug !== tenantSlug) return <PageState kind="loading" title={t('Открываем сообщество', 'Opening community')} description={t('Проверяем доступ и загружаем ваши права.', 'Checking membership and permissions.')} />;
+  return <PageState kind={gate.phase === 'forbidden' ? 'forbidden' : 'error'} title={gate.phase === 'forbidden' ? t('Нет доступа', 'Access unavailable') : t('Не удалось открыть сообщество', 'Unable to open community')} description={gate.message ?? t('Попробуйте ещё раз или выберите другое сообщество.', 'Try again or choose another community.')} action={gate.phase !== 'forbidden' && <Button onClick={() => {setGate({slug: tenantSlug, phase: 'loading'}); setAttempt((n) => n + 1);}}>{t('Повторить', 'Try again')}</Button>} secondaryAction={<Button onClick={() => navigate('/choose-tenant')}>{t('Мои сообщества', 'My communities')}</Button>} />;
+}

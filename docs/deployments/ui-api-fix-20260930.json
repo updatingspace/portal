@@ -1,0 +1,49 @@
+{
+  "release": "2026.09.30-ui-api-fix",
+  "services": {
+    "activity": {
+      "previous_revision": "bbao9qjvrcker8ci4ee4",
+      "previous_digest": "sha256:5e5a720099af047d10df5dd13cc9d07198d73a6e828fb247ba9df2683d245d4e",
+      "revision": "bba3a94gqdnulot9tp63",
+      "digest": "sha256:83e183ed78bfd0cca9ad980fd9e68bcf96430a8ea3de475f3adc5ebc6c1a0c77",
+      "overlay": {
+        "Dockerfile": "bd1d8f4af4f379cdbcfa164be5e29bc7f10bf6be9c38195628a08b12eee34a61",
+        "src/app/cloud_runtime.py": "3b3b9b571429e6bd8fdcae28cfa8f1075a67f0ab0ad1fd75540fbad3052fec0c",
+        "src/app/ydb_compat.py": "ee4ea8ce9ac881850a593a77b0309ba98c8695bfd007ad45e8c8f589ea19c9d9"
+      }
+    },
+    "bff": {
+      "previous_revision": "bba8t6sr0l2flpqkgq2m",
+      "previous_digest": "sha256:3f7cf5065939e85af6d594dd285573304f0820d1c90aeb82d84f9ed08f05bc75",
+      "revision": "bbacsdf09um7c8gpihus",
+      "digest": "sha256:0f99a97c6d72da3d0ee0107c4fe047d4edd61dc258696d613aa90dd21d62d1d0",
+      "overlay": {
+        "Dockerfile": "ac0fedd471e2e01d0735302901f887116894c30a1e6ae1f36cd529d11fae56cc",
+        "src/bff/api.py": "0388ce1de3156d565b2cfb8c838f0259703b42c818193741a615353b92c8d6ab",
+        "src/app/settings.py": "eccb155a88f8403bbfc2cc66303fe71cb2d32dc3418e6e2be0e89b553b427f14"
+      }
+    }
+  },
+  "frontend": {
+    "bucket": "updspace-portal-prod-d97a0810",
+    "build_id": "2026.09.30-ui-api-fix",
+    "files_uploaded": 230,
+    "index_sha256": "da8458943e99b9302735b4bc699d3be1e7395fc9f99399f6399a1346d39da121"
+  },
+  "checks": {
+    "bff_tests": 127,
+    "bff_subtests": 19,
+    "activity_tests": 56,
+    "frontend_unit_tests": 16,
+    "browser_scenarios": 9,
+    "production_writes_tested": false,
+    "production_reads": {
+      "activity_subscriptions": 200,
+      "access_defaults": 200,
+      "access_layouts": 200,
+      "anonymous_bff_routes": 401,
+      "activity_release_live_initial_event": "ready",
+      "public_assets_match": true
+    }
+  }
+}

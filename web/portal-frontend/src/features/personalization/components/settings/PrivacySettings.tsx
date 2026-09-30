@@ -101,6 +101,7 @@ export function PrivacySettings({
       <SettingsSection
         title={t('privacy.sections.activity.title')}
         description={t('privacy.sections.activity.description')}
+        collapseOnMobile
         testId="section-activity"
       >
         <PrivacyToggle
@@ -133,6 +134,7 @@ export function PrivacySettings({
       <SettingsSection
         title={t('privacy.sections.interactions.title')}
         description={t('privacy.sections.interactions.description')}
+        collapseOnMobile
         testId="section-interactions"
       >
         <PrivacyToggle
@@ -149,6 +151,7 @@ export function PrivacySettings({
       <SettingsSection
         title={t('privacy.sections.data.title')}
         description={t('privacy.sections.data.description')}
+        collapseOnMobile
         testId="section-data"
       >
         <PrivacyToggle

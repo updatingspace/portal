@@ -148,4 +148,14 @@ describe('PollResultsPage integration', () => {
     expect(refetchPoll).toHaveBeenCalledTimes(1);
     expect(refetchResults).toHaveBeenCalledTimes(1);
   }, TEST_TIMEOUT_MS);
+  it.each([0,2])('handles %s equal votes without a false winner',async(votes)=>{
+    vi.mocked(votingFeature.usePollInfo).mockReturnValue({data:pollInfo,isLoading:false,isError:false,refetch:vi.fn()} as ReturnType<typeof votingFeature.usePollInfo>);
+    vi.mocked(votingFeature.usePollResults).mockReturnValue({data:{...pollResults,nominations:[{...pollResults.nominations[0],options:pollResults.nominations[0].options.map(option=>({...option,votes}))}]},isLoading:false,isError:false,refetch:vi.fn()} as ReturnType<typeof votingFeature.usePollResults>);
+    renderPage();
+    expect(await screen.findByText(votes===0?'Пока никто не проголосовал.':'У лидирующих вариантов равное число голосов.')).toBeVisible();
+    expect(screen.getByText(`Всего голосов: ${votes*2}`)).toBeVisible();
+    expect(screen.queryByText(/Победитель|Лидер:/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('meter')).toHaveLength(2);
+  });
+
 });
