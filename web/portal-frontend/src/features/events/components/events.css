@@ -4,6 +4,9 @@
   gap: 24px;
   align-items: start;
 }
+.portal-events-layout > .portal-stack {
+  min-width: 0;
+}
 .portal-events-calendar {
   position: sticky;
   top: 24px;
@@ -198,4 +201,26 @@
 .portal-event-form__section h2 {
   font-size: 21px;
   margin: 0;
+}
+
+@media (max-width: 719px) {
+  .portal-event-list-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .portal-event-list-tools > span {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .portal-event-list-tools .g-button {
+    min-width: 0;
+    width: 100%;
+    --g-button-padding: 8px;
+  }
+  .portal-event-list-tools .g-button__text {
+    white-space: normal;
+    line-height: 1.25;
+  }
 }
