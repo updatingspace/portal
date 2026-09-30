@@ -11,8 +11,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from core.errors import error_payload
-from core.ymq import schedule_outbox_wakeup
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -36,6 +34,8 @@ from activity.models import (
     make_dedupe_hash,
 )
 from activity.privacy import safe_exception_label
+from core.errors import error_payload
+from core.ymq import schedule_outbox_wakeup
 
 logger = logging.getLogger(__name__)
 

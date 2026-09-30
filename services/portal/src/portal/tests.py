@@ -129,7 +129,8 @@ class PortalTenantIsolationTests(TestCase):
             created_by=self.user_id,
         )
 
-    def test_cannot_read_other_tenant_community(self):
+    @mock.patch("portal.api.AccessService.check", return_value=None)
+    def test_cannot_read_other_tenant_community(self, mock_access):
         resp = self.client.get(
             f"/api/v1/communities/{self.community_b.id}",
             **_host_headers(
@@ -139,7 +140,21 @@ class PortalTenantIsolationTests(TestCase):
                 user_id=self.user_id,
             ),
         )
-        self.assertEqual(resp.status_code, 403)
+        # Access grants the action; the data boundary must still hide the
+        # other tenant's community rather than relying on an Access outage.
+        self.assertEqual(resp.status_code, 404)
+        own = self.client.get(
+            f"/api/v1/communities/{self.community_b.id}",
+            **_host_headers(
+                path=f"/api/v1/communities/{self.community_b.id}",
+                tenant_id=self.tenant_b_id,
+                slug="b",
+                user_id=self.user_id,
+            ),
+        )
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.json()["id"], str(self.community_b.id))
+        self.assertEqual(mock_access.call_count, 2)
 
 
 @mock.patch.dict("os.environ", {}, clear=False)

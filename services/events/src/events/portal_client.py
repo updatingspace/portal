@@ -6,9 +6,12 @@ import json
 import logging
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from django.conf import settings
+
+from app.private_invoke import PrivateInvokeError, private_invoke_headers
 
 from .context import InternalContext
 
@@ -44,7 +47,7 @@ class PortalClient:
     def __init__(self) -> None:
         base_url = getattr(settings, "PORTAL_SERVICE_URL", "http://portal:8003/api/v1")
         self._base_url = base_url.rstrip("/")
-        self._client = httpx.Client(timeout=5.0)
+        self._client = httpx.Client(timeout=5.0, follow_redirects=False)
 
     def _sign(
         self,
@@ -71,8 +74,9 @@ class PortalClient:
         *,
         body: bytes = b"",
     ) -> dict[str, Any]:
+        url = f"{self._base_url}{path}"
         try:
-            ts, sig = self._sign(method, path, body, ctx.request_id)
+            ts, sig = self._sign(method, urlsplit(url).path, body, ctx.request_id)
         except PortalClientError as exc:
             logger.error("Portal client signing failed", extra={"error": str(exc)})
             raise
@@ -89,12 +93,12 @@ class PortalClient:
         if (flags := _master_flags_header(ctx.master_flags)):
             headers["X-Master-Flags"] = flags
 
-        url = f"{self._base_url}{path}"
         try:
+            headers.update(private_invoke_headers(url))
             resp = self._client.request(method, url, headers=headers, content=body)
         except httpx.TimeoutException as exc:
             raise PortalServiceUnavailable("Portal request timed out") from exc
-        except httpx.RequestError as exc:
+        except (httpx.RequestError, PrivateInvokeError) as exc:
             raise PortalServiceUnavailable("Portal request failed") from exc
 
         if resp.status_code == 404:

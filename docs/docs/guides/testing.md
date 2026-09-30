@@ -45,7 +45,7 @@ pnpm exec vitest run
 pnpm run build
 ```
 
-Для выбранных тестов передай пути в `pnpm exec vitest run`. Команда `pnpm run test` без `run` включает watch mode. CI пока выполняет только lint, typecheck и build: успешный CI сам по себе не подтверждает прохождение Vitest.
+Для выбранных тестов передай пути в `pnpm exec vitest run`. Команда `pnpm run test` без `run` включает watch mode. CI выполняет lint, typecheck, Vitest, build и критические сценарии Playwright.
 
 Для Playwright требуется установленный браузер:
 
@@ -54,7 +54,7 @@ pnpm exec playwright install chromium
 pnpm run test:e2e
 ```
 
-Текущий smoke в `e2e/console-warnings.spec.ts` проверяет только предупреждения о выравнивании таблиц. Он не заменяет тест изменённого пользовательского сценария. `playwright.config.ts` запускает Vite на `127.0.0.1:4173`.
+Набор `e2e` проверяет вход и выбор сообщества, состояния данных, темы, мобильные пользовательские и административные сценарии с контролируемыми ответами BFF. Проверка реальной сессии и внешнего ID выполняется отдельно. `playwright.config.ts` запускает Vite на `127.0.0.1:4173`.
 
 ### Backend
 

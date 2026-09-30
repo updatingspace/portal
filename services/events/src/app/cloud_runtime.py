@@ -149,6 +149,7 @@ def build_database_settings(
         "HOST": host,
         "PORT": str(port),
         "DATABASE": ydb_database,
+        "CONN_MAX_AGE": conn_max_age,
         "OPTIONS": {"protocol": protocol},
     }
 

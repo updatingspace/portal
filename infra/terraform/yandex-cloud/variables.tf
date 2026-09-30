@@ -128,11 +128,9 @@ variable "service_concurrency" {
 }
 
 variable "min_ready_instances" {
-  description = "Prepared instances by service name. Use for BFF and other latency-sensitive services."
+  description = "Prepared instances by service name (currently BFF only). Disabled by default to avoid idle charges; opt in explicitly when the latency budget requires it."
   type        = map(number)
-  default = {
-    bff = 1
-  }
+  default     = {}
 }
 
 variable "task_memory_mb" {

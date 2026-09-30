@@ -1,17 +1,18 @@
 import hashlib
 import hmac
 import json
-import logging
 import time
 import uuid
+from urllib.parse import urlsplit
 from uuid import UUID
 
-import httpx
 from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from ninja import Router
+
+from app.access_client import check_access, unavailable
 
 from . import services
 
@@ -52,7 +53,6 @@ from .templates import get_templates
 
 router = Router(tags=["Voting"])
 
-logger = logging.getLogger(__name__)
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -63,7 +63,7 @@ def _internal_hmac_headers(*, method: str, path: str, body: bytes, request_id: s
     ts = str(int(time.time()))
     secret = getattr(settings, "BFF_INTERNAL_HMAC_SECRET", "")
     if not secret:
-        raise RuntimeError("BFF_INTERNAL_HMAC_SECRET is not configured")
+        unavailable(request_id=request_id, reason="missing_hmac_secret")
     msg = "\n".join([method.upper(), path, _sha256_hex(body), request_id, ts]).encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), msg, digestmod=hashlib.sha256).hexdigest()
     return {
@@ -105,8 +105,8 @@ def _access_check_allowed(
     scope_id: str,
 ) -> bool:
     base_url = str(getattr(settings, "ACCESS_BASE_URL", "http://access:8002/api/v1")).rstrip("/")
-    path = "/api/v1/access/check"
     url = f"{base_url}/access/check"
+    path = urlsplit(url).path
 
     payload = {
         "tenant_id": tenant_id,
@@ -133,21 +133,7 @@ def _access_check_allowed(
     }
     headers.update(_internal_hmac_headers(method="POST", path=path, body=body, request_id=request_id))
 
-    try:
-        resp = httpx.post(url, content=body, headers=headers, timeout=5.0)
-    except Exception:
-        # Fail-closed: запрещаем при сбое проверки доступа, но логируем причину.
-        logger.warning("Access check request failed; denying", exc_info=True)
-        return False
-
-    if resp.status_code != 200:
-        return False
-    try:
-        data = resp.json()
-    except Exception:
-        logger.warning("Access check returned non-JSON; denying", exc_info=True)
-        return False
-    return bool(data.get("allowed"))
+    return check_access(url=url, body=body, headers=headers)
 
 
 def _scope_for_poll(poll: Poll, *, tenant_id: str) -> tuple[str, str]:

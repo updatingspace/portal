@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
 from django.conf import settings
@@ -27,7 +29,7 @@ from .dsar import erase_user_data as erase_bff_user_data
 from .dsar import export_user_data as export_bff_user_data
 from .errors import error_response
 from .models import BffOauthState, Tenant
-from .proxy import proxy_request
+from .proxy import get_httpx_client, get_id_timeout, proxy_request
 from .security import verify_updspaceid_callback
 from .session_store import SessionStore
 from .tenant import (
@@ -652,11 +654,17 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
         return [], [], "unavailable"
 
     access_path = _resolve_access_check_path(access_upstream)
-    effective_permissions: set[str] = set()
-    effective_roles: set[str] = set()
+    incoming_headers = dict(request.headers)
+    context_headers = {
+        **_active_context_headers(request, ctx),
+        "Content-Type": "application/json",
+    }
+    request_id = request.request_id
 
-    successful_probes = 0
-    for service, probe_permission in SESSION_ME_CAPABILITY_PROBES:
+    def load_service(probe: tuple[str, str]) -> tuple[set[str], set[str], bool]:
+        service, probe_permission = probe
+        effective_permissions: set[str] = set()
+        effective_roles: set[str] = set()
         payload = {
             "tenant_id": str(ctx.tenant_id),
             "user_id": str(ctx.user_id),
@@ -674,49 +682,45 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 method="POST",
                 query_string="",
                 body=body,
-                incoming_headers=request.headers,
-                context_headers={
-                    **_active_context_headers(request, ctx),
-                    "Content-Type": "application/json",
-                },
-                request_id=request.request_id,
+                incoming_headers=incoming_headers,
+                context_headers=context_headers,
+                request_id=request_id,
             )
         except BFF_RECOVERABLE_EXCEPTIONS:
             logger.warning(
                 "session/me access snapshot probe failed",
                 extra={
-                    "request_id": request.request_id,
+                    "request_id": request_id,
                     "service": service,
                     "probe_permission": probe_permission,
                 },
                 exc_info=True,
             )
-            continue
+            return set(), set(), False
 
         if resp.status_code != 200:
             logger.warning(
                 "session/me access snapshot probe returned non-200",
                 extra={
-                    "request_id": request.request_id,
+                    "request_id": request_id,
                     "service": service,
                     "probe_permission": probe_permission,
                     "status_code": resp.status_code,
                 },
             )
-            continue
+            return set(), set(), False
 
         try:
             data = resp.json()
         except ValueError:
             logger.warning(
                 "session/me access snapshot returned invalid JSON",
-                extra={"request_id": request.request_id, "service": service},
+                extra={"request_id": request_id, "service": service},
             )
-            continue
+            return set(), set(), False
 
         permissions = data.get("effective_permissions") if isinstance(data, dict) else None
         if isinstance(permissions, list):
-            successful_probes += 1
             for permission in permissions:
                 if isinstance(permission, str) and permission.strip():
                     effective_permissions.add(permission.strip())
@@ -736,6 +740,18 @@ def _load_effective_access_snapshot(request: HttpRequest, ctx) -> tuple[list[str
                 ):
                     effective_roles.add(f"{role_service.strip()}:{role_name.strip()}")
 
+        return effective_permissions, effective_roles, isinstance(permissions, list)
+
+    # Independent network reads only: no ORM work or shared per-user cache.
+    # Scope the executor to this request and wait for all checks before returning.
+    effective_permissions: set[str] = set()
+    effective_roles: set[str] = set()
+    successful_probes = 0
+    with ThreadPoolExecutor(max_workers=len(SESSION_ME_CAPABILITY_PROBES)) as executor:
+        for permissions, roles, success in executor.map(load_service, SESSION_ME_CAPABILITY_PROBES):
+            successful_probes += int(success)
+            effective_permissions.update(permissions)
+            effective_roles.update(roles)
     status = "ready" if successful_probes == len(SESSION_ME_CAPABILITY_PROBES) else "partial" if successful_probes else "unavailable"
     return sorted(effective_permissions), sorted(effective_roles), status
 
@@ -1372,17 +1388,17 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
     token_url = f"{id_base_url}/oauth/token"
 
     try:
-        token_resp = httpx.post(
-            token_url,
-            json={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": callback_url,
-                "client_id": client_id,
-                "client_secret": client_secret,
-            },
-            timeout=10.0,
-        )
+        with get_httpx_client(timeout=get_id_timeout()) as client:
+            token_resp = client.post(
+                token_url,
+                json={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": callback_url,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+            )
     except httpx.HTTPError:
         return _auth_error_redirect(
             request,
@@ -1397,17 +1413,28 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    tokens = token_resp.json()
-    access_token = tokens.get("access_token")
+    try:
+        tokens = token_resp.json()
+        if not isinstance(tokens, dict):
+            raise TypeError("Token response must be an object")
+        access_token = tokens.get("access_token")
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("Token response must contain a non-empty access token")
+    except (TypeError, ValueError):
+        return _auth_error_redirect(
+            request,
+            code="TOKEN_EXCHANGE_FAILED",
+            next_path=next_path,
+        )
 
     # Get user info
     userinfo_url = f"{id_base_url}/oauth/userinfo"
     try:
-        userinfo_resp = httpx.get(
-            userinfo_url,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=10.0,
-        )
+        with get_httpx_client(timeout=get_id_timeout()) as client:
+            userinfo_resp = client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
     except httpx.HTTPError:
         return _auth_error_redirect(
             request,
@@ -1422,10 +1449,14 @@ def auth_callback(request: HttpRequest, code: str | None = None, state: str | No
             next_path=next_path,
         )
 
-    userinfo = userinfo_resp.json()
-    user_id = userinfo.get("sub") or userinfo.get("user_id")
-
-    if not user_id:
+    try:
+        userinfo = userinfo_resp.json()
+        if not isinstance(userinfo, dict):
+            raise TypeError("Userinfo must be an object")
+        # A UUID-shaped OIDC subject is still opaque, not proof of a linked
+        # internal identity. ID omits user_id when no master is linked.
+        user_id = str(UUID(str(userinfo.get("user_id") or "")))
+    except (TypeError, ValueError):
         return _auth_error_redirect(
             request,
             code="INVALID_USERINFO",

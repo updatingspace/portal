@@ -2,11 +2,11 @@ import json
 from uuid import uuid4
 
 import ydb
-from app.ydb_compat import patch_ydb_orm
 from django.db.models.sql import InsertQuery
 from ydb_backend.backend.base import DatabaseWrapper
 
 from activity.models import Subscription
+from app.ydb_compat import patch_ydb_orm
 
 
 def test_subscription_insert_serializes_rules_and_preserves_tenant_types():

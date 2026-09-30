@@ -8,8 +8,6 @@ from typing import Any
 from uuid import UUID
 
 from botocore.exceptions import BotoCoreError, ClientError
-from core.errors import error_payload
-from core.schemas import ErrorOut
 from django.conf import settings
 from django.core import signing
 from django.db import models, transaction
@@ -71,6 +69,8 @@ from activity.services import (
     upsert_subscription,
     verify_hmac_signature,
 )
+from core.errors import error_payload, http_errors
+from core.schemas import ErrorOut
 
 router = Router(tags=["Activity"], auth=None)
 REQUIRED_BODY = Body(...)
@@ -235,7 +235,9 @@ def _can_read_news(ctx, post: NewsPost) -> bool:
             scope_type=post.scope_type,
             scope_id=post.scope_id,
         )
-    except HttpError:
+    except HttpError as exc:
+        if exc.status_code != 403:
+            raise
         return False
     return True
 
@@ -682,6 +684,7 @@ def news_media_upload_url(request, payload: schemas.NewsMediaUploadIn = REQUIRED
     )
 
 
+@http_errors
 def news_media_upload_file(request, token: str):
     if request.method != "PUT":
         return HttpResponse(status=405)
@@ -725,6 +728,7 @@ def news_media_upload_file(request, token: str):
     return HttpResponse(status=204)
 
 
+@http_errors
 def news_media_download_file(request, token_or_key: str):
     if request.method != "GET":
         return HttpResponse(status=405)

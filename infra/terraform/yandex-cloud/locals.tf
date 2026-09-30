@@ -157,6 +157,7 @@ locals {
     {
       ACCESS_BASE_URL     = local.access_api_url
       ACCESS_SERVICE_URL  = local.access_service_url
+      PORTAL_SERVICE_URL  = local.portal_api_url
       NEWS_MEDIA_BUCKET   = local.media_bucket_name
       NEWS_MEDIA_PREFIX   = "news"
       S3_ENDPOINT_URL     = "https://storage.yandexcloud.net"

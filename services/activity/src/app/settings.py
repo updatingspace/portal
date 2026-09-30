@@ -134,6 +134,8 @@ BFF_INTERNAL_HMAC_SECRET = require_env(
 
 # Access service URL for RBAC checks
 ACCESS_SERVICE_URL = os.getenv("ACCESS_SERVICE_URL", "http://access:8002")
+ACCESS_BASE_URL = os.getenv("ACCESS_BASE_URL", "http://access:8002/api/v1")
+PORTAL_SERVICE_URL = os.getenv("PORTAL_SERVICE_URL", "http://portal:8003/api/v1")
 
 # Steam API configuration
 STEAM_API_KEY = os.getenv("STEAM_API_KEY", "")

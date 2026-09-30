@@ -1,10 +1,8 @@
-"""Compatibility fixes for django-ydb-backend 0.0.1b1.
+"""Compatibility for the pinned YDB Django backend, exercised against local YDB.
 
-Keep parameter positions, FK types, INSERT/UPDATE results and Django atomic
-transactions consistent with the upstream ID runtime integration.
+The same driver defects affect the ID service. Keep writes in the active data
+transaction, preserve nullable/FK types, and restore Django datetime semantics.
 """
-
-from __future__ import annotations
 
 import json
 import uuid
@@ -18,7 +16,7 @@ def _patch_ydb_jsonfield_adapter() -> None:
     except ImportError:
         return
 
-    if getattr(ydb_operations.DatabaseOperations, "_updspace_json_patch", False):
+    if getattr(ydb_operations.DatabaseOperations, "_updspace_bff_json_patch", False):
         return
 
     def _adapt_json_value(self, value, encoder):
@@ -27,7 +25,7 @@ def _patch_ydb_jsonfield_adapter() -> None:
         return json.dumps(value, cls=encoder, separators=(",", ":"))
 
     ydb_operations.DatabaseOperations.adapt_json_value = _adapt_json_value
-    ydb_operations.DatabaseOperations._updspace_json_patch = True
+    ydb_operations.DatabaseOperations._updspace_bff_json_patch = True
 
 
 def _patch_ydb_query_parameters() -> None:
@@ -36,7 +34,7 @@ def _patch_ydb_query_parameters() -> None:
     # parameters shift and the compiler raises IndexError before querying YDB.
     from ydb_backend.models.sql import compiler
 
-    if getattr(compiler, "_updspace_parameters_patch", False):
+    if getattr(compiler, "_updspace_bff_parameters_patch", False):
         return
 
     from django.db.models.expressions import Ref
@@ -62,13 +60,7 @@ def _patch_ydb_query_parameters() -> None:
             if field_type is None:
                 # The SDK infers literal/annotation parameter types. Keep their
                 # position rather than treating them as a neighbouring column.
-                # FK column names are absent from the upstream SELECT type map;
-                # unlike strings/ints, the SDK cannot infer a Python UUID.
-                result[placeholder] = (
-                    (value, ydb.PrimitiveType.UUID)
-                    if isinstance(value, uuid.UUID)
-                    else value
-                )
+                result[placeholder] = (value, ydb.PrimitiveType.UUID) if isinstance(value, uuid.UUID) else value
                 continue
             parameter_type = compiler._ydb_types[field_type]
             if value is None:
@@ -223,9 +215,9 @@ def _patch_ydb_query_parameters() -> None:
             self.connection.begin()
 
     DatabaseWrapper._set_autocommit = _set_autocommit
-    compiler._updspace_parameters_patch = True
+    compiler._updspace_bff_parameters_patch = True
 
 
-def patch_ydb_orm() -> None:
+def install_ydb_compatibility() -> None:
     _patch_ydb_jsonfield_adapter()
     _patch_ydb_query_parameters()
