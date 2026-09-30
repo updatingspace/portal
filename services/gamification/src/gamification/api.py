@@ -238,9 +238,9 @@ def list_achievements(
     if q:
         qs = qs.filter(name_i18n__icontains=q)
     if earned:
-        grant_ids = AchievementGrant.objects.filter(
+        grant_ids = list(AchievementGrant.objects.filter(
             tenant_id=ctx.tenant_id, recipient_id=ctx.user_id, revoked_at__isnull=True
-        ).values_list("achievement_id", flat=True)
+        ).values_list("achievement_id", flat=True))
         qs = qs.filter(id__in=grant_ids)
     if created_by == "me":
         qs = qs.filter(created_by=ctx.user_id)

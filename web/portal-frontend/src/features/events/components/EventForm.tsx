@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Select, TextArea, TextInput } from '@gravity-ui/uikit';
 import { dateTime } from '@gravity-ui/date-utils';
+import { parseLocalDateTime } from '../../../shared/lib/dateTimeLocal';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -95,8 +96,8 @@ function EventFormInner({ event, onSuccess, onCancel }: EventFormProps) {
       teamId: z.string(),
     })
     .superRefine((values, ctx) => {
-      const start = dateTime({ input: values.startsAt, timeZone: timezone }),
-        end = dateTime({ input: values.endsAt, timeZone: timezone });
+      const start = parseLocalDateTime(values.startsAt, timezone),
+        end = parseLocalDateTime(values.endsAt, timezone);
       if (!values.startsAt || !start.isValid())
         ctx.addIssue({
           code: 'custom',
@@ -179,14 +180,8 @@ function EventFormInner({ event, onSuccess, onCancel }: EventFormProps) {
     setError(null);
     const common = {
       title: submitted.title.trim(),
-      startsAt: dateTime({
-        input: submitted.startsAt,
-        timeZone: timezone,
-      }).toISOString()!,
-      endsAt: dateTime({
-        input: submitted.endsAt,
-        timeZone: timezone,
-      }).toISOString()!,
+      startsAt: parseLocalDateTime(submitted.startsAt, timezone).toISOString()!,
+      endsAt: parseLocalDateTime(submitted.endsAt, timezone).toISOString()!,
       visibility: submitted.visibility,
     };
     const callbacks = {
@@ -466,7 +461,7 @@ function EventFormInner({ event, onSuccess, onCancel }: EventFormProps) {
           <p>{values.description}</p>
           <p>
             {formatDateTime(
-              dateTime({ input: values.startsAt, timeZone: timezone }).toDate(),
+              parseLocalDateTime(values.startsAt, timezone).toDate(),
             )}{' '}
             · {timezone}
           </p>

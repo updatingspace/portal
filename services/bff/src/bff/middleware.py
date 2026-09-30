@@ -29,8 +29,6 @@ TENANTLESS_PREFIXES = (
     "/api/v1/logout",
     "/api/v1/session/switch-tenant",
     "/api/v1/session/tenants",
-    "/api/v1/session/logout",
-    "/api/v1/logout",
     "/api/v1/csrf",
 )
 

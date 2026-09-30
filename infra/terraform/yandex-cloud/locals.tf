@@ -137,8 +137,8 @@ locals {
   portal_env = merge(
     local.common_service_env,
     {
-      ACCESS_BASE_URL    = local.access_api_url
-      ACCESS_SERVICE_URL = local.access_service_url
+      ACCESS_BASE_URL            = local.access_api_url
+      ACCESS_SERVICE_URL         = local.access_service_url
       ACCESS_PRIVATE_INVOKE_AUTH = "true"
     },
     lookup(var.service_environment, "portal", {}),

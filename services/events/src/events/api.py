@@ -406,7 +406,7 @@ def list_events(
     if rsvp:
         if rsvp not in RSVPStatus.values:
             raise HttpError(422, {"code": "INVALID_RSVP", "message": "Unknown participation response"})
-        qs = qs.filter(id__in=RSVP.objects.filter(tenant_id=ctx.tenant_id, user_id=ctx.user_id, status=rsvp).values("event_id"))
+        qs = qs.filter(id__in=list(RSVP.objects.filter(tenant_id=ctx.tenant_id, user_id=ctx.user_id, status=rsvp).values_list("event_id", flat=True)))
     if visibility:
         qs = qs.filter(visibility=visibility)
     if period == "past":

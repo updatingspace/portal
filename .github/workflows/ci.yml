@@ -184,6 +184,13 @@ jobs:
       - name: Check service YDB connection reuse
         if: contains(fromJSON('["portal", "activity", "events", "gamification", "voting"]'), matrix.service)
         run: python ../../scripts/ci/check_ydb_connection_lifecycle.py
+      - name: Check UI filters against YDB
+        if: contains(fromJSON('["events", "gamification"]'), matrix.service)
+        env:
+          UI_FILTER_SERVICE: ${{ matrix.service }}
+        run: |
+          python src/manage.py migrate_ydb
+          python ../../scripts/ci/check_ydb_ui_filters.py
       - name: Check Access bootstrap and authorization against YDB
         if: matrix.service == 'access'
         run: |

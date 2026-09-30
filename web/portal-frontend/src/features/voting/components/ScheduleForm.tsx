@@ -1,4 +1,5 @@
 import { dateTime } from '@gravity-ui/date-utils';
+import { parseLocalDateTime } from '../../../shared/lib/dateTimeLocal';
 import { FormField } from '../../../shared/ui/portal/PortalUI';
 import { useFormatters } from '../../../shared/hooks/useFormatters';
 
@@ -27,7 +28,7 @@ export function ScheduleForm({
       : '';
   const parse = (value: string) => {
     if (!value) return null;
-    const parsed = dateTime({ input: value, timeZone: timezone });
+    const parsed = parseLocalDateTime(value, timezone);
     return parsed.isValid() ? parsed.toISOString() : null;
   };
   const invalid = Boolean(
