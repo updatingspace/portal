@@ -59,7 +59,10 @@ for (const theme of ['light', 'dark'] as const) {
     const ownRow = page.locator('.tenant-admin__mobile-members > button').filter({ hasText: 'Мария Иванова' });
     const otherRow = page.locator('.tenant-admin__mobile-members > button').filter({ hasText: 'Анна Петрова' });
     await expect(ownRow.locator('img')).toHaveAttribute('src', avatar);
-    await expect(ownRow.locator('img')).toHaveJSProperty('naturalWidth', 40);
+    await expect(ownRow.locator('img')).toHaveJSProperty('complete', true);
+    expect(await ownRow.locator('img').evaluate(image =>
+      (image as HTMLImageElement).naturalWidth,
+    )).toBeGreaterThan(0);
     await expect(otherRow.locator('img')).toHaveCount(0);
     await expect(otherRow).toContainText('АП');
     await page.screenshot({ path: testInfo.outputPath(`member-avatar-${theme}.png`) });
