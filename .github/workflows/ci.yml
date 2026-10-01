@@ -58,6 +58,7 @@ jobs:
               src/core/tests/test_production_components.py
               src/nominations/test_services_unit.py
               src/tenant_voting/test_services_unit.py
+              src/tenant_voting/test_poll_lifecycle.py
               src/tenant_voting/tests.py
               src/tenant_voting/test_integration.py
     defaults:
@@ -196,6 +197,11 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python ../../scripts/ci/check_ydb_news.py
+      - name: Check poll lifecycle against YDB
+        if: matrix.service == 'voting'
+        run: |
+          python src/manage.py migrate_ydb
+          python ../../scripts/ci/check_ydb_polls.py
       - name: Check feature flag writes against YDB
         if: matrix.service == 'featureflags'
         run: |
