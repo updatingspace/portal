@@ -74,6 +74,14 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const channel = new BroadcastChannel('portal-community');
     broadcast.current = channel;
     channel.onmessage = (event) => {
+      if (typeof event.data?.leftTenantId === 'string') {
+        setAvailableTenants((items) => items.filter((item) => item.tenant_id !== event.data.leftTenantId));
+        if (activeTenant?.tenant_id === event.data.leftTenantId) {
+          // Discard this tab's private cache immediately after a confirmed exit elsewhere.
+          window.location.replace('/choose-tenant');
+        }
+        return;
+      }
       if (activeTenant && typeof event.data?.slug === 'string' && event.data.slug !== activeTenant.tenant_slug) {
         window.dispatchEvent(new Event('portal:context-changed'));
       }

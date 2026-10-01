@@ -898,6 +898,13 @@ def session_me(request: HttpRequest):
         return err
 
     tenant_selected = bool(str(ctx.tenant_slug or "").strip())
+    strict_membership = getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
+    memberships = _load_portal_memberships(request, ctx) if strict_membership else None
+    if strict_membership and tenant_selected:
+        if memberships is None:
+            return error_response(code="MEMBERSHIP_UNAVAILABLE", message="Unable to verify community access", request_id=request.request_id, status=503)
+        if not any(item["tenant_id"] == str(ctx.tenant_id) and item["tenant_slug"] == ctx.tenant_slug for item in memberships):
+            return error_response(code="NO_ACTIVE_MEMBERSHIP", message="No active membership for current tenant", request_id=request.request_id, status=403)
 
     # MVP aggregation: user + portal profile (optional)
     upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "")
@@ -926,7 +933,8 @@ def session_me(request: HttpRequest):
     # Identity comes from ID; tenant membership comes only from Portal.
     id_upstream = getattr(settings, "BFF_UPSTREAM_ID_URL", "")
     id_profile = _load_id_me_payload(request, ctx)
-    memberships = _load_portal_memberships(request, ctx)
+    if not strict_membership:
+        memberships = _load_portal_memberships(request, ctx)
     if memberships is not None:
         available_tenants = [
             {"id": item["tenant_id"], "slug": item["tenant_slug"]} for item in memberships
@@ -1037,22 +1045,6 @@ def session_me(request: HttpRequest):
     else:
         capabilities, roles, access_snapshot_status = [], [], "ready"
         feature_flags, experiments = {}, {}
-
-    # Optional strict mode: deny session for current subdomain when membership is missing/inactive.
-    if (
-        getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
-        and tenant_selected
-        and isinstance(id_profile, dict)
-        and tenant_membership is None
-        and available_tenants
-    ):
-        return error_response(
-            code="NO_ACTIVE_MEMBERSHIP",
-            message="No active membership for current tenant",
-            request_id=getattr(request, "request_id", None),
-            status=403,
-            details={"tenant_slug": ctx.tenant_slug, "available_tenants": available_tenants},
-        )
 
     return {
         "user": {"id": ctx.user_id, "master_flags": ctx.master_flags},
@@ -1214,6 +1206,38 @@ def _proxy_entry_admin(request: HttpRequest, suffix: str):
     except BFF_RECOVERABLE_EXCEPTIONS:
         return _portal_entry_unavailable(request)
     return HttpResponse(resp.content, status=resp.status_code, content_type="application/json")
+
+
+@router.post("/entry/memberships/{tenant_id}/leave")
+def leave_membership(request: HttpRequest, tenant_id: UUID) -> HttpResponse:
+    ctx, err = _require_auth(request)
+    if err:
+        return err
+    if not getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False):
+        return error_response(
+            code="LEAVE_UNAVAILABLE", message="Leaving communities is not available yet",
+            request_id=request.request_id, status=503,
+        )
+    upstream = getattr(settings, "BFF_UPSTREAM_PORTAL_URL", "")
+    if not upstream:
+        return _portal_entry_unavailable(request)
+    try:
+        response = proxy_request(
+            upstream_base_url=upstream,
+            upstream_path=f"portal/entry/memberships/{tenant_id}/leave",
+            method="POST", query_string="", body=b"",
+            incoming_headers=request.headers,
+            context_headers=_portal_entry_headers(request, ctx), request_id=request.request_id,
+        )
+        if response.status_code != 200:
+            return HttpResponse(response.content, status=response.status_code, content_type="application/json")
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("status") != "left" or payload.get("tenant_id") != str(tenant_id):
+            return _portal_entry_unavailable(request)
+        SessionStore().clear_user_tenant(user_id=ctx.user_id, tenant_id=str(tenant_id))
+    except BFF_RECOVERABLE_EXCEPTIONS:
+        return _portal_entry_unavailable(request)
+    return JsonResponse(payload)
 
 
 @router.get("/csrf")

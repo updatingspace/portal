@@ -1,28 +1,25 @@
-import { Avatar, Button, Icon } from '@gravity-ui/uikit';
+import { Avatar, Icon } from '@gravity-ui/uikit';
 import {
   ArrowLeft,
   Bell,
   ChevronRight,
   Palette,
   Globe,
-  Persons,
   Shield,
   Sliders,
 } from '@gravity-ui/icons';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useTenantContext } from '../../../contexts/TenantContext';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
 import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { UserSettingsPanel } from '../../../features/personalization';
 import { ProfileSection } from './ui/ProfileSection';
+import { MembershipSection } from './ui/MembershipSection';
 import './settings.css';
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const { activeTenant, availableTenants } = useTenantContext();
   const mobile = useMediaQuery('(max-width: 719px)');
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const t = useUITranslation();
   const sections = [
@@ -43,7 +40,6 @@ export function SettingsPage() {
       icon: Bell,
     },
     { id: 'privacy', title: t('Приватность', 'Privacy'), icon: Shield },
-    { id: 'community', title: t('Сообщество', 'Community'), icon: Persons },
     {
       id: 'account',
       title: t('Аккаунт и безопасность', 'Account and security'),
@@ -53,14 +49,6 @@ export function SettingsPage() {
   const selected = sections.find((section) => section.id === params.get('tab'));
   const active = selected || (!mobile ? sections[0] : undefined);
   if (!user) return null;
-  const community = availableTenants.find(
-    (item) => item.tenant_id === activeTenant?.tenant_id,
-  );
-  const communityName =
-    community?.display_name ||
-    activeTenant?.display_name ||
-    user.tenant?.slug ||
-    t('Не выбрано', 'Not selected');
   const sectionHref = (id: string) => {
     const next = new URLSearchParams(params);
     next.set('tab', id);
@@ -70,9 +58,7 @@ export function SettingsPage() {
   backParams.delete('tab');
   const name = user.displayName || user.username;
   const preferenceSection =
-    active && active.id !== 'account' && active.id !== 'community'
-      ? active.id
-      : undefined;
+    active && active.id !== 'account' ? active.id : undefined;
   return (
     <div
       className={`portal-settings${active ? ' portal-settings--detail' : ''}`}
@@ -122,6 +108,7 @@ export function SettingsPage() {
                 </Link>
               ))}
             </div>
+            <MembershipSection />
           </nav>
         )}
         <div className="portal-settings__detail" hidden={!active}>
@@ -134,21 +121,6 @@ export function SettingsPage() {
               idPortalUrl={user.idFrontendBaseUrl ?? undefined}
               hideTitle
             />
-          )}
-          {active?.id === 'community' && (
-            <section className="portal-settings__community-detail">
-              <p className="portal-settings__caption">
-                {t('Текущее сообщество', 'Current community')}
-              </p>
-              <strong>{communityName}</strong>
-              <Button
-                size="xl"
-                view="outlined"
-                onClick={() => navigate('/choose-tenant')}
-              >
-                {t('Сменить сообщество', 'Switch community')}
-              </Button>
-            </section>
           )}
           <div hidden={!preferenceSection}>
             <UserSettingsPanel section={preferenceSection || 'appearance'} />

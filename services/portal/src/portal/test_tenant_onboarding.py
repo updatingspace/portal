@@ -310,3 +310,62 @@ class TenantOnboardingTests(TestCase):
             call_command("import_tenant_memberships", input=source.name)
         self.assertEqual(TenantMembership.objects.count(), 1)
         self.assertEqual(TenantMembership.objects.get().user_id, self.user_id)
+
+
+class LeaveMembershipTests(TestCase):
+    call = TenantOnboardingTests.call
+
+    def setUp(self):
+        self.user_id = uuid.uuid4()
+        self.other_id = uuid.uuid4()
+        self.admin_id = uuid.uuid4()
+        self.tenant = Tenant.objects.create(slug="alpha", name="Alpha")
+        self.second = Tenant.objects.create(slug="beta", name="Beta")
+        self.member = TenantMembership.objects.create(tenant=self.tenant, user_id=self.user_id)
+        self.other = TenantMembership.objects.create(tenant=self.tenant, user_id=self.other_id)
+        TenantMembership.objects.create(tenant=self.second, user_id=self.user_id)
+        self.path = f"/api/v1/portal/entry/memberships/{self.tenant.id}/leave"
+
+    def test_leave_is_self_scoped_idempotent_and_preserves_other_memberships(self):
+        from portal.models import Post
+        post = Post.objects.create(tenant=self.tenant, created_by=self.user_id, title="Keep this", body="My post", visibility="public")
+        for _ in range(2):
+            response = self.call("POST", self.path, {"user_id": str(self.other_id)})
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["status"], "left")
+        self.member.refresh_from_db()
+        self.other.refresh_from_db()
+        self.assertEqual(self.member.status, "left")
+        self.assertEqual(self.other.status, "active")
+        self.assertTrue(Post.objects.filter(id=post.id).exists())
+        from portal.audit import PortalAuditEvent
+        self.assertEqual(PortalAuditEvent.objects.filter(tenant_id=self.tenant.id, actor_user_id=self.user_id, action="membership.left").count(), 1)
+        self.assertEqual(len(self.call("GET", "/api/v1/portal/entry/memberships").json()), 1)
+
+    def test_owner_cannot_leave_even_with_system_admin_flag(self):
+        self.member.base_role = "owner"
+        self.member.save(update_fields=["base_role"])
+        response = self.call("POST", self.path, flags={"system_admin": True})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "OWNER_CANNOT_LEAVE")
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.status, "active")
+
+    def test_other_tenant_and_unsigned_requests_cannot_leave(self):
+        self.assertEqual(self.call("POST", self.path, signed=False).status_code, 401)
+        self.assertEqual(self.call("POST", self.path, user_id=self.admin_id).status_code, 404)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.status, "active")
+
+    def test_departed_member_is_removed_from_roster_without_deleting_profile(self):
+        from portal.models import PortalProfile
+        from portal.tests import _host_headers
+        PortalProfile.objects.create(tenant=self.tenant, user_id=self.user_id, first_name="Left", last_name="Member")
+        PortalProfile.objects.create(tenant=self.tenant, user_id=self.other_id, first_name="Active", last_name="Member")
+        self.call("POST", self.path)
+        path = "/api/v1/portal/profiles"
+        with patch("portal.api.AccessService.check"):
+            response = self.client.get(path, **_host_headers(path=path, tenant_id=self.tenant.id, slug="alpha", user_id=self.other_id))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([item["user_id"] for item in response.json()], [str(self.other_id)])
+        self.assertTrue(PortalProfile.objects.filter(tenant=self.tenant, user_id=self.user_id).exists())

@@ -22,6 +22,7 @@ from portal.models import (
     Post,
     Team,
     TeamMembership,
+    TenantMembership,
 )
 from portal.schemas import (
     CommunityCreateIn,
@@ -328,7 +329,10 @@ def portal_profiles_list(
         scope_id=str(ctx.tenant_id),
     )
 
-    qs = PortalProfile.objects.filter(tenant=tenant)
+    # Profiles remain for post attribution; departed users are not active members
+    # or valid achievement recipients. Apply this filter before the list limit.
+    departed = list(TenantMembership.objects.filter(tenant=tenant, status="left").values_list("user_id", flat=True))
+    qs = PortalProfile.objects.filter(tenant=tenant).exclude(user_id__in=departed)
     if q:
         q = q.strip()
         if q:

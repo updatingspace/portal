@@ -261,6 +261,29 @@ class CookieSessionAuthMiddleware(MiddlewareMixin):
             active_tenant_id=effective_tenant_id,
             active_tenant_slug=effective_tenant_slug,
         )
+        if (
+            getattr(settings, "BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
+            and not _is_tenantless_endpoint(request.path)
+            and not any(request.path.startswith(p) for p in PUBLIC_PREFIXES)
+        ):
+            # Canonical membership must outlive neither a session nor a host alias.
+            from .api import _load_portal_memberships
+
+            memberships = _load_portal_memberships(request, request.auth_ctx)
+            if memberships is None:
+                return error_response(
+                    code="MEMBERSHIP_UNAVAILABLE", message="Unable to verify community access",
+                    request_id=getattr(request, "request_id", None), status=503,
+                )
+            if not any(
+                item["tenant_id"] == str(effective_tenant_id)
+                and item["tenant_slug"] == effective_tenant_slug
+                for item in memberships
+            ):
+                return error_response(
+                    code="TENANT_FORBIDDEN", message="No active membership in this community",
+                    request_id=getattr(request, "request_id", None), status=403,
+                )
         return None
 
 
