@@ -5,10 +5,19 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Button, Card, Icon, Label, Text, useToaster } from '@gravity-ui/uikit';
+import {
+  Button,
+  Card,
+  DropdownMenu,
+  Icon,
+  Label,
+  Text,
+  useToaster,
+} from '@gravity-ui/uikit';
 import {
   ArrowsOppositeToDots,
   Eye,
+  Ellipsis,
   Gear,
   GripHorizontal,
   Plus,
@@ -26,12 +35,15 @@ import {
   useDashboardWidgets,
 } from '../../../features/personalization/hooks/useDashboards';
 import type {
+  DashboardLayout,
   DashboardLayoutInput,
   DashboardWidget,
   DashboardWidgetInput,
 } from '../../../features/personalization/types';
 import { createDashboardWidget as createDashboardWidgetRequest } from '../../../features/personalization/api/contentApi';
 
+import { MobileLayoutEditor } from './ui/MobileLayoutEditor';
+import { ConfirmDialog, InlineError } from '../../../shared/ui/portal/PortalUI';
 import './dashboard.css';
 
 type DashboardBreakpoint = 'desktop' | 'tablet' | 'mobile';
@@ -665,6 +677,17 @@ export const DashboardPage: React.FC = () => {
   const { widgets, createWidget, updateWidget, deleteWidget } =
     useDashboardWidgets(selectedLayout?.id ?? null, false, !isForbidden);
   const [isEditing, setIsEditing] = useState(false);
+  const [runtimeBreakpoint, setRuntimeBreakpoint] =
+    useState(getRuntimeBreakpoint);
+  const isMobile = runtimeBreakpoint === 'mobile';
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const createdLayoutRef = useRef<DashboardLayout | null>(null);
+  const [saveError, setSaveError] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const editorHeadingRef = useRef<HTMLHeadingElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const layoutOptionsRef = useRef<HTMLButtonElement>(null);
   const [previewBreakpoint, setPreviewBreakpoint] =
     useState<DashboardBreakpoint>(() => getRuntimeBreakpoint());
   const [deletedWidgets, setDeletedWidgets] = useState<DeletedWidgetRecord[]>(
@@ -733,14 +756,52 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     const handleResize = () => {
-      if (!isEditing) {
-        setPreviewBreakpoint(getRuntimeBreakpoint());
-      }
+      const next = getRuntimeBreakpoint();
+      setRuntimeBreakpoint(next);
+      if (!isEditing || next === 'mobile') setPreviewBreakpoint(next);
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [isEditing]);
+
+  const handleStartEditing = () => {
+    setPreviewBreakpoint(getRuntimeBreakpoint());
+    setSaveError(false);
+    setIsEditing(true);
+    window.setTimeout(() => editorHeadingRef.current?.focus(), 0);
+  };
+
+  const closeResetDialog = () => {
+    setConfirmReset(false);
+    window.setTimeout(() => layoutOptionsRef.current?.focus(), 0);
+  };
+
+  const moveMobileSection = (clientId: string, direction: -1 | 1) => {
+    setDraftWidgets((current) => {
+      const ordered = [...current].sort((a, b) =>
+        compareWidgetOrder(a, b, 'mobile'),
+      );
+      const index = ordered.findIndex((widget) => widget.clientId === clientId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= ordered.length) return current;
+      [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+      let y = 0;
+      return ordered.map((widget) => {
+        const position = {
+          ...widget.positions.mobile,
+          x: 0,
+          y,
+          w: BREAKPOINT_COLUMNS.mobile,
+        };
+        y += position.h;
+        return {
+          ...widget,
+          positions: { ...widget.positions, mobile: position },
+        };
+      });
+    });
+  };
 
   const handleOpenFeed = useCallback(
     () => navigate(`${routeBase}/feed`),
@@ -1044,37 +1105,48 @@ export const DashboardPage: React.FC = () => {
     setDeletedWidgets([]);
     setInteraction(null);
     setIsEditing(false);
+    setSaveError(false);
+    window.setTimeout(() => editButtonRef.current?.focus(), 0);
   }, [selectedLayout?.layout_name, serverDraftWidgets]);
 
   const handleResetLayout = useCallback(() => {
-    const resetDraft = buildDraftWidgets(
-      draftWidgets
-        .filter((widget) => widget.persistedId)
-        .map((widget) => ({
-          id: widget.persistedId as string,
-          layout_id: selectedLayout?.id ?? '',
-          tenant_id: selectedLayout?.tenant_id ?? '',
-          widget_key: widget.widget_key,
-          position_x: widget.positions.desktop.x,
-          position_y: widget.positions.desktop.y,
-          width: widget.positions.desktop.w,
-          height: widget.positions.desktop.h,
-          settings: widget.settings,
-          is_visible: widget.is_visible,
-          deleted_at: null,
-          created_at: '',
-          updated_at: '',
-        })),
-      createEmptyLayoutConfig(),
-    );
+    const defaults = buildDefaultDraftWidgets();
+    const knownWidgets = [...draftWidgets, ...serverDraftWidgets];
+    const resetDraft = defaults.map((widget) => {
+      const existing = knownWidgets.find(
+        (item) => item.widget_key === widget.widget_key && item.persistedId,
+      );
+      return existing
+        ? {
+            ...widget,
+            clientId: existing.clientId,
+            persistedId: existing.persistedId,
+          }
+        : widget;
+    });
     setDraftWidgets(resetDraft);
-    setDeletedWidgets([]);
+    setDeletedWidgets(
+      knownWidgets
+        .filter(
+          (widget) =>
+            widget.persistedId &&
+            !defaults.some((item) => item.widget_key === widget.widget_key),
+        )
+        .map((widget) => ({
+          clientId: widget.clientId,
+          widgetKey: widget.widget_key,
+        })),
+    );
     setInteraction(null);
-  }, [draftWidgets, selectedLayout?.id, selectedLayout?.tenant_id]);
+  }, [draftWidgets, serverDraftWidgets]);
 
   const handleSaveLayout = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setIsSaving(true);
+    setSaveError(false);
     try {
-      let layout = selectedLayout;
+      let layout = selectedLayout ?? createdLayoutRef.current;
       let resolvedWidgets = [...draftWidgets];
 
       if (!layout) {
@@ -1083,6 +1155,7 @@ export const DashboardPage: React.FC = () => {
           layout_config: createEmptyLayoutConfig(),
           is_default: true,
         } satisfies DashboardLayoutInput);
+        createdLayoutRef.current = layout;
       }
 
       for (const widget of resolvedWidgets.filter(
@@ -1100,6 +1173,8 @@ export const DashboardPage: React.FC = () => {
             ? { ...item, clientId: created.id, persistedId: created.id }
             : item,
         );
+        // Keep confirmed IDs if a later request fails, so retry does not recreate sections.
+        setDraftWidgets(resolvedWidgets);
       }
 
       for (const widget of resolvedWidgets.filter(
@@ -1139,16 +1214,15 @@ export const DashboardPage: React.FC = () => {
       setIsEditing(false);
       add({
         name: 'dashboard-saved',
-        title: t('dashboard.save'),
+        title: t('dashboard.saved'),
         theme: 'success',
       });
-    } catch (error) {
-      add({
-        name: 'dashboard-save-error',
-        title: t('dashboard.saveError'),
-        content: error instanceof Error ? error.message : undefined,
-        theme: 'danger',
-      });
+      window.setTimeout(() => editButtonRef.current?.focus(), 0);
+    } catch {
+      setSaveError(true);
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
     }
   }, [
     add,
@@ -1345,7 +1419,7 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="s"
                 view="flat"
-                aria-label="Переместить влево"
+                aria-label={t('dashboard.widgetActions.left')}
                 onClick={() => moveWithKeyboard(widget.clientId, -1, 0)}
               >
                 ←
@@ -1353,7 +1427,7 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="s"
                 view="flat"
-                aria-label="Переместить вверх"
+                aria-label={t('dashboard.widgetActions.up')}
                 onClick={() => moveWithKeyboard(widget.clientId, 0, -1)}
               >
                 ↑
@@ -1361,7 +1435,7 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="s"
                 view="flat"
-                aria-label="Переместить вниз"
+                aria-label={t('dashboard.widgetActions.down')}
                 onClick={() => moveWithKeyboard(widget.clientId, 0, 1)}
               >
                 ↓
@@ -1369,7 +1443,7 @@ export const DashboardPage: React.FC = () => {
               <Button
                 size="s"
                 view="flat"
-                aria-label="Переместить вправо"
+                aria-label={t('dashboard.widgetActions.right')}
                 onClick={() => moveWithKeyboard(widget.clientId, 1, 0)}
               >
                 →
@@ -1424,131 +1498,209 @@ export const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="dashboard-page">
+    <div
+      className={`dashboard-page${isEditing ? ' dashboard-page--editing' : ''}`}
+    >
       <div className="dashboard-page__header">
-        <div>
-          <Text variant="display-1" as="h1">
-            {t('dashboard.title')}
-          </Text>
-        </div>
-        <div className="dashboard-page__actions">
-          {!isForbidden ? (
-            isEditing ? (
-              <>
-                <Button view="outlined" onClick={handleDiscardChanges}>
-                  {t('dashboard.discard')}
-                </Button>
-                <Button view="outlined" onClick={handleResetLayout}>
-                  {t('dashboard.reset')}
-                </Button>
-                <Button view="action" onClick={() => void handleSaveLayout()}>
-                  {t('dashboard.save')}
-                </Button>
-              </>
-            ) : (
+        <h1 ref={editorHeadingRef} tabIndex={-1}>
+          {t(isEditing ? 'dashboard.editorTitle' : 'dashboard.title')}
+        </h1>
+        {!isForbidden && !isEditing && (
+          <Button
+            ref={editButtonRef}
+            size="xl"
+            view="flat"
+            aria-label={t('dashboard.edit')}
+            onClick={handleStartEditing}
+          >
+            <Icon data={Gear} />
+          </Button>
+        )}
+        {isEditing && (
+          <DropdownMenu
+            size="xl"
+            items={[
+              {
+                text: t('dashboard.reset'),
+                disabled: isSaving,
+                action: () => setConfirmReset(true),
+              },
+            ]}
+            renderSwitcher={(props) => (
               <Button
+                {...props}
+                ref={layoutOptionsRef}
                 size="xl"
                 view="flat"
-                aria-label={t('dashboard.edit')}
-                onClick={() => setIsEditing(true)}
+                disabled={isSaving}
+                aria-label={t('dashboard.layoutActions')}
               >
-                <Icon data={Gear} />
+                <Icon data={Ellipsis} size={20} />
               </Button>
-            )
-          ) : null}
-        </div>
+            )}
+          />
+        )}
       </div>
 
-      {isEditing ? (
-        <Card view="filled" className="dashboard-editor-toolbar p-4 mb-4">
-          <div className="dashboard-editor-toolbar__section">
-            <Text variant="subheader-2">{t('dashboard.done')}</Text>
-            <Text variant="body-2" color="secondary">
-              {layoutName}
-            </Text>
-          </div>
-          <div className="dashboard-editor-toolbar__section">
-            {(Object.keys(BREAKPOINT_COLUMNS) as DashboardBreakpoint[]).map(
-              (breakpoint) => (
-                <Button
-                  key={breakpoint}
-                  view={
-                    previewBreakpoint === breakpoint ? 'action' : 'outlined'
-                  }
-                  onClick={() => setPreviewBreakpoint(breakpoint)}
-                >
-                  {t(`dashboard.breakpoint.${breakpoint}`)}
-                </Button>
-              ),
-            )}
-          </div>
-          <div className="dashboard-editor-toolbar__section">
-            {availableWidgetDefinitions.map((definition) => (
-              <Button
-                key={definition.key}
-                view="flat"
-                onClick={() => handleAddWidget(definition.key)}
-              >
-                <Icon data={Plus} />
-                {t(definition.titleKey)}
-              </Button>
-            ))}
-          </div>
-        </Card>
-      ) : null}
+      {isEditing && (
+        <div className="dashboard-editor-toolbar">
+          <p>{t('dashboard.editorHint')}</p>
+          {!isMobile && (
+            <div
+              className="dashboard-editor-toolbar__section"
+              role="group"
+              aria-label={t('dashboard.preview')}
+            >
+              {(Object.keys(BREAKPOINT_COLUMNS) as DashboardBreakpoint[]).map(
+                (breakpoint) => (
+                  <Button
+                    key={breakpoint}
+                    selected={previewBreakpoint === breakpoint}
+                    disabled={isSaving}
+                    view={
+                      previewBreakpoint === breakpoint ? 'action' : 'outlined'
+                    }
+                    onClick={() => setPreviewBreakpoint(breakpoint)}
+                  >
+                    {t(`dashboard.breakpoint.${breakpoint}`)}
+                  </Button>
+                ),
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div
-        ref={dashboardGridRef}
-        className={`dashboard-grid dashboard-grid--${previewBreakpoint}${isEditing ? ' dashboard-grid--editing' : ''}`}
-        style={{
-          ['--dashboard-cols' as string]: BREAKPOINT_COLUMNS[previewBreakpoint],
-        }}
-      >
-        {renderedWidgets.map((widget) => {
-          const isMoveInteraction =
-            interaction?.widgetId === widget.clientId &&
-            interaction.mode === 'move';
-          const isResizeInteraction =
-            interaction?.widgetId === widget.clientId &&
-            interaction.mode === 'resize';
-          const isDropTarget =
-            interaction?.swapTargetId === widget.clientId &&
-            interaction.mode === 'move';
-
-          return renderWidgetFrame(widget, {
-            isEditing,
-            isMoveInteraction,
-            isResizeInteraction,
-            isDropTarget,
-          });
-        })}
-        {activeMoveWidget && interaction && moveOverlayOrigin ? (
+      {isEditing && isMobile ? (
+        <MobileLayoutEditor
+          sections={renderedWidgets.map((widget) => ({
+            id: widget.clientId,
+            title: t(
+              WIDGET_DEFINITION_MAP[widget.widget_key]?.titleKey ??
+                'dashboard.title',
+            ),
+            visible: widget.is_visible,
+          }))}
+          pending={isSaving}
+          onMove={moveMobileSection}
+          onToggle={handleToggleVisibility}
+          onRemove={handleRemoveWidget}
+        />
+      ) : (
+        <fieldset className="dashboard-canvas" disabled={isSaving}>
           <div
-            className="dashboard-grid__drag-overlay"
+            ref={dashboardGridRef}
+            className={`dashboard-grid dashboard-grid--${previewBreakpoint}${isEditing ? ' dashboard-grid--editing' : ''}`}
             style={{
-              left: `${moveOverlayOrigin.x * (interaction.columnStep + EDITOR_GRID_GAP_PX)}px`,
-              top: `${moveOverlayOrigin.y * (EDITOR_ROW_HEIGHT_PX + EDITOR_GRID_GAP_PX)}px`,
-              width: `${moveOverlayOrigin.w * interaction.columnStep + Math.max(0, moveOverlayOrigin.w - 1) * EDITOR_GRID_GAP_PX}px`,
-              height: `${moveOverlayOrigin.h * EDITOR_ROW_HEIGHT_PX + Math.max(0, moveOverlayOrigin.h - 1) * EDITOR_GRID_GAP_PX}px`,
-              transform: `translate3d(${interaction.currentOffsetX}px, ${interaction.currentOffsetY}px, 0)`,
+              ['--dashboard-cols' as string]:
+                BREAKPOINT_COLUMNS[previewBreakpoint],
             }}
           >
-            {renderWidgetFrame(activeMoveWidget, {
-              isEditing,
-              isMoveInteraction: true,
-              isResizeInteraction: false,
-              isDropTarget: false,
-              isOverlay: true,
-              style: {
-                gridColumn: 'auto',
-                gridRow: 'auto',
-                width: '100%',
-                height: '100%',
-              },
+            {renderedWidgets.map((widget) => {
+              const isMoveInteraction =
+                interaction?.widgetId === widget.clientId &&
+                interaction.mode === 'move';
+              const isResizeInteraction =
+                interaction?.widgetId === widget.clientId &&
+                interaction.mode === 'resize';
+              const isDropTarget =
+                interaction?.swapTargetId === widget.clientId &&
+                interaction.mode === 'move';
+
+              return renderWidgetFrame(widget, {
+                isEditing,
+                isMoveInteraction,
+                isResizeInteraction,
+                isDropTarget,
+              });
             })}
+            {activeMoveWidget && interaction && moveOverlayOrigin ? (
+              <div
+                className="dashboard-grid__drag-overlay"
+                style={{
+                  left: `${moveOverlayOrigin.x * (interaction.columnStep + EDITOR_GRID_GAP_PX)}px`,
+                  top: `${moveOverlayOrigin.y * (EDITOR_ROW_HEIGHT_PX + EDITOR_GRID_GAP_PX)}px`,
+                  width: `${moveOverlayOrigin.w * interaction.columnStep + Math.max(0, moveOverlayOrigin.w - 1) * EDITOR_GRID_GAP_PX}px`,
+                  height: `${moveOverlayOrigin.h * EDITOR_ROW_HEIGHT_PX + Math.max(0, moveOverlayOrigin.h - 1) * EDITOR_GRID_GAP_PX}px`,
+                  transform: `translate3d(${interaction.currentOffsetX}px, ${interaction.currentOffsetY}px, 0)`,
+                }}
+              >
+                {renderWidgetFrame(activeMoveWidget, {
+                  isEditing,
+                  isMoveInteraction: true,
+                  isResizeInteraction: false,
+                  isDropTarget: false,
+                  isOverlay: true,
+                  style: {
+                    gridColumn: 'auto',
+                    gridRow: 'auto',
+                    width: '100%',
+                    height: '100%',
+                  },
+                })}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        </fieldset>
+      )}
+
+      {isEditing && availableWidgetDefinitions.length > 0 && (
+        <div className="dashboard-editor-add">
+          <DropdownMenu
+            size="xl"
+            items={availableWidgetDefinitions.map((definition) => ({
+              text: t(definition.titleKey),
+              disabled: isSaving,
+              action: () => handleAddWidget(definition.key),
+            }))}
+            renderSwitcher={(props) => (
+              <Button {...props} size="xl" view="outlined" disabled={isSaving}>
+                <Icon data={Plus} />
+                {t('dashboard.addWidget')}
+              </Button>
+            )}
+          />
+        </div>
+      )}
+      {isEditing && (
+        <section
+          className="dashboard-editor-footer"
+          aria-label={t('dashboard.editingActions')}
+          aria-busy={isSaving}
+        >
+          {saveError && <InlineError>{t('dashboard.saveError')}</InlineError>}
+          <div className="dashboard-editor-footer__buttons">
+            <Button
+              size="xl"
+              view="outlined"
+              disabled={isSaving}
+              onClick={handleDiscardChanges}
+            >
+              {t('dashboard.discard')}
+            </Button>
+            <Button
+              size="xl"
+              view="action"
+              loading={isSaving}
+              disabled={isSaving}
+              onClick={() => void handleSaveLayout()}
+            >
+              {t('dashboard.save')}
+            </Button>
+          </div>
+        </section>
+      )}
+      <ConfirmDialog
+        open={confirmReset}
+        title={t('dashboard.reset')}
+        description={t('dashboard.resetDescription')}
+        confirmLabel={t('dashboard.reset')}
+        onClose={closeResetDialog}
+        onConfirm={() => {
+          handleResetLayout();
+          closeResetDialog();
+        }}
+      />
     </div>
   );
 };

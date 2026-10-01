@@ -11,6 +11,17 @@
   margin-bottom: 24px;
 }
 
+.dashboard-page__header h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.dashboard-page__header h1:focus:not(:focus-visible) {
+  outline: none;
+}
+
 .dashboard-page__actions,
 .dashboard-editor-toolbar__section {
   display: flex;
@@ -22,12 +33,111 @@
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  border: 1px solid
-    color-mix(
-      in srgb,
-      var(--user-accent-color) 24%,
-      var(--g-color-line-generic)
-    );
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.dashboard-editor-toolbar p {
+  margin: 0;
+  color: var(--portal-muted);
+  font-size: 16px;
+}
+
+.dashboard-canvas {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.dashboard-editor-add {
+  margin-top: 16px;
+}
+
+.dashboard-editor-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  padding: 16px 0;
+  margin-top: 24px;
+  background: var(--portal-bg);
+  border-top: 1px solid var(--portal-line);
+}
+
+.dashboard-editor-footer .portal-inline-error {
+  margin-bottom: 12px;
+}
+
+.dashboard-editor-footer__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dashboard-section-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.dashboard-section-list__item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 88px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--portal-line);
+}
+
+.dashboard-section-list__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-section-list__label h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-section-list__label span {
+  font-size: 14px;
+  color: var(--portal-muted);
+}
+
+.dashboard-section-list .g-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 44px;
+}
+
+@media (max-width: 719px) {
+  .dashboard-page--editing {
+    padding-bottom: calc(116px + env(safe-area-inset-bottom));
+  }
+  .dashboard-page--editing .dashboard-page__header {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .dashboard-editor-toolbar {
+    margin-bottom: 12px;
+  }
+  .dashboard-editor-footer {
+    position: fixed;
+    inset: auto 0 0;
+    margin: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .dashboard-editor-footer__buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .dashboard-grid {
