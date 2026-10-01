@@ -102,6 +102,7 @@ MIDDLEWARE = [
     "bff.middleware.TenantResolveMiddleware",
     "bff.middleware.CookieSessionAuthMiddleware",
     "bff.middleware.SessionRateLimitMiddleware",
+    "bff.middleware.MultipartProxyBodyMiddleware",
     # "django.contrib.auth.middleware.AuthenticationMiddleware", # Not using Django Auth
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
