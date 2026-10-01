@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import React from 'react';
 import {
   Button,
@@ -21,24 +22,13 @@ type FeedStreamViewProps = {
   refetch: () => void;
   isMarkingRead: boolean;
   markAsRead: () => void;
-  canModerateNews: boolean;
-  moderationMode: boolean;
-  toggleModerationMode: () => void;
-  selectedModerationCount: number;
-  moderationReason: string;
-  setModerationReason: (value: string) => void;
-  moderationError: string | null;
-  clearModerationSelection: () => void;
-  handleModerationDeleteSelected: () => void;
   hasContent: boolean;
   isLoading: boolean;
   source: 'all' | 'news' | 'voting' | 'events';
   sortedItems: ActivityEvent[];
   draftItems?: ActivityEvent[];
   focusedNewsId?: string | null;
-  selectedModerationIds: string[];
   getItemNewsId: (item: ActivityEvent) => string | null;
-  handleModerationToggle: (newsId: string, selected: boolean) => void;
   loadMoreRef: React.RefObject<HTMLDivElement>;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
@@ -51,35 +41,25 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
   refetch,
   isMarkingRead,
   markAsRead,
-  canModerateNews,
-  moderationMode,
-  toggleModerationMode,
-  selectedModerationCount,
-  moderationReason,
-  setModerationReason,
-  moderationError,
-  clearModerationSelection,
-  handleModerationDeleteSelected,
   hasContent,
   isLoading,
   source,
   sortedItems,
   draftItems = [],
   focusedNewsId = null,
-  selectedModerationIds,
   getItemNewsId,
-  handleModerationToggle,
   loadMoreRef,
   isFetchingNextPage,
   hasNextPage,
 }) => {
+  const t = useUITranslation();
   const mobile = useMediaQuery('(max-width: 719px)');
   return (
     <>
       <div className="feed-stream__top">
         <div className="feed-stream__header">
           <div className="feed-stream__title">
-            <h1>Лента</h1>
+            <h1>{t('Лента', 'Activity feed')}</h1>
           </div>
           <div className="feed-stream__header-actions" data-qa="feed-actions">
             {mobile ? (
@@ -87,23 +67,13 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
                 {filters}
                 <DropdownMenu
                   items={[
-                    { text: 'Обновить', action: refetch },
+                    { text: t('Обновить', 'Refresh'), action: refetch },
                     ...(unreadCount > 0
                       ? [
                           {
-                            text: 'Отметить прочитанным',
+                            text: t('Отметить прочитанным', 'Mark as read'),
                             action: markAsRead,
                             disabled: isMarkingRead,
-                          },
-                        ]
-                      : []),
-                    ...(canModerateNews
-                      ? [
-                          {
-                            text: moderationMode
-                              ? 'Выйти из модерации'
-                              : 'Режим модерации',
-                            action: toggleModerationMode,
                           },
                         ]
                       : []),
@@ -113,7 +83,7 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
                       {...props}
                       size="xl"
                       view="flat"
-                      aria-label="Действия ленты"
+                      aria-label={t('Действия ленты', 'Feed actions')}
                     >
                       <Icon data={Ellipsis} size={20} />
                     </Button>
@@ -126,7 +96,7 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
                 {' '}
                 <Button view="flat" size="m" onClick={() => refetch()}>
                   <Icon data={ArrowRotateRight} />
-                  Обновить
+                  {t('Обновить', 'Refresh')}
                 </Button>
                 {unreadCount > 0 && (
                   <Button
@@ -135,17 +105,7 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
                     loading={isMarkingRead}
                     onClick={() => markAsRead()}
                   >
-                    Отметить прочитанным
-                  </Button>
-                )}
-                {canModerateNews && (
-                  <Button
-                    view={moderationMode ? 'outlined-danger' : 'outlined'}
-                    size="m"
-                    onClick={toggleModerationMode}
-                    aria-label="Переключить режим модерации"
-                  >
-                    {moderationMode ? 'Выйти из модерации' : 'Режим модерации'}
+                    {t('Отметить прочитанным', 'Mark as read')}
                   </Button>
                 )}
               </>
@@ -159,56 +119,16 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
         ) : null}
       </div>
 
-      {moderationMode && (
-        <Card
-          view="filled"
-          className="feed-moderation-panel"
-          aria-live="polite"
-        >
-          <Text variant="subheader-2">Панель модерации</Text>
-          <Text variant="caption-2" color="secondary">
-            Горячая клавиша: Alt + M
-          </Text>
-          <Text variant="body-2" color="secondary">
-            Выбрано: {selectedModerationCount} (максимум 20)
-          </Text>
-          <textarea
-            className="feed-moderation-panel__reason"
-            value={moderationReason}
-            onChange={(event) => setModerationReason(event.target.value)}
-            placeholder="Укажите причину модераторского действия (для аудита)"
-            rows={2}
-          />
-          {moderationError && (
-            <Text variant="caption-2" color="danger">
-              {moderationError}
-            </Text>
-          )}
-          <div className="feed-moderation-panel__actions">
-            <Button view="outlined" size="m" onClick={clearModerationSelection}>
-              Очистить выбор
-            </Button>
-            <Button
-              view="flat-danger"
-              size="m"
-              onClick={handleModerationDeleteSelected}
-            >
-              Удалить выбранные
-            </Button>
-          </div>
-        </Card>
-      )}
-
       {unreadCount > 0 && (
         <Button view="outlined" size="xl" onClick={refetch}>
-          Новые записи · {unreadCount}
+          {t('Новые записи', 'New posts')} · {unreadCount}
         </Button>
       )}
 
       {draftItems.length > 0 && (
         <details className="feed-drafts" data-qa="feed-drafts">
           <summary className="feed-drafts__header">
-            Мои черновики · {draftItems.length}
+            {t('Мои черновики', 'My drafts')} · {draftItems.length}
           </summary>
           <div className="feed-drafts__list">
             {draftItems.map((item) => (
@@ -245,13 +165,19 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
         <Card view="filled" className="feed-empty" data-qa="feed-empty">
           <Text variant="subheader-2">
             {source !== 'all'
-              ? 'Нет событий под выбранные фильтры.'
-              : 'В ленте пока тихо'}
+              ? t(
+                  'Нет событий под выбранные фильтры.',
+                  'No posts match these filters.',
+                )
+              : t('В ленте пока тихо', 'No posts yet')}
           </Text>
           <Text variant="body-2" color="secondary">
             {source !== 'all'
-              ? 'Выберите другой источник в фильтрах.'
-              : 'Здесь появятся публикации и события сообщества.'}
+              ? t('Выберите другой источник в фильтрах.', 'Try another source.')
+              : t(
+                  'Здесь появятся публикации и события сообщества.',
+                  'Community posts and events will appear here.',
+                )}
           </Text>
         </Card>
       ) : (
@@ -263,17 +189,12 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
                 key={item.id}
                 item={item}
                 showPayload={false}
-                moderationMode={moderationMode}
                 highlighted={Boolean(
                   focusedNewsId && itemNewsId === focusedNewsId,
                 )}
                 autoOpenComments={Boolean(
                   focusedNewsId && itemNewsId === focusedNewsId,
                 )}
-                moderationSelected={Boolean(
-                  itemNewsId && selectedModerationIds.includes(itemNewsId),
-                )}
-                onModerationToggle={handleModerationToggle}
               />
             );
           })}
@@ -288,7 +209,7 @@ export const FeedStreamView: React.FC<FeedStreamViewProps> = ({
         {isFetchingNextPage && <Loader size="m" />}
         {!hasNextPage && hasContent && (
           <Text variant="caption-2" color="secondary">
-            Больше событий нет
+            {t('Больше событий нет', 'You’re all caught up')}
           </Text>
         )}
       </div>

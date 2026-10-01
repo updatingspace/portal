@@ -59,7 +59,7 @@ class UserPreference(models.Model):
         choices=Language.choices,
         default=Language.EN,
     )
-    timezone = models.CharField(max_length=50, default="UTC")
+    timezone = models.CharField(max_length=50, default="system")
 
     # Notification settings (JSONField for flexibility)
     notification_settings = models.JSONField(default=dict)
@@ -122,7 +122,9 @@ class HomePageModal(models.Model):
     # Content fields
     title = models.CharField("Заголовок", max_length=255)
     content = models.TextField("Содержание")
-    content_html = models.TextField("HTML содержание", blank=True, help_text="Rich text HTML content")
+    content_html = models.TextField(
+        "HTML содержание", blank=True, help_text="Rich text HTML content"
+    )
     button_text = models.CharField("Текст кнопки", max_length=100, default="OK")
     button_url = models.CharField("Ссылка кнопки", max_length=500, blank=True)
     modal_type = models.CharField(
@@ -247,7 +249,9 @@ class ContentWidget(models.Model):
     is_active = models.BooleanField("Активен", default=True)
     start_date = models.DateTimeField("Дата начала", null=True, blank=True)
     end_date = models.DateTimeField("Дата окончания", null=True, blank=True)
-    priority = models.IntegerField("Приоритет", default=0, help_text="Higher = more important")
+    priority = models.IntegerField(
+        "Приоритет", default=0, help_text="Higher = more important"
+    )
 
     # Targeting
     target_pages = models.JSONField(

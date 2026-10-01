@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -38,8 +39,9 @@ export const PollForm: React.FC<PollFormProps> = ({
   onSubmit,
   onCancel,
   isSubmitting = false,
-  submitLabel = 'Создать опрос',
+  submitLabel,
 }) => {
+  const t = useUITranslation();
   const [step, setStep] = useState<WizardStep>(0);
   const [title, setTitle] = useState(initialData.title || '');
   const [description, setDescription] = useState(initialData.description || '');
@@ -71,11 +73,11 @@ export const PollForm: React.FC<PollFormProps> = ({
   const titleValid = Boolean(title.trim());
 
   const scopeOptions = [
-    { value: 'TENANT', content: 'Сообщество' },
-    { value: 'COMMUNITY', content: 'Группа' },
-    { value: 'TEAM', content: 'Команда' },
-    { value: 'EVENT', content: 'Событие' },
-    { value: 'POST', content: 'Пост' },
+    { value: 'TENANT', content: t('Сообщество', 'Community') },
+    { value: 'COMMUNITY', content: t('Группа', 'Group') },
+    { value: 'TEAM', content: t('Команда', 'Team') },
+    { value: 'EVENT', content: t('Событие', 'Event') },
+    { value: 'POST', content: t('Пост', 'Post') },
   ];
 
   const visibilityOptions: Array<{
@@ -83,28 +85,38 @@ export const PollForm: React.FC<PollFormProps> = ({
     content: string;
     disabled?: boolean;
   }> = [
-    { value: 'public', content: 'Участники сообщества' },
+    {
+      value: 'public',
+      content: t('Участники сообщества', 'Community members'),
+    },
     {
       value: 'community',
-      content: 'Сообщество',
+      content: t('Сообщество', 'Community'),
       disabled: scopeType !== 'COMMUNITY',
     },
-    { value: 'team', content: 'Команда', disabled: scopeType !== 'TEAM' },
-    { value: 'private', content: 'Приватный' },
+    {
+      value: 'team',
+      content: t('Команда', 'Team'),
+      disabled: scopeType !== 'TEAM',
+    },
+    { value: 'private', content: t('Приватный', 'Private') },
   ];
 
   const resultsOptions = [
-    { value: 'always', content: 'Всегда доступны' },
-    { value: 'after_closed', content: 'После закрытия' },
-    { value: 'admins_only', content: 'Только администраторам' },
+    { value: 'always', content: t('Всегда доступны', 'Always available') },
+    { value: 'after_closed', content: t('После закрытия', 'After closing') },
+    {
+      value: 'admins_only',
+      content: t('Только администраторам', 'Administrators only'),
+    },
   ];
 
   const templateOptions = useMemo(
     () => [
-      { value: '', content: 'Без шаблона' },
+      { value: '', content: t('Без шаблона', 'No template') },
       ...templates.map((t) => ({ value: t.slug, content: t.title })),
     ],
-    [templates],
+    [templates, t],
   );
 
   const payload: PollCreatePayload = useMemo(
@@ -172,8 +184,15 @@ export const PollForm: React.FC<PollFormProps> = ({
 
   return (
     <form onSubmit={submit} className="voting-poll-form">
-      <div className="voting-form-steps" aria-label="Этапы создания">
-        {['Основное', 'Правила', 'Проверка'].map((label, index) => (
+      <div
+        className="voting-form-steps"
+        aria-label={t('Этапы создания', 'Creation steps')}
+      >
+        {[
+          t('Основное', 'Basics'),
+          t('Правила', 'Rules'),
+          t('Проверка', 'Review'),
+        ].map((label, index) => (
           <Button
             key={label}
             type="button"
@@ -195,18 +214,23 @@ export const PollForm: React.FC<PollFormProps> = ({
               className="text-sm font-medium text-gray-700"
               htmlFor="poll-form-title"
             >
-              Название *
+              {t('Название *', 'Name *')}
             </label>
             <TextInput
               size="xl"
               id="poll-form-title"
-              aria-label="Название"
+              aria-label={t('Название', 'Name')}
               value={title}
               onUpdate={setTitle}
-              placeholder="Например: Лучшие проекты года"
+              placeholder={t(
+                'Например: Лучшие проекты года',
+                'For example: Best projects of the year',
+              )}
             />
             {touched && !titleValid && (
-              <p className="text-xs text-amber-600">Укажите название опроса.</p>
+              <p className="text-xs text-amber-600">
+                {t('Укажите название опроса.', 'Enter a poll name.')}
+              </p>
             )}
           </div>
 
@@ -215,25 +239,30 @@ export const PollForm: React.FC<PollFormProps> = ({
               className="text-sm font-medium text-gray-700"
               htmlFor="poll-form-description"
             >
-              Описание
+              {t('Описание', 'Description')}
             </label>
             <TextArea
               size="xl"
               id="poll-form-description"
-              aria-label="Описание"
+              aria-label={t('Описание', 'Description')}
               value={description}
               onUpdate={setDescription}
               rows={3}
-              placeholder="Контекст, правила или призы"
+              placeholder={t(
+                'Контекст, правила или призы',
+                'Context, rules or prizes',
+              )}
             />
           </div>
 
           {templates.length > 0 && (
             <div className="space-y-1">
-              <div className="text-sm font-medium text-gray-700">Шаблон</div>
+              <div className="text-sm font-medium text-gray-700">
+                {t('Шаблон', 'Template')}
+              </div>
               <Select
                 size="xl"
-                aria-label="Шаблон"
+                aria-label={t('Шаблон', 'Template')}
                 value={[template || '']}
                 onUpdate={(value) => setTemplate(value[0] ?? '')}
                 options={templateOptions}
@@ -248,11 +277,11 @@ export const PollForm: React.FC<PollFormProps> = ({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <div className="text-sm font-medium text-gray-700">
-                Область опроса
+                {t('Область опроса', 'Poll audience')}
               </div>
               <Select
                 size="xl"
-                aria-label="Область опроса"
+                aria-label={t('Область опроса', 'Poll audience')}
                 value={[scopeType]}
                 onUpdate={(value) => {
                   const nextScope = (value[0] ?? 'TENANT') as PollScopeType;
@@ -269,28 +298,33 @@ export const PollForm: React.FC<PollFormProps> = ({
                   className="text-sm font-medium text-gray-700"
                   htmlFor="poll-form-scope-id"
                 >
-                  ID области *
+                  {t('ID области *', 'Audience ID *')}
                 </label>
                 <TextInput
                   size="xl"
                   id="poll-form-scope-id"
                   value={scopeId}
                   onUpdate={setScopeId}
-                  placeholder="UUID области"
+                  placeholder={t('UUID области', 'Audience UUID')}
                 />
                 {touched && !scopeIdValid && (
                   <p className="text-xs text-amber-600">
-                    Для выбранной области нужен ID.
+                    {t(
+                      'Для выбранной области нужен ID.',
+                      'Select an audience.',
+                    )}
                   </p>
                 )}
               </div>
             )}
 
             <div className="space-y-1">
-              <div className="text-sm font-medium text-gray-700">Видимость</div>
+              <div className="text-sm font-medium text-gray-700">
+                {t('Видимость', 'Visibility')}
+              </div>
               <Select
                 size="xl"
-                aria-label="Видимость"
+                aria-label={t('Видимость', 'Visibility')}
                 value={[visibility]}
                 onUpdate={(value) =>
                   setVisibility((value[0] ?? 'public') as PollVisibility)
@@ -301,11 +335,11 @@ export const PollForm: React.FC<PollFormProps> = ({
 
             <div className="space-y-1">
               <div className="text-sm font-medium text-gray-700">
-                Доступ к результатам
+                {t('Доступ к результатам', 'Results visibility')}
               </div>
               <Select
                 size="xl"
-                aria-label="Доступ к результатам"
+                aria-label={t('Доступ к результатам', 'Results visibility')}
                 value={[resultsVisibility]}
                 onUpdate={(value) =>
                   setResultsVisibility(
@@ -321,18 +355,18 @@ export const PollForm: React.FC<PollFormProps> = ({
             <Checkbox
               checked={allowRevoting}
               onUpdate={setAllowRevoting}
-              content="Разрешить переголосование"
+              content={t('Разрешить переголосование', 'Allow revoting')}
             />
             <Checkbox
               checked={anonymous}
               onUpdate={setAnonymous}
-              content="Анонимное голосование"
+              content={t('Анонимное голосование', 'Anonymous voting')}
             />
           </div>
 
           <div>
             <div className="text-sm font-medium text-gray-700 mb-1">
-              Расписание
+              {t('Расписание', 'Schedule')}
             </div>
             <ScheduleForm
               initialStartsAt={startsAt}
@@ -348,23 +382,30 @@ export const PollForm: React.FC<PollFormProps> = ({
 
       {step === 2 && (
         <Card className="voting-form-section">
-          <Text variant="subheader-2">Проверка перед созданием</Text>
+          <Text variant="subheader-2">
+            {t('Проверка перед созданием', 'Review before creating')}
+          </Text>
           <Alert
             theme="info"
-            title="После создания"
-            message="Вы перейдёте к управлению опросом, где сможете добавить вопросы и участников."
+            title={t('После создания', 'Next step')}
+            message={t(
+              'Вы перейдёте к управлению опросом, где сможете добавить вопросы и участников.',
+              'You will be able to add questions and participants after creating the poll.',
+            )}
           />
           <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <div>
-              <span className="font-semibold">Название:</span>{' '}
+              <span className="font-semibold">{t('Название:', 'Name:')}</span>{' '}
               {payload.title || '—'}
             </div>
             <div>
-              <span className="font-semibold">Шаблон:</span>{' '}
-              {payload.template || 'без шаблона'}
+              <span className="font-semibold">{t('Шаблон:', 'Template:')}</span>{' '}
+              {payload.template || t('без шаблона', 'no template')}
             </div>
             <div>
-              <span className="font-semibold">Область:</span>{' '}
+              <span className="font-semibold">
+                {t('Область:', 'Audience:')}
+              </span>{' '}
               {
                 scopeOptions.find((item) => item.value === payload.scope_type)
                   ?.content
@@ -372,12 +413,16 @@ export const PollForm: React.FC<PollFormProps> = ({
             </div>
             {scopeIdRequired && (
               <div>
-                <span className="font-semibold">ID области:</span>{' '}
+                <span className="font-semibold">
+                  {t('ID области:', 'Audience ID:')}
+                </span>{' '}
                 {payload.scope_id}
               </div>
             )}
             <div>
-              <span className="font-semibold">Видимость:</span>{' '}
+              <span className="font-semibold">
+                {t('Видимость:', 'Visibility:')}
+              </span>{' '}
               {
                 visibilityOptions.find(
                   (item) => item.value === payload.visibility,
@@ -385,7 +430,9 @@ export const PollForm: React.FC<PollFormProps> = ({
               }
             </div>
             <div>
-              <span className="font-semibold">Результаты:</span>{' '}
+              <span className="font-semibold">
+                {t('Результаты:', 'Results:')}
+              </span>{' '}
               {
                 resultsOptions.find(
                   (item) => item.value === payload.results_visibility,
@@ -393,12 +440,16 @@ export const PollForm: React.FC<PollFormProps> = ({
               }
             </div>
             <div>
-              <span className="font-semibold">Переголосование:</span>{' '}
-              {payload.allow_revoting ? 'да' : 'нет'}
+              <span className="font-semibold">
+                {t('Переголосование:', 'Revoting:')}
+              </span>{' '}
+              {payload.allow_revoting ? t('да', 'yes') : t('нет', 'no')}
             </div>
             <div>
-              <span className="font-semibold">Анонимность:</span>{' '}
-              {payload.anonymous ? 'да' : 'нет'}
+              <span className="font-semibold">
+                {t('Анонимность:', 'Anonymous:')}
+              </span>{' '}
+              {payload.anonymous ? t('да', 'yes') : t('нет', 'no')}
             </div>
           </div>
         </Card>
@@ -413,7 +464,7 @@ export const PollForm: React.FC<PollFormProps> = ({
               onClick={prev}
               disabled={isSubmitting}
             >
-              Назад
+              {t('Назад', 'Back')}
             </Button>
           )}
           <Button
@@ -422,7 +473,7 @@ export const PollForm: React.FC<PollFormProps> = ({
             onClick={onCancel}
             disabled={isSubmitting}
           >
-            Отмена
+            {t('Отмена', 'Cancel')}
           </Button>
         </div>
 
@@ -433,7 +484,7 @@ export const PollForm: React.FC<PollFormProps> = ({
             onClick={next}
             disabled={isSubmitting || !canGoNext}
           >
-            Далее
+            {t('Далее', 'Continue')}
           </Button>
         ) : (
           <Button
@@ -444,7 +495,7 @@ export const PollForm: React.FC<PollFormProps> = ({
             }
             loading={isSubmitting}
           >
-            {submitLabel}
+            {submitLabel || t('Создать опрос', 'Create poll')}
           </Button>
         )}
       </div>

@@ -26,15 +26,13 @@ export async function session(
 ) {
   let current = memberships[0];
   await locale(page);
-  await page
-    .context()
-    .addCookies([
-      {
-        name: 'updspace_csrf',
-        value: 'test-only',
-        url: 'http://127.0.0.1:4173',
-      },
-    ]);
+  await page.context().addCookies([
+    {
+      name: 'updspace_csrf',
+      value: 'test-only',
+      url: 'http://127.0.0.1:4173',
+    },
+  ]);
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     let data: unknown = [];
@@ -73,7 +71,10 @@ export async function session(
         json: { error: { code: 'UNAVAILABLE', message: 'Unavailable' } },
       });
       return;
-    } else if (path === '/api/v1/events' || path === '/api/v1/events/')
+    } else if (
+      path === '/api/v1/events/events/' ||
+      path === '/api/v1/events/events/'
+    )
       data = {
         items: [
           {
@@ -92,7 +93,7 @@ export async function session(
         ],
         meta: { total: 1, limit: 20, offset: 0 },
       };
-    else if (path === '/api/v1/events/event-1')
+    else if (path === '/api/v1/events/events/event-1')
       data = {
         id: 'event-1',
         title: 'Встреча сообщества',

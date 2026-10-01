@@ -110,7 +110,8 @@ function buildFeedQuery(params?: FeedParams): string {
   if (params?.types) queryParams.set('types', params.types);
   if (params?.scopeType) queryParams.set('scope_type', params.scopeType);
   if (params?.scopeId) queryParams.set('scope_id', params.scopeId);
-  if (typeof params?.limit === 'number') queryParams.set('limit', String(params.limit));
+  if (typeof params?.limit === 'number')
+    queryParams.set('limit', String(params.limit));
   if (params?.cursor) queryParams.set('cursor', params.cursor);
   return queryParams.toString();
 }
@@ -120,7 +121,9 @@ function buildFeedQuery(params?: FeedParams): string {
  *
  * @deprecated Use fetchFeedV2 for cursor-based pagination
  */
-export async function fetchFeed(params?: Omit<FeedParams, 'cursor'>): Promise<ActivityEvent[]> {
+export async function fetchFeed(
+  params?: Omit<FeedParams, 'cursor'>,
+): Promise<ActivityEvent[]> {
   const query = buildFeedQuery(params);
   const url = query ? `/activity/feed?${query}` : '/activity/feed';
   const data = await request<FeedResponseApi>(url);
@@ -139,7 +142,9 @@ export async function fetchFeed(params?: Omit<FeedParams, 'cursor'>): Promise<Ac
  *   const nextPage = await fetchFeedV2({ limit: 20, cursor: nextCursor });
  * }
  */
-export async function fetchFeedV2(params?: FeedParams): Promise<FeedResponseV2> {
+export async function fetchFeedV2(
+  params?: FeedParams,
+): Promise<FeedResponseV2> {
   const query = buildFeedQuery(params);
   const url = query ? `/activity/v2/feed?${query}` : '/activity/v2/feed';
   const data = await request<FeedResponseV2Api>(url);
@@ -154,7 +159,9 @@ export async function fetchFeedV2(params?: FeedParams): Promise<FeedResponseV2> 
  * Get unread count for current user
  */
 export async function fetchUnreadCount(): Promise<number> {
-  const data = await request<UnreadCountResponse>('/activity/feed/unread-count');
+  const data = await request<UnreadCountResponse>(
+    '/activity/feed/unread-count',
+  );
   return data.count;
 }
 
@@ -195,14 +202,18 @@ export type NewsUploadResponse = {
   expires_in: number;
 };
 
-export async function requestNewsMediaUpload(payload: NewsUploadPayload): Promise<NewsUploadResponse> {
+export async function requestNewsMediaUpload(
+  payload: NewsUploadPayload,
+): Promise<NewsUploadResponse> {
   return request<NewsUploadResponse>('/activity/news/media/upload-url', {
     method: 'POST',
     body: payload,
   });
 }
 
-export async function createNews(payload: NewsCreatePayload): Promise<ActivityEvent> {
+export async function createNews(
+  payload: NewsCreatePayload,
+): Promise<ActivityEvent> {
   const data = await request<ActivityEventApi>('/activity/news', {
     method: 'POST',
     body: {
@@ -225,11 +236,16 @@ export async function fetchNews(newsId: string): Promise<ActivityEvent> {
 }
 
 export async function listDraftNews(limit = 20): Promise<ActivityEvent[]> {
-  const data = await request<ActivityEventApi[]>(`/activity/news/drafts?limit=${limit}`);
+  const data = await request<ActivityEventApi[]>(
+    `/activity/news/drafts?limit=${limit}`,
+  );
   return data.map(mapActivityEvent);
 }
 
-export async function updateNews(newsId: string, payload: NewsUpdatePayload): Promise<ActivityEvent> {
+export async function updateNews(
+  newsId: string,
+  payload: NewsUpdatePayload,
+): Promise<ActivityEvent> {
   const data = await request<ActivityEventApi>(`/activity/news/${newsId}`, {
     method: 'PATCH',
     body: {
@@ -244,8 +260,14 @@ export async function updateNews(newsId: string, payload: NewsUpdatePayload): Pr
   return mapActivityEvent(data);
 }
 
-export async function deleteNews(newsId: string): Promise<void> {
-  await request(`/activity/news/${newsId}`, { method: 'DELETE' });
+export async function deleteNews(
+  newsId: string,
+  reason?: string,
+): Promise<void> {
+  await request(`/activity/news/${newsId}`, {
+    method: 'DELETE',
+    body: reason ? { reason } : undefined,
+  });
 }
 
 export async function reactToNews(
@@ -269,7 +291,10 @@ export type NewsReactionDetail = {
   user_profile?: ActivityActorProfile | null;
 };
 
-export async function listNewsReactions(newsId: string, limit = 200): Promise<NewsReactionDetail[]> {
+export async function listNewsReactions(
+  newsId: string,
+  limit = 200,
+): Promise<NewsReactionDetail[]> {
   return request<NewsReactionDetail[]>(
     `/activity/news/${newsId}/reactions?limit=${limit}`,
   );
@@ -280,7 +305,9 @@ export type NewsViewResponse = {
   counted: boolean;
 };
 
-export async function recordNewsView(newsId: string): Promise<NewsViewResponse> {
+export async function recordNewsView(
+  newsId: string,
+): Promise<NewsViewResponse> {
   return request<NewsViewResponse>(`/activity/news/${newsId}/views`, {
     method: 'POST',
     body: {},
@@ -310,7 +337,10 @@ export type NewsCommentsPage = {
   parent_id: number | null;
 };
 
-export async function listNewsComments(newsId: string, limit = 200): Promise<NewsCommentDetail[]> {
+export async function listNewsComments(
+  newsId: string,
+  limit = 200,
+): Promise<NewsCommentDetail[]> {
   return request<NewsCommentDetail[]>(
     `/activity/news/${newsId}/comments?limit=${limit}`,
   );
@@ -318,7 +348,11 @@ export async function listNewsComments(newsId: string, limit = 200): Promise<New
 
 export async function listNewsCommentsPage(
   newsId: string,
-  params: { parentId?: number | null; limit?: number; cursor?: string | null } = {},
+  params: {
+    parentId?: number | null;
+    limit?: number;
+    cursor?: string | null;
+  } = {},
 ): Promise<NewsCommentsPage> {
   const search = new URLSearchParams();
   if (typeof params.parentId === 'number') {
@@ -332,7 +366,9 @@ export async function listNewsCommentsPage(
   }
   const query = search.toString();
   const suffix = query ? `?${query}` : '';
-  return request<NewsCommentsPage>(`/activity/news/${newsId}/comments/page${suffix}`);
+  return request<NewsCommentsPage>(
+    `/activity/news/${newsId}/comments/page${suffix}`,
+  );
 }
 
 export async function createNewsComment(
@@ -340,28 +376,36 @@ export async function createNewsComment(
   body: string,
   parentId?: number | null,
 ): Promise<NewsCommentDetail> {
-  return request<NewsCommentDetail>(
-    `/activity/news/${newsId}/comments`,
-    {
-      method: 'POST',
-      body: { body, parent_id: parentId ?? undefined },
-    },
-  );
+  return request<NewsCommentDetail>(`/activity/news/${newsId}/comments`, {
+    method: 'POST',
+    body: { body, parent_id: parentId ?? undefined },
+  });
 }
 
 export type FeedLiveEvent =
   | { type: 'ready'; timestamp?: string }
   | { type: 'heartbeat'; timestamp?: string }
   | { type: 'close'; reason?: string; message?: string }
-  | { type: 'news-upsert'; news_id: string; changed?: string[]; timestamp?: string }
+  | {
+      type: 'news-upsert';
+      news_id: string;
+      changed?: string[];
+      timestamp?: string;
+    }
   | { type: 'news-delete'; news_id: string; timestamp?: string };
 
 export const buildFeedLiveUrl = () => `${apiBaseUrl}/activity/feed/live`;
 
-export async function deleteNewsComment(newsId: string, commentId: number): Promise<NewsCommentDetail> {
-  return request<NewsCommentDetail>(`/activity/news/${newsId}/comments/${commentId}`, {
-    method: 'DELETE',
-  });
+export async function deleteNewsComment(
+  newsId: string,
+  commentId: number,
+): Promise<NewsCommentDetail> {
+  return request<NewsCommentDetail>(
+    `/activity/news/${newsId}/comments/${commentId}`,
+    {
+      method: 'DELETE',
+    },
+  );
 }
 
 export async function likeNewsComment(
@@ -415,7 +459,9 @@ export async function fetchActivityGames(): Promise<Game[]> {
 /**
  * Create a new game (admin)
  */
-export async function createActivityGame(payload: GameCreatePayload): Promise<Game> {
+export async function createActivityGame(
+  payload: GameCreatePayload,
+): Promise<Game> {
   return request<Game>('/activity/games', {
     method: 'POST',
     body: payload,
@@ -437,7 +483,9 @@ export async function fetchSources(): Promise<Source[]> {
 /**
  * Get source details (admin)
  */
-export async function fetchSourceDetail(sourceId: number): Promise<SourceDetail> {
+export async function fetchSourceDetail(
+  sourceId: number,
+): Promise<SourceDetail> {
   return request<SourceDetail>(`/activity/sources/${sourceId}`);
 }
 
@@ -449,14 +497,18 @@ export async function fetchSourceDetail(sourceId: number): Promise<SourceDetail>
  * Fetch user's account links
  */
 export async function fetchAccountLinks(): Promise<AccountLink[]> {
-  const data = await request<{ items: AccountLink[] }>('/activity/account-links');
+  const data = await request<{ items: AccountLink[] }>(
+    '/activity/account-links',
+  );
   return data.items;
 }
 
 /**
  * Get detailed account link info
  */
-export async function fetchAccountLinkDetail(linkId: number): Promise<AccountLinkDetail> {
+export async function fetchAccountLinkDetail(
+  linkId: number,
+): Promise<AccountLinkDetail> {
   return request<AccountLinkDetail>(`/activity/account-links/${linkId}`);
 }
 
@@ -470,7 +522,9 @@ export async function fetchAccountLinkDetail(linkId: number): Promise<AccountLin
  *   settingsJson: { steam_id: '76561198012345678' },
  * });
  */
-export async function createAccountLink(payload: AccountLinkCreatePayload): Promise<AccountLink> {
+export async function createAccountLink(
+  payload: AccountLinkCreatePayload,
+): Promise<AccountLink> {
   return request<AccountLink>('/activity/account-links', {
     method: 'POST',
     body: payload,
@@ -505,7 +559,9 @@ export async function deleteAccountLink(linkId: number): Promise<void> {
  * Fetch user's subscriptions
  */
 export async function fetchSubscriptions(): Promise<Subscription[]> {
-  const data = await request<{ items: SubscriptionApi[] }>('/activity/subscriptions');
+  const data = await request<{ items: SubscriptionApi[] }>(
+    '/activity/subscriptions',
+  );
   return data.items.map(mapSubscription);
 }
 
@@ -520,7 +576,9 @@ export async function fetchSubscriptions(): Promise<Subscription[]> {
  *   ],
  * });
  */
-export async function updateSubscriptions(payload: SubscriptionPayload): Promise<Subscription> {
+export async function updateSubscriptions(
+  payload: SubscriptionPayload,
+): Promise<Subscription> {
   const scopes = (payload.scopes ?? []).map((scope) => ({
     scope_type: scope.scopeType,
     scope_id: scope.scopeId,
@@ -566,4 +624,17 @@ export async function fetchActivityHealth(): Promise<HealthResponse> {
  */
 export async function fetchActivityMetrics(): Promise<MetricsResponse> {
   return request<MetricsResponse>('/activity/metrics');
+}
+
+export type PostAuditEntry = {
+  id: string;
+  action: string;
+  created_at: string;
+  reason: string;
+  actor_user_id: string;
+};
+export function fetchPostAudit(
+  newsId: string,
+): Promise<{ items: PostAuditEntry[] }> {
+  return request(`/activity/news/${encodeURIComponent(newsId)}/audit`);
 }

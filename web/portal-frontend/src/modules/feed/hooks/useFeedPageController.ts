@@ -1,4 +1,4 @@
-import {useSessionDraft} from '../../../shared/hooks/useSessionDraft';
+import { useSessionDraft } from '../../../shared/hooks/useSessionDraft';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,18 +16,35 @@ import {
   useUpdateSubscriptions,
 } from '../../../hooks/useActivity';
 import type { ActivityEvent, NewsMediaItem } from '../../../types/activity';
-import { buildFeedLiveUrl, deleteNews, fetchNews, requestNewsMediaUpload, uploadNewsMediaFile } from '../../../api/activity';
+import {
+  buildFeedLiveUrl,
+  fetchNews,
+  requestNewsMediaUpload,
+  uploadNewsMediaFile,
+} from '../../../api/activity';
 import { notifyApiError } from '../../../utils/apiErrorHandling';
 import { useAuth } from '../../../contexts/AuthContext';
 import { can } from '../../../features/rbac/can';
 import { useFeedFilters } from './useFeedFilters';
-import { removeDraftItem, removeFeedNews, upsertDraftItem, upsertFeedItem } from '../cache';
-import { TITLE_REGEX, extractTags, extractTitle, extractYoutubeIds, mapYoutubeMediaFromIds } from '../utils/composer';
+import {
+  removeDraftItem,
+  removeFeedNews,
+  upsertDraftItem,
+  upsertFeedItem,
+} from '../cache';
+import {
+  TITLE_REGEX,
+  extractTags,
+  extractTitle,
+  extractYoutubeIds,
+  mapYoutubeMediaFromIds,
+} from '../utils/composer';
 
 const getFeedTypes = (source: 'all' | 'news' | 'voting' | 'events') => {
   if (source === 'news') return ['news.posted', 'post.created'].join(',');
   if (source === 'voting') return ['vote.cast'].join(',');
-  if (source === 'events') return ['event.created', 'event.rsvp.changed'].join(',');
+  if (source === 'events')
+    return ['event.created', 'event.rsvp.changed'].join(',');
   return undefined;
 };
 
@@ -48,28 +65,53 @@ export function useFeedPageController() {
   const tenantId = user?.tenant?.id ?? null;
   const canReadFeed = can(user, 'activity.feed.read');
   const canCreateNews = can(user, 'activity.news.create');
-  const canModerateNews = can(user, 'activity.news.manage');
-  const realtimeFlagEnabled = user?.featureFlags?.activity_feed_realtime_enabled === true;
-  const { source, period, sort, setSource, setPeriod, setSort, resetFilters } = useFeedFilters();
+  const realtimeFlagEnabled =
+    user?.featureFlags?.activity_feed_realtime_enabled === true;
+  const { source, period, sort, setSource, setPeriod, setSort, resetFilters } =
+    useFeedFilters();
 
-  const draft = useSessionDraft(`${user?.id ?? 'guest'}:${tenantId ?? 'none'}:feed`, {text:'', media:[] as NewsMediaItem[], mode:'public' as 'public' | 'private' | 'draft'});
-  const {value: draftValue, setValue: setDraftValue, clear: clearDraft, guard: draftGuard} = draft;
+  const draft = useSessionDraft(
+    `${user?.id ?? 'guest'}:${tenantId ?? 'none'}:feed`,
+    {
+      text: '',
+      media: [] as NewsMediaItem[],
+      mode: 'public' as 'public' | 'private' | 'draft',
+    },
+  );
+  const {
+    value: draftValue,
+    setValue: setDraftValue,
+    clear: clearDraft,
+    guard: draftGuard,
+  } = draft;
   const composerValue = draftValue.text;
   const newsMedia = draftValue.media;
   const publishMode = draftValue.mode;
-  const setComposerValue = useCallback((text: string) => setDraftValue((prev) => ({...prev, text})), [setDraftValue]);
-  const setNewsMedia = useCallback((next: NewsMediaItem[] | ((prev: NewsMediaItem[]) => NewsMediaItem[])) => setDraftValue((prev) => ({...prev, media: typeof next === 'function' ? next(prev.media) : next})), [setDraftValue]);
-  const setPublishMode = useCallback((mode: 'public' | 'private' | 'draft') => setDraftValue((prev) => ({...prev, mode})), [setDraftValue]);
+  const setComposerValue = useCallback(
+    (text: string) => setDraftValue((prev) => ({ ...prev, text })),
+    [setDraftValue],
+  );
+  const setNewsMedia = useCallback(
+    (next: NewsMediaItem[] | ((prev: NewsMediaItem[]) => NewsMediaItem[])) =>
+      setDraftValue((prev) => ({
+        ...prev,
+        media: typeof next === 'function' ? next(prev.media) : next,
+      })),
+    [setDraftValue],
+  );
+  const setPublishMode = useCallback(
+    (mode: 'public' | 'private' | 'draft') =>
+      setDraftValue((prev) => ({ ...prev, mode })),
+    [setDraftValue],
+  );
   const draftRef = useRef(draftValue);
-  useEffect(() => {draftRef.current = draftValue;}, [draftValue]);
+  useEffect(() => {
+    draftRef.current = draftValue;
+  }, [draftValue]);
   const publishLock = useRef(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [moderationMode, setModerationMode] = useState(false);
-  const [selectedModerationIds, setSelectedModerationIds] = useState<string[]>([]);
-  const [moderationReason, setModerationReason] = useState('');
-  const [moderationError, setModerationError] = useState<string | null>(null);
   const [liveFallback, setLiveFallback] = useState(false);
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -81,7 +123,15 @@ export function useFeedPageController() {
   const typesParam = useMemo(() => getFeedTypes(source), [source]);
   const range = useMemo(() => getPeriodRange(period), [period]);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, error, refetch } = useFeedInfinite(
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error,
+    refetch,
+  } = useFeedInfinite(
     {
       types: typesParam,
       from: range.from,
@@ -96,34 +146,57 @@ export function useFeedPageController() {
     isLoading: isFocusedNewsLoading,
     refetch: refetchFocusedNews,
   } = useNews(focusedNewsId ?? null);
-  const { data: draftItems = [] } = useDraftNews(12, { enabled: canCreateNews && !isPermalinkView });
+  const { data: draftItems = [] } = useDraftNews(12, {
+    enabled: canCreateNews && !isPermalinkView,
+  });
   const { count: unreadCount } = useUnreadCount();
   const { mutate: markAsRead, isPending: isMarkingRead } = useMarkFeedAsRead();
-  const { mutateAsync: createNews, isPending: isCreatingNews } = useCreateNews();
-  const { data: subscriptions, isLoading: isSubscriptionsLoading } = useSubscriptions();
-  const { mutateAsync: updateSubscriptions, isPending: isUpdatingSubscriptions } = useUpdateSubscriptions();
+  const { mutateAsync: createNews, isPending: isCreatingNews } =
+    useCreateNews();
+  const { data: subscriptions, isLoading: isSubscriptionsLoading } =
+    useSubscriptions();
+  const {
+    mutateAsync: updateSubscriptions,
+    isPending: isUpdatingSubscriptions,
+  } = useUpdateSubscriptions();
 
   const items = useMemo(() => {
     const base = data?.pages.flatMap((page) => page.items) ?? [];
     if (!focusedNews) return base;
-    const focusedId = typeof focusedNews.payloadJson?.news_id === 'string' ? focusedNews.payloadJson.news_id : null;
+    const focusedId =
+      typeof focusedNews.payloadJson?.news_id === 'string'
+        ? focusedNews.payloadJson.news_id
+        : null;
     const rest = base.filter((item) => {
-      const itemId = typeof item.payloadJson?.news_id === 'string' ? item.payloadJson.news_id : null;
+      const itemId =
+        typeof item.payloadJson?.news_id === 'string'
+          ? item.payloadJson.news_id
+          : null;
       return focusedId ? itemId !== focusedId : item.id !== focusedNews.id;
     });
     return [focusedNews, ...rest];
   }, [data?.pages, focusedNews]);
   const sortedItems = useMemo(() => {
     const base = [...items];
-    const pinned = focusedNews ? base.shift() ?? null : null;
+    const pinned = focusedNews ? (base.shift() ?? null) : null;
     if (sort === 'best') {
       const sorted = base.sort((a, b) => {
-        const aPayload = (a.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
-        const bPayload = (b.payloadJson ?? {}) as { reactions_count?: number; comments_count?: number };
-        const aScore = (aPayload.reactions_count ?? 0) + (aPayload.comments_count ?? 0);
-        const bScore = (bPayload.reactions_count ?? 0) + (bPayload.comments_count ?? 0);
+        const aPayload = (a.payloadJson ?? {}) as {
+          reactions_count?: number;
+          comments_count?: number;
+        };
+        const bPayload = (b.payloadJson ?? {}) as {
+          reactions_count?: number;
+          comments_count?: number;
+        };
+        const aScore =
+          (aPayload.reactions_count ?? 0) + (aPayload.comments_count ?? 0);
+        const bScore =
+          (bPayload.reactions_count ?? 0) + (bPayload.comments_count ?? 0);
         if (aScore !== bScore) return bScore - aScore;
-        return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
+        return (
+          new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+        );
       });
       return pinned ? [pinned, ...sorted] : sorted;
     }
@@ -131,7 +204,8 @@ export function useFeedPageController() {
   }, [focusedNews, items, sort]);
 
   useEffect(() => {
-    if (!canReadFeed || error || typeof IntersectionObserver === 'undefined') return;
+    if (!canReadFeed || error || typeof IntersectionObserver === 'undefined')
+      return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -171,11 +245,21 @@ export function useFeedPageController() {
       return;
     }
     autoSubscribedRef.current = true;
-    updateSubscriptions({ scopes: [{ scopeType: 'tenant', scopeId: tenantId }] }).catch((err) => {
+    updateSubscriptions({
+      scopes: [{ scopeType: 'tenant', scopeId: tenantId }],
+    }).catch((err) => {
       autoSubscribedRef.current = false;
       notifyApiError(err, 'Не удалось настроить подписку на ленту');
     });
-  }, [canReadFeed, isPermalinkView, isSubscriptionsLoading, isUpdatingSubscriptions, subscriptions, tenantId, updateSubscriptions]);
+  }, [
+    canReadFeed,
+    isPermalinkView,
+    isSubscriptionsLoading,
+    isUpdatingSubscriptions,
+    subscriptions,
+    tenantId,
+    updateSubscriptions,
+  ]);
 
   useEffect(() => {
     if (!canCreateNews) return;
@@ -184,9 +268,12 @@ export function useFeedPageController() {
     }
   }, [canCreateNews, composerValue, newsMedia.length]);
 
-  const handleRemoveMedia = useCallback((index: number) => {
-    setNewsMedia((prev) => prev.filter((_, idx) => idx !== index));
-  }, [setNewsMedia]);
+  const handleRemoveMedia = useCallback(
+    (index: number) => {
+      setNewsMedia((prev) => prev.filter((_, idx) => idx !== index));
+    },
+    [setNewsMedia],
+  );
 
   const handleImageUpload = useCallback(
     async (files: FileList | null) => {
@@ -200,7 +287,11 @@ export function useFeedPageController() {
             content_type: file.type,
             size_bytes: file.size,
           });
-          await uploadNewsMediaFile(upload.upload_url, upload.upload_headers, file);
+          await uploadNewsMediaFile(
+            upload.upload_url,
+            upload.upload_headers,
+            file,
+          );
 
           const image = new Image();
           const objectUrl = URL.createObjectURL(file);
@@ -241,7 +332,9 @@ export function useFeedPageController() {
     const title = extractTitle(markup);
     const tags = extractTags(markup);
     const youtubeIds = extractYoutubeIds(markup);
-    const strippedBody = title ? markup.replace(TITLE_REGEX, '').trim() : markup;
+    const strippedBody = title
+      ? markup.replace(TITLE_REGEX, '').trim()
+      : markup;
     const body = strippedBody || markup;
     const youtubeMedia = mapYoutubeMediaFromIds(youtubeIds);
     const mergedMedia = [...newsMedia, ...youtubeMedia].slice(0, 8);
@@ -277,13 +370,20 @@ export function useFeedPageController() {
         }),
       });
       if (draftRef.current === submittedDraft) {
-        const clean = {text:'', media:[] as NewsMediaItem[], mode:'public' as const};
+        const clean = {
+          text: '',
+          media: [] as NewsMediaItem[],
+          mode: 'public' as const,
+        };
         clearDraft(clean);
         setDraftValue(clean);
         setComposerOpen(false);
       }
       const createdStatus = created.payloadJson?.status;
-      const newsId = typeof created.payloadJson?.news_id === 'string' ? created.payloadJson.news_id : null;
+      const newsId =
+        typeof created.payloadJson?.news_id === 'string'
+          ? created.payloadJson.news_id
+          : null;
       if (createdStatus === 'draft') {
         upsertDraftItem(queryClient, created);
       } else {
@@ -294,61 +394,45 @@ export function useFeedPageController() {
         queryClient.setQueryData(activityKeys.unreadCount(), 0);
       }
     } catch (err) {
-      const statusCode = (err as {status?:number}).status;
-      setPublishError(!statusCode || statusCode >= 500
-        ? 'Не удалось подтвердить результат. Текст сохранён. Обновите ленту и проверьте публикацию перед повторной отправкой.'
-        : 'Не удалось сохранить публикацию. Введённые данные сохранены.');
+      const statusCode = (err as { status?: number }).status;
+      setPublishError(
+        !statusCode || statusCode >= 500
+          ? 'Не удалось подтвердить результат. Текст сохранён. Обновите ленту и проверьте публикацию перед повторной отправкой.'
+          : 'Не удалось сохранить публикацию. Введённые данные сохранены.',
+      );
       setComposerOpen(true);
-      notifyApiError(err, publishMode === 'draft' ? 'Не удалось сохранить черновик' : 'Не удалось опубликовать новость');
-    } finally {publishLock.current = false;}
-  }, [composerValue, createNews, newsMedia, publishMode, queryClient, uploading, canCreateNews, clearDraft, setDraftValue]);
+      notifyApiError(
+        err,
+        publishMode === 'draft'
+          ? 'Не удалось сохранить черновик'
+          : 'Не удалось опубликовать новость',
+      );
+    } finally {
+      publishLock.current = false;
+    }
+  }, [
+    composerValue,
+    createNews,
+    newsMedia,
+    publishMode,
+    queryClient,
+    uploading,
+    canCreateNews,
+    clearDraft,
+    setDraftValue,
+  ]);
 
   const hasContent = sortedItems.length > 0;
-  const detectedTags = useMemo(() => extractTags(composerValue), [composerValue]);
+  const detectedTags = useMemo(
+    () => extractTags(composerValue),
+    [composerValue],
+  );
   const composerHasText = Boolean(composerValue.trim());
   const canPublishNews = composerHasText && !isCreatingNews && !uploading;
 
   const getItemNewsId = useCallback((item: ActivityEvent) => {
     const maybe = (item.payloadJson ?? {}).news_id;
     return typeof maybe === 'string' ? maybe : null;
-  }, []);
-
-  const handleModerationToggle = useCallback((newsId: string, selected: boolean) => {
-    setSelectedModerationIds((prev) => {
-      if (selected) {
-        if (prev.includes(newsId)) return prev;
-        return [...prev, newsId].slice(0, 20);
-      }
-      return prev.filter((id) => id !== newsId);
-    });
-  }, []);
-
-  const handleModerationDeleteSelected = useCallback(async () => {
-    if (!moderationMode) return;
-    if (!moderationReason.trim()) {
-      setModerationError('Укажите причину модераторского действия');
-      return;
-    }
-    if (selectedModerationIds.length === 0) {
-      setModerationError('Выберите хотя бы одну новость');
-      return;
-    }
-    setModerationError(null);
-    try {
-      await Promise.all(selectedModerationIds.map((id) => deleteNews(id)));
-      setSelectedModerationIds([]);
-      setModerationReason('');
-      refetch();
-    } catch (err) {
-      notifyApiError(err, 'Не удалось выполнить массовое модераторское действие');
-    }
-  }, [moderationMode, moderationReason, refetch, selectedModerationIds]);
-
-  const toggleModerationMode = useCallback(() => {
-    setModerationMode((prev) => !prev);
-    setSelectedModerationIds([]);
-    setModerationReason('');
-    setModerationError(null);
   }, []);
 
   const handleComposerKeyDown = useCallback(
@@ -370,7 +454,9 @@ export function useFeedPageController() {
       return;
     }
 
-    const source = new EventSource(buildFeedLiveUrl(), { withCredentials: true });
+    const source = new EventSource(buildFeedLiveUrl(), {
+      withCredentials: true,
+    });
     liveEventSourceRef.current = source;
     setLiveFallback(false);
 
@@ -389,7 +475,11 @@ export function useFeedPageController() {
         if (item.actorUserId && item.actorUserId === user?.id) {
           queryClient.setQueryData(activityKeys.unreadCount(), 0);
         }
-        window.dispatchEvent(new CustomEvent('activity:news-upsert', { detail: { newsId: payload.news_id } }));
+        window.dispatchEvent(
+          new CustomEvent('activity:news-upsert', {
+            detail: { newsId: payload.news_id },
+          }),
+        );
       } catch (err) {
         notifyApiError(err, 'Не удалось обновить карточку новости');
       }
@@ -400,11 +490,21 @@ export function useFeedPageController() {
       if (!payload.news_id) return;
       removeFeedNews(queryClient, payload.news_id);
       removeDraftItem(queryClient, payload.news_id);
-      window.dispatchEvent(new CustomEvent('activity:news-delete', { detail: { newsId: payload.news_id } }));
+      window.dispatchEvent(
+        new CustomEvent('activity:news-delete', {
+          detail: { newsId: payload.news_id },
+        }),
+      );
     };
 
-    source.addEventListener('news-upsert', handleUpsert as unknown as EventListener);
-    source.addEventListener('news-delete', handleDelete as unknown as EventListener);
+    source.addEventListener(
+      'news-upsert',
+      handleUpsert as unknown as EventListener,
+    );
+    source.addEventListener(
+      'news-delete',
+      handleDelete as unknown as EventListener,
+    );
     source.addEventListener('close', () => {
       source.close();
       setLiveFallback(true);
@@ -415,8 +515,14 @@ export function useFeedPageController() {
     };
 
     return () => {
-      source.removeEventListener('news-upsert', handleUpsert as unknown as EventListener);
-      source.removeEventListener('news-delete', handleDelete as unknown as EventListener);
+      source.removeEventListener(
+        'news-upsert',
+        handleUpsert as unknown as EventListener,
+      );
+      source.removeEventListener(
+        'news-delete',
+        handleDelete as unknown as EventListener,
+      );
       source.close();
       liveEventSourceRef.current = null;
     };
@@ -430,35 +536,6 @@ export function useFeedPageController() {
     return () => window.clearInterval(timer);
   }, [canReadFeed, liveFallback, refetch]);
 
-  useEffect(() => {
-    if (!canModerateNews) return;
-
-    const handleWindowKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tagName = target?.tagName?.toLowerCase();
-      const isTypingTarget =
-        tagName === 'input' || tagName === 'textarea' || target?.isContentEditable === true;
-      if (isTypingTarget) return;
-
-      if (event.altKey && event.key.toLowerCase() === 'm') {
-        event.preventDefault();
-        toggleModerationMode();
-        return;
-      }
-
-      if (event.key === 'Escape' && moderationMode) {
-        event.preventDefault();
-        setModerationMode(false);
-        setSelectedModerationIds([]);
-        setModerationReason('');
-        setModerationError(null);
-      }
-    };
-
-    window.addEventListener('keydown', handleWindowKeyDown);
-    return () => window.removeEventListener('keydown', handleWindowKeyDown);
-  }, [canModerateNews, moderationMode, toggleModerationMode]);
-
   return {
     user,
     draftGuard,
@@ -466,7 +543,6 @@ export function useFeedPageController() {
     fetchNextPage,
     canReadFeed,
     canCreateNews,
-    canModerateNews,
     isPermalinkView,
     realtimeFlagEnabled,
     source,
@@ -476,19 +552,11 @@ export function useFeedPageController() {
     setPeriod,
     setSort,
     resetFilters,
-    error: isPermalinkView ? focusedNewsError ?? null : error,
+    error: isPermalinkView ? (focusedNewsError ?? null) : error,
     refetch: isPermalinkView ? refetchFocusedNews : refetch,
     unreadCount,
     isMarkingRead,
     markAsRead,
-    moderationMode,
-    toggleModerationMode,
-    selectedModerationIds,
-    moderationReason,
-    setModerationReason,
-    moderationError,
-    setSelectedModerationIds,
-    handleModerationDeleteSelected,
     hasContent,
     isLoading: isPermalinkView ? isFocusedNewsLoading : isLoading,
     sortedItems,
@@ -496,7 +564,6 @@ export function useFeedPageController() {
     focusedNewsId,
     focusedNews,
     getItemNewsId,
-    handleModerationToggle,
     loadMoreRef,
     isFetchingNextPage,
     hasNextPage: Boolean(hasNextPage),

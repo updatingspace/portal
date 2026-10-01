@@ -5,15 +5,17 @@ from typing import Any, cast
 from uuid import UUID
 
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
-from ninja import NinjaAPI, Query, Router
+from ninja import File, NinjaAPI, Query, Router
 from ninja.errors import HttpError
+from ninja.files import UploadedFile
 
 from core.errors import error_payload
 
 from .context import InternalContext, require_internal_context
 from .dsar import erase_user_data, export_user_data
+from .media import read_image, save_image
 from .models import (
     Achievement,
     AchievementCategory,
@@ -37,9 +39,12 @@ from .schemas import (
 )
 from .services import PaginatedResult, create_grant, paginate_queryset, revoke_grant
 
-api = NinjaAPI(title="UpdSpace Gamification", version="1", urls_namespace="gamification")
+api = NinjaAPI(
+    title="UpdSpace Gamification", version="1", urls_namespace="gamification"
+)
 router = Router(tags=["gamification"])
 
+PERM_CATEGORIES = "gamification.categories.manage"
 PERM_CREATE = "gamification.achievements.create"
 PERM_EDIT = "gamification.achievements.edit"
 PERM_PUBLISH = "gamification.achievements.publish"
@@ -80,7 +85,9 @@ def on_http_error(request, exc: HttpError):
         msg = str(detail.get("message") or "Request failed")
         raw_details = detail.get("details")
         details = raw_details if isinstance(raw_details, dict) else {}
-        return _error_response(request, status=status, code=code, message=msg, details=details)
+        return _error_response(
+            request, status=status, code=code, message=msg, details=details
+        )
     msg = str(detail) if detail else "Request failed"
     return _error_response(request, status=status, code="HTTP_ERROR", message=msg)
 
@@ -137,7 +144,10 @@ def _achievement_to_out(
 ) -> AchievementOut:
     can_manage_any = perm_publish or perm_hide
     can_edit = perm_edit and (
-        (achievement.status == AchievementStatus.DRAFT and str(achievement.created_by) == ctx.user_id)
+        (
+            achievement.status == AchievementStatus.DRAFT
+            and str(achievement.created_by) == ctx.user_id
+        )
         or can_manage_any
     )
     can_publish = perm_publish and achievement.status in {
@@ -224,9 +234,13 @@ def list_achievements(
         allowed = {choice.value for choice in AchievementStatus}
         invalid = [s for s in statuses if s not in allowed]
         if invalid:
-            raise HttpError(422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"}))
+            raise HttpError(
+                422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"})
+            )
         if not can_view_private and any(s in {"draft", "hidden"} for s in statuses):
-            raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+            raise HttpError(
+                403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+            )
     elif not can_view_private:
         statuses = [AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE]
 
@@ -238,9 +252,13 @@ def list_achievements(
     if q:
         qs = qs.filter(name_i18n__icontains=q)
     if earned:
-        grant_ids = list(AchievementGrant.objects.filter(
-            tenant_id=ctx.tenant_id, recipient_id=ctx.user_id, revoked_at__isnull=True
-        ).values_list("achievement_id", flat=True))
+        grant_ids = list(
+            AchievementGrant.objects.filter(
+                tenant_id=ctx.tenant_id,
+                recipient_id=ctx.user_id,
+                revoked_at__isnull=True,
+            ).values_list("achievement_id", flat=True)
+        )
         qs = qs.filter(id__in=grant_ids)
     if created_by == "me":
         qs = qs.filter(created_by=ctx.user_id)
@@ -270,24 +288,38 @@ def create_achievement(request, payload: AchievementCreateIn):
     _require_perm_ctx(ctx, PERM_CREATE)
 
     if not payload.name_i18n:
-        raise HttpError(422, cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n is required"}))
+        raise HttpError(
+            422,
+            cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n is required"}),
+        )
 
     category = AchievementCategory.objects.filter(
         tenant_id=ctx.tenant_id, slug=payload.category
     ).first()
     if not category:
-        raise HttpError(422, cast(Any, {"code": "INVALID_CATEGORY", "message": "Category not found"}))
+        raise HttpError(
+            422,
+            cast(Any, {"code": "INVALID_CATEGORY", "message": "Category not found"}),
+        )
 
     status = payload.status or AchievementStatus.DRAFT
     if status not in {choice.value for choice in AchievementStatus}:
-        raise HttpError(422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"}))
+        raise HttpError(
+            422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"})
+        )
 
     if status in {AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE}:
         images = payload.images
         if not images or not (images.small or images.medium or images.large):
             raise HttpError(
                 422,
-                cast(Any, {"code": "IMAGES_REQUIRED", "message": "Images are required for published achievements"}),
+                cast(
+                    Any,
+                    {
+                        "code": "IMAGES_REQUIRED",
+                        "message": "Images are required for published achievements",
+                    },
+                ),
             )
 
     achievement = Achievement.objects.create(
@@ -315,15 +347,24 @@ def get_achievement(request, achievement_id: str):
     achievement_uuid = _parse_uuid(
         achievement_id, code="INVALID_ACHIEVEMENT_ID", message="Invalid achievement id"
     )
-    achievement = Achievement.objects.select_related("category").filter(
-        id=achievement_uuid, tenant_id=ctx.tenant_id
-    ).first()
+    achievement = (
+        Achievement.objects.select_related("category")
+        .filter(id=achievement_uuid, tenant_id=ctx.tenant_id)
+        .first()
+    )
     if not achievement:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"}))
+        raise HttpError(
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"})
+        )
 
     can_view_private = _has_perm_ctx(ctx, PERM_VIEW_PRIVATE)
-    if achievement.status in {AchievementStatus.DRAFT, AchievementStatus.HIDDEN} and not can_view_private:
-        raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+    if (
+        achievement.status in {AchievementStatus.DRAFT, AchievementStatus.HIDDEN}
+        and not can_view_private
+    ):
+        raise HttpError(
+            403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+        )
 
     perm_edit = _has_perm_ctx(ctx, PERM_EDIT)
     perm_publish = _has_perm_ctx(ctx, PERM_PUBLISH)
@@ -344,35 +385,57 @@ def update_achievement(request, achievement_id: str, payload: AchievementUpdateI
     achievement_uuid = _parse_uuid(
         achievement_id, code="INVALID_ACHIEVEMENT_ID", message="Invalid achievement id"
     )
-    achievement = Achievement.objects.select_related("category").filter(
-        id=achievement_uuid, tenant_id=ctx.tenant_id
-    ).first()
+    achievement = (
+        Achievement.objects.select_related("category")
+        .filter(id=achievement_uuid, tenant_id=ctx.tenant_id)
+        .first()
+    )
     if not achievement:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"}))
+        raise HttpError(
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"})
+        )
 
     perm_edit = _has_perm_ctx(ctx, PERM_EDIT)
     perm_publish = _has_perm_ctx(ctx, PERM_PUBLISH)
     perm_hide = _has_perm_ctx(ctx, PERM_HIDE)
     can_manage_any = perm_publish or perm_hide
     if not perm_edit:
-        raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+        raise HttpError(
+            403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+        )
 
     if not can_manage_any and not (
-        achievement.status == AchievementStatus.DRAFT and str(achievement.created_by) == ctx.user_id
+        achievement.status == AchievementStatus.DRAFT
+        and str(achievement.created_by) == ctx.user_id
     ):
-        raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+        raise HttpError(
+            403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+        )
 
     if payload.status:
         if payload.status not in {choice.value for choice in AchievementStatus}:
-            raise HttpError(422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"}))
-        if payload.status in {AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE} and not perm_publish:
-            raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+            raise HttpError(
+                422, cast(Any, {"code": "INVALID_STATUS", "message": "Invalid status"})
+            )
+        if (
+            payload.status in {AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE}
+            and not perm_publish
+        ):
+            raise HttpError(
+                403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+            )
         if payload.status == AchievementStatus.HIDDEN and not perm_hide:
-            raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+            raise HttpError(
+                403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+            )
         if payload.status in {AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE}:
-            images_payload = payload.images.model_dump() if payload.images else achievement.images
+            images_payload = (
+                payload.images.model_dump() if payload.images else achievement.images
+            )
             if not images_payload or not (
-                images_payload.get("small") or images_payload.get("medium") or images_payload.get("large")
+                images_payload.get("small")
+                or images_payload.get("medium")
+                or images_payload.get("large")
             ):
                 raise HttpError(
                     422,
@@ -390,14 +453,25 @@ def update_achievement(request, achievement_id: str, payload: AchievementUpdateI
             tenant_id=ctx.tenant_id, slug=payload.category
         ).first()
         if not category:
-            raise HttpError(422, cast(Any, {"code": "INVALID_CATEGORY", "message": "Category not found"}))
+            raise HttpError(
+                422,
+                cast(
+                    Any, {"code": "INVALID_CATEGORY", "message": "Category not found"}
+                ),
+            )
         achievement.category = category
 
     if payload.name_i18n is not None:
         if not payload.name_i18n:
             raise HttpError(
                 422,
-                cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n cannot be empty"}),
+                cast(
+                    Any,
+                    {
+                        "code": "VALIDATION_ERROR",
+                        "message": "name_i18n cannot be empty",
+                    },
+                ),
             )
         achievement.name_i18n = payload.name_i18n
 
@@ -430,25 +504,45 @@ def create_achievement_grant(request, achievement_id: str, payload: GrantCreateI
     achievement_uuid = _parse_uuid(
         achievement_id, code="INVALID_ACHIEVEMENT_ID", message="Invalid achievement id"
     )
-    achievement = Achievement.objects.filter(id=achievement_uuid, tenant_id=ctx.tenant_id).first()
+    achievement = Achievement.objects.filter(
+        id=achievement_uuid, tenant_id=ctx.tenant_id
+    ).first()
     if not achievement:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"}))
-
-    if achievement.status not in {AchievementStatus.PUBLISHED, AchievementStatus.ACTIVE}:
         raise HttpError(
-            409,
-            cast(Any, {"code": "ACHIEVEMENT_NOT_PUBLISHED", "message": "Achievement is not publishable"}),
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"})
         )
 
-    recipient_id = _parse_uuid(payload.recipient_id, code="INVALID_USER_ID", message="Invalid recipient id")
+    if achievement.status not in {
+        AchievementStatus.PUBLISHED,
+        AchievementStatus.ACTIVE,
+    }:
+        raise HttpError(
+            409,
+            cast(
+                Any,
+                {
+                    "code": "ACHIEVEMENT_NOT_PUBLISHED",
+                    "message": "Achievement is not publishable",
+                },
+            ),
+        )
+
+    recipient_id = _parse_uuid(
+        payload.recipient_id, code="INVALID_USER_ID", message="Invalid recipient id"
+    )
     visibility = payload.visibility or GrantVisibility.PUBLIC
     if visibility not in {choice.value for choice in GrantVisibility}:
-        raise HttpError(422, cast(Any, {"code": "INVALID_VISIBILITY", "message": "Invalid visibility"}))
+        raise HttpError(
+            422,
+            cast(Any, {"code": "INVALID_VISIBILITY", "message": "Invalid visibility"}),
+        )
 
     grant = create_grant(
         achievement=achievement,
         recipient_id=recipient_id,
-        issuer_id=_parse_uuid(ctx.user_id, code="INVALID_USER_ID", message="Invalid issuer id"),
+        issuer_id=_parse_uuid(
+            ctx.user_id, code="INVALID_USER_ID", message="Invalid issuer id"
+        ),
         reason=payload.reason,
         visibility=visibility,
     )
@@ -467,19 +561,33 @@ def list_achievement_grants(
     achievement_uuid = _parse_uuid(
         achievement_id, code="INVALID_ACHIEVEMENT_ID", message="Invalid achievement id"
     )
-    achievement = Achievement.objects.filter(id=achievement_uuid, tenant_id=ctx.tenant_id).first()
+    achievement = Achievement.objects.filter(
+        id=achievement_uuid, tenant_id=ctx.tenant_id
+    ).first()
     if not achievement:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"}))
+        raise HttpError(
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Achievement not found"})
+        )
 
     can_view_private = _has_perm_ctx(ctx, PERM_VIEW_PRIVATE)
-    if achievement.status in {AchievementStatus.DRAFT, AchievementStatus.HIDDEN} and not can_view_private:
-        raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+    if (
+        achievement.status in {AchievementStatus.DRAFT, AchievementStatus.HIDDEN}
+        and not can_view_private
+    ):
+        raise HttpError(
+            403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+        )
 
     if visibility and visibility not in {choice.value for choice in GrantVisibility}:
-        raise HttpError(422, cast(Any, {"code": "INVALID_VISIBILITY", "message": "Invalid visibility"}))
+        raise HttpError(
+            422,
+            cast(Any, {"code": "INVALID_VISIBILITY", "message": "Invalid visibility"}),
+        )
 
     if visibility == GrantVisibility.PRIVATE and not can_view_private:
-        raise HttpError(403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"}))
+        raise HttpError(
+            403, cast(Any, {"code": "FORBIDDEN", "message": "Permission denied"})
+        )
 
     qs = AchievementGrant.objects.filter(
         tenant_id=ctx.tenant_id,
@@ -508,23 +616,69 @@ def revoke_achievement_grant(request, grant_id: str):
     ctx = require_internal_context(request)
     _require_perm_ctx(ctx, PERM_REVOKE)
 
-    grant_uuid = _parse_uuid(grant_id, code="INVALID_GRANT_ID", message="Invalid grant id")
-    grant = AchievementGrant.objects.filter(id=grant_uuid, tenant_id=ctx.tenant_id).first()
+    grant_uuid = _parse_uuid(
+        grant_id, code="INVALID_GRANT_ID", message="Invalid grant id"
+    )
+    grant = AchievementGrant.objects.filter(
+        id=grant_uuid, tenant_id=ctx.tenant_id
+    ).first()
     if not grant:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Grant not found"}))
+        raise HttpError(
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Grant not found"})
+        )
 
     grant = revoke_grant(
         grant=grant,
-        revoked_by=_parse_uuid(ctx.user_id, code="INVALID_USER_ID", message="Invalid issuer id"),
+        revoked_by=_parse_uuid(
+            ctx.user_id, code="INVALID_USER_ID", message="Invalid issuer id"
+        ),
     )
     return _grant_to_out(grant)
+
+
+REQUIRED_FILE = File(...)
+
+
+@router.post("/gamification/media", response=dict, auth=require_internal_context)
+def upload_achievement_image(request, file: UploadedFile = REQUIRED_FILE):
+    # Authenticate the raw body before Ninja consumes the multipart stream.
+    ctx = request.auth
+    # Both creation and editing are allowed to upload, independently of category management.
+    if not _has_perm_ctx(ctx, PERM_CREATE):
+        _require_perm_ctx(ctx, PERM_EDIT)
+    return save_image(tenant_id=ctx.tenant_id, upload=file)
+
+
+@router.get("/gamification/media/{image_id}")
+def achievement_image(request, image_id: str):
+    ctx = require_internal_context(request)
+    _require_perm_ctx(ctx, "gamification.achievements.read")
+    body, content_type = read_image(tenant_id=ctx.tenant_id, image_id=image_id)
+    response = HttpResponse(body, content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.get("/gamification/categories", response=CategoriesListOut)
 def list_categories(request):
     ctx = require_internal_context(request)
+    # Materialize the default fixture on first catalog access for each tenant.
+    AchievementCategory.objects.get_or_create(
+        tenant_id=ctx.tenant_id,
+        slug="fun",
+        defaults={
+            "id": uuid.uuid5(
+                uuid.NAMESPACE_URL, f"updspace:{ctx.tenant_id}:category:fun"
+            ),
+            "name_i18n": {"en": "Fun", "ru": "Fun"},
+            "order": 0,
+        },
+    )
     categories = list(
-        AchievementCategory.objects.filter(tenant_id=ctx.tenant_id).order_by("order", "slug", "id")
+        AchievementCategory.objects.filter(tenant_id=ctx.tenant_id).order_by(
+            "order", "slug", "id"
+        )
     )
     return {"items": [_category_to_out(category) for category in categories]}
 
@@ -532,18 +686,26 @@ def list_categories(request):
 @router.post("/gamification/categories", response=CategoryOut)
 def create_category(request, payload: CategoryCreateIn):
     ctx = require_internal_context(request)
-    _require_perm_ctx(ctx, PERM_EDIT)
+    _require_perm_ctx(ctx, PERM_CATEGORIES)
 
     if not payload.id:
-        raise HttpError(422, cast(Any, {"code": "VALIDATION_ERROR", "message": "id is required"}))
+        raise HttpError(
+            422, cast(Any, {"code": "VALIDATION_ERROR", "message": "id is required"})
+        )
     if not payload.name_i18n:
-        raise HttpError(422, cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n is required"}))
+        raise HttpError(
+            422,
+            cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n is required"}),
+        )
 
     existing = AchievementCategory.objects.filter(
         tenant_id=ctx.tenant_id, slug=payload.id
     ).first()
     if existing:
-        raise HttpError(409, cast(Any, {"code": "ALREADY_EXISTS", "message": "Category already exists"}))
+        raise HttpError(
+            409,
+            cast(Any, {"code": "ALREADY_EXISTS", "message": "Category already exists"}),
+        )
 
     category = AchievementCategory.objects.create(
         tenant_id=ctx.tenant_id,
@@ -558,19 +720,27 @@ def create_category(request, payload: CategoryCreateIn):
 @router.patch("/gamification/categories/{category_id}", response=CategoryOut)
 def update_category(request, category_id: str, payload: CategoryUpdateIn):
     ctx = require_internal_context(request)
-    _require_perm_ctx(ctx, PERM_EDIT)
+    _require_perm_ctx(ctx, PERM_CATEGORIES)
 
     category = AchievementCategory.objects.filter(
         tenant_id=ctx.tenant_id, slug=category_id
     ).first()
     if not category:
-        raise HttpError(404, cast(Any, {"code": "NOT_FOUND", "message": "Category not found"}))
+        raise HttpError(
+            404, cast(Any, {"code": "NOT_FOUND", "message": "Category not found"})
+        )
 
     if payload.name_i18n is not None:
         if not payload.name_i18n:
             raise HttpError(
                 422,
-                cast(Any, {"code": "VALIDATION_ERROR", "message": "name_i18n cannot be empty"}),
+                cast(
+                    Any,
+                    {
+                        "code": "VALIDATION_ERROR",
+                        "message": "name_i18n cannot be empty",
+                    },
+                ),
             )
         category.name_i18n = payload.name_i18n
     if payload.order is not None:

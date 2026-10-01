@@ -74,7 +74,9 @@ def _headers(
     master_flags: dict,
     request_id: str,
 ):
-    signed = sign_internal_request(method=method, path=path, body=body, request_id=request_id)
+    signed = sign_internal_request(
+        method=method, path=path, body=body, request_id=request_id
+    )
     return {
         "HTTP_X_REQUEST_ID": request_id,
         "HTTP_X_TENANT_ID": tenant_id,
@@ -94,6 +96,7 @@ def _mock_has_permission(allowed: set[str]):
         if master_flags.get("suspended") or master_flags.get("banned"):
             return False
         return permission_key in allowed or master_flags.get("system_admin") is True
+
     return _inner
 
 
@@ -112,7 +115,9 @@ class GamificationApiTests(TestCase):
             is_active=True,
         )
 
-    @mock.patch("gamification.api.has_permission", side_effect=_mock_has_permission(set()))
+    @mock.patch(
+        "gamification.api.has_permission", side_effect=_mock_has_permission(set())
+    )
     def test_list_achievements_public_only(self, _mock_perm):
         Achievement.objects.create(
             tenant_id=self.tenant_id,
@@ -181,7 +186,9 @@ class GamificationApiTests(TestCase):
             master_flags={},
             request_id=str(uuid.uuid4()),
         )
-        resp = self.client.post(path, data=body, content_type="application/json", **headers)
+        resp = self.client.post(
+            path, data=body, content_type="application/json", **headers
+        )
         self.assertEqual(resp.status_code, 200)
         achievement_id = resp.json()["id"]
 
@@ -199,7 +206,10 @@ class GamificationApiTests(TestCase):
             request_id=str(uuid.uuid4()),
         )
         update_resp = self.client.patch(
-            update_path, data=update_body, content_type="application/json", **update_headers
+            update_path,
+            data=update_body,
+            content_type="application/json",
+            **update_headers,
         )
         self.assertEqual(update_resp.status_code, 200)
         self.assertEqual(update_resp.json()["status"], "published")
@@ -242,7 +252,9 @@ class GamificationApiTests(TestCase):
             master_flags={},
             request_id=str(uuid.uuid4()),
         )
-        resp = self.client.post(path, data=body, content_type="application/json", **headers)
+        resp = self.client.post(
+            path, data=body, content_type="application/json", **headers
+        )
         self.assertEqual(resp.status_code, 200)
         grant_id = resp.json()["id"]
 
@@ -267,7 +279,7 @@ class GamificationApiTests(TestCase):
         "gamification.api.has_permission",
         side_effect=_mock_has_permission(
             {
-                "gamification.achievements.edit",
+                "gamification.categories.manage",
                 "gamification.achievements.view_private",
             }
         ),
@@ -291,7 +303,9 @@ class GamificationApiTests(TestCase):
             master_flags={},
             request_id=str(uuid.uuid4()),
         )
-        resp = self.client.post(path, data=body, content_type="application/json", **headers)
+        resp = self.client.post(
+            path, data=body, content_type="application/json", **headers
+        )
         self.assertEqual(resp.status_code, 200)
 
         list_headers = _headers(
@@ -309,7 +323,9 @@ class GamificationApiTests(TestCase):
         items = list_resp.json()["items"]
         self.assertTrue(any(item["id"] == "fun" for item in items))
 
-    @mock.patch("gamification.api.has_permission", side_effect=_mock_has_permission(set()))
+    @mock.patch(
+        "gamification.api.has_permission", side_effect=_mock_has_permission(set())
+    )
     def test_create_category_requires_permission(self, _mock_perm):
         payload = {
             "id": "blocked",
@@ -327,7 +343,9 @@ class GamificationApiTests(TestCase):
             master_flags={},
             request_id=str(uuid.uuid4()),
         )
-        resp = self.client.post(path, data=body, content_type="application/json", **headers)
+        resp = self.client.post(
+            path, data=body, content_type="application/json", **headers
+        )
         self.assertEqual(resp.status_code, 403)
 
     @mock.patch(
@@ -482,15 +500,23 @@ class GamificationDsarApiTests(TestCase):
 
         anonymous_user_id = uuid.UUID(int=0)
         self.assertEqual(self.achievement.created_by, anonymous_user_id)
-        self.assertFalse(AchievementGrant.objects.filter(id=self.received_grant.id).exists())
+        self.assertFalse(
+            AchievementGrant.objects.filter(id=self.received_grant.id).exists()
+        )
         self.assertEqual(self.issued_grant.issuer_id, anonymous_user_id)
         self.assertEqual(self.revoked_grant.revoked_by, anonymous_user_id)
 
         payloads = list(
-            self.OutboxMessage.objects.order_by("event_type", "id").values_list("payload", flat=True)
+            self.OutboxMessage.objects.order_by("event_type", "id").values_list(
+                "payload", flat=True
+            )
         )
-        self.assertTrue(any(payload.get("recipient_id") == "[redacted]" for payload in payloads))
-        self.assertTrue(any(payload.get("issuer_id") == "[redacted]" for payload in payloads))
+        self.assertTrue(
+            any(payload.get("recipient_id") == "[redacted]" for payload in payloads)
+        )
+        self.assertTrue(
+            any(payload.get("issuer_id") == "[redacted]" for payload in payloads)
+        )
 
     @property
     def OutboxMessage(self):

@@ -23,7 +23,9 @@ def _parse_endpoint(endpoint: str) -> tuple[str, int, str]:
     host = parsed.hostname
     port = parsed.port or 2136
     if not host:
-        raise ImproperlyConfigured("YDB_ENDPOINT must be host:port or grpc[s]://host:port")
+        raise ImproperlyConfigured(
+            "YDB_ENDPOINT must be host:port or grpc[s]://host:port"
+        )
     protocol = parsed.scheme or "grpc"
     return host, port, protocol
 
@@ -34,7 +36,9 @@ def _normalize_database_version(version):
 
     if isinstance(version, str):
         numeric_parts = re.findall(r"\d+", version)
-        return tuple(int(part) for part in numeric_parts) if numeric_parts else (version,)
+        return (
+            tuple(int(part) for part in numeric_parts) if numeric_parts else (version,)
+        )
 
     normalized: list[int | str] = []
     for part in version:
@@ -71,6 +75,7 @@ def _patch_ydb_version_check() -> None:
         return
 
     original_get_database_version = ydb_base.DatabaseWrapper.get_database_version
+
     def _normalized_get_database_version(self):
         return _normalize_database_version(original_get_database_version(self))
 
@@ -90,7 +95,6 @@ def _patch_ydb_version_check() -> None:
                 f"(found {db_version})."
             )
             raise NotSupportedError(error_msg)
-
 
     ydb_base.DatabaseWrapper.get_database_version = _normalized_get_database_version
     ydb_base.DatabaseWrapper.check_database_version_supported = (
@@ -137,6 +141,9 @@ def build_database_settings(
         raise ImproperlyConfigured("DB_DRIVER must be one of: postgres, ydb")
 
     _patch_ydb_version_check()
+    from .ydb_compat import patch_ydb_orm
+
+    patch_ydb_orm()
 
     ydb_endpoint = _require("YDB_ENDPOINT", read_env)
     ydb_database = _require("YDB_DATABASE", read_env)
@@ -152,7 +159,9 @@ def build_database_settings(
         "OPTIONS": {"protocol": protocol},
     }
 
-    credentials_mode = (read_env("YDB_CREDENTIALS_MODE", "metadata") or "metadata").strip().lower()
+    credentials_mode = (
+        (read_env("YDB_CREDENTIALS_MODE", "metadata") or "metadata").strip().lower()
+    )
     if credentials_mode == "token":
         database_settings["CREDENTIALS"] = {"token": _require("YDB_TOKEN", read_env)}
     elif credentials_mode == "sa_json":
@@ -160,7 +169,9 @@ def build_database_settings(
         try:
             database_settings["CREDENTIALS"] = {"service_account_json": json.loads(raw)}
         except json.JSONDecodeError as exc:
-            raise ImproperlyConfigured("YDB_SERVICE_ACCOUNT_JSON must contain valid JSON") from exc
+            raise ImproperlyConfigured(
+                "YDB_SERVICE_ACCOUNT_JSON must contain valid JSON"
+            ) from exc
     elif credentials_mode == "metadata":
         import ydb.iam
 

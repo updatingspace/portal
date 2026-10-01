@@ -102,7 +102,7 @@ def _get_default_preferences() -> dict[str, Any]:
         },
         "localization": {
             "language": "en",
-            "timezone": "UTC",
+            "timezone": "system",
         },
         "notifications": {
             "email": {"enabled": True, "digest": "daily"},
@@ -200,9 +200,9 @@ def update_preferences(request: HttpRequest, payload: UserPreferencesIn):
 
     # Update notification settings (merge with existing)
     if payload.notifications:
-        existing = pref.notification_settings or _get_default_preferences()[
-            "notifications"
-        ]
+        existing = (
+            pref.notification_settings or _get_default_preferences()["notifications"]
+        )
         # Deep merge notifications
         for key, value in payload.notifications.items():
             if isinstance(value, dict) and key in existing:
@@ -233,7 +233,9 @@ def update_preferences(request: HttpRequest, payload: UserPreferencesIn):
     return _preferences_to_dict(pref)
 
 
-@router.get("/preferences/defaults", response=DefaultPreferencesOut, tags=["preferences"])
+@router.get(
+    "/preferences/defaults", response=DefaultPreferencesOut, tags=["preferences"]
+)
 def get_default_preferences(request: HttpRequest):
     """Get default preferences structure (for reset/reference)"""
     return _get_default_preferences()
@@ -374,7 +376,9 @@ def admin_list_homepage_modals(
     return list(queryset.order_by("order", "-created_at"))
 
 
-@router.get("/admin/homepage-modals/{modal_id}", response=HomePageModalOut, tags=["admin"])
+@router.get(
+    "/admin/homepage-modals/{modal_id}", response=HomePageModalOut, tags=["admin"]
+)
 def admin_get_homepage_modal(request: HttpRequest, modal_id: int):
     """Get a single homepage modal by ID"""
     _user_id, tenant_id = _get_user_context(request)
@@ -428,7 +432,9 @@ def admin_update_homepage_modal(
 
 
 @router.delete("/admin/homepage-modals/{modal_id}", tags=["admin"])
-def admin_delete_homepage_modal(request: HttpRequest, modal_id: int, hard: bool = False):
+def admin_delete_homepage_modal(
+    request: HttpRequest, modal_id: int, hard: bool = False
+):
     """
     Soft delete a homepage modal by default.
     Use hard=true for permanent deletion.
@@ -449,7 +455,11 @@ def admin_delete_homepage_modal(request: HttpRequest, modal_id: int, hard: bool 
     return {"success": True}
 
 
-@router.post("/admin/homepage-modals/{modal_id}/restore", response=HomePageModalOut, tags=["admin"])
+@router.post(
+    "/admin/homepage-modals/{modal_id}/restore",
+    response=HomePageModalOut,
+    tags=["admin"],
+)
 def admin_restore_homepage_modal(request: HttpRequest, modal_id: int):
     """Restore a soft-deleted homepage modal"""
     user_id, tenant_id = _get_user_context(request)
@@ -499,7 +509,11 @@ def admin_bulk_action_modals(request: HttpRequest, payload: HomePageModalBulkAct
     return {"success": True, "affected": count}
 
 
-@router.get("/admin/homepage-modals/{modal_id}/preview", response=HomePageModalOut, tags=["admin"])
+@router.get(
+    "/admin/homepage-modals/{modal_id}/preview",
+    response=HomePageModalOut,
+    tags=["admin"],
+)
 def admin_preview_homepage_modal(
     request: HttpRequest,
     modal_id: int,
@@ -600,7 +614,9 @@ def admin_create_content_widget(request: HttpRequest, payload: ContentWidgetIn):
     return widget
 
 
-@router.put("/admin/content-widgets/{widget_id}", response=ContentWidgetOut, tags=["admin"])
+@router.put(
+    "/admin/content-widgets/{widget_id}", response=ContentWidgetOut, tags=["admin"]
+)
 def admin_update_content_widget(
     request: HttpRequest, widget_id: str, payload: ContentWidgetIn
 ):
@@ -625,7 +641,9 @@ def admin_update_content_widget(
 
 
 @router.delete("/admin/content-widgets/{widget_id}", tags=["admin"])
-def admin_delete_content_widget(request: HttpRequest, widget_id: str, hard: bool = False):
+def admin_delete_content_widget(
+    request: HttpRequest, widget_id: str, hard: bool = False
+):
     """Soft delete a content widget"""
     user_id, tenant_id = _get_user_context(request)
 
@@ -712,14 +730,16 @@ def admin_get_modal_analytics(
         if modal.total_views > 0:
             ctr = round((modal.total_clicks / modal.total_views) * 100, 2)
 
-        result.append({
-            "modal_id": modal.id,
-            "modal_title": modal.title,
-            "total_views": modal.total_views,
-            "total_clicks": modal.total_clicks,
-            "total_dismissals": modal.total_dismissals,
-            "click_through_rate": ctr,
-        })
+        result.append(
+            {
+                "modal_id": modal.id,
+                "modal_title": modal.title,
+                "total_views": modal.total_views,
+                "total_clicks": modal.total_clicks,
+                "total_dismissals": modal.total_dismissals,
+                "click_through_rate": ctr,
+            }
+        )
 
     return result
 
@@ -773,7 +793,9 @@ def admin_get_analytics_report(
 # =============================================================================
 
 
-@router.get("/admin/dashboards/layouts", response=list[DashboardLayoutOut], tags=["admin"])
+@router.get(
+    "/admin/dashboards/layouts", response=list[DashboardLayoutOut], tags=["admin"]
+)
 def admin_list_dashboard_layouts(
     request: HttpRequest,
     include_deleted: bool = False,
@@ -814,7 +836,9 @@ def admin_create_dashboard_layout(
     return layout
 
 
-@router.put("/admin/dashboards/layouts/{layout_id}", response=DashboardLayoutOut, tags=["admin"])
+@router.put(
+    "/admin/dashboards/layouts/{layout_id}", response=DashboardLayoutOut, tags=["admin"]
+)
 def admin_update_dashboard_layout(
     request: HttpRequest,
     layout_id: str,
@@ -839,7 +863,9 @@ def admin_update_dashboard_layout(
         ).exclude(id=layout.id).update(is_default=False)
 
     layout.layout_name = data["layout_name"]
-    layout.layout_config = _normalize_layout_config(data.get("layout_config", layout.layout_config))
+    layout.layout_config = _normalize_layout_config(
+        data.get("layout_config", layout.layout_config)
+    )
     layout.is_default = data.get("is_default", layout.is_default)
     layout.save()
     return layout
@@ -865,7 +891,11 @@ def admin_delete_dashboard_layout(
     return {"success": True}
 
 
-@router.get("/admin/dashboards/layouts/{layout_id}/widgets", response=list[DashboardWidgetOut], tags=["admin"])
+@router.get(
+    "/admin/dashboards/layouts/{layout_id}/widgets",
+    response=list[DashboardWidgetOut],
+    tags=["admin"],
+)
 def admin_list_dashboard_widgets(
     request: HttpRequest,
     layout_id: str,
@@ -884,7 +914,11 @@ def admin_list_dashboard_widgets(
     return list(query.order_by("position_y", "position_x"))
 
 
-@router.post("/admin/dashboards/layouts/{layout_id}/widgets", response=DashboardWidgetOut, tags=["admin"])
+@router.post(
+    "/admin/dashboards/layouts/{layout_id}/widgets",
+    response=DashboardWidgetOut,
+    tags=["admin"],
+)
 def admin_create_dashboard_widget(
     request: HttpRequest,
     layout_id: str,
@@ -913,9 +947,10 @@ def admin_create_dashboard_widget(
             layout=layout,
             widget_key=data["widget_key"],
             deleted_at__isnull=True,
-        )
-        .first()
-        or DashboardWidget.objects.filter(layout=layout, widget_key=data["widget_key"]).first()
+        ).first()
+        or DashboardWidget.objects.filter(
+            layout=layout, widget_key=data["widget_key"]
+        ).first()
     )
     if widget is None:
         widget = DashboardWidget.objects.create(
@@ -931,7 +966,9 @@ def admin_create_dashboard_widget(
     return widget
 
 
-@router.put("/admin/dashboards/widgets/{widget_id}", response=DashboardWidgetOut, tags=["admin"])
+@router.put(
+    "/admin/dashboards/widgets/{widget_id}", response=DashboardWidgetOut, tags=["admin"]
+)
 def admin_update_dashboard_widget(
     request: HttpRequest,
     widget_id: str,

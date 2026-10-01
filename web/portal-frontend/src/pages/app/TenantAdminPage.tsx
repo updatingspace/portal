@@ -1,6 +1,8 @@
+import { ScopePicker } from '../../modules/tenantAdmin/components/ScopePicker';
+import { AdminApplicationsPage } from '../../modules/portal/pages/AdminApplicationsPage';
+import { InlineError, useUITranslation } from '../../shared/ui/portal/PortalUI';
 import { SectionTabs } from '../../shared/ui/portal/SectionTabs';
 import { ContentDialog } from '../../shared/ui/portal/ContentDialog';
-import { useMediaQuery } from '../../shared/hooks/useMediaQuery';
 import { useUrlState } from '../../shared/hooks/useUrlState';
 import { useConfirmation } from '../../shared/ui/portal/useConfirmation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,10 +15,8 @@ import {
   Loader,
   Select,
   Switch,
-  Table,
   TextInput,
   type SelectOption,
-  type TableColumnConfig,
 } from '@gravity-ui/uikit';
 import Magnifier from '@gravity-ui/icons/Magnifier';
 import Plus from '@gravity-ui/icons/Plus';
@@ -39,11 +39,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { StatusView } from '../../modules/portal/components/StatusView';
 import { can } from '../../features/rbac/can';
 import { toaster } from '../../toaster';
+import { getLocale } from '../../shared/lib/locale';
 import { formatDateTime } from '../../shared/lib/formatters';
 import { notifyApiError } from '../../utils/apiErrorHandling';
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue';
 import {
-  SCOPE_TYPES,
   createRoleBinding,
   createTenantRole,
   deleteRoleBinding,
@@ -78,18 +78,11 @@ function AdminDetailPanel({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const compact = useMediaQuery('(max-width: 1079px)');
   if (!open) return null;
-  if (compact)
-    return (
-      <ContentDialog title={title} busy={busy} onClose={onClose}>
-        <div className="tenant-admin tenant-admin--dialog">{children}</div>
-      </ContentDialog>
-    );
   return (
-    <Card className="tenant-admin__card tenant-admin__card--sticky">
-      {children}
-    </Card>
+    <ContentDialog title={title} busy={busy} onClose={onClose}>
+      <div className="tenant-admin tenant-admin--dialog">{children}</div>
+    </ContentDialog>
   );
 }
 
@@ -106,14 +99,6 @@ const ROLE_COLOR_PALETTE = [
   '#ED6A5A',
 ];
 
-const SCOPE_LABELS: Record<ScopeType, string> = {
-  GLOBAL: 'Глобальный',
-  TENANT: 'Всё сообщество',
-  COMMUNITY: 'Отдельная группа',
-  TEAM: 'Команда',
-  SERVICE: 'Сервис',
-};
-
 const ROLE_SCOPE_OPTIONS: Array<{
   value: 'all' | 'tenant' | 'template';
   content: string;
@@ -123,7 +108,7 @@ const ROLE_SCOPE_OPTIONS: Array<{
   { value: 'template', content: 'Шаблоны системы' },
 ];
 
-type TabKey = 'members' | 'roles' | 'permissions' | 'audit';
+type TabKey = 'members' | 'roles' | 'permissions' | 'audit' | 'applications';
 
 type RolePanelTab = 'overview' | 'permissions' | 'members';
 
@@ -153,16 +138,16 @@ const TAB_OPTIONS: Array<{
   icon: typeof Person;
 }> = [
   {
-    id: 'roles',
-    label: 'Роли',
-    description: 'Иерархия ролей и наборы прав',
-    icon: Shield,
-  },
-  {
     id: 'members',
     label: 'Участники',
     description: 'Быстрое назначение ролей и просмотр состава',
     icon: Person,
+  },
+  {
+    id: 'roles',
+    label: 'Роли',
+    description: 'Иерархия ролей и наборы прав',
+    icon: Shield,
   },
   {
     id: 'permissions',
@@ -181,12 +166,15 @@ const TAB_OPTIONS: Array<{
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
 
 const formatMemberName = (member: TenantMember | null | undefined) => {
-  if (!member) return 'Неизвестный пользователь';
+  if (!member)
+    return getLocale() === 'ru' ? 'Неизвестный пользователь' : 'Unknown member';
   const name = [member.first_name, member.last_name]
     .filter(Boolean)
     .join(' ')
     .trim();
-  return name || 'Участник без имени';
+  return (
+    name || (getLocale() === 'ru' ? 'Участник без имени' : 'Unnamed member')
+  );
 };
 
 const getInitials = (member?: TenantMember | null) => {
@@ -198,7 +186,7 @@ const getInitials = (member?: TenantMember | null) => {
 };
 
 const formatIsoDate = (value?: string | null) =>
-  value ? formatDateTime(value, { locale: 'ru' }) : '—';
+  value ? formatDateTime(value) : '—';
 
 const hashString = (value: string) =>
   Array.from(value).reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -235,6 +223,7 @@ const buildPermissionGroups = (
 };
 
 export const TenantAdminPage: React.FC = () => {
+  const t = useUITranslation();
   const { confirm, confirmationDialog } = useConfirmation();
   const { user } = useAuth();
   const isAuthorized = Boolean(
@@ -252,20 +241,17 @@ export const TenantAdminPage: React.FC = () => {
         can(user, ['portal.permissions.read', 'portal.roles.read'])),
   );
 
-  const compact = useMediaQuery('(max-width: 1079px)');
-  const [activeTab, setActiveTab] = useUrlState<TabKey>('tab', 'roles', [
+  const [activeTab, setActiveTab] = useUrlState<TabKey>('tab', 'members', [
     'members',
     'roles',
     'permissions',
     'audit',
+    'applications',
   ]);
   const [rolePanelTab, setRolePanelTab] = useState<RolePanelTab>('overview');
 
   const [memberQuery, setMemberQuery] = useState('');
   const debouncedMemberQuery = useDebouncedValue(memberQuery, 300);
-
-  const [roleSearchQuery, setRoleSearchQuery] = useState('');
-  const debouncedRoleSearchQuery = useDebouncedValue(roleSearchQuery, 300);
 
   const [roleQuery, setRoleQuery] = useState('');
   const debouncedRoleQuery = useDebouncedValue(roleQuery, 300);
@@ -294,12 +280,14 @@ export const TenantAdminPage: React.FC = () => {
   const {
     permissions,
     loading: loadingPermissions,
+    error: errorPermissions,
     reload: reloadPermissions,
   } = usePermissionCatalog();
 
   const {
     roles,
     loading: loadingRoles,
+    error: errorRoles,
     reload: reloadRoles,
   } = useTenantRoles({
     limit: 200,
@@ -308,6 +296,7 @@ export const TenantAdminPage: React.FC = () => {
   const {
     members,
     loading: loadingMembers,
+    error: errorMembers,
     reload: reloadMembers,
   } = useTenantMembers({
     limit: 200,
@@ -316,6 +305,7 @@ export const TenantAdminPage: React.FC = () => {
   const {
     events,
     loading: loadingEvents,
+    error: errorEvents,
     reload: reloadEvents,
   } = useTenantAdminEvents(50);
 
@@ -354,21 +344,11 @@ export const TenantAdminPage: React.FC = () => {
   const {
     bindings: memberBindings,
     loading: loadingMemberBindings,
+    error: errorMemberBindings,
     reload: reloadMemberBindings,
   } = useRoleBindings({
     userId: selectedBindingUserId ?? undefined,
     enabled: Boolean(selectedBindingUserId),
-    limit: 200,
-  });
-
-  const roleSearchEnabled = Boolean(debouncedRoleSearchQuery.trim());
-  const {
-    bindings: roleSearchBindings,
-    loading: loadingRoleSearch,
-    reload: reloadRoleSearch,
-  } = useRoleBindings({
-    q: roleSearchEnabled ? debouncedRoleSearchQuery : undefined,
-    enabled: roleSearchEnabled,
     limit: 200,
   });
 
@@ -388,7 +368,6 @@ export const TenantAdminPage: React.FC = () => {
     reloadEvents();
     reloadPermissions();
 
-    if (roleSearchEnabled) reloadRoleSearch();
     if (selectedBindingUserId) reloadMemberBindings();
     if (selectedRole?.name) reloadRoleBindings();
   }, [
@@ -396,10 +375,8 @@ export const TenantAdminPage: React.FC = () => {
     reloadMembers,
     reloadPermissions,
     reloadRoles,
-    reloadRoleSearch,
     reloadMemberBindings,
     reloadRoleBindings,
-    roleSearchEnabled,
     selectedBindingUserId,
     selectedRole?.name,
   ]);
@@ -456,10 +433,11 @@ export const TenantAdminPage: React.FC = () => {
 
   const memberName = useCallback(
     (id: string) => {
-      if (id === user?.id) return user.displayName || user.username || 'Вы';
+      if (id === user?.id)
+        return user.displayName || user.username || t('Вы', 'You');
       return formatMemberName(membersById.get(id));
     },
-    [membersById, user],
+    [membersById, user, t],
   );
 
   const selectedMember = selectedMemberId
@@ -474,7 +452,7 @@ export const TenantAdminPage: React.FC = () => {
 
   const serviceOptions = useMemo<SelectOption[]>(
     () => [
-      { value: '', content: 'Все сервисы' },
+      { value: '', content: t('Все сервисы', 'All services') },
       ...Array.from(new Set(roles.map((item) => item.service))).map(
         (service) => ({
           value: service,
@@ -482,12 +460,12 @@ export const TenantAdminPage: React.FC = () => {
         }),
       ),
     ],
-    [roles],
+    [roles, t],
   );
 
   const permissionServiceOptions = useMemo<SelectOption[]>(
     () => [
-      { value: '', content: 'Все сервисы' },
+      { value: '', content: t('Все сервисы', 'All services') },
       ...Array.from(new Set(permissions.map((item) => item.service))).map(
         (service) => ({
           value: service,
@@ -495,7 +473,7 @@ export const TenantAdminPage: React.FC = () => {
         }),
       ),
     ],
-    [permissions],
+    [permissions, t],
   );
 
   const bindingRoleOptions = useMemo<SelectOption[]>(
@@ -505,15 +483,6 @@ export const TenantAdminPage: React.FC = () => {
         content: `${roleLabel(item.name)} · ${serviceLabel(item.service)}`,
       })),
     [roles],
-  );
-
-  const memberOptions = useMemo<SelectOption[]>(
-    () =>
-      members.map((item) => ({
-        value: item.user_id,
-        content: memberName(item.user_id),
-      })),
-    [members, memberName],
   );
 
   const filteredRoles = useMemo(
@@ -588,20 +557,6 @@ export const TenantAdminPage: React.FC = () => {
     });
   }, [debouncedAuditQuery, events, roles, memberName]);
 
-  const roleSearchGroups = useMemo(() => {
-    const groups = new Map<string, typeof roleSearchBindings>();
-    roleSearchBindings.forEach((binding) => {
-      const key = binding.role_name;
-      const existing = groups.get(key) ?? [];
-      existing.push(binding);
-      groups.set(key, existing);
-    });
-    return Array.from(groups.entries()).map(([roleName, bindings]) => ({
-      roleName,
-      bindings,
-    }));
-  }, [roleSearchBindings]);
-
   const memberRows = useMemo<MemberRow[]>(
     () =>
       members
@@ -619,60 +574,6 @@ export const TenantAdminPage: React.FC = () => {
           initials: getInitials(member),
         })),
     [members, memberName, debouncedMemberQuery],
-  );
-
-  const memberColumns = useMemo<TableColumnConfig<MemberRow>[]>(
-    () => [
-      {
-        id: 'displayName',
-        name: 'Участник',
-        template: (row) => (
-          <div className="tenant-admin__member-cell">
-            <Avatar size="m" text={row.initials} />
-            <div>
-              <div className="tenant-admin__member-name">{row.displayName}</div>
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: 'createdAt',
-        name: 'В сообществе с',
-        width: 190,
-        template: (row) => (
-          <span className="tenant-admin__member-meta">{row.createdAt}</span>
-        ),
-      },
-      {
-        id: 'updatedAt',
-        name: 'Обновлено',
-        width: 190,
-        template: (row) => (
-          <span className="tenant-admin__member-meta">{row.updatedAt}</span>
-        ),
-      },
-      {
-        id: 'actions',
-        name: 'Действия',
-        width: 140,
-        template: (row) => {
-          const isSelected = row.userId === selectedMemberId;
-          return (
-            <Button
-              size="s"
-              view={isSelected ? 'action' : 'flat'}
-              onClick={(event) => {
-                event.stopPropagation();
-                setSelectedMemberId(row.userId);
-              }}
-            >
-              {isSelected ? 'Выбран' : 'Открыть'}
-            </Button>
-          );
-        },
-      },
-    ],
-    [selectedMemberId],
   );
 
   const getRoleColor = useCallback(
@@ -731,18 +632,18 @@ export const TenantAdminPage: React.FC = () => {
         savedRole = await updateTenantRole(selectedRole.id, payload);
         toaster.add({
           name: `role-${Date.now()}`,
-          title: 'Роль обновлена',
-          content: 'Изменения сохранены',
+          title: t('Роль обновлена', 'Role updated'),
+          content: t('Изменения сохранены', 'Changes saved'),
           theme: 'success',
         });
       } else {
         savedRole = await createTenantRole(payload);
         toaster.add({
           name: `role-${Date.now()}`,
-          title: 'Роль создана',
+          title: t('Роль создана', 'Role created'),
           content: roleTemplate
-            ? 'Копия роли добавлена в каталог'
-            : 'Роль добавлена в каталог',
+            ? t('Копия роли добавлена в каталог', 'Role copied')
+            : t('Роль добавлена в каталог', 'Role added'),
           theme: 'success',
         });
       }
@@ -755,7 +656,10 @@ export const TenantAdminPage: React.FC = () => {
       reloadRoles();
       reloadEvents();
     } catch (error) {
-      notifyApiError(error, 'Не удалось сохранить роль');
+      notifyApiError(
+        error,
+        t('Не удалось сохранить роль', 'Unable to save role'),
+      );
     } finally {
       setSavingRole(false);
     }
@@ -771,7 +675,7 @@ export const TenantAdminPage: React.FC = () => {
       await deleteTenantRole(role.id);
       toaster.add({
         name: `role-${Date.now()}`,
-        title: 'Роль удалена',
+        title: t('Роль удалена', 'Role deleted'),
         theme: 'success',
       });
       setRoleColors((prev) => {
@@ -783,7 +687,10 @@ export const TenantAdminPage: React.FC = () => {
       reloadRoles();
       reloadEvents();
     } catch (error) {
-      notifyApiError(error, 'Не удалось удалить роль');
+      notifyApiError(
+        error,
+        t('Не удалось удалить роль', 'Unable to delete role'),
+      );
     } finally {
       setDeletingRoleId(null);
     }
@@ -791,6 +698,7 @@ export const TenantAdminPage: React.FC = () => {
 
   const handleBindingSubmit = async () => {
     if (
+      bindingSaving ||
       !canManageBindings ||
       !bindingForm.userId.trim() ||
       !bindingForm.scopeId.trim() ||
@@ -799,6 +707,19 @@ export const TenantAdminPage: React.FC = () => {
       return;
     }
 
+    const selectedRoleName = roles.find(
+      (role) => role.id === bindingForm.roleId,
+    )?.name;
+    if (
+      !selectedRoleName ||
+      !(await confirm(
+        t(
+          `Назначить роль «${roleLabel(selectedRoleName)}» участнику ${memberName(bindingForm.userId)}?`,
+          `Assign “${roleLabel(selectedRoleName)}” to ${memberName(bindingForm.userId)}?`,
+        ),
+      ))
+    )
+      return;
     setBindingSaving(true);
     try {
       await createRoleBinding({
@@ -811,18 +732,20 @@ export const TenantAdminPage: React.FC = () => {
 
       toaster.add({
         name: `binding-${Date.now()}`,
-        title: 'Назначение создано',
+        title: t('Назначение создано', 'Role assigned'),
         theme: 'success',
       });
 
       setBindingForm((prev) => ({ ...prev, roleId: null }));
 
       reloadMemberBindings();
-      reloadRoleSearch();
       reloadRoleBindings();
       reloadEvents();
     } catch (error) {
-      notifyApiError(error, 'Не удалось назначить роль');
+      notifyApiError(
+        error,
+        t('Не удалось назначить роль', 'Unable to assign role'),
+      );
     } finally {
       setBindingSaving(false);
     }
@@ -831,22 +754,25 @@ export const TenantAdminPage: React.FC = () => {
   const handleBindingDelete = async (bindingId: number) => {
     if (!canManageBindings) return;
 
-    if (!(await confirm('Удалить назначение?'))) return;
+    if (!(await confirm(t('Удалить назначение?', 'Remove this assignment?'))))
+      return;
 
     setBindingDeletingId(bindingId);
     try {
       await deleteRoleBinding(bindingId);
       toaster.add({
         name: `binding-${Date.now()}`,
-        title: 'Назначение удалено',
+        title: t('Назначение удалено', 'Assignment removed'),
         theme: 'success',
       });
       reloadMemberBindings();
-      reloadRoleSearch();
       reloadRoleBindings();
       reloadEvents();
     } catch (error) {
-      notifyApiError(error, 'Не удалось удалить назначение');
+      notifyApiError(
+        error,
+        t('Не удалось удалить назначение', 'Unable to remove assignment'),
+      );
     } finally {
       setBindingDeletingId(null);
     }
@@ -883,7 +809,10 @@ export const TenantAdminPage: React.FC = () => {
     return (
       <StatusView
         kind="no-access"
-        description="Только администраторы сообщества могут управлять доступом"
+        description={t(
+          'Только администраторы сообщества могут управлять доступом',
+          'Only community administrators can manage access',
+        )}
       />
     );
   }
@@ -893,44 +822,95 @@ export const TenantAdminPage: React.FC = () => {
       {confirmationDialog}
       <div className="tenant-admin__hero">
         <div>
-          <h1 className="tenant-admin__title">Управление сообществом</h1>
+          <h1 className="tenant-admin__title">
+            {t('Управление сообществом', 'Community management')}
+          </h1>
         </div>
         <div className="tenant-admin__hero-actions">
           {!canManageRoles && !canManageBindings ? (
             <Label theme="warning" size="s">
-              Только чтение
+              {t('Только чтение', 'Read only')}
             </Label>
           ) : null}
           <Button view="outlined" size="m" onClick={refreshAll}>
-            Обновить
+            {t('Обновить', 'Refresh')}
           </Button>
         </div>
       </div>
 
       <div className="tenant-admin__layout">
         <SectionTabs
-          label="Управление сообществом"
+          label={t('Управление сообществом', 'Community management')}
           value={activeTab}
-          items={TAB_OPTIONS}
+          items={[
+            ...TAB_OPTIONS.map((item) => ({
+              ...item,
+              label: t(
+                item.label,
+                (
+                  {
+                    members: 'Members',
+                    roles: 'Roles',
+                    permissions: 'Permissions',
+                    audit: 'Audit',
+                  } as Record<string, string>
+                )[item.id] ?? item.label,
+              ),
+            })),
+            ...(user.isSuperuser
+              ? [
+                  {
+                    id: 'applications' as TabKey,
+                    label: t('Заявки', 'Applications'),
+                  },
+                ]
+              : []),
+          ]}
           onChange={setActiveTab}
         />
         <section className="tenant-admin__content">
+          {((activeTab === 'members' && errorMembers) ||
+            (activeTab === 'roles' && errorRoles) ||
+            (activeTab === 'permissions' && errorPermissions) ||
+            (activeTab === 'audit' && errorEvents)) && (
+            <InlineError onRetry={refreshAll}>
+              {t(
+                'Не удалось загрузить этот раздел.',
+                'Unable to load this section.',
+              )}
+            </InlineError>
+          )}
+
+          {activeTab === 'applications' &&
+            (user.isSuperuser ? (
+              <AdminApplicationsPage embedded />
+            ) : (
+              <p>
+                {t(
+                  'Рассмотрение заявок доступно системному администратору.',
+                  'Only system administrators can review account applications.',
+                )}
+              </p>
+            ))}
           {activeTab === 'members' && (
             <div className="tenant-admin__panel">
               <div className="tenant-admin__panel-header">
                 <div>
-                  <h2>Участники</h2>
+                  <h2>{t('Участники', 'Members')}</h2>
                 </div>
               </div>
 
-              <div className="tenant-admin__panel-grid">
+              <div className="tenant-admin__panel-grid tenant-admin__panel-grid--members">
                 <Card className="tenant-admin__card">
                   <div className="tenant-admin__card-head">
                     <div className="tenant-admin__search">
                       <TextInput
                         size="xl"
                         value={memberQuery}
-                        placeholder="Поиск по имени или ID"
+                        placeholder={t(
+                          'Поиск по имени или ID',
+                          'Find a member',
+                        )}
                         onUpdate={(value) => setMemberQuery(value)}
                         startContent={<Icon data={Magnifier} size={16} />}
                       />
@@ -940,13 +920,18 @@ export const TenantAdminPage: React.FC = () => {
                   {loadingMembers ? (
                     <div className="tenant-admin__loader">
                       <Loader size="m" />
-                      <span>Загружаем участников...</span>
+                      <span>
+                        {t('Загружаем участников...', 'Loading members…')}
+                      </span>
                     </div>
-                  ) : members.length === 0 ? (
+                  ) : errorMembers ? null : memberRows.length === 0 ? (
                     <div className="tenant-admin__empty">
-                      Никого не нашли. Попробуйте изменить запрос.
+                      {t(
+                        'Никого не нашли. Попробуйте изменить запрос.',
+                        'No members found. Try another name.',
+                      )}
                     </div>
-                  ) : compact ? (
+                  ) : (
                     <div className="tenant-admin__mobile-members">
                       {memberRows.map((member) => (
                         <button
@@ -955,93 +940,82 @@ export const TenantAdminPage: React.FC = () => {
                           onClick={() => setSelectedMemberId(member.userId)}
                         >
                           <Avatar size="m" text={member.initials} />
-                          <span>{member.displayName}</span>
+                          <span className="tenant-member-summary">
+                            <strong>{member.displayName}</strong>
+                            <small>
+                              {t('В сообществе с', 'Joined')} {member.createdAt}
+                            </small>
+                          </span>
                           <span aria-hidden="true">→</span>
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <Table
-                      columns={memberColumns}
-                      data={memberRows}
-                      wordWrap
-                      width="max"
-                      getRowDescriptor={(row) => ({
-                        id: row.id,
-                        classNames: [
-                          'tenant-admin__table-row',
-                          row.userId === selectedMemberId ? 'is-active' : '',
-                        ],
-                      })}
-                    />
                   )}
                 </Card>
 
                 <AdminDetailPanel
-                  title="Участник сообщества"
+                  title={t('Участник сообщества', 'Community member')}
                   open={Boolean(selectedMemberId)}
                   busy={bindingSaving || Boolean(bindingDeletingId)}
                   onClose={() => setSelectedMemberId(null)}
                 >
-                  <div className="tenant-admin__card-head">
-                    <div>
-                      <div className="tenant-admin__card-title">
-                        Профиль участника
-                      </div>
-                      <div className="tenant-admin__card-subtitle">
-                        Управляйте ролями и областями для выбранного
-                        пользователя.
-                      </div>
-                    </div>
-                    {selectedMemberId && (
-                      <Button
-                        view="flat"
-                        size="s"
-                        onClick={() => setSelectedMemberId(null)}
-                      >
-                        Сбросить
-                      </Button>
-                    )}
-                  </div>
-
                   <div className="tenant-admin__member-card">
                     <Avatar size="l" text={getInitials(selectedMember)} />
                     <div>
                       <div className="tenant-admin__member-name">
                         {selectedMember
                           ? memberName(selectedMember.user_id)
-                          : (selectedMemberId ?? 'Не выбран')}
+                          : (selectedMemberId ??
+                            t('Не выбран', 'Not selected'))}
                       </div>
                       <div className="tenant-admin__member-meta">
                         {selectedMember
-                          ? 'Участник сообщества'
-                          : 'Выберите пользователя из списка'}
+                          ? t('Участник сообщества', 'Community member')
+                          : t(
+                              'Выберите пользователя из списка',
+                              'Select a member',
+                            )}
                       </div>
                     </div>
                   </div>
 
                   <div className="tenant-admin__section">
                     <div className="tenant-admin__section-head">
-                      <span>Текущие роли</span>
+                      <span>{t('Текущие роли', 'Assigned roles')}</span>
                       {!canManageBindings && (
                         <Label theme="warning" size="s">
-                          Нет прав на изменение
+                          {t(
+                            'Нет прав на изменение',
+                            'You cannot change assignments',
+                          )}
                         </Label>
                       )}
                     </div>
 
                     {!selectedBindingUserId ? (
                       <div className="tenant-admin__empty">
-                        Сначала выберите пользователя.
+                        {t(
+                          'Сначала выберите пользователя.',
+                          'Select a member first.',
+                        )}
                       </div>
                     ) : loadingMemberBindings ? (
                       <div className="tenant-admin__loader">
                         <Loader size="s" />
-                        <span>Загружаем назначения...</span>
+                        <span>
+                          {t('Загружаем назначения...', 'Loading assignments…')}
+                        </span>
                       </div>
+                    ) : errorMemberBindings ? (
+                      <InlineError onRetry={() => void reloadMemberBindings()}>
+                        {t(
+                          'Не удалось загрузить роли участника.',
+                          'Unable to load this member’s roles.',
+                        )}
+                      </InlineError>
                     ) : memberBindings.length === 0 ? (
                       <div className="tenant-admin__empty">
-                        Назначений пока нет.
+                        {t('Назначений пока нет.', 'No roles assigned.')}
                       </div>
                     ) : (
                       <div className="tenant-admin__binding-list">
@@ -1071,8 +1045,8 @@ export const TenantAdminPage: React.FC = () => {
                                 onClick={() => handleBindingDelete(binding.id)}
                               >
                                 {bindingDeletingId === binding.id
-                                  ? 'Удаление…'
-                                  : 'Удалить'}
+                                  ? t('Удаление…', 'Removing…')
+                                  : t('Удалить', 'Delete')}
                               </Button>
                             )}
                           </div>
@@ -1083,24 +1057,8 @@ export const TenantAdminPage: React.FC = () => {
 
                   <div className="tenant-admin__section">
                     <div className="tenant-admin__section-head">
-                      Назначить роль
+                      {t('Назначить роль', 'Assign role')}
                     </div>
-
-                    <Select
-                      size="xl"
-                      options={memberOptions}
-                      value={bindingForm.userId ? [bindingForm.userId] : []}
-                      onUpdate={(value) =>
-                        setBindingForm((prev) => ({
-                          ...prev,
-                          userId: value[0] ?? '',
-                        }))
-                      }
-                      placeholder="Выберите участника"
-                      width="max"
-                      filterable
-                      disabled={!canManageBindings}
-                    />
 
                     <Select
                       size="xl"
@@ -1114,114 +1072,38 @@ export const TenantAdminPage: React.FC = () => {
                           roleId: value[0] ? Number(value[0]) : null,
                         }))
                       }
-                      placeholder="Роль"
+                      placeholder={t('Роль', 'Role')}
+                      aria-label={t('Роль', 'Role')}
                       width="max"
                       disabled={!canManageBindings}
                     />
 
-                    <div className="tenant-admin__scope-grid">
-                      <Select
-                        size="xl"
-                        options={SCOPE_TYPES.map((type) => ({
-                          value: type,
-                          content: SCOPE_LABELS[type],
-                        }))}
-                        value={[bindingForm.scopeType]}
-                        onUpdate={(value) =>
-                          setBindingForm((prev) => ({
-                            ...prev,
-                            scopeType: (value[0] ??
-                              prev.scopeType) as ScopeType,
-                            scopeId:
-                              value[0] === 'TENANT' ? tenantId : prev.scopeId,
-                          }))
-                        }
-                        disabled={!canManageBindings}
-                      />
-                      <TextInput
-                        size="xl"
-                        placeholder="Scope ID"
-                        value={bindingForm.scopeId}
-                        onUpdate={(value) =>
-                          setBindingForm((prev) => ({
-                            ...prev,
-                            scopeId: value,
-                          }))
-                        }
-                        disabled={!canManageBindings}
-                      />
-                    </div>
+                    <ScopePicker
+                      type={bindingForm.scopeType}
+                      id={bindingForm.scopeId}
+                      disabled={!canManageBindings || bindingSaving}
+                      onChange={(scopeType, scopeId) =>
+                        setBindingForm((current) => ({
+                          ...current,
+                          scopeType,
+                          scopeId,
+                        }))
+                      }
+                    />
 
                     <Button
                       view="action"
                       loading={bindingSaving}
                       onClick={handleBindingSubmit}
-                      disabled={!canManageBindings}
+                      disabled={
+                        !canManageBindings ||
+                        bindingSaving ||
+                        !bindingForm.roleId ||
+                        !bindingForm.scopeId
+                      }
                     >
-                      Назначить роль
+                      {t('Назначить роль', 'Assign role')}
                     </Button>
-                  </div>
-
-                  <div className="tenant-admin__section">
-                    <div className="tenant-admin__section-head">
-                      Поиск по роли
-                    </div>
-                    <TextInput
-                      size="xl"
-                      value={roleSearchQuery}
-                      placeholder="Например: Модератор"
-                      onUpdate={(value) => setRoleSearchQuery(value)}
-                      startContent={<Icon data={Magnifier} size={16} />}
-                    />
-
-                    {!roleSearchEnabled ? (
-                      <div className="tenant-admin__empty">
-                        Введите название роли, чтобы увидеть всех участников с
-                        ней.
-                      </div>
-                    ) : loadingRoleSearch ? (
-                      <div className="tenant-admin__loader">
-                        <Loader size="s" />
-                        <span>Ищем совпадения...</span>
-                      </div>
-                    ) : roleSearchBindings.length === 0 ? (
-                      <div className="tenant-admin__empty">
-                        Совпадений по ролям не найдено.
-                      </div>
-                    ) : (
-                      <div className="tenant-admin__role-search-results">
-                        {roleSearchGroups.map((group) => (
-                          <div
-                            key={group.roleName}
-                            className="tenant-admin__role-search-group"
-                          >
-                            <div className="tenant-admin__role-search-head">
-                              <span>{roleLabel(group.roleName)}</span>
-                              <Label theme="info" size="s">
-                                {group.bindings.length}
-                              </Label>
-                            </div>
-                            <div className="tenant-admin__role-search-body">
-                              {group.bindings.map((binding) => {
-                                const label = memberName(binding.user_id);
-                                return (
-                                  <Button
-                                    key={`${binding.id}-${binding.user_id}`}
-                                    view="outlined"
-                                    size="s"
-                                    onClick={() =>
-                                      setSelectedMemberId(binding.user_id)
-                                    }
-                                  >
-                                    {label}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </AdminDetailPanel>
               </div>
@@ -1232,7 +1114,7 @@ export const TenantAdminPage: React.FC = () => {
             <div className="tenant-admin__panel">
               <div className="tenant-admin__panel-header">
                 <div>
-                  <h2>Роли и доступы</h2>
+                  <h2>{t('Роли и доступы', 'Roles and access')}</h2>
                 </div>
                 <Button
                   view="action"
@@ -1240,7 +1122,7 @@ export const TenantAdminPage: React.FC = () => {
                   onClick={resetRoleForm}
                   disabled={!canManageRoles}
                 >
-                  <Icon data={Plus} size={14} /> Новая роль
+                  <Icon data={Plus} size={14} /> {t('Новая роль', 'New role')}
                 </Button>
               </div>
 
@@ -1250,7 +1132,7 @@ export const TenantAdminPage: React.FC = () => {
                     <TextInput
                       size="xl"
                       value={roleQuery}
-                      placeholder="Поиск по названию роли"
+                      placeholder={t('Поиск по названию роли', 'Find a role')}
                       onUpdate={(value) => setRoleQuery(value)}
                       startContent={<Icon data={Magnifier} size={16} />}
                     />
@@ -1259,11 +1141,21 @@ export const TenantAdminPage: React.FC = () => {
                       options={serviceOptions}
                       value={roleServiceFilter ? [roleServiceFilter] : []}
                       onUpdate={(value) => setRoleServiceFilter(value[0] ?? '')}
-                      placeholder="Сервис"
+                      placeholder={t('Сервис', 'Service')}
                     />
                     <Select
                       size="xl"
-                      options={ROLE_SCOPE_OPTIONS}
+                      options={ROLE_SCOPE_OPTIONS.map((option) => ({
+                        ...option,
+                        content: t(
+                          option.content,
+                          {
+                            all: 'All roles',
+                            tenant: 'Community roles',
+                            template: 'System templates',
+                          }[option.value],
+                        ),
+                      }))}
                       value={[roleScopeFilter]}
                       onUpdate={(value) =>
                         setRoleScopeFilter(
@@ -1276,10 +1168,12 @@ export const TenantAdminPage: React.FC = () => {
                   {loadingRoles ? (
                     <div className="tenant-admin__loader">
                       <Loader size="m" />
-                      <span>Загружаем роли...</span>
+                      <span>{t('Загружаем роли...', 'Loading roles…')}</span>
                     </div>
                   ) : filteredRoles.length === 0 ? (
-                    <div className="tenant-admin__empty">Ролей не найдено.</div>
+                    <div className="tenant-admin__empty">
+                      {t('Ролей не найдено.', 'No roles found.')}
+                    </div>
                   ) : (
                     <div className="tenant-admin__role-list">
                       {filteredRoles.map((role) => {
@@ -1309,11 +1203,12 @@ export const TenantAdminPage: React.FC = () => {
                             <span className="tenant-admin__role-tags">
                               {isTemplate ? (
                                 <Label theme="normal" size="s">
-                                  Шаблон
+                                  {t('Шаблон', 'Template')}
                                 </Label>
                               ) : null}
                               <Label theme="info" size="s">
-                                Права: {permissionCount}
+                                {t('Права:', 'Permissions:')}
+                                {permissionCount}
                               </Label>
                             </span>
                           </button>
@@ -1325,7 +1220,9 @@ export const TenantAdminPage: React.FC = () => {
 
                 <AdminDetailPanel
                   title={
-                    selectedRole ? roleLabel(selectedRole.name) : 'Новая роль'
+                    selectedRole
+                      ? roleLabel(selectedRole.name)
+                      : t('Новая роль', 'New role')
                   }
                   open={Boolean(selectedRole || roleEditing)}
                   busy={savingRole}
@@ -1334,7 +1231,10 @@ export const TenantAdminPage: React.FC = () => {
                       if (
                         roleEditing &&
                         !(await confirm(
-                          'Закрыть редактирование роли? Несохранённые изменения будут потеряны.',
+                          t(
+                            'Закрыть редактирование роли? Несохранённые изменения будут потеряны.',
+                            'Discard unsaved role changes?',
+                          ),
                         ))
                       )
                         return;
@@ -1349,15 +1249,18 @@ export const TenantAdminPage: React.FC = () => {
                         {selectedRole
                           ? roleLabel(selectedRole.name)
                           : roleEditing
-                            ? 'Создание роли'
-                            : 'Информация о роли'}
+                            ? t('Создание роли', 'Create role')
+                            : t('Информация о роли', 'Role details')}
                       </div>
                       <div className="tenant-admin__card-subtitle">
                         {selectedRole
                           ? `Выбрана роль: ${roleLabel(selectedRole.name)}`
                           : roleEditing
-                            ? 'Создайте новую роль для сообщества.'
-                            : 'Выберите роль в каталоге.'}
+                            ? t(
+                                'Создайте новую роль для сообщества.',
+                                'Create a role for your community.',
+                              )
+                            : t('Выберите роль в каталоге.', 'Select a role.')}
                       </div>
                     </div>
                     {selectedRole && (
@@ -1372,10 +1275,10 @@ export const TenantAdminPage: React.FC = () => {
                         }
                       >
                         {roleEditing
-                          ? 'Отменить'
+                          ? t('Отменить', 'Cancel')
                           : isTemplateSelected
-                            ? 'Создать на основе'
-                            : 'Редактировать'}
+                            ? t('Создать на основе', 'Use as template')
+                            : t('Редактировать', 'Edit')}
                       </Button>
                     )}
                   </div>
@@ -1397,10 +1300,10 @@ export const TenantAdminPage: React.FC = () => {
                             onClick={() => setRolePanelTab(tab)}
                           >
                             {tab === 'overview'
-                              ? 'Общее'
+                              ? t('Общее', 'Overview')
                               : tab === 'permissions'
-                                ? 'Права'
-                                : 'Участники'}
+                                ? t('Права', 'Permissions')
+                                : t('Участники', 'Members')}
                           </Button>
                         ))}
                       </div>
@@ -1416,7 +1319,7 @@ export const TenantAdminPage: React.FC = () => {
                               <div className="tenant-admin__role-title">
                                 {roleForm.name
                                   ? roleLabel(roleForm.name)
-                                  : 'Новая роль'}
+                                  : t('Новая роль', 'New role')}
                               </div>
                               <div className="tenant-admin__role-meta">
                                 {serviceLabel(roleForm.service)}
@@ -1426,7 +1329,10 @@ export const TenantAdminPage: React.FC = () => {
 
                           {isTemplateSelected && (
                             <Label theme="normal" size="s">
-                              Системный шаблон для создания собственных ролей
+                              {t(
+                                'Системный шаблон для создания собственных ролей',
+                                'System template for custom roles',
+                              )}
                             </Label>
                           )}
 
@@ -1434,7 +1340,7 @@ export const TenantAdminPage: React.FC = () => {
                             <>
                               <div className="tenant-admin__field">
                                 <label className="tenant-admin__field-label">
-                                  Название роли
+                                  {t('Название роли', 'Role name')}
                                 </label>
                                 <TextInput
                                   size="xl"
@@ -1451,7 +1357,7 @@ export const TenantAdminPage: React.FC = () => {
 
                               <div className="tenant-admin__field">
                                 <label className="tenant-admin__field-label">
-                                  Раздел платформы
+                                  {t('Раздел платформы', 'Service')}
                                 </label>
                                 <Select
                                   size="xl"
@@ -1471,7 +1377,7 @@ export const TenantAdminPage: React.FC = () => {
 
                               <div className="tenant-admin__field">
                                 <label className="tenant-admin__field-label">
-                                  Цвет роли
+                                  {t('Цвет роли', 'Role colour')}
                                 </label>
                                 <div className="tenant-admin__color-field">
                                   <input
@@ -1484,8 +1390,10 @@ export const TenantAdminPage: React.FC = () => {
                                     disabled={!canManageRoles}
                                   />
                                   <span className="tenant-admin__field-hint">
-                                    Цвет хранится локально, чтобы сразу видеть
-                                    роли в списке.
+                                    {t(
+                                      'Цвет хранится локально, чтобы сразу видеть\n                                    роли в списке.',
+                                      'Colour is saved on this device.',
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -1493,12 +1401,12 @@ export const TenantAdminPage: React.FC = () => {
                           )}
                           <div className="tenant-admin__field">
                             <label className="tenant-admin__field-label">
-                              Доступные действия
+                              {t('Доступные действия', 'Allowed actions')}
                             </label>
                             <div className="tenant-admin__permission-preview">
                               {normalizedPermissionKeys.length === 0 ? (
                                 <div className="tenant-admin__empty">
-                                  Пока нет прав.
+                                  {t('Пока нет прав.', 'No permissions yet.')}
                                 </div>
                               ) : (
                                 normalizedPermissionKeys.map((permission) => (
@@ -1518,7 +1426,10 @@ export const TenantAdminPage: React.FC = () => {
                             <TextInput
                               size="xl"
                               value={rolePermissionQuery}
-                              placeholder="Поиск по ключу или описанию"
+                              placeholder={t(
+                                'Поиск по ключу или описанию',
+                                'Find a permission',
+                              )}
                               onUpdate={(value) =>
                                 setRolePermissionQuery(value)
                               }
@@ -1535,7 +1446,7 @@ export const TenantAdminPage: React.FC = () => {
                               onUpdate={(value) =>
                                 setRolePermissionServiceFilter(value[0] ?? '')
                               }
-                              placeholder="Сервис"
+                              placeholder={t('Сервис', 'Service')}
                             />
                             <Button
                               view="flat"
@@ -1548,18 +1459,23 @@ export const TenantAdminPage: React.FC = () => {
                                 }))
                               }
                             >
-                              Очистить
+                              {t('Очистить', 'Clear')}
                             </Button>
                           </div>
 
                           {loadingPermissions ? (
                             <div className="tenant-admin__loader">
                               <Loader size="s" />
-                              <span>Загружаем права...</span>
+                              <span>
+                                {t(
+                                  'Загружаем права...',
+                                  'Loading permissions…',
+                                )}
+                              </span>
                             </div>
                           ) : rolePermissionGroups.length === 0 ? (
                             <div className="tenant-admin__empty">
-                              Совпадений не найдено.
+                              {t('Совпадений не найдено.', 'No matches.')}
                             </div>
                           ) : (
                             <div className="tenant-admin__permission-groups">
@@ -1604,7 +1520,10 @@ export const TenantAdminPage: React.FC = () => {
                                                 <div className="tenant-admin__permission-desc">
                                                   <details>
                                                     <summary>
-                                                      Технический ключ
+                                                      {t(
+                                                        'Технический ключ',
+                                                        'Technical key',
+                                                      )}
                                                     </summary>
                                                     <code>
                                                       {permission.key}
@@ -1648,11 +1567,19 @@ export const TenantAdminPage: React.FC = () => {
                             loadingRoleBindings ? (
                               <div className="tenant-admin__loader">
                                 <Loader size="s" />
-                                <span>Загружаем участников роли...</span>
+                                <span>
+                                  {t(
+                                    'Загружаем участников роли...',
+                                    'Loading role members…',
+                                  )}
+                                </span>
                               </div>
                             ) : roleBindingsForSelected.length === 0 ? (
                               <div className="tenant-admin__empty">
-                                Эта роль никому не назначена.
+                                {t(
+                                  'Эта роль никому не назначена.',
+                                  'This role has no members.',
+                                )}
                               </div>
                             ) : (
                               <div className="tenant-admin__role-members-list">
@@ -1688,7 +1615,7 @@ export const TenantAdminPage: React.FC = () => {
                                           setSelectedMemberId(binding.user_id)
                                         }
                                       >
-                                        Открыть
+                                        {t('Открыть', 'Open')}
                                       </Button>
                                     </div>
                                   );
@@ -1697,7 +1624,10 @@ export const TenantAdminPage: React.FC = () => {
                             )
                           ) : (
                             <div className="tenant-admin__empty">
-                              Выберите роль слева, чтобы увидеть участников.
+                              {t(
+                                'Выберите роль слева, чтобы увидеть участников.',
+                                'Select a role to see its members.',
+                              )}
                             </div>
                           )}
                         </div>
@@ -1712,8 +1642,8 @@ export const TenantAdminPage: React.FC = () => {
                             disabled={!canManageRoles}
                           >
                             {roleFormMode === 'edit'
-                              ? 'Сохранить изменения'
-                              : 'Создать роль'}
+                              ? t('Сохранить изменения', 'Save changes')
+                              : t('Создать роль', 'Create role')}
                           </Button>
                           {selectedRole && !isTemplateSelected && (
                             <Button
@@ -1724,8 +1654,8 @@ export const TenantAdminPage: React.FC = () => {
                               onClick={() => handleRoleDelete(selectedRole)}
                             >
                               {deletingRoleId === selectedRole.id
-                                ? 'Удаление…'
-                                : 'Удалить роль'}
+                                ? t('Удаление…', 'Removing…')
+                                : t('Удалить роль', 'Delete role')}
                             </Button>
                           )}
                         </div>
@@ -1741,14 +1671,17 @@ export const TenantAdminPage: React.FC = () => {
             <div className="tenant-admin__panel">
               <div className="tenant-admin__panel-header">
                 <div>
-                  <h2>Каталог прав</h2>
+                  <h2>{t('Каталог прав', 'Permissions')}</h2>
                 </div>
               </div>
 
               <Card className="tenant-admin__card">
                 {!canViewPermissions ? (
                   <div className="tenant-admin__empty">
-                    Нет доступа к каталогу прав.
+                    {t(
+                      'Нет доступа к каталогу прав.',
+                      'Access to permissions is restricted.',
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1756,7 +1689,10 @@ export const TenantAdminPage: React.FC = () => {
                       <TextInput
                         size="xl"
                         value={permissionQuery}
-                        placeholder="Поиск по ключу или описанию"
+                        placeholder={t(
+                          'Поиск по ключу или описанию',
+                          'Find a permission',
+                        )}
                         onUpdate={(value) => setPermissionQuery(value)}
                         startContent={<Icon data={Magnifier} size={16} />}
                       />
@@ -1771,18 +1707,20 @@ export const TenantAdminPage: React.FC = () => {
                         onUpdate={(value) =>
                           setPermissionServiceFilter(value[0] ?? '')
                         }
-                        placeholder="Сервис"
+                        placeholder={t('Сервис', 'Service')}
                       />
                     </div>
 
                     {loadingPermissions ? (
                       <div className="tenant-admin__loader">
                         <Loader size="m" />
-                        <span>Загружаем права...</span>
+                        <span>
+                          {t('Загружаем права...', 'Loading permissions…')}
+                        </span>
                       </div>
                     ) : permissionGroups.length === 0 ? (
                       <div className="tenant-admin__empty">
-                        Ничего не найдено.
+                        {t('Ничего не найдено.', 'No matches.')}
                       </div>
                     ) : (
                       <div className="tenant-admin__permission-groups">
@@ -1824,7 +1762,12 @@ export const TenantAdminPage: React.FC = () => {
                                         </div>
                                         <div className="tenant-admin__permission-desc">
                                           <details>
-                                            <summary>Технический ключ</summary>
+                                            <summary>
+                                              {t(
+                                                'Технический ключ',
+                                                'Technical key',
+                                              )}
+                                            </summary>
                                             <code>{permission.key}</code>
                                           </details>
                                         </div>
@@ -1848,8 +1791,13 @@ export const TenantAdminPage: React.FC = () => {
             <div className="tenant-admin__panel">
               <div className="tenant-admin__panel-header">
                 <div>
-                  <h2>Аудит действий</h2>
-                  <p>Последние 50 изменений ролей и прав участников.</p>
+                  <h2>{t('Аудит действий', 'Access history')}</h2>
+                  <p>
+                    {t(
+                      'Последние 50 изменений ролей и прав участников.',
+                      'The 50 most recent changes to roles and member access.',
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -1857,7 +1805,10 @@ export const TenantAdminPage: React.FC = () => {
                 <TextInput
                   size="xl"
                   value={auditQuery}
-                  placeholder="Поиск по действию, пользователю или роли"
+                  placeholder={t(
+                    'Поиск по действию, пользователю или роли',
+                    'Find an action, member or role',
+                  )}
                   onUpdate={(value) => setAuditQuery(value)}
                   startContent={<Icon data={Magnifier} size={16} />}
                 />
@@ -1865,10 +1816,12 @@ export const TenantAdminPage: React.FC = () => {
                 {loadingEvents ? (
                   <div className="tenant-admin__loader">
                     <Loader size="m" />
-                    <span>Загружаем события...</span>
+                    <span>{t('Загружаем события...', 'Loading history…')}</span>
                   </div>
                 ) : filteredEvents.length === 0 ? (
-                  <div className="tenant-admin__empty">Событий пока нет.</div>
+                  <div className="tenant-admin__empty">
+                    {t('Событий пока нет.', 'No changes yet.')}
+                  </div>
                 ) : (
                   <div className="tenant-admin__audit-list">
                     {filteredEvents.map((event) => {
@@ -1894,25 +1847,27 @@ export const TenantAdminPage: React.FC = () => {
                             {summary.description}
                           </p>
                           <p className="tenant-admin__audit-meta">
-                            Изменил: {summary.actor}
+                            {t('Изменил:', 'Changed by:')} {summary.actor}
                           </p>
                           <details className="tenant-admin__technical-details">
-                            <summary>Технические данные</summary>
+                            <summary>
+                              {t('Технические данные', 'Technical details')}
+                            </summary>
                             <dl>
                               <div>
-                                <dt>Код события</dt>
+                                <dt>{t('Код события', 'Event code')}</dt>
                                 <dd>{event.action}</dd>
                               </div>
                               <div>
-                                <dt>Идентификатор</dt>
+                                <dt>{t('Идентификатор', 'Identifier')}</dt>
                                 <dd>{event.id}</dd>
                               </div>
                               <div>
-                                <dt>Исполнитель</dt>
+                                <dt>{t('Исполнитель', 'Actor')}</dt>
                                 <dd>{event.performed_by}</dd>
                               </div>
                               <div>
-                                <dt>Объект</dt>
+                                <dt>{t('Объект', 'Object')}</dt>
                                 <dd>
                                   {event.target_type} · {event.target_id ?? '—'}
                                 </dd>

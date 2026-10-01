@@ -10,6 +10,10 @@ from core.ymq import schedule_outbox_wakeup
 from .models import FeatureFlag, FeatureFlagAuditEvent, OutboxMessage
 
 
+class FlagAlreadyExists(ValueError):
+    pass
+
+
 def _normalize_flag_key(key: str) -> str:
     return key.strip().lower().replace(" ", "_")
 
@@ -31,12 +35,15 @@ def create_or_update_flag(
     description: str | None,
     enabled: bool,
     rollout: int,
+    create_only: bool = False,
 ) -> tuple[FeatureFlag, str]:
     normalized_key = _normalize_flag_key(key)
     _validate_rollout(rollout)
 
     now = timezone.now()
     flag = FeatureFlag.objects.filter(key=normalized_key).first()
+    if create_only and flag is not None:
+        raise FlagAlreadyExists("Feature flag already exists")
     action = "feature_flag.updated"
     if flag is None:
         action = "feature_flag.created"
@@ -54,7 +61,7 @@ def create_or_update_flag(
         flag.enabled = enabled
         flag.rollout = rollout
 
-    flag.save()
+    flag.save(force_insert=create_only)
 
     metadata = {
         "enabled": flag.enabled,

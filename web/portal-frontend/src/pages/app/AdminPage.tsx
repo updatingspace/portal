@@ -1,12 +1,6 @@
-import React from 'react';
-
-import { AdminApplicationsPage } from '../../modules/portal/pages/AdminApplicationsPage';
-import { RequireAuth } from '../../components/RequireAuth';
-
-export const AdminPage: React.FC = () => {
-  return (
-    <RequireAuth superuserOnly>
-      <AdminApplicationsPage />
-    </RequireAuth>
-  );
-};
+import { Navigate } from 'react-router-dom';
+import { useRouteBase } from '../../shared/hooks/useRouteBase';
+export function AdminPage() {
+  const base = useRouteBase();
+  return <Navigate to={`${base}/tenant-admin?tab=applications`} replace />;
+}

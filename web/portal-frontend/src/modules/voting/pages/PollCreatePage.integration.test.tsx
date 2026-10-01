@@ -1,13 +1,30 @@
+import { beforeEach } from 'vitest';
+beforeEach(() => localStorage.setItem('portal_locale_v1', 'ru'));
 import React from 'react';
 // Floating UI focus is checked in Playwright; jsdom cannot parse Gravity's generated focus selector.
-vi.mock('../../../shared/ui/portal/ContentDialog',()=>({ContentDialog:({title,children,onClose}:{title:string;children:React.ReactNode;onClose:()=>void})=><section role="dialog" aria-label={title}><button onClick={onClose}>Закрыть</button>{children}</section>}));
+vi.mock('../../../shared/ui/portal/ContentDialog', () => ({
+  ContentDialog: ({
+    title,
+    children,
+    onClose,
+  }: {
+    title: string;
+    children: React.ReactNode;
+    onClose: () => void;
+  }) => (
+    <section role="dialog" aria-label={title}>
+      <button onClick={onClose}>Закрыть</button>
+      {children}
+    </section>
+  ),
+}));
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../features/voting/api/votingApi', async () => {
-  const actual = await vi.importActual<typeof import('../../../features/voting/api/votingApi')>(
-    '../../../features/voting/api/votingApi',
-  );
+  const actual = await vi.importActual<
+    typeof import('../../../features/voting/api/votingApi')
+  >('../../../features/voting/api/votingApi');
 
   return {
     ...actual,
@@ -18,7 +35,12 @@ vi.mock('../../../features/voting/api/votingApi', async () => {
 
 import * as votingApi from '../../../features/voting/api/votingApi';
 import type { Poll, PollTemplate } from '../../../features/voting/types';
-import { renderWithProviders, screen, userEvent, waitFor } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  screen,
+  userEvent,
+  waitFor,
+} from '../../../test/test-utils';
 import { PollCreatePage } from './PollCreatePage';
 
 const templates: PollTemplate[] = [
@@ -78,22 +100,36 @@ const ManageProbe: React.FC = () => {
 
 describe('PollCreatePage integration', () => {
   it('keeps the form usable while templates load', async () => {
-    vi.mocked(votingApi.fetchPollTemplates).mockImplementationOnce(() => new Promise(() => undefined));
+    vi.mocked(votingApi.fetchPollTemplates).mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
     renderWithProviders(<PollCreatePage />);
     expect(screen.getByLabelText(/Название/)).toBeEnabled();
-    await userEvent.click(screen.getByRole('button', {name:'Выбрать шаблон'}));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Выбрать шаблон' }),
+    );
     expect(screen.getByText('Загружаем шаблоны опросов…')).toBeInTheDocument();
   });
 
   it('chooses a template explicitly and can return to a blank form', async () => {
     vi.mocked(votingApi.fetchPollTemplates).mockResolvedValue(templates);
     renderWithProviders(<PollCreatePage />);
-    await userEvent.click(screen.getByRole('button', {name:'Выбрать шаблон'}));
-    await userEvent.click(await screen.findByRole('button', {name:'Использовать «Премия сообщества»'}));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Выбрать шаблон' }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Использовать «Премия сообщества»',
+      }),
+    );
     expect(screen.getByText('Шаблон: Премия сообщества')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', {name:'Выбрать шаблон'}));
-    await userEvent.click(screen.getByRole('button', {name:'Пустой опрос'}));
-    expect(screen.queryByText('Шаблон: Премия сообщества')).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Выбрать шаблон' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Пустой опрос' }));
+    expect(
+      screen.queryByText('Шаблон: Премия сообщества'),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Название/)).toHaveValue('');
   });
 
@@ -111,7 +147,7 @@ describe('PollCreatePage integration', () => {
       },
     );
 
-    await screen.findByRole('heading', {name:'Новый опрос'});
+    await screen.findByRole('heading', { name: 'Новый опрос' });
 
     const titleInput = await screen.findByLabelText(/Название/);
     await userEvent.clear(titleInput);
@@ -119,9 +155,13 @@ describe('PollCreatePage integration', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
-    expect(await screen.findByText('Проверка перед созданием')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Проверка перед созданием'),
+    ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Создать опрос' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Создать опрос' }),
+    );
 
     await waitFor(() => {
       expect(votingApi.createPoll).toHaveBeenCalled();
@@ -131,19 +171,27 @@ describe('PollCreatePage integration', () => {
       title: 'Опрос квартала',
     });
 
-    expect(await screen.findByText('manage:poll-new:questions')).toBeInTheDocument();
+    expect(
+      await screen.findByText('manage:poll-new:questions'),
+    ).toBeInTheDocument();
   }, 15000);
   it('preserves entered parameters when creation fails', async () => {
     vi.mocked(votingApi.fetchPollTemplates).mockResolvedValue([]);
     vi.mocked(votingApi.createPoll).mockRejectedValue(new Error('offline'));
     renderWithProviders(<PollCreatePage />);
-    await userEvent.type(screen.getByLabelText(/Название/), 'Опрос с черновиком');
-    await userEvent.click(screen.getByRole('button', {name:'Далее'}));
-    await userEvent.click(screen.getByRole('button', {name:'Далее'}));
-    await userEvent.click(screen.getByRole('button', {name:'Создать опрос'}));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Введённые параметры сохранены');
-    await userEvent.click(screen.getByRole('button', {name:'1. Основное'}));
+    await userEvent.type(
+      screen.getByLabelText(/Название/),
+      'Опрос с черновиком',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Создать опрос' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Введённые параметры сохранены',
+    );
+    await userEvent.click(screen.getByRole('button', { name: '1. Основное' }));
     expect(screen.getByLabelText(/Название/)).toHaveValue('Опрос с черновиком');
   });
-
 });

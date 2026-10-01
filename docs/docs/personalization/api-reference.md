@@ -60,3 +60,12 @@ RBAC keys:
 
 - `personalization.content.manage`
 - `personalization.dashboards.customize`
+
+### Часовой пояс устройства
+
+Значение `localization.timezone: "system"` означает часовой пояс браузера через
+`Intl.DateTimeFormat().resolvedOptions().timeZone`; это значение по умолчанию для
+новых настроек. Старый неявный default `UTC` трактуется как `system` (и переносится
+data migrations для SQL). Для явного выбора UTC клиент записывает `Etc/UTC`.
+Остальные явные IANA-зоны сохраняются. События, календарь и обзор используют одну
+настройку, включая переходы на летнее/зимнее время.

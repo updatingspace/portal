@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../../shared/ui/portal/PortalUI';
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@gravity-ui/uikit';
@@ -20,6 +21,7 @@ import { useConfirmation } from '../../../../shared/ui/portal/useConfirmation';
 import '../../styles/voting-workspace.css';
 
 export function PollCreatePage() {
+  const t = useUITranslation();
   const navigate = useNavigate();
   const base = useRouteBase();
   const location = useLocation();
@@ -58,7 +60,10 @@ export function PollCreatePage() {
     if (
       dirty &&
       !(await confirm(
-        'Заменить введённые параметры настройками шаблона? Текущий ввод будет потерян.',
+        t(
+          'Заменить введённые параметры настройками шаблона? Текущий ввод будет потерян.',
+          'Replace your settings with this template? Current input will be lost.',
+        ),
       ))
     )
       return;
@@ -72,7 +77,10 @@ export function PollCreatePage() {
     if (
       dirty &&
       !(await confirm(
-        'Выйти без создания опроса? Введённые параметры не сохранятся.',
+        t(
+          'Выйти без создания опроса? Введённые параметры не сохранятся.',
+          'Leave without creating the poll? Your input will be lost.',
+        ),
       ))
     )
       return;
@@ -88,16 +96,24 @@ export function PollCreatePage() {
         }),
       onError: () =>
         setError(
-          'Не удалось подтвердить создание опроса. Введённые параметры сохранены; проверьте список перед повторной отправкой.',
+          t(
+            'Не удалось подтвердить создание опроса. Введённые параметры сохранены; проверьте список перед повторной отправкой.',
+            'Unable to confirm creation. Your input is preserved; check the poll list before submitting again.',
+          ),
         ),
     });
   };
   if (requested && selection === undefined && isLoading)
-    return <PageState kind="loading" title="Загружаем выбранный шаблон" />;
+    return (
+      <PageState
+        kind="loading"
+        title={t('Загружаем выбранный шаблон', 'Loading template')}
+      />
+    );
   return (
     <div className="voting-workspace voting-workspace--form">
       <PageLayout
-        title="Новый опрос"
+        title={t('Новый опрос', 'New poll')}
         actions={
           <Button
             size="xl"
@@ -105,12 +121,14 @@ export function PollCreatePage() {
             disabled={mutation.isPending}
             onClick={() => setPicker(true)}
           >
-            Выбрать шаблон
+            {t('Выбрать шаблон', 'Choose template')}
           </Button>
         }
       >
         {selected && (
-          <p className="voting-form-context">Шаблон: {selected.title}</p>
+          <p className="voting-form-context">
+            {t('Шаблон:', 'Template:')} {selected.title}
+          </p>
         )}
         {error && <InlineError>{error}</InlineError>}
         <PollForm
@@ -122,11 +140,21 @@ export function PollCreatePage() {
           isSubmitting={mutation.isPending}
         />
         {picker && (
-          <ContentDialog title="Шаблон опроса" onClose={() => setPicker(false)}>
-            {isLoading && <p role="status">Загружаем шаблоны опросов…</p>}
+          <ContentDialog
+            title={t('Шаблон опроса', 'Poll template')}
+            onClose={() => setPicker(false)}
+          >
+            {isLoading && (
+              <p role="status">
+                {t('Загружаем шаблоны опросов…', 'Loading templates…')}
+              </p>
+            )}
             {isError && (
               <InlineError onRetry={() => void refetch()}>
-                Не удалось загрузить шаблоны. Можно начать с пустого опроса.
+                {t(
+                  'Не удалось загрузить шаблоны. Можно начать с пустого опроса.',
+                  'Unable to load templates. You can start with a blank poll.',
+                )}
               </InlineError>
             )}
             <div className="portal-stack">
@@ -135,14 +163,15 @@ export function PollCreatePage() {
                 view="outlined"
                 onClick={() => void choose(null)}
               >
-                Пустой опрос
+                {t('Пустой опрос', 'Blank poll')}
               </Button>
               {templates.map((template) => (
                 <article className="voting-template" key={template.slug}>
                   <h2>{template.title}</h2>
                   <p>{template.description}</p>
                   <Button size="xl" onClick={() => void choose(template)}>
-                    Использовать «{template.title}»
+                    {t('Использовать «', 'Use “')}
+                    {template.title}»
                   </Button>
                 </article>
               ))}

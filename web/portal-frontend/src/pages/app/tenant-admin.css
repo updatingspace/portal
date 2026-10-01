@@ -884,3 +884,54 @@
   flex: 1;
   overflow-wrap: anywhere;
 }
+
+.tenant-admin__panel-grid--members {
+  display: block;
+  max-width: 960px;
+}
+.tenant-admin__panel-grid--members > .tenant-admin__card {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.tenant-admin__mobile-members {
+  display: grid;
+  gap: 0;
+}
+.tenant-admin__mobile-members > button {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--g-color-line-generic);
+  padding: 18px 4px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.tenant-member-summary {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.tenant-member-summary strong {
+  overflow-wrap: anywhere;
+}
+.tenant-member-summary small {
+  font-size: 13px;
+  color: var(--g-color-text-secondary);
+}
+.tenant-admin__mobile-members > button:hover {
+  background: var(--g-color-base-generic);
+}
+.tenant-admin__mobile-members > button:focus-visible {
+  outline: 2px solid var(--g-color-line-brand);
+  outline-offset: 2px;
+}
+.tenant-admin__content > .portal-page {
+  padding: 24px 0;
+}

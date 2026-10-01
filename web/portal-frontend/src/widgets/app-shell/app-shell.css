@@ -1,11 +1,18 @@
 .app-shell {
-  --portal-accent-color: var(--user-accent-color, var(--g-color-base-brand, #2f6edb));
+  --portal-accent-color: var(
+    --user-accent-color,
+    var(--g-color-base-brand, #2f6edb)
+  );
   --portal-accent-border: color-mix(
     in srgb,
     var(--portal-accent-color) 34%,
     var(--g-color-line-generic, rgba(0, 0, 0, 0.12))
   );
-  --portal-accent-soft: color-mix(in srgb, var(--portal-accent-color) 12%, transparent);
+  --portal-accent-soft: color-mix(
+    in srgb,
+    var(--portal-accent-color) 12%,
+    transparent
+  );
   --portal-accent-surface: color-mix(
     in srgb,
     var(--portal-accent-color) 7%,
@@ -14,8 +21,16 @@
   min-height: 100vh;
   height: 100vh;
   background:
-    radial-gradient(1100px circle at 100% 0%, color-mix(in srgb, var(--portal-accent-color) 11%, transparent), transparent 54%),
-    linear-gradient(180deg, var(--portal-accent-surface), var(--portal-surface-contrast, var(--g-color-base-background, #f7f7f7)));
+    radial-gradient(
+      1100px circle at 100% 0%,
+      color-mix(in srgb, var(--portal-accent-color) 11%, transparent),
+      transparent 54%
+    ),
+    linear-gradient(
+      180deg,
+      var(--portal-accent-surface),
+      var(--portal-surface-contrast, var(--g-color-base-background, #f7f7f7))
+    );
 }
 
 .app-shell__aside {
@@ -50,8 +65,12 @@
   min-height: var(--gn-aside-header-height, 64px);
   padding: 0 24px;
   border-bottom: 1px solid var(--portal-accent-border);
-  background: var(--portal-surface-contrast, var(--g-color-base-background, #ffffff));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--portal-accent-color) 22%, transparent);
+  background: var(
+    --portal-surface-contrast,
+    var(--g-color-base-background, #ffffff)
+  );
+  box-shadow: inset 0 1px 0
+    color-mix(in srgb, var(--portal-accent-color) 22%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -78,12 +97,15 @@
 .app-shell__content {
   flex: 1;
   padding: 24px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--portal-accent-color) 2%, var(--portal-surface-contrast, var(--g-color-base-background, #ffffff))),
+  background: linear-gradient(
+    180deg,
+    color-mix(
+      in srgb,
+      var(--portal-accent-color) 2%,
       var(--portal-surface-contrast, var(--g-color-base-background, #ffffff))
-    );
+    ),
+    var(--portal-surface-contrast, var(--g-color-base-background, #ffffff))
+  );
   overflow: auto;
 }
 
@@ -96,14 +118,22 @@
   gap: 8px;
   background: color-mix(in srgb, var(--portal-accent-color) 5%, transparent);
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .app-shell__user-button:hover,
 .app-shell__user-button:focus-visible {
-  border-color: color-mix(in srgb, var(--portal-accent-color) 60%, var(--g-color-line-generic, rgba(0, 0, 0, 0.12)));
+  border-color: color-mix(
+    in srgb,
+    var(--portal-accent-color) 60%,
+    var(--g-color-line-generic, rgba(0, 0, 0, 0.12))
+  );
   background: color-mix(in srgb, var(--portal-accent-color) 9%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--portal-accent-color) 12%, transparent);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--portal-accent-color) 12%, transparent);
 }
 
 .app-shell__user-name {
@@ -130,7 +160,8 @@
 }
 
 [data-high-contrast='true'] .app-shell__content {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-accent-color) 20%, #111);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--portal-accent-color) 20%, #111);
 }
 
 .app-shell .gn-aside-header__content,
@@ -142,27 +173,136 @@
   overflow: hidden;
 }
 
-.app-shell__header-leading {display: flex; align-items: center; gap: 12px; min-width: 0;}
-.app-shell__brand {font-size: 21px; font-weight: 750; letter-spacing: -.04em; text-transform: none; text-decoration: none;}
-.app-shell__brand-dot {color: var(--portal-accent);}
-.portal-navigation-menu {display: grid; gap: 4px; padding-bottom: 16px;}
-.portal-navigation-menu a {padding: 12px 16px; min-height: 48px; box-sizing: border-box; border-radius: 8px; text-decoration: none; color: var(--portal-text); font-size: 17px;}
-.portal-navigation-menu a.active {background: var(--portal-surface-alt); color: var(--portal-accent); font-weight: 650;}
-.app-shell--mobile {height: auto; min-height: 100dvh; background: var(--portal-bg);}
+.app-shell__header-leading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.app-shell__brand {
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  text-transform: none;
+  text-decoration: none;
+}
+.app-shell__brand-dot {
+  color: var(--portal-accent);
+}
+.portal-navigation-menu {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 16px;
+}
+.portal-navigation-menu a {
+  padding: 12px 16px;
+  min-height: 48px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--portal-text);
+  font-size: 17px;
+}
+.portal-navigation-menu a.active {
+  background: var(--portal-surface-alt);
+  color: var(--portal-accent);
+  font-weight: 650;
+}
+.app-shell--mobile {
+  height: auto;
+  min-height: 100dvh;
+  background: var(--portal-bg);
+}
 .app-shell--mobile .gn-aside-header__aside,
-.app-shell--mobile .gn-aside-header__panels {display: none;}
-.app-shell--mobile .app-shell__aside {height: auto; background: var(--portal-bg);}
-.app-shell--mobile .gn-aside-header__content {width: 100%; height: auto; overflow: visible;}
-.app-shell--mobile .app-shell__content-shell {height: auto; min-height: 100dvh;}
-.app-shell--mobile .app-shell__header {height: 64px; min-height: 64px; padding: 0 16px 0 8px; gap: 8px; box-shadow: none; background: var(--portal-bg);}
-.app-shell--mobile .app-shell__header-leading {gap: 4px;}
-.app-shell--mobile .app-shell__header-actions {width: auto; flex-wrap: nowrap;}
-.app-shell--mobile .app-shell__theme-select, .app-shell--mobile .app-shell__user-name {display: none;}
-.app-shell--mobile .app-shell__user-button {min-width: 44px; min-height: 44px; padding: 4px; justify-content: center; border: 0; background: transparent;}
-.app-shell--mobile .app-shell__content {padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); overflow: visible; background: var(--portal-bg); min-width: 0;}
-.app-shell--mobile .portal-page {padding: 0;}
-.app-shell--mobile .portal-page__heading {margin-bottom: 24px;}
-.app-shell--mobile .portal-inline-error {align-items: flex-start; flex-direction: column;}
-.app-shell--mobile .portal-state {padding: 24px 0; border: 0; background: transparent; margin: 0;}
+.app-shell--mobile .gn-aside-header__panels {
+  display: none;
+}
+.app-shell--mobile .app-shell__aside {
+  height: auto;
+  background: var(--portal-bg);
+}
+.app-shell--mobile .gn-aside-header__content {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.app-shell--mobile .app-shell__content-shell {
+  height: auto;
+  min-height: 100dvh;
+}
+.app-shell--mobile .app-shell__header {
+  height: 64px;
+  min-height: 64px;
+  padding: 0 16px 0 8px;
+  gap: 8px;
+  box-shadow: none;
+  background: var(--portal-bg);
+}
+.app-shell--mobile .app-shell__header-leading {
+  gap: 4px;
+}
+.app-shell--mobile .app-shell__header-actions {
+  width: auto;
+  flex-wrap: nowrap;
+}
+.app-shell--mobile .app-shell__theme-select,
+.app-shell--mobile .app-shell__user-name {
+  display: none;
+}
+.app-shell--mobile .app-shell__user-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+}
+.app-shell--mobile .app-shell__content {
+  padding: 24px 16px calc(32px + env(safe-area-inset-bottom));
+  overflow: visible;
+  background: var(--portal-bg);
+  min-width: 0;
+}
+.app-shell--mobile .portal-page {
+  padding: 0;
+}
+.app-shell--mobile .portal-page__heading {
+  margin-bottom: 24px;
+}
+.app-shell--mobile .portal-inline-error {
+  align-items: flex-start;
+  flex-direction: column;
+}
+.app-shell--mobile .portal-state {
+  padding: 24px 0;
+  border: 0;
+  background: transparent;
+  margin: 0;
+}
 
-.app-shell--mobile .g-button_size_l {--g-button-height: 44px;}
+.app-shell--mobile .g-button_size_l {
+  --g-button-height: 44px;
+}
+
+/* One content origin across sections; the shell owns outer spacing. */
+.app-shell__content > .portal-page {
+  padding: 0;
+  margin-inline: 0;
+  max-width: 1200px;
+}
+.app-shell__content .feed-page__layout {
+  margin-inline: 0;
+}
+.app-shell__content > .tenant-admin {
+  margin-inline: 0;
+}
+.app-shell__content .portal-state--empty {
+  margin: 24px 0;
+  max-width: none;
+  padding: 24px 0;
+  border: 0;
+  background: transparent;
+}
+.app-shell__content .portal-state--empty .portal-state__symbol {
+  display: none;
+}

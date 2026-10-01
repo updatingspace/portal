@@ -87,7 +87,9 @@ const mapGrant = (raw: RawGrant): Grant => ({
   revokedAt: raw.revoked_at ?? null,
 });
 
-const buildQueryString = (params?: Record<string, string | number | undefined | null>): string => {
+const buildQueryString = (
+  params?: Record<string, string | number | undefined | null>,
+): string => {
   if (!params) return '';
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -116,9 +118,10 @@ export const listAchievements = async (params?: {
     limit: params?.limit,
     cursor: params?.cursor,
   });
-  const data = await request<{ items: RawAchievement[]; next_cursor: string | null }>(
-    `/gamification/achievements${suffix}`,
-  );
+  const data = await request<{
+    items: RawAchievement[];
+    next_cursor: string | null;
+  }>(`/gamification/achievements${suffix}`);
   return {
     items: data.items.map(mapAchievement),
     nextCursor: data.next_cursor,
@@ -126,11 +129,15 @@ export const listAchievements = async (params?: {
 };
 
 export const getAchievement = async (id: string): Promise<Achievement> => {
-  const data = await request<RawAchievement>(`/gamification/achievements/${id}`);
+  const data = await request<RawAchievement>(
+    `/gamification/achievements/${id}`,
+  );
   return mapAchievement(data);
 };
 
-export const createAchievement = async (payload: AchievementCreatePayload): Promise<Achievement> => {
+export const createAchievement = async (
+  payload: AchievementCreatePayload,
+): Promise<Achievement> => {
   const data = await request<RawAchievement>('/gamification/achievements', {
     method: 'POST',
     body: {
@@ -148,25 +155,32 @@ export const updateAchievement = async (
   id: string,
   payload: AchievementUpdatePayload,
 ): Promise<Achievement> => {
-  const data = await request<RawAchievement>(`/gamification/achievements/${id}`, {
-    method: 'PATCH',
-    body: {
-      name_i18n: payload.nameI18n,
-      description: payload.description,
-      category: payload.category,
-      status: payload.status,
-      images: payload.images,
+  const data = await request<RawAchievement>(
+    `/gamification/achievements/${id}`,
+    {
+      method: 'PATCH',
+      body: {
+        name_i18n: payload.nameI18n,
+        description: payload.description,
+        category: payload.category,
+        status: payload.status,
+        images: payload.images,
+      },
     },
-  });
+  );
   return mapAchievement(data);
 };
 
 export const listCategories = async (): Promise<CategoryListResponse> => {
-  const data = await request<{ items: RawCategory[] }>('/gamification/categories');
+  const data = await request<{ items: RawCategory[] }>(
+    '/gamification/categories',
+  );
   return { items: data.items.map(mapCategory) };
 };
 
-export const createCategory = async (payload: CategoryCreatePayload): Promise<Category> => {
+export const createCategory = async (
+  payload: CategoryCreatePayload,
+): Promise<Category> => {
   const data = await request<RawCategory>('/gamification/categories', {
     method: 'POST',
     body: {
@@ -216,20 +230,34 @@ export const createGrant = async (
   achievementId: string,
   payload: GrantCreatePayload,
 ): Promise<Grant> => {
-  const data = await request<RawGrant>(`/gamification/achievements/${achievementId}/grants`, {
-    method: 'POST',
-    body: {
-      recipient_id: payload.recipientId,
-      reason: payload.reason ?? '',
-      visibility: payload.visibility,
+  const data = await request<RawGrant>(
+    `/gamification/achievements/${achievementId}/grants`,
+    {
+      method: 'POST',
+      body: {
+        recipient_id: payload.recipientId,
+        reason: payload.reason ?? '',
+        visibility: payload.visibility,
+      },
     },
-  });
+  );
   return mapGrant(data);
 };
 
 export const revokeGrant = async (grantId: string): Promise<Grant> => {
-  const data = await request<RawGrant>(`/gamification/grants/${grantId}/revoke`, {
-    method: 'POST',
-  });
+  const data = await request<RawGrant>(
+    `/gamification/grants/${grantId}/revoke`,
+    {
+      method: 'POST',
+    },
+  );
   return mapGrant(data);
 };
+
+export async function uploadAchievementImage(
+  file: File,
+): Promise<{ url: string }> {
+  const body = new FormData();
+  body.append('file', file);
+  return request('/gamification/media', { method: 'POST', body });
+}

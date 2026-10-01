@@ -1,3 +1,5 @@
+import { useFormatters } from '../../../shared/hooks/useFormatters';
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -31,13 +33,15 @@ import { SectionTabs } from '../../../shared/ui/portal/SectionTabs';
 import { MediaFallback } from '../../../shared/ui/portal/MediaFallback';
 import './gamification.css';
 
-const achievementStatus = {
-  draft: 'Черновик',
-  published: 'Опубликовано',
-  hidden: 'Скрыто',
-  active: 'Активно',
-};
 export function GamificationDashboardPage() {
+  const t = useUITranslation();
+  const achievementStatus = {
+    draft: t('Черновик', 'Draft'),
+    published: t('Опубликовано', 'Published'),
+    hidden: t('Скрыто', 'Hidden'),
+    active: t('Активно', 'Active'),
+  };
+  const { locale } = useFormatters();
   const { user } = useAuth();
   const base = useRouteBase();
   const navigate = useNavigate();
@@ -82,7 +86,10 @@ export function GamificationDashboardPage() {
       await update({ id: item.id, payload: { status: next } });
     } catch {
       setActionError(
-        'Не удалось изменить статус. Обновите данные перед повтором.',
+        t(
+          'Не удалось изменить статус. Обновите данные перед повтором.',
+          'Unable to change status. Refresh before trying again.',
+        ),
       );
     }
   };
@@ -95,10 +102,15 @@ export function GamificationDashboardPage() {
     setOwnership('all');
   };
   if (!user)
-    return <PageState kind="forbidden" title="Достижения недоступны" />;
+    return (
+      <PageState
+        kind="forbidden"
+        title={t('Достижения недоступны', 'Achievements unavailable')}
+      />
+    );
   return (
     <PageLayout
-      title="Достижения"
+      title={t('Достижения', 'Achievements')}
       actions={
         canCreate && (
           <Button
@@ -106,80 +118,98 @@ export function GamificationDashboardPage() {
             view="action"
             onClick={() => navigate(`${base}/gamification/achievements/new`)}
           >
-            Создать
+            {t('Создать', 'Create')}
           </Button>
         )
       }
     >
       <SectionTabs
-        label="Витрина достижений"
+        label={t('Витрина достижений', 'Achievements')}
         value={view}
         onChange={setView}
         items={[
-          { id: 'catalog', label: 'Каталог' },
-          { id: 'earned', label: 'Мои награды' },
+          { id: 'catalog', label: t('Каталог', 'Catalog') },
+          { id: 'earned', label: t('Мои награды', 'My awards') },
         ]}
       />
       <div className="achievement-search">
         <TextInput
           size="xl"
-          aria-label="Поиск достижений"
-          placeholder="Поиск по названию"
+          aria-label={t('Поиск достижений', 'Search achievements')}
+          placeholder={t('Поиск по названию', 'Search by name')}
           value={search}
           onUpdate={setSearch}
         />
         <Button size="xl" view="outlined" onClick={() => setFiltersOpen(true)}>
-          Фильтры{hasFilters ? ' •' : ''}
+          {t('Фильтры', 'Filters')}
+          {hasFilters ? ' •' : ''}
         </Button>
       </div>
       {isError && (
         <InlineError onRetry={() => void refetch()}>
-          Не удалось загрузить достижения.
+          {t(
+            'Не удалось загрузить достижения.',
+            'Unable to load achievements.',
+          )}
         </InlineError>
       )}
       {actionError && <InlineError>{actionError}</InlineError>}
-      {isLoading && <PageState kind="loading" title="Загружаем достижения" />}
+      {isLoading && (
+        <PageState
+          kind="loading"
+          title={t('Загружаем достижения', 'Loading achievements')}
+        />
+      )}
       {!isLoading && !isError && !items.length && (
         <PageState
           kind="empty"
           title={
             search || hasFilters
-              ? 'Ничего не найдено'
+              ? t('Ничего не найдено', 'No matches')
               : view === 'earned'
-                ? 'У вас пока нет наград'
-                : 'Достижений пока нет'
+                ? t('У вас пока нет наград', 'No awards yet')
+                : t('Достижений пока нет', 'No achievements yet')
           }
           description={
             search || hasFilters
-              ? 'Измените поиск или сбросьте фильтры.'
+              ? t(
+                  'Измените поиск или сбросьте фильтры.',
+                  'Try a different search or clear the filters.',
+                )
               : undefined
           }
           action={
             (search || hasFilters) && (
-              <Button onClick={reset}>Сбросить фильтры</Button>
+              <Button onClick={reset}>
+                {t('Сбросить фильтры', 'Clear filters')}
+              </Button>
             )
           }
         />
       )}
       <div className="achievement-catalog">
         {items.map((item) => {
-          const title = item.nameI18n.ru || item.nameI18n.en || 'Без названия';
+          const title =
+            item.nameI18n[locale] ||
+            item.nameI18n.en ||
+            item.nameI18n.ru ||
+            t('Без названия', 'Untitled');
           const actions: DropdownMenuItem[] = [];
           if (canEdit && item.canEdit !== false)
             actions.push({
-              text: 'Редактировать',
+              text: t('Редактировать', 'Edit'),
               action: () =>
                 navigate(`${base}/gamification/achievements/${item.id}/edit`),
             });
           if (canPublish && item.canPublish)
             actions.push({
-              text: 'Опубликовать',
+              text: t('Опубликовать', 'Publish'),
               disabled: isPending,
               action: () => void changeStatus(item, 'published'),
             });
           if (canHide && item.canHide)
             actions.push({
-              text: 'Скрыть',
+              text: t('Скрыть', 'Hide'),
               disabled: isPending,
               action: () => void changeStatus(item, 'hidden'),
             });
@@ -202,10 +232,13 @@ export function GamificationDashboardPage() {
                 </h2>
                 {item.description && <p>{item.description}</p>}
                 <div className="achievement-catalog__meta">
-                  {view === 'earned' && <Label theme="success">Получено</Label>}
+                  {view === 'earned' && (
+                    <Label theme="success">{t('Получено', 'Awarded')}</Label>
+                  )}
                   {manager && (
                     <Label>
-                      {achievementStatus[item.status] || 'Статус уточняется'}
+                      {achievementStatus[item.status] ||
+                        t('Статус уточняется', 'Status unavailable')}
                     </Label>
                   )}
                 </div>
@@ -230,21 +263,24 @@ export function GamificationDashboardPage() {
           loading={isFetchingNextPage}
           onClick={() => void fetchNextPage()}
         >
-          Загрузить ещё
+          {t('Загрузить ещё', 'Load more')}
         </Button>
       )}
       {filtersOpen && (
         <ContentDialog
-          title="Фильтры достижений"
+          title={t('Фильтры достижений', 'Achievement filters')}
           onClose={() => setFiltersOpen(false)}
         >
           <div className="portal-stack">
             {categories.isError && (
               <InlineError onRetry={() => void categories.refetch()}>
-                Не удалось загрузить категории.
+                {t(
+                  'Не удалось загрузить категории.',
+                  'Unable to load categories.',
+                )}
               </InlineError>
             )}
-            <FormField label="Категория">
+            <FormField label={t('Категория', 'Category')}>
               {(props) => (
                 <Select
                   {...props}
@@ -253,10 +289,17 @@ export function GamificationDashboardPage() {
                   value={[category]}
                   onUpdate={([value]) => setCategory(value)}
                   options={[
-                    { value: 'all', content: 'Все категории' },
+                    {
+                      value: 'all',
+                      content: t('Все категории', 'All categories'),
+                    },
                     ...(categories.data?.items ?? []).map((item) => ({
                       value: item.id,
-                      content: item.nameI18n.ru || item.nameI18n.en || item.id,
+                      content:
+                        item.nameI18n[locale] ||
+                        item.nameI18n.en ||
+                        item.nameI18n.ru ||
+                        item.id,
                     })),
                   ]}
                 />
@@ -264,7 +307,7 @@ export function GamificationDashboardPage() {
             </FormField>
             {manager && (
               <>
-                <FormField label="Статус">
+                <FormField label={t('Статус', 'Status')}>
                   {(props) => (
                     <Select
                       {...props}
@@ -273,7 +316,10 @@ export function GamificationDashboardPage() {
                       value={[status]}
                       onUpdate={([value]) => setStatus(value)}
                       options={[
-                        { value: 'all', content: 'Все статусы' },
+                        {
+                          value: 'all',
+                          content: t('Все статусы', 'All statuses'),
+                        },
                         ...Object.entries(achievementStatus).map(
                           ([value, content]) => ({ value, content }),
                         ),
@@ -281,7 +327,7 @@ export function GamificationDashboardPage() {
                     />
                   )}
                 </FormField>
-                <FormField label="Автор">
+                <FormField label={t('Автор', 'Creator')}>
                   {(props) => (
                     <Select
                       {...props}
@@ -290,8 +336,11 @@ export function GamificationDashboardPage() {
                       value={[ownership]}
                       onUpdate={([value]) => setOwnership(value)}
                       options={[
-                        { value: 'all', content: 'Все' },
-                        { value: 'me', content: 'Созданные мной' },
+                        { value: 'all', content: t('Все', 'All') },
+                        {
+                          value: 'me',
+                          content: t('Созданные мной', 'Created by me'),
+                        },
                       ]}
                     />
                   )}
@@ -304,10 +353,10 @@ export function GamificationDashboardPage() {
                 view="action"
                 onClick={() => setFiltersOpen(false)}
               >
-                Показать достижения
+                {t('Показать достижения', 'Show achievements')}
               </Button>
               <Button size="xl" view="flat" onClick={reset}>
-                Сбросить
+                {t('Сбросить', 'Reset')}
               </Button>
             </div>
           </div>

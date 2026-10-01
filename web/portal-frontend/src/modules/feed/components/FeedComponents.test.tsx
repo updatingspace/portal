@@ -1,11 +1,11 @@
-import {I18nProvider} from '../../../app/providers/I18nProvider';
+import { I18nProvider } from '../../../app/providers/I18nProvider';
 /**
  * Feed Components Unit Tests
  *
  * Tests for FeedItem component.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { ThemeProvider } from '@gravity-ui/uikit';
@@ -26,12 +26,19 @@ vi.mock('../../../api/activity', () => ({
   deleteNews: vi.fn(),
   deleteNewsComment: vi.fn(),
   likeNewsComment: vi.fn(async () => ({ likes_count: 0, my_liked: false })),
-  listNewsCommentsPage: vi.fn(async () => ({ items: [], next_cursor: null, has_more: false, parent_id: null })),
+  listNewsCommentsPage: vi.fn(async () => ({
+    items: [],
+    next_cursor: null,
+    has_more: false,
+    parent_id: null,
+  })),
   listNewsReactions: vi.fn(async () => []),
   reactToNews: vi.fn(async () => []),
   recordNewsView: vi.fn(async () => ({ views_count: 0, counted: false })),
   updateNews: vi.fn(),
 }));
+
+beforeEach(() => localStorage.setItem('portal_locale_v1', 'ru'));
 
 // Wrapper for Gravity UI components
 function renderWithTheme(ui: React.ReactElement) {
@@ -40,14 +47,16 @@ function renderWithTheme(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme="light"><I18nProvider>
-        {ui}
-      </I18nProvider></ThemeProvider>
+      <ThemeProvider theme="light">
+        <I18nProvider>{ui}</I18nProvider>
+      </ThemeProvider>
     </QueryClientProvider>,
   );
 }
 
-function renderFeedItem(props: Partial<React.ComponentProps<typeof FeedItem>> = {}) {
+function renderFeedItem(
+  props: Partial<React.ComponentProps<typeof FeedItem>> = {},
+) {
   const mockItem: ActivityEvent = createActivityEvents()[0];
   const item = props.item ?? mockItem;
 
@@ -147,41 +156,20 @@ describe('FeedItem', () => {
     expect(screen.getByText(/Достижение/i)).toBeInTheDocument();
   });
 
-  it.each(EVENT_TYPE_CASES)('should render expected icon for $title event type', ({
-    type,
-    eventTitle,
-    expectedIcon,
-  }) => {
-    const item: ActivityEvent = {
-      ...mockItem,
-      type,
-      title: eventTitle,
-    };
+  it.each(EVENT_TYPE_CASES)(
+    'should render expected icon for $title event type',
+    ({ type, eventTitle, expectedIcon }) => {
+      const item: ActivityEvent = {
+        ...mockItem,
+        type,
+        title: eventTitle,
+      };
 
-    renderFeedItem({ item });
+      renderFeedItem({ item });
 
-    expect(screen.getByText(expectedIcon)).toBeInTheDocument();
-  });
-
-  it('renders moderation checkbox in moderation mode', () => {
-    const onModerationToggle = vi.fn();
-    const { container } = renderWithTheme(
-      <FeedItem
-        item={{
-          ...mockItem,
-          type: 'news.posted',
-          payloadJson: { news_id: 'news-1', body: 'hello', tags: [] },
-        }}
-        moderationMode
-        onModerationToggle={onModerationToggle}
-      />,
-    );
-
-    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
-    fireEvent.click(checkbox as HTMLInputElement);
-    expect(onModerationToggle).toHaveBeenCalledWith('news-1', true);
-  });
+      expect(screen.getByText(expectedIcon)).toBeInTheDocument();
+    },
+  );
 
   it('renders author display name for news and avoids duplicated markdown title', () => {
     renderWithTheme(
@@ -245,8 +233,13 @@ describe('FeedComposerPanel', () => {
 
   it('calls handleComposerKeyDown on key press', () => {
     const onKeyDown = vi.fn();
-    renderWithTheme(<FeedComposerPanel {...baseProps} handleComposerKeyDown={onKeyDown} />);
-    fireEvent.keyDown(screen.getByLabelText('Текст новости'), { key: 'Enter', ctrlKey: true });
+    renderWithTheme(
+      <FeedComposerPanel {...baseProps} handleComposerKeyDown={onKeyDown} />,
+    );
+    fireEvent.keyDown(screen.getByLabelText('Текст новости'), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
     expect(onKeyDown).toHaveBeenCalled();
   });
 
@@ -258,7 +251,9 @@ describe('FeedComposerPanel', () => {
         canPublishNews={false}
       />,
     );
-    const submit = document.querySelector('[data-qa="composer-submit"]') as HTMLButtonElement | null;
+    const submit = document.querySelector(
+      '[data-qa="composer-submit"]',
+    ) as HTMLButtonElement | null;
     expect(submit).not.toBeNull();
     expect(submit).toBeDisabled();
   });
@@ -273,7 +268,9 @@ describe('FeedComposerPanel', () => {
         handlePublishNews={handlePublishNews}
       />,
     );
-    const submit = document.querySelector('[data-qa="composer-submit"]') as HTMLButtonElement | null;
+    const submit = document.querySelector(
+      '[data-qa="composer-submit"]',
+    ) as HTMLButtonElement | null;
     expect(submit).not.toBeNull();
     fireEvent.click(submit as HTMLButtonElement);
     expect(handlePublishNews).toHaveBeenCalledTimes(1);
@@ -317,8 +314,12 @@ describe('FeedStreamView', () => {
 
   it('renders updated unread copy', () => {
     renderWithTheme(<FeedStreamView {...baseProps} unreadCount={3} />);
-    expect(screen.getByRole('button', {name:'Новые записи · 3'})).toBeInTheDocument();
-    expect(screen.queryByText('Обновите ленту или отметьте события прочитанными.')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Новые записи · 3' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Обновите ленту или отметьте события прочитанными.'),
+    ).not.toBeInTheDocument();
   });
 
   it('renders updated empty copy for filtered state', () => {
@@ -331,13 +332,11 @@ describe('FeedStreamView', () => {
         sortedItems={[]}
       />,
     );
-    expect(screen.getByText('Нет событий под выбранные фильтры.')).toBeInTheDocument();
-    expect(screen.getByText('Выберите другой источник в фильтрах.')).toBeInTheDocument();
-  });
-
-  it('shows moderation controls with accessibility label', () => {
-    renderWithTheme(<FeedStreamView {...baseProps} moderationMode={true} />);
-    expect(screen.getByRole('button', { name: 'Переключить режим модерации' })).toBeInTheDocument();
-    expect(screen.getByText('Горячая клавиша: Alt + M')).toBeInTheDocument();
+    expect(
+      screen.getByText('Нет событий под выбранные фильтры.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Выберите другой источник в фильтрах.'),
+    ).toBeInTheDocument();
   });
 });

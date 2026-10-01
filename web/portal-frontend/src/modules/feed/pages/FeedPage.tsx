@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { InlineError } from '../../../shared/ui/portal/PortalUI';
 import React from 'react';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
@@ -18,6 +19,7 @@ import { useFeedPageController } from '../hooks/useFeedPageController';
 import './feed-page.css';
 
 export const FeedPage: React.FC = () => {
+  const t = useUITranslation();
   const controller = useFeedPageController();
   const navigate = useNavigate();
   const compact = useMediaQuery('(max-width: 1100px)');
@@ -54,7 +56,7 @@ export const FeedPage: React.FC = () => {
                 size="m"
                 onClick={() => navigate('..', { relative: 'path' })}
               >
-                К ленте
+                {t('К ленте', 'Back to feed')}
               </Button>
             </div>
             <Card
@@ -64,13 +66,22 @@ export const FeedPage: React.FC = () => {
             >
               <Text variant="subheader-2">
                 {isNotFound
-                  ? 'Пост не найден.'
-                  : 'Не удалось загрузить публикацию.'}
+                  ? t('Пост не найден.', 'Post not found.')
+                  : t(
+                      'Не удалось загрузить публикацию.',
+                      'Unable to load this post.',
+                    )}
               </Text>
               <Text variant="body-2" color="secondary">
                 {isNotFound
-                  ? 'Проверьте ссылку или вернитесь к общей ленте.'
-                  : 'Попробуйте обновить страницу.'}
+                  ? t(
+                      'Проверьте ссылку или вернитесь к общей ленте.',
+                      'Check the link or return to the feed.',
+                    )
+                  : t(
+                      'Попробуйте обновить страницу.',
+                      'Try refreshing the page.',
+                    )}
               </Text>
               <Button
                 view="flat"
@@ -81,7 +92,9 @@ export const FeedPage: React.FC = () => {
                     : controller.refetch()
                 }
               >
-                {isNotFound ? 'К ленте' : 'Повторить'}
+                {isNotFound
+                  ? t('К ленте', 'Back to feed')
+                  : t('Повторить', 'Try again')}
               </Button>
             </Card>
           </div>
@@ -92,12 +105,14 @@ export const FeedPage: React.FC = () => {
     return (
       <div className="feed-page" data-qa="feed-page">
         <Card view="filled" className="feed-empty" data-qa="feed-error">
-          <Text variant="subheader-2">Не удалось загрузить ленту.</Text>
+          <Text variant="subheader-2">
+            {t('Не удалось загрузить ленту.', 'Unable to load the feed.')}
+          </Text>
           <Text variant="body-2" color="secondary">
-            Попробуйте обновить страницу.
+            {t('Попробуйте обновить страницу.', 'Try refreshing the page.')}
           </Text>
           <Button view="flat" size="m" onClick={() => controller.refetch()}>
-            Повторить
+            {t('Повторить', 'Try again')}
           </Button>
         </Card>
       </div>
@@ -114,7 +129,7 @@ export const FeedPage: React.FC = () => {
               size="m"
               onClick={() => navigate('..', { relative: 'path' })}
             >
-              К ленте
+              {t('К ленте', 'Back to feed')}
             </Button>
           </div>
 
@@ -144,9 +159,14 @@ export const FeedPage: React.FC = () => {
               className="feed-empty"
               data-qa="feed-single-empty"
             >
-              <Text variant="subheader-2">Пост не найден.</Text>
+              <Text variant="subheader-2">
+                {t('Пост не найден.', 'Post not found.')}
+              </Text>
               <Text variant="body-2" color="secondary">
-                Проверьте ссылку или вернитесь к общей ленте.
+                {t(
+                  'Проверьте ссылку или вернитесь к общей ленте.',
+                  'Check the link or return to the feed.',
+                )}
               </Text>
             </Card>
           )}
@@ -209,28 +229,13 @@ export const FeedPage: React.FC = () => {
             refetch={controller.refetch}
             isMarkingRead={controller.isMarkingRead}
             markAsRead={() => controller.markAsRead()}
-            canModerateNews={controller.canModerateNews}
-            moderationMode={controller.moderationMode}
-            toggleModerationMode={controller.toggleModerationMode}
-            selectedModerationCount={controller.selectedModerationIds.length}
-            moderationReason={controller.moderationReason}
-            setModerationReason={controller.setModerationReason}
-            moderationError={controller.moderationError}
-            clearModerationSelection={() =>
-              controller.setSelectedModerationIds([])
-            }
-            handleModerationDeleteSelected={
-              controller.handleModerationDeleteSelected
-            }
             hasContent={controller.hasContent}
             isLoading={controller.isLoading}
             source={controller.source}
             sortedItems={controller.sortedItems}
             draftItems={controller.draftItems}
             focusedNewsId={controller.focusedNewsId ?? null}
-            selectedModerationIds={controller.selectedModerationIds}
             getItemNewsId={controller.getItemNewsId}
-            handleModerationToggle={controller.handleModerationToggle}
             loadMoreRef={controller.loadMoreRef}
             isFetchingNextPage={controller.isFetchingNextPage}
             hasNextPage={controller.hasNextPage}

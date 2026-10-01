@@ -1,149 +1,81 @@
-import { useCallback, useEffect, useState } from 'react';
-
-import { notifyApiError } from '../../utils/apiErrorHandling';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   listPermissionCatalog,
   listTenantAdminEvents,
   listTenantMembers,
   listTenantRoles,
   searchRoleBindings,
-  type PermissionEntry,
   type ScopeType,
-  type TenantAdminEvent,
-  type TenantBinding,
-  type TenantMember,
-  type TenantRole,
 } from './api';
 
-export const useTenantRoles = (params: { query?: string; service?: string; limit?: number } = {}) => {
-  const { query, service, limit = 200 } = params;
-  const [roles, setRoles] = useState<TenantRole[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listTenantRoles({ query, service, limit });
-      setRoles(data);
-    } catch (error) {
-      notifyApiError(error, 'Не удалось получить роли');
-    } finally {
-      setLoading(false);
-    }
-  }, [query, service, limit]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { roles, loading, reload };
-};
-
-export const useRoleBindings = (params: {
-  q?: string;
-  scopeType?: ScopeType;
-  scopeId?: string;
-  userId?: string;
-  limit?: number;
-  enabled?: boolean;
-} = {}) => {
+function useAdminQuery<T>(
+  key: unknown[],
+  queryFn: () => Promise<T>,
+  enabled = true,
+) {
+  const { user } = useAuth();
+  const query = useQuery({
+    queryKey: ['community-management', user?.tenant?.id, user?.id, ...key],
+    queryFn,
+    enabled: enabled && Boolean(user?.tenant?.id),
+    retry: false,
+  });
+  return {
+    data: query.data,
+    loading: query.isLoading,
+    error: query.error,
+    reload: query.refetch,
+  };
+}
+export function useTenantRoles(
+  params: { query?: string; service?: string; limit?: number } = {},
+) {
+  const query = useAdminQuery(['roles', params], () => listTenantRoles(params));
+  return { ...query, roles: query.data ?? [] };
+}
+export function useRoleBindings(
+  params: {
+    q?: string;
+    scopeType?: ScopeType;
+    scopeId?: string;
+    userId?: string;
+    limit?: number;
+    enabled?: boolean;
+  } = {},
+) {
   const { q, scopeType, scopeId, userId, limit = 50, enabled = true } = params;
-  const [bindings, setBindings] = useState<TenantBinding[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await searchRoleBindings({
+  const query = useAdminQuery(
+    ['bindings', q, scopeType, scopeId, userId, limit],
+    () =>
+      searchRoleBindings({
         q,
         scope_type: scopeType,
         scope_id: scopeId,
         user_id: userId,
         limit,
-      });
-      setBindings(data);
-    } catch (error) {
-      notifyApiError(error, 'Не удалось получить назначения ролей');
-    } finally {
-      setLoading(false);
-    }
-  }, [q, scopeType, scopeId, userId, limit]);
-
-  useEffect(() => {
-    if (enabled) {
-      reload();
-    }
-  }, [enabled, reload]);
-
-  return { bindings, loading: enabled ? loading : false, reload };
-};
-
-export const useTenantAdminEvents = (limit = 20) => {
-  const [events, setEvents] = useState<TenantAdminEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listTenantAdminEvents(limit);
-      setEvents(data);
-    } catch (error) {
-      notifyApiError(error, 'Не удалось получить историю изменений');
-    } finally {
-      setLoading(false);
-    }
-  }, [limit]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { events, loading, reload };
-};
-
-export const useTenantMembers = (params: { query?: string; limit?: number } = {}) => {
-  const { query, limit = 200 } = params;
-  const [members, setMembers] = useState<TenantMember[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listTenantMembers({ query, limit });
-      setMembers(data);
-    } catch (error) {
-      notifyApiError(error, 'Не удалось получить список участников');
-    } finally {
-      setLoading(false);
-    }
-  }, [query, limit]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { members, loading, reload };
-};
-
-export const usePermissionCatalog = (service?: string) => {
-  const [permissions, setPermissions] = useState<PermissionEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listPermissionCatalog(service);
-      setPermissions(data);
-    } catch (error) {
-      notifyApiError(error, 'Не удалось загрузить каталог прав');
-    } finally {
-      setLoading(false);
-    }
-  }, [service]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { permissions, loading, reload };
-};
+      }),
+    enabled,
+  );
+  return { ...query, bindings: query.data ?? [] };
+}
+export function useTenantAdminEvents(limit = 20) {
+  const query = useAdminQuery(['audit', limit], () =>
+    listTenantAdminEvents(limit),
+  );
+  return { ...query, events: query.data ?? [] };
+}
+export function useTenantMembers(
+  params: { query?: string; limit?: number } = {},
+) {
+  const query = useAdminQuery(['members', params], () =>
+    listTenantMembers(params),
+  );
+  return { ...query, members: query.data ?? [] };
+}
+export function usePermissionCatalog(service?: string) {
+  const query = useAdminQuery(['permissions', service], () =>
+    listPermissionCatalog(service),
+  );
+  return { ...query, permissions: query.data ?? [] };
+}

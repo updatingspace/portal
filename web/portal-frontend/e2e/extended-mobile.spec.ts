@@ -61,11 +61,11 @@ test('events separates calendar and filters from reading the list', async ({
   await page.getByRole('button', { name: 'Календарь', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Календарь' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page
-    .getByRole('button', { name: 'Фильтры событий', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Фильтры', exact: true }).click();
   await expect(
-    page.getByRole('dialog').getByLabel('Поиск событий'),
+    page
+      .getByRole('dialog')
+      .getByRole('combobox', { name: 'Мой ответ', exact: true }),
   ).toBeVisible();
 });
 
@@ -142,13 +142,11 @@ test('secondary form sections fit a phone and keep readable controls', async ({
     fullPage: true,
   });
   await page.goto('/t/alpha/gamification/achievements/new');
-  await page.getByText('Дополнительно', { exact: true }).click();
   await page
-    .getByRole('button', { name: 'Добавить язык', exact: true })
+    .getByText('Переводы и ссылка на изображение', { exact: true })
     .click();
-  await page.getByLabel('Язык 2', { exact: true }).fill('en');
   await page
-    .getByLabel('Название на языке en', { exact: true })
+    .getByLabel('English', { exact: true })
     .fill('A very long achievement title');
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -229,7 +227,7 @@ test('results show a tie without declaring a winner and render real bars', async
 test('role details open as a focused task and return focus to the role', async ({
   page,
 }) => {
-  await page.goto('/t/alpha/tenant-admin');
+  await page.goto('/t/alpha/tenant-admin?tab=roles');
   const role = page.getByRole('button', { name: /Организатор встреч/ });
   await expect(role).toBeInViewport();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -284,7 +282,9 @@ test('award form keeps entered values after a failed save', async ({
     .fill('Спасибо за организацию встречи');
   await page.getByRole('combobox', { name: 'Категория', exact: true }).click();
   await page.getByRole('option', { name: 'Командная игра' }).click();
-  await page.getByRole('button', { name: 'Создать', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Сохранить черновик', exact: true })
+    .click();
   await expect(page.getByRole('alert')).toContainText('Не удалось сохранить');
   await expect(page.getByLabel('Название', { exact: true })).toHaveValue(
     'Помощь команде',

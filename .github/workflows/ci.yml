@@ -48,9 +48,9 @@ jobs:
           - service: events
             test_target: src/events/tests.py src/events/test_settings_security.py src/events/test_list_filters.py
           - service: featureflags
-            test_target: src/featureflags/tests.py
+            test_target: src/featureflags/tests.py src/featureflags/test_create_conflict.py
           - service: gamification
-            test_target: src/gamification/tests.py src/gamification/test_settings_security.py src/gamification/test_earned_achievements.py
+            test_target: src/gamification/tests.py src/gamification/test_settings_security.py src/gamification/test_earned_achievements.py src/gamification/test_catalog_ux.py src/gamification/test_media.py
           - service: portal
             test_target: src/portal/tests.py src/portal/test_tenant_onboarding.py src/portal/test_ydb_onboarding.py src/portal/test_outbox_function.py src/portal/test_application_history.py
           - service: voting
@@ -191,6 +191,11 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python ../../scripts/ci/check_ydb_ui_filters.py
+      - name: Check feature flag writes against YDB
+        if: matrix.service == 'featureflags'
+        run: |
+          python src/manage.py migrate_ydb
+          python ../../scripts/ci/check_ydb_feature_flags.py
       - name: Check Access bootstrap and authorization against YDB
         if: matrix.service == 'access'
         run: |

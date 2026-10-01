@@ -1,4 +1,4 @@
-import { useContext, useId, type ReactNode } from 'react';
+import { useCallback, useContext, useId, type ReactNode } from 'react';
 import { Button, Dialog, Loader } from '@gravity-ui/uikit';
 import { I18nContext } from '../../../app/providers/i18nContext';
 
@@ -6,7 +6,10 @@ import { I18nContext } from '../../../app/providers/i18nContext';
 // eslint-disable-next-line react-refresh/only-export-components
 export function useUITranslation() {
   const locale = useContext(I18nContext)?.locale ?? 'ru';
-  return (ru: string, en: string) => (locale === 'en' ? en : ru);
+  return useCallback(
+    (ru: string, en: string) => (locale === 'en' ? en : ru),
+    [locale],
+  );
 }
 
 export function PageLayout({
