@@ -243,7 +243,7 @@ jobs:
       - name: Critical user flows
         run: pnpm run test:e2e
       - name: WebKit layout regression
-        run: pnpm exec playwright test e2e/events-spacing.spec.ts e2e/feed-publication.spec.ts --browser=webkit --output=test-results-webkit
+        run: pnpm exec playwright test e2e/events-spacing.spec.ts e2e/feed-publication.spec.ts e2e/member-avatar.spec.ts --browser=webkit --output=test-results-webkit
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
