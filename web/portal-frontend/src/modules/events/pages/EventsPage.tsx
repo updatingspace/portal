@@ -4,7 +4,14 @@ import { SectionTabs } from '../../../shared/ui/portal/SectionTabs';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Pagination, Select, TextInput } from '@gravity-ui/uikit';
+import {
+  Button,
+  Icon,
+  Pagination,
+  Select,
+  TextInput,
+} from '@gravity-ui/uikit';
+import { Calendar as CalendarIcon, Sliders } from '@gravity-ui/icons';
 import { Calendar } from '@gravity-ui/date-components';
 import { dateTime, settings } from '@gravity-ui/date-utils';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -60,7 +67,10 @@ export function EventsPage() {
   )
     ? (params.get('visibility') as EventVisibility)
     : undefined;
-  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
+  const page = Math.max(
+    1,
+    Number.parseInt(params.get('page') ?? '1', 10) || 1,
+  );
   const day = params.get('date') ?? '';
   const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(day)
     ? dateTime({ input: day, timeZone: timezone })
@@ -214,6 +224,7 @@ export function EventsPage() {
       actions={
         can(user, 'events.event.create') && (
           <Button
+            size="xl"
             view="action"
             onClick={() => navigate(`${base}/events/create`)}
           >
@@ -224,73 +235,77 @@ export function EventsPage() {
     >
       <div className="portal-events-layout">
         <div className="portal-stack">
-          <SectionTabs
-            label={t('Период', 'Period')}
-            value={period}
-            items={[
-              { id: 'upcoming', label: t('Предстоящие', 'Upcoming') },
-              { id: 'past', label: t('Прошедшие', 'Past') },
-            ]}
-            onChange={(value) =>
-              setParams(
-                (current) => {
-                  const next = new URLSearchParams(current);
-                  next.set('period', value);
-                  next.delete('date');
-                  next.delete('page');
-                  return next;
-                },
-                { replace: true },
-              )
-            }
-          />
-          <div className="portal-event-list-tools">
-            <TextInput
-              size="xl"
-              value={query}
-              onUpdate={(value) => update('q', value)}
-              hasClear
-              placeholder={t('Найти событие', 'Find an event')}
-              controlProps={{
-                'aria-label': t('Поиск событий', 'Search events'),
-              }}
+          <div className="portal-event-browse">
+            <SectionTabs
+              label={t('Период', 'Period')}
+              value={period}
+              items={[
+                { id: 'upcoming', label: t('Предстоящие', 'Upcoming') },
+                { id: 'past', label: t('Прошедшие', 'Past') },
+              ]}
+              onChange={(value) =>
+                setParams(
+                  (current) => {
+                    const next = new URLSearchParams(current);
+                    next.set('period', value);
+                    next.delete('date');
+                    next.delete('page');
+                    return next;
+                  },
+                  { replace: true },
+                )
+              }
             />
-            <Button
-              size="xl"
-              view="outlined"
-              onClick={() => setPanel('filters')}
-            >
-              {t('Фильтры', 'Filters')}
-              {hasFilters ? ' •' : ''}
-            </Button>
-            {mobile && (
+            <div className="portal-event-list-tools">
+              <TextInput
+                size="xl"
+                value={query}
+                onUpdate={(value) => update('q', value)}
+                hasClear
+                placeholder={t('Найти событие', 'Find an event')}
+                controlProps={{
+                  'aria-label': t('Поиск событий', 'Search events'),
+                }}
+              />
               <Button
                 size="xl"
-                view="flat"
-                onClick={() => setPanel('calendar')}
+                view="outlined"
+                onClick={() => setPanel('filters')}
               >
-                {t('Календарь', 'Calendar')}
+                <Icon data={Sliders} size={16} />
+                {t('Фильтры', 'Filters')}
+                {hasFilters ? ' •' : ''}
               </Button>
-            )}
-          </div>
-          <div className="portal-event-list-context">
-            <span title={timezone}>
-              {t('Часовой пояс:', 'Time zone:')}{' '}
-              {(timezone === 'Etc/UTC'
-                ? 'UTC'
-                : timezone.split('/').slice(-1)[0]
-              ).replaceAll('_', ' ')}
-            </span>
-            {hasFilters && (
-              <Button view="flat" onClick={reset}>
-                {t('Сбросить фильтры', 'Clear filters')}
-              </Button>
-            )}
-            {selected && (
-              <Button view="flat" onClick={() => update('date', '')}>
-                {selected.format('D MMM')} ×
-              </Button>
-            )}
+              {mobile && (
+                <Button
+                  size="xl"
+                  view="outlined"
+                  onClick={() => setPanel('calendar')}
+                >
+                  <Icon data={CalendarIcon} size={16} />
+                  {t('Календарь', 'Calendar')}
+                </Button>
+              )}
+            </div>
+            <div className="portal-event-list-context">
+              <span title={timezone}>
+                {t('Часовой пояс:', 'Time zone:')}{' '}
+                {(timezone === 'Etc/UTC'
+                  ? 'UTC'
+                  : timezone.split('/').slice(-1)[0]
+                ).replaceAll('_', ' ')}
+              </span>
+              {hasFilters && (
+                <Button view="flat" onClick={reset}>
+                  {t('Сбросить фильтры', 'Clear filters')}
+                </Button>
+              )}
+              {selected && (
+                <Button view="flat" onClick={() => update('date', '')}>
+                  {selected.format('D MMM')} ×
+                </Button>
+              )}
+            </div>
           </div>
           {isError && (
             <InlineError onRetry={() => void refetch()}>

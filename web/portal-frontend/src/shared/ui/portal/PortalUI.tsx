@@ -100,7 +100,9 @@ export function InlineError({
     <div className="portal-inline-error" role="alert">
       <div>{children}</div>
       {onRetry && (
-        <Button onClick={onRetry}>{t('Повторить', 'Try again')}</Button>
+        <Button size="l" onClick={onRetry}>
+          {t('Повторить', 'Try again')}
+        </Button>
       )}
     </div>
   );

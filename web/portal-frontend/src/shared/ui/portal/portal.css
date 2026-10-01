@@ -100,8 +100,11 @@ a {
 .portal-page__heading h1 {
   font-size: clamp(28px, 3vw, 36px);
   line-height: 1.18;
-  margin: 0 0 12px;
+  margin: 0;
   letter-spacing: -0.035em;
+}
+.portal-page__heading h1 + p {
+  margin-top: 12px;
 }
 .portal-page__heading p,
 .portal-state p {
