@@ -392,6 +392,7 @@ def _create_nomination_from_input(poll: Poll, payload: object, index: int) -> No
     return nomination
 
 
+@transaction.atomic
 def create_poll(
     *,
     tenant_id: str,
