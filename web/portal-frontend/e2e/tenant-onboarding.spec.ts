@@ -77,19 +77,19 @@ test('creates an account-bound application and enters the approved tenant', asyn
   });
   await page.goto('/choose-tenant');
   await page.getByRole('button', { name: 'Подать заявку' }).click();
-  await expect(
-    page.getByLabel('Адрес сообщества', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel('Название', { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('Email для заявки')).toHaveCount(0);
-  await page.getByLabel('Адрес сообщества', { exact: true }).fill('new-team');
   await page.getByLabel('Название', { exact: true }).fill('New Team');
   await page.getByLabel('Описание', { exact: true }).fill('For our friends');
+  await page.getByRole('button', { name: 'Продолжить' }).click();
+  await page.getByLabel('Адрес сообщества', { exact: true }).fill('new-team');
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await page.getByRole('button', { name: 'Отправить заявку' }).click();
   await expect(
     page.getByText('На рассмотрении', { exact: true }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.getByText('/new-team', { exact: true })).toBeVisible();
+  await expect(page.getByText('new-team', { exact: true })).toBeVisible();
   status = 'approved';
   await page.getByRole('button', { name: 'Обновить статус' }).click();
   await page.getByRole('button', { name: /Открыть сообщество/ }).click();

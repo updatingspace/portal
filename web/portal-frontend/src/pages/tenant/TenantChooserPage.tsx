@@ -27,6 +27,7 @@ import {
 import { ContentDialog } from '../../shared/ui/portal/ContentDialog';
 import { useSessionDraft } from '../../shared/hooks/useSessionDraft';
 import { TenantApplicationReviewPanel } from './TenantApplicationReviewPanel';
+import { CommunityMark } from './CommunityMark';
 import './TenantChooserPage.css';
 
 type Application = { name: string; slug: string; description: string };
@@ -43,6 +44,8 @@ export function TenantChooserPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [applicationStep, setApplicationStep] = useState(0);
+  const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const [showJoin, setShowJoin] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -99,11 +102,31 @@ export function TenantChooserPage() {
       }),
     [t],
   );
-  const { control, handleSubmit, formState, reset, watch } =
+  const { control, handleSubmit, formState, reset, watch, trigger, setFocus } =
     useForm<Application>({
       resolver: zodResolver(schema),
       defaultValues: savedDraft,
     });
+  useEffect(() => {
+    if (!showForm) return;
+    if (applicationStep === 2) reviewHeadingRef.current?.focus();
+    else setFocus(applicationStep === 0 ? 'name' : 'slug');
+  }, [applicationStep, showForm, setFocus]);
+  const advancingStep = useRef(false);
+  const nextStep = async () => {
+    if (advancingStep.current) return;
+    advancingStep.current = true;
+    const fields: (keyof Application)[] =
+      applicationStep === 0 ? ['name', 'description'] : ['slug'];
+    try {
+      if (await trigger(fields, { shouldFocus: true })) {
+        setFormError(null);
+        setApplicationStep(Math.min(2, applicationStep + 1));
+      }
+    } finally {
+      advancingStep.current = false;
+    }
+  };
   useEffect(() => {
     const subscription = watch((draft) =>
       saveDraft({
@@ -140,6 +163,7 @@ export function TenantChooserPage() {
       clearDraft(emptyApplication);
       reset(emptyApplication);
       setShowForm(false);
+      setApplicationStep(0);
       await load();
     } catch (reason) {
       const code = (reason as { code?: string }).code;
@@ -331,7 +355,6 @@ export function TenantChooserPage() {
                   <Skeleton className="space-chooser__skeleton-avatar" />
                   <div>
                     <Skeleton className="space-chooser__skeleton-name" />
-                    <Skeleton className="space-chooser__skeleton-slug" />
                   </div>
                 </div>
               ))}
@@ -349,18 +372,12 @@ export function TenantChooserPage() {
                     aria-busy={selectedSlug === m.tenant_slug}
                     onClick={() => void openCommunity(m.tenant_slug)}
                   >
-                    <span className="space-chooser__mark" aria-hidden="true">
-                      {Array.from(
-                        m.display_name || m.tenant_slug,
-                      )[0]?.toLocaleUpperCase()}
-                    </span>
+                    <CommunityMark name={m.display_name || m.tenant_slug} />
                     <span className="space-chooser__identity">
                       <strong>{m.display_name || m.tenant_slug}</strong>
-                      <span>
-                        {selectedSlug === m.tenant_slug
-                          ? t('Открываем…', 'Opening…')
-                          : `/${m.tenant_slug}`}
-                      </span>
+                      {selectedSlug === m.tenant_slug && (
+                        <span>{t('Открываем…', 'Opening…')}</span>
+                      )}
                     </span>
                     <Icon data={ArrowRight} size={20} />
                   </button>
@@ -384,7 +401,7 @@ export function TenantChooserPage() {
               ))}
               {filteredApplications.map((app) => (
                 <article key={app.id} className="space-chooser__application">
-                  <strong>/{app.slug}</strong>
+                  <strong>{app.name || app.slug}</strong>
                   <span className="space-chooser__status">
                     {status[app.status] ??
                       t('Статус уточняется', 'Status unavailable')}
@@ -480,85 +497,188 @@ export function TenantChooserPage() {
           onClose={() => setShowForm(false)}
           busy={formState.isSubmitting}
         >
-          <form className="space-chooser__form" onSubmit={submit}>
-            <p>
-              {t(
-                'После рассмотрения заявки новый спейс появится здесь.',
-                'Your new space will appear here after review and setup.',
+          <form
+            className="space-chooser__form"
+            onSubmit={(event) => {
+              if (applicationStep < 2) {
+                event.preventDefault();
+                void nextStep();
+              } else void submit(event);
+            }}
+          >
+            <div
+              className="space-chooser__progress"
+              role="status"
+              aria-label={t(
+                `Шаг ${applicationStep + 1} из 3`,
+                `Step ${applicationStep + 1} of 3`,
               )}
-            </p>
-            <Controller
-              control={control}
-              name="name"
-              render={({ field }) => (
-                <FormField
-                  label={t('Название', 'Name')}
-                  error={formState.errors.name?.message}
-                >
-                  {(props) => (
-                    <TextInput
-                      {...props}
-                      autoFocus
-                      size="xl"
-                      value={field.value}
-                      onUpdate={field.onChange}
-                      disabled={formState.isSubmitting}
-                    />
-                  )}
-                </FormField>
-              )}
-            />
-            <Controller
-              control={control}
-              name="slug"
-              render={({ field }) => (
-                <FormField
-                  label={t('Адрес сообщества', 'Community address')}
-                  hint={`/t/${watch('slug') || 'my-community'}/`}
-                  error={formState.errors.slug?.message}
-                >
-                  {(props) => (
-                    <TextInput
-                      {...props}
-                      size="xl"
-                      value={field.value}
-                      onUpdate={field.onChange}
-                      disabled={formState.isSubmitting}
-                    />
-                  )}
-                </FormField>
-              )}
-            />
-            <Controller
-              control={control}
-              name="description"
-              render={({ field }) => (
-                <FormField
-                  label={t('Описание', 'Description')}
-                  error={formState.errors.description?.message}
-                >
-                  {(props) => (
-                    <TextArea
-                      {...props}
-                      size="xl"
-                      value={field.value}
-                      onUpdate={field.onChange}
-                      disabled={formState.isSubmitting}
-                    />
-                  )}
-                </FormField>
-              )}
-            />
-            {formError && <InlineError>{submitError}</InlineError>}
-            <Button
-              type="submit"
-              view="action"
-              size="xl"
-              loading={formState.isSubmitting}
-              disabled={formState.isSubmitting}
             >
-              {t('Отправить заявку', 'Submit application')}
-            </Button>
+              <span>
+                {t(
+                  `Шаг ${applicationStep + 1} из 3`,
+                  `Step ${applicationStep + 1} of 3`,
+                )}
+              </span>
+              <div aria-hidden="true">
+                {[0, 1, 2].map((step) => (
+                  <span key={step} data-complete={step <= applicationStep} />
+                ))}
+              </div>
+            </div>
+            {applicationStep === 0 && (
+              <>
+                <div className="space-chooser__step-intro">
+                  <h3>
+                    {t('Как назовём ваш спейс?', 'What’s your space called?')}
+                  </h3>
+                  <p>
+                    {t(
+                      'Название увидят все участники.',
+                      'This is the name your members will see.',
+                    )}
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormField
+                      label={t('Название', 'Name')}
+                      error={formState.errors.name?.message}
+                    >
+                      {(props) => (
+                        <TextInput
+                          {...props}
+                          controlRef={field.ref}
+                          size="xl"
+                          value={field.value}
+                          onUpdate={field.onChange}
+                          disabled={formState.isSubmitting}
+                        />
+                      )}
+                    </FormField>
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormField
+                      label={t('Описание', 'Description')}
+                      error={formState.errors.description?.message}
+                    >
+                      {(props) => (
+                        <TextArea
+                          {...props}
+                          size="xl"
+                          value={field.value}
+                          onUpdate={field.onChange}
+                          disabled={formState.isSubmitting}
+                        />
+                      )}
+                    </FormField>
+                  )}
+                />
+              </>
+            )}
+            {applicationStep === 1 && (
+              <>
+                <div className="space-chooser__step-intro">
+                  <h3>{t('Где будем встречаться?', 'Make it easy to find')}</h3>
+                  <p>
+                    {t(
+                      'Выберите короткий адрес для ссылок на сообщество.',
+                      'Choose a short address for links to your community.',
+                    )}
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="slug"
+                  render={({ field }) => (
+                    <FormField
+                      label={t('Адрес сообщества', 'Community address')}
+                      hint={`/t/${watch('slug') || 'my-community'}/`}
+                      error={formState.errors.slug?.message}
+                    >
+                      {(props) => (
+                        <TextInput
+                          {...props}
+                          controlRef={field.ref}
+                          size="xl"
+                          value={field.value}
+                          onUpdate={field.onChange}
+                          disabled={formState.isSubmitting}
+                        />
+                      )}
+                    </FormField>
+                  )}
+                />
+              </>
+            )}
+            {applicationStep === 2 && (
+              <>
+                <div className="space-chooser__step-intro">
+                  <h3 tabIndex={-1} ref={reviewHeadingRef}>
+                    {t('Всё готово?', 'Ready to send?')}
+                  </h3>
+                  <p>
+                    {t(
+                      'После рассмотрения и настройки ваш спейс появится в списке.',
+                      'Your space will appear in the list after review and setup.',
+                    )}
+                  </p>
+                </div>
+                <div className="space-chooser__preview">
+                  <CommunityMark name={watch('name')} />
+                  <strong>{watch('name')}</strong>
+                </div>
+                {watch('description').trim() && (
+                  <p className="space-chooser__description">
+                    {watch('description')}
+                  </p>
+                )}
+                <div className="space-chooser__address-review">
+                  <span>
+                    {t('Адрес', 'Address')}
+                    <strong>/t/{watch('slug').trim().toLowerCase()}/</strong>
+                  </span>
+                  <Button
+                    view="flat"
+                    size="l"
+                    disabled={formState.isSubmitting}
+                    onClick={() => setApplicationStep(1)}
+                  >
+                    {t('Изменить адрес', 'Edit address')}
+                  </Button>
+                </div>
+              </>
+            )}
+            {formError && <InlineError>{submitError}</InlineError>}
+            <div className="space-chooser__form-actions">
+              {applicationStep > 0 && (
+                <Button
+                  view="flat"
+                  size="xl"
+                  disabled={formState.isSubmitting}
+                  onClick={() => setApplicationStep((step) => step - 1)}
+                >
+                  {t('Назад', 'Back')}
+                </Button>
+              )}
+              <Button
+                type="submit"
+                view="action"
+                size="xl"
+                loading={formState.isSubmitting}
+                disabled={formState.isSubmitting}
+              >
+                {applicationStep === 2
+                  ? t('Отправить заявку', 'Submit application')
+                  : t('Продолжить', 'Continue')}
+              </Button>
+            </div>
           </form>
         </ContentDialog>
       )}

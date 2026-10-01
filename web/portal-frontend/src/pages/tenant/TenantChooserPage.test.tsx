@@ -115,16 +115,21 @@ async function openForm() {
     await screen.findByRole('button', { name: 'Подать заявку' }),
   );
 }
+async function nextStep() {
+  await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+}
 async function fillForm() {
   await openForm();
   await userEvent.type(
     screen.getByLabelText('Название', { exact: true }),
     'New community',
   );
+  await nextStep();
   await userEvent.type(
     screen.getByLabelText('Адрес сообщества', { exact: true }),
     'new-community',
   );
+  await nextStep();
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -233,32 +238,53 @@ describe('My communities', () => {
         ],
       });
       setup();
-      expect(await screen.findByText('/new-community')).toBeVisible();
+      expect(await screen.findByText('new-community')).toBeVisible();
       expect(
         screen.getByRole('button', { name: /Открыть сообщество/ }),
       ).toBeVisible();
     },
   );
-  it('validates empty and reserved addresses without sending', async () => {
+  it('validates each step and only submits from the final review', async () => {
     setup();
     await openForm();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Отправить заявку' }),
-    );
+    expect(
+      screen.queryByLabelText('Адрес сообщества', { exact: true }),
+    ).not.toBeInTheDocument();
+    await nextStep();
     expect(await screen.findByText('Введите название')).toBeVisible();
     await userEvent.type(
       screen.getByLabelText('Название', { exact: true }),
       'Team',
     );
+    await nextStep();
     await userEvent.type(
       screen.getByLabelText('Адрес сообщества', { exact: true }),
       'admin',
     );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Отправить заявку' }),
-    );
+    await nextStep();
     expect(await screen.findByText('Этот адрес зарезервирован')).toBeVisible();
     expect(submitTenantApplication).not.toHaveBeenCalled();
+    await userEvent.clear(
+      screen.getByLabelText('Адрес сообщества', { exact: true }),
+    );
+    await userEvent.type(
+      screen.getByLabelText('Адрес сообщества', { exact: true }),
+      'friends',
+    );
+    await nextStep();
+    expect(
+      await screen.findByRole('heading', { name: 'Всё готово?' }),
+    ).toBeVisible();
+    expect(screen.getByText('Team')).toBeVisible();
+    expect(submitTenantApplication).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(
+      screen.getByLabelText('Адрес сообщества', { exact: true }),
+    ).toHaveValue('friends');
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }));
+    expect(screen.getByLabelText('Название', { exact: true })).toHaveValue(
+      'Team',
+    );
   });
   it('submits without requiring email and shows the returned application history', async () => {
     vi.mocked(submitTenantApplication).mockResolvedValue({
@@ -297,6 +323,13 @@ describe('My communities', () => {
     expect(
       await screen.findByText('Этот адрес уже занят. Выберите другой.'),
     ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Изменить адрес' }),
+    );
+    expect(
+      screen.getByLabelText('Адрес сообщества', { exact: true }),
+    ).toHaveValue('new-community');
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(screen.getByLabelText('Название', { exact: true })).toHaveValue(
       'New community',
     );
@@ -389,6 +422,21 @@ it('does not duplicate an approved application once membership exists', async ()
   });
   setup();
   await screen.findByRole('button', { name: 'Открыть сообщество Альфа' });
-  expect(screen.getAllByText('/alpha')).toHaveLength(1);
+  expect(screen.queryByText('/alpha')).not.toBeInTheDocument();
   expect(screen.queryByText('Сообщество готово')).not.toBeInTheDocument();
+});
+
+it('makes the whole named card actionable without exposing a service address', async () => {
+  vi.mocked(fetchEntryMe).mockResolvedValue({ ...empty, memberships });
+  setup();
+  const card = await screen.findByRole('button', {
+    name: 'Открыть сообщество Альфа',
+  });
+  expect(within(card).getByText('Альфа')).toBeVisible();
+  expect(within(card).queryByText('/alpha')).not.toBeInTheDocument();
+  expect(card.querySelector('.space-chooser__mark')).toBeInTheDocument();
+  expect(within(card).queryByRole('button')).not.toBeInTheDocument();
+  card.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(state.switch).toHaveBeenCalledWith('alpha');
 });

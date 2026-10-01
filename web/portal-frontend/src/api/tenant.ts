@@ -31,6 +31,7 @@ export type SwitchTenantResponse = {
 
 export type PendingApplication = {
   id: string;
+  name?: string;
   slug: string;
   status: string;
 };
