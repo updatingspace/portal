@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from core.errors import error_payload
 from django.db import transaction
 from ninja.errors import HttpError
 
+from core.errors import error_payload
 from portal.audit import log_audit_event
 from portal.models import TenantMembership
 

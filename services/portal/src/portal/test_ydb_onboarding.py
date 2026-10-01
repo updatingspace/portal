@@ -1,9 +1,9 @@
 from uuid import uuid4
 
 import ydb
-from app.ydb_compat import patch_ydb_orm
 from django.db.models.sql import UpdateQuery
 
+from app.ydb_compat import patch_ydb_orm
 from portal.models import TenantApplication, TenantMembership, TenantSlugClaim
 
 

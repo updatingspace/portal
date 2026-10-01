@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from core.errors import error_payload
-from core.http import require_request_id
-from core.security import require_internal_signature
 from django.http import HttpRequest
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from pydantic import Field
 
+from core.errors import error_payload
+from core.http import require_request_id
+from core.security import require_internal_signature
 from portal.access import AccessService
 from portal.context import (
     PortalContext,
