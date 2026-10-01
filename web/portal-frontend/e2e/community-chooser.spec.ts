@@ -114,6 +114,8 @@ for (const locale of ['ru', 'en'] as const) {
             ),
           }),
         ).toBeVisible();
+        await expect(page.getByText('/alpha', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('/beta', { exact: true })).toHaveCount(0);
         const rowBounds = await page
           .locator('.space-chooser__community')
           .first()
@@ -122,7 +124,7 @@ for (const locale of ['ru', 'en'] as const) {
           Math.abs(skeletonBounds!.height - rowBounds!.height),
         ).toBeLessThanOrEqual(2);
         expect(reviewRequests).toBe(0);
-        await expect(page.getByText('/friends', { exact: true })).toHaveCount(
+        await expect(page.getByText('friends', { exact: true })).toHaveCount(
           1,
         );
         await expect(
@@ -188,7 +190,7 @@ for (const locale of ['ru', 'en'] as const) {
           .click();
         await page
           .getByRole('button', {
-            name: t('Отправить заявку', 'Submit application'),
+            name: t('Продолжить', 'Continue'),
           })
           .click();
         await expect(
@@ -213,6 +215,40 @@ for (const locale of ['ru', 'en'] as const) {
             exact: true,
           })
           .click();
+        await expect(
+          page.getByLabel(t('Название', 'Name'), { exact: true }),
+        ).toHaveValue('Our new space');
+        await page
+          .getByRole('button', { name: t('Продолжить', 'Continue') })
+          .click();
+        const address = page.getByLabel(
+          t('Адрес сообщества', 'Community address'),
+          { exact: true },
+        );
+        await expect(address).toBeFocused();
+        await address.fill('our-space');
+        await page.screenshot({
+          path: testInfo.outputPath('application-address.png'),
+        });
+        await address.press('Enter');
+        await expect(
+          page.getByRole('heading', {
+            name: t('Всё готово?', 'Ready to send?'),
+          }),
+        ).toBeFocused();
+        await expect(
+          page.getByText('/t/our-space/', { exact: true }),
+        ).toBeVisible();
+        const submit = page.getByRole('button', {
+          name: t('Отправить заявку', 'Submit application'),
+        });
+        await expect(submit).toBeInViewport();
+        await page.screenshot({
+          path: testInfo.outputPath('application-review.png'),
+        });
+        await page.getByRole('button', { name: t('Назад', 'Back') }).click();
+        await expect(address).toHaveValue('our-space');
+        await page.getByRole('button', { name: t('Назад', 'Back') }).click();
         await expect(
           page.getByLabel(t('Название', 'Name'), { exact: true }),
         ).toHaveValue('Our new space');

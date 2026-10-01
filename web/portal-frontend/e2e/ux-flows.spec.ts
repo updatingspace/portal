@@ -81,11 +81,12 @@ test('no membership offers both paths and validates a community application', as
     page.getByRole('heading', { name: 'Создать сообщество' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Подать заявку' }).click();
-  await page.getByRole('button', { name: 'Отправить заявку' }).click();
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await expect(page.getByText('Введите название')).toBeVisible();
   await page.getByLabel('Название', { exact: true }).fill('Моя команда');
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await page.getByLabel('Адрес сообщества', { exact: true }).fill('admin');
-  await page.getByRole('button', { name: 'Отправить заявку' }).click();
+  await page.getByRole('button', { name: 'Продолжить' }).click();
   await expect(page.getByText('Этот адрес зарезервирован')).toBeVisible();
 });
 
