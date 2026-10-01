@@ -41,7 +41,7 @@ export function AppearanceSettings({
   const { t } = usePersonalizationI18n();
   const handleThemeChange = useCallback(
     (theme: AppearanceData['theme']) => {
-      onAppearanceChange({ theme });
+      onAppearanceChange({ theme, theme_source: 'portal' });
     },
     [onAppearanceChange],
   );

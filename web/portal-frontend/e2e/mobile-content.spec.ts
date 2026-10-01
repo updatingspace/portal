@@ -360,7 +360,7 @@ test('mobile preference details disclose secondary controls and preserve a queue
   await expect.poll(() => writes.length).toBe(1);
   await page.getByRole('link', { name: 'Приватность', exact: true }).click();
   await expect(
-    page.getByText('Ошибка сохранения', { exact: false }),
+    page.getByText('Не удалось синхронизировать настройки.', { exact: false }),
   ).toBeVisible();
   expect(writes[0]).toMatchObject({ privacy: { show_online_status: false } });
 });

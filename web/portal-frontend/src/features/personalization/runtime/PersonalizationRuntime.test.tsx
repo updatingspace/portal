@@ -1,7 +1,14 @@
+import { fireEvent } from '@testing-library/react';
+import { UserSettingsPanel } from '../components/UserSettingsPanel';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useThemeMode } from '../../../app/providers/themeModeContext';
-import { act, renderWithProviders, screen, waitFor } from '../../../test/test-utils';
+import {
+  act,
+  renderWithProviders,
+  screen,
+  waitFor,
+} from '../../../test/test-utils';
 import * as personalizationApi from '../api/personalizationApi';
 import {
   PERSONALIZATION_PREFERENCES_CACHE_KEY,
@@ -18,7 +25,7 @@ vi.mock('../api/personalizationApi', () => ({
 
 const authUser = {
   id: 'user-1',
-  tenant: {id:'tenant-1',slug:'alpha'},
+  tenant: { id: 'tenant-1', slug: 'alpha' },
   username: 'member',
   email: 'member@example.com',
   displayName: 'Portal Member',
@@ -82,7 +89,9 @@ const autoPreferences = {
 describe('PersonalizationRuntime', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue(darkPreferences);
+    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue(
+      darkPreferences,
+    );
     vi.mocked(personalizationApi.fetchDefaultPreferences).mockResolvedValue({
       appearance: darkPreferences.appearance,
       localization: darkPreferences.localization,
@@ -94,6 +103,68 @@ describe('PersonalizationRuntime', () => {
     document.documentElement.dataset.highContrast = 'false';
     document.documentElement.dataset.reduceMotion = 'false';
     document.body.classList.remove('reduce-motion');
+  });
+
+  it('applies a theme immediately while its background request is still pending', async () => {
+    vi.mocked(personalizationApi.updatePreferences).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    renderWithProviders(
+      <>
+        <PersonalizationRuntime />
+        <ThemeProbe />
+        <UserSettingsPanel section="appearance" />
+      </>,
+      { authUser },
+    );
+    await screen.findByTestId('theme-option-light');
+    await waitFor(() =>
+      expect(screen.getByTestId('theme-probe')).toHaveTextContent('dark/dark'),
+    );
+    fireEvent.click(screen.getByTestId('theme-option-light'));
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('theme-probe')).toHaveTextContent(
+          'light/light',
+        ),
+      { timeout: 200 },
+    );
+    expect(
+      screen.queryByText(
+        /Unsaved changes|Save Now|Сохранить сейчас|Несохранённые изменения/,
+      ),
+    ).not.toBeInTheDocument();
+    expect(personalizationApi.updatePreferences).toHaveBeenCalledTimes(1);
+  });
+
+  it('a direct theme choice overrides the inherited ID theme', async () => {
+    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue({
+      ...darkPreferences,
+      appearance: { ...darkPreferences.appearance, theme_source: 'id' },
+    });
+    vi.mocked(personalizationApi.updatePreferences).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    renderWithProviders(
+      <>
+        <PersonalizationRuntime />
+        <ThemeProbe />
+        <UserSettingsPanel section="appearance" />
+      </>,
+      { authUser: { ...authUser, idTheme: 'dark' } },
+    );
+    await screen.findByTestId('theme-option-light');
+    fireEvent.click(screen.getByTestId('theme-option-light'));
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('theme-probe')).toHaveTextContent(
+          'light/light',
+        ),
+      { timeout: 200 },
+    );
+    expect(personalizationApi.updatePreferences).toHaveBeenLastCalledWith({
+      appearance: { theme: 'light', theme_source: 'portal' },
+    });
   });
 
   it('applies cached personalization preferences to the shell runtime', async () => {
@@ -112,8 +183,12 @@ describe('PersonalizationRuntime', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe')).toHaveTextContent('dark/dark');
-      expect(document.documentElement.style.getPropertyValue('--user-accent-color')).toBe('#0F766E');
-      expect(document.documentElement.style.getPropertyValue('--user-font-size')).toBe('16px');
+      expect(
+        document.documentElement.style.getPropertyValue('--user-accent-color'),
+      ).toBe('#0F766E');
+      expect(
+        document.documentElement.style.getPropertyValue('--user-font-size'),
+      ).toBe('16px');
       expect(document.documentElement.dataset.highContrast).toBe('true');
       expect(document.documentElement.dataset.reduceMotion).toBe('true');
       expect(document.body.classList.contains('reduce-motion')).toBe(true);
@@ -121,7 +196,9 @@ describe('PersonalizationRuntime', () => {
   });
 
   it('reacts to cached preference updates without a route reload', async () => {
-    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue(autoPreferences);
+    vi.mocked(personalizationApi.fetchPreferences).mockResolvedValue(
+      autoPreferences,
+    );
     window.localStorage.setItem(
       PERSONALIZATION_PREFERENCES_CACHE_KEY,
       JSON.stringify(autoPreferences),
@@ -163,8 +240,12 @@ describe('PersonalizationRuntime', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^auto\//);
-      expect(document.documentElement.style.getPropertyValue('--user-accent-color')).toBe('#D97706');
-      expect(document.documentElement.style.getPropertyValue('--user-font-size')).toBe('14px');
+      expect(
+        document.documentElement.style.getPropertyValue('--user-accent-color'),
+      ).toBe('#D97706');
+      expect(
+        document.documentElement.style.getPropertyValue('--user-font-size'),
+      ).toBe('14px');
       expect(document.documentElement.dataset.highContrast).toBe('false');
       expect(document.documentElement.dataset.reduceMotion).toBe('false');
       expect(document.body.classList.contains('reduce-motion')).toBe(false);
