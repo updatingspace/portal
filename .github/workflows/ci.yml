@@ -228,15 +228,19 @@ jobs:
       - name: Build
         run: pnpm run build
       - name: Install browser
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: Critical user flows
         run: pnpm run test:e2e
+      - name: WebKit layout regression
+        run: pnpm exec playwright test e2e/events-spacing.spec.ts --browser=webkit --output=test-results-webkit
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: portal-browser-results
-          path: web/portal-frontend/test-results
+          path: |
+            web/portal-frontend/test-results
+            web/portal-frontend/test-results-webkit
           retention-days: 7
 
   terraform-check:

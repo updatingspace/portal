@@ -41,6 +41,7 @@
 }
 .portal-event-card__date strong {
   font-size: 28px;
+  line-height: 1.15;
 }
 .portal-event-card__body {
   min-width: 0;
@@ -77,6 +78,16 @@
   color: var(--portal-muted);
   text-transform: capitalize;
 }
+.portal-event-day {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.portal-event-browse {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
 .portal-event-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -84,6 +95,9 @@
 }
 .portal-event-filters > :first-child {
   grid-column: 1/-1;
+}
+.portal-event-filters .portal-field {
+  margin: 0;
 }
 @media (max-width: 1079px) {
   .portal-events-layout {
@@ -97,10 +111,16 @@
 @media (max-width: 719px) {
   .portal-event-filters {
     grid-template-columns: 1fr;
+    gap: 20px;
+    padding-bottom: 24px;
   }
   .portal-event-card {
-    padding: 16px;
+    padding: 16px 0;
     gap: 12px;
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--portal-line);
+    background: transparent;
   }
   .portal-event-card__date {
     flex-basis: 44px;
@@ -108,55 +128,11 @@
   .portal-event-card__date strong {
     font-size: 24px;
   }
-}
-
-.portal-event-filter-panel {
-  border-block: 1px solid var(--portal-line);
-  padding: 16px 0;
-}
-.portal-event-filter-panel > summary {
-  cursor: pointer;
-  font-weight: 650;
-  min-height: 44px;
-  line-height: 44px;
-}
-.portal-event-filters .portal-field {
-  margin: 0;
-}
-.portal-event-card__date strong {
-  line-height: 1.15;
-}
-@media (max-width: 719px) {
-  .portal-event-filter-panel {
-    padding: 4px 0;
-  }
-  .portal-event-filter-panel[open] {
-    padding-bottom: 20px;
-  }
-  .portal-event-filters {
-    gap: 20px;
-    padding-top: 8px;
-  }
-  .portal-events-calendar {
-    margin-top: 8px;
-  }
-}
-@media (max-width: 719px) {
-  .portal-event-card {
-    border: 0;
-    border-radius: 0;
-    border-bottom: 1px solid var(--portal-line);
-    padding: 16px 0;
-    background: transparent;
-  }
   .portal-events-calendar {
     padding: 0;
     border: 0;
     margin: 0 0 24px;
     background: transparent;
-  }
-  .portal-event-filters {
-    padding: 0 0 24px;
   }
 }
 .portal-event-meta {
@@ -213,12 +189,15 @@
   .portal-event-list-tools {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
   .portal-event-list-tools > .g-text-input {
     grid-column: 1 / -1;
   }
   .portal-event-list-tools > .g-button {
     width: 100%;
+    --g-button-padding: 16px;
+    --g-button-icon-offset: 8px;
   }
 }
 
