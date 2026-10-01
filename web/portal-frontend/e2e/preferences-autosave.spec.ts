@@ -224,6 +224,13 @@ test('failure preserves the selected theme, retry is explicit, and reset updates
   await expect(
     page.getByRole('textbox', { name: 'Hex color value' }),
   ).toHaveValue('#7557F5');
+  expect(
+    await page
+      .locator('h1, h3')
+      .evaluateAll((elements) =>
+        elements.map((el) => getComputedStyle(el).color),
+      ),
+  ).toEqual(['rgb(244, 247, 255)', 'rgb(244, 247, 255)', 'rgb(244, 247, 255)']);
   await page.screenshot({
     path: '/tmp/portal-instant-preferences/appearance-en-390-dark.png',
   });
