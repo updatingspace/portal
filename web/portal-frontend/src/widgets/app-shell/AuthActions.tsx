@@ -10,7 +10,11 @@ import {
   useUITranslation,
 } from '../../shared/ui/portal/PortalUI';
 
-export function AuthActions() {
+export function AuthActions({
+  extraItems = [],
+}: {
+  extraItems?: DropdownMenuItem[];
+}) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const base = useRouteBase();
@@ -41,6 +45,7 @@ export function AuthActions() {
           },
         ]
       : []),
+    ...extraItems,
     {
       text: t('Выйти', 'Sign out'),
       action: () => {
