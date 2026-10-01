@@ -92,7 +92,7 @@ test('creates an account-bound application and enters the approved tenant', asyn
   await expect(page.getByText('/new-team', { exact: true })).toBeVisible();
   status = 'approved';
   await page.getByRole('button', { name: 'Обновить статус' }).click();
-  await page.getByRole('button', { name: 'Открыть сообщество' }).click();
+  await page.getByRole('button', { name: /Открыть сообщество/ }).click();
   await expect(page).toHaveURL(/\/t\/new-team\//);
 });
 
@@ -151,6 +151,8 @@ test('system administrator reviews creation without a selected tenant', async ({
     await route.fulfill({ json: response });
   });
   await page.goto('/choose-tenant');
+  await page.getByRole('button', { name: /Меню аккаунта/ }).click();
+  await page.getByText('Рассмотреть заявки', { exact: true }).click();
   await page.getByRole('button', { name: 'Одобрить', exact: true }).click();
   await expect(
     page.getByText('Одобрено. Настраиваем доступ владельцу.'),
