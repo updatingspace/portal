@@ -22,6 +22,13 @@ for (const language of ['en', 'ru'] as const) {
         },
       }),
     );
+    // A successful write must remain available when the feed is refreshed.
+    const publishedItems: unknown[] = [];
+    await page.route('**/api/v1/activity/v2/feed?**', (route) =>
+      route.fulfill({
+        json: { items: publishedItems, has_more: false, next_cursor: null },
+      }),
+    );
     let requests = 0;
     let fail = true;
     await page.route('**/api/v1/activity/news', async (route) => {
@@ -37,29 +44,29 @@ for (const language of ['en', 'ru'] as const) {
           },
         });
       const { body } = route.request().postDataJSON();
-      await route.fulfill({
-        json: {
-          id: 1,
-          tenant_id: memberships[0].tenant_id,
-          actor_user_id: userId,
-          type: 'news.posted',
-          occurred_at: new Date().toISOString(),
-          title: body,
-          visibility: 'public',
-          scope_type: 'TENANT',
-          scope_id: memberships[0].tenant_id,
-          source_ref: 'news:local-post',
-          payload_json: {
-            news_id: 'local-post',
-            body,
-            status: 'published',
-            media: [],
-            tags: [],
-            reaction_counts: [],
-            my_reactions: [],
-          },
+      const created = {
+        id: 1,
+        tenant_id: memberships[0].tenant_id,
+        actor_user_id: userId,
+        type: 'news.posted',
+        occurred_at: new Date().toISOString(),
+        title: body,
+        visibility: 'public',
+        scope_type: 'TENANT',
+        scope_id: memberships[0].tenant_id,
+        source_ref: 'news:local-post',
+        payload_json: {
+          news_id: 'local-post',
+          body,
+          status: 'published',
+          media: [],
+          tags: [],
+          reaction_counts: [],
+          my_reactions: [],
         },
-      });
+      };
+      publishedItems.push(created);
+      await route.fulfill({ json: created });
     });
     await page.goto('/t/alpha/feed');
     await page
@@ -99,5 +106,10 @@ for (const language of ['en', 'ru'] as const) {
     await expect(
       page.getByText('Local browser regression', { exact: true }).first(),
     ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Local browser regression', { exact: true }).first(),
+    ).toBeVisible();
+    expect(requests).toBe(2);
   });
 }
