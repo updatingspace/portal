@@ -1,8 +1,10 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../features/voting', async () => {
-  const actual = await vi.importActual<typeof import('../../../features/voting')>('../../../features/voting');
+  const actual = await vi.importActual<
+    typeof import('../../../features/voting')
+  >('../../../features/voting');
 
   return {
     ...actual,
@@ -14,7 +16,11 @@ vi.mock('../../../features/voting', async () => {
 import * as votingFeature from '../../../features/voting';
 import type { Poll, PaginatedResponse } from '../../../features/voting/types';
 import { PollsPage } from './PollsPage';
-import { renderWithProviders, screen, userEvent } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  screen,
+  userEvent,
+} from '../../../test/test-utils';
 
 const TEST_TIMEOUT_MS = 15000;
 
@@ -71,105 +77,156 @@ const readerUser = {
 } as const;
 
 describe('PollsPage integration', () => {
-  it('renders loading state', () => {
+  beforeEach(() => localStorage.setItem('portal_locale_v1', 'ru'));
+
+  it('keeps the English page header and controls visible while loading', () => {
+    localStorage.setItem('portal_locale_v1', 'en');
     vi.mocked(votingFeature.usePolls).mockReturnValue({
       data: undefined,
       isLoading: true,
       isError: false,
-      error: null,
       refetch: vi.fn(),
-      isFetching: false,
-    } as ReturnType<typeof votingFeature.usePolls>);
-
+    } as unknown as ReturnType<typeof votingFeature.usePolls>);
     renderWithProviders(<PollsPage />, { authUser: adminUser });
+    expect(screen.getByRole('heading', { name: 'Voting' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: 'Loading polls' }),
+    ).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText(/Загружаем/)).not.toBeInTheDocument();
+    localStorage.removeItem('portal_locale_v1');
+  });
 
-    expect(screen.getByText('Загружаем голосования…')).toBeInTheDocument();
-  }, TEST_TIMEOUT_MS);
+  it(
+    'renders loading state',
+    () => {
+      vi.mocked(votingFeature.usePolls).mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+        isFetching: false,
+      } as ReturnType<typeof votingFeature.usePolls>);
 
-  it('filters list by search and status', async () => {
-    const paramsSpy = vi.fn();
+      renderWithProviders(<PollsPage />, { authUser: adminUser });
 
-    vi.mocked(votingFeature.usePolls).mockImplementation((params) => {
-      paramsSpy(params);
-      return {
-        data: buildResponse([
-          buildPoll({ id: 'poll-1', title: 'Alpha Cup' }),
-          buildPoll({ id: 'poll-2', title: 'Beta League' }),
-        ]),
+      expect(screen.getByText('Загружаем голосования…')).toBeInTheDocument();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'filters list by search and status',
+    async () => {
+      const paramsSpy = vi.fn();
+
+      vi.mocked(votingFeature.usePolls).mockImplementation((params) => {
+        paramsSpy(params);
+        return {
+          data: buildResponse([
+            buildPoll({ id: 'poll-1', title: 'Alpha Cup' }),
+            buildPoll({ id: 'poll-2', title: 'Beta League' }),
+          ]),
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+          isFetching: false,
+        } as ReturnType<typeof votingFeature.usePolls>;
+      });
+
+      renderWithProviders(<PollsPage />, { authUser: adminUser });
+
+      expect(await screen.findByText('Alpha Cup')).toBeInTheDocument();
+      expect(screen.getByText('Beta League')).toBeInTheDocument();
+
+      const searchInput = screen.getByRole('textbox', {
+        name: 'Поиск голосований на текущей странице',
+      });
+      await userEvent.type(searchInput, 'beta');
+
+      expect(screen.queryByText('Alpha Cup')).not.toBeInTheDocument();
+      expect(screen.getByText('Beta League')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Черновики' }));
+
+      const callWithDraft = paramsSpy.mock.calls.some(
+        (args) => args[0]?.status === 'draft',
+      );
+      expect(callWithDraft).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'renders generic error state and handles retry click',
+    async () => {
+      const refetch = vi.fn();
+      vi.mocked(votingFeature.isRateLimitError).mockReturnValue(false);
+      vi.mocked(votingFeature.usePolls).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('network'),
+        refetch,
+        isFetching: false,
+      } as ReturnType<typeof votingFeature.usePolls>);
+
+      renderWithProviders(<PollsPage />, { authUser: adminUser });
+
+      expect(
+        await screen.findByText('Не удалось загрузить список'),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+      expect(refetch).toHaveBeenCalledTimes(1);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'renders rate-limit state',
+    async () => {
+      vi.mocked(votingFeature.isRateLimitError).mockReturnValue(true);
+      vi.mocked(votingFeature.usePolls).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: { retryAfter: 17 },
+        refetch: vi.fn(),
+        isFetching: false,
+      } as ReturnType<typeof votingFeature.usePolls>);
+
+      renderWithProviders(<PollsPage />, { authUser: adminUser });
+
+      expect(
+        await screen.findByText('Слишком много запросов'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Подождите 17 сек. и попробуйте снова.'),
+      ).toBeInTheDocument();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'hides create CTA for non-admin user',
+    async () => {
+      vi.mocked(votingFeature.usePolls).mockReturnValue({
+        data: buildResponse([buildPoll({ title: 'Reader Poll' })]),
         isLoading: false,
         isError: false,
         error: null,
         refetch: vi.fn(),
         isFetching: false,
-      } as ReturnType<typeof votingFeature.usePolls>;
-    });
+      } as ReturnType<typeof votingFeature.usePolls>);
 
-    renderWithProviders(<PollsPage />, { authUser: adminUser });
+      renderWithProviders(<PollsPage />, { authUser: readerUser });
 
-    expect(await screen.findByText('Alpha Cup')).toBeInTheDocument();
-    expect(screen.getByText('Beta League')).toBeInTheDocument();
-
-    const searchInput = screen.getByRole('textbox', {name:'Поиск голосований на текущей странице'});
-    await userEvent.type(searchInput, 'beta');
-
-    expect(screen.queryByText('Alpha Cup')).not.toBeInTheDocument();
-    expect(screen.getByText('Beta League')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Черновики' }));
-
-    const callWithDraft = paramsSpy.mock.calls.some((args) => args[0]?.status === 'draft');
-    expect(callWithDraft).toBe(true);
-  }, TEST_TIMEOUT_MS);
-
-  it('renders generic error state and handles retry click', async () => {
-    const refetch = vi.fn();
-    vi.mocked(votingFeature.isRateLimitError).mockReturnValue(false);
-    vi.mocked(votingFeature.usePolls).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: new Error('network'),
-      refetch,
-      isFetching: false,
-    } as ReturnType<typeof votingFeature.usePolls>);
-
-    renderWithProviders(<PollsPage />, { authUser: adminUser });
-
-    expect(await screen.findByText('Не удалось загрузить список')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
-    expect(refetch).toHaveBeenCalledTimes(1);
-  }, TEST_TIMEOUT_MS);
-
-  it('renders rate-limit state', async () => {
-    vi.mocked(votingFeature.isRateLimitError).mockReturnValue(true);
-    vi.mocked(votingFeature.usePolls).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: { retryAfter: 17 },
-      refetch: vi.fn(),
-      isFetching: false,
-    } as ReturnType<typeof votingFeature.usePolls>);
-
-    renderWithProviders(<PollsPage />, { authUser: adminUser });
-
-    expect(await screen.findByText('Слишком много запросов')).toBeInTheDocument();
-    expect(screen.getByText('Подождите 17 сек. и попробуйте снова.')).toBeInTheDocument();
-  }, TEST_TIMEOUT_MS);
-
-  it('hides create CTA for non-admin user', async () => {
-    vi.mocked(votingFeature.usePolls).mockReturnValue({
-      data: buildResponse([buildPoll({ title: 'Reader Poll' })]),
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-      isFetching: false,
-    } as ReturnType<typeof votingFeature.usePolls>);
-
-    renderWithProviders(<PollsPage />, { authUser: readerUser });
-
-    expect(await screen.findByText('Reader Poll')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Создать опрос' })).not.toBeInTheDocument();
-  }, TEST_TIMEOUT_MS);
+      expect(await screen.findByText('Reader Poll')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Создать опрос' }),
+      ).not.toBeInTheDocument();
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

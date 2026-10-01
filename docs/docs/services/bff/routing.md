@@ -236,3 +236,11 @@ def check_auth(request, path):
 1. **Auto-create tenant**: Если tenant не существует
 2. **Skip HMAC**: Если `BFF_DEV_SKIP_HMAC=true`
 3. **Return magic link**: Вместо отправки email
+
+### Коллекция Events
+
+Публичный BFF-путь коллекции событий — `/api/v1/events/events/`, детали —
+`/api/v1/events/events/{id}` (и соответствующие `/rsvp`, `/attendance`, `/ics`).
+Первый `events` — namespace прокси; второй относится к upstream API.
+Frontend использует завершающий slash коллекции сразу, без fallback на
+`/api/v1/events/` и без перенаправления POST.

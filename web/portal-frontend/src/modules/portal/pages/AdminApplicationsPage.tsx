@@ -19,7 +19,11 @@ type Application = {
 };
 const fieldValue = (value: unknown) =>
   typeof value === 'string' || typeof value === 'number' ? String(value) : '';
-export function AdminApplicationsPage() {
+export function AdminApplicationsPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const t = useUITranslation();
   const { formatDateTime } = useFormatters();
   const [items, setItems] = useState<Application[]>([]);
@@ -102,16 +106,18 @@ export function AdminApplicationsPage() {
   };
   return (
     <PageLayout
-      title={t('Заявки на аккаунты', 'Account applications')}
+      title={t('Заявки на доступ', 'Access applications')}
       description={t(
         'Доступ к аккаунту предоставляется после рассмотрения заявки.',
         'Account access requires an approved application.',
       )}
       actions={
         <>
-          <Button href="/choose-tenant">
-            {t('Мои сообщества', 'My communities')}
-          </Button>
+          {!embedded && (
+            <Button href="/choose-tenant">
+              {t('Мои сообщества', 'My communities')}
+            </Button>
+          )}
           <Button
             disabled={loading}
             loading={loading}

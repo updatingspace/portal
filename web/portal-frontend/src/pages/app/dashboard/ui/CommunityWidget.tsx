@@ -36,13 +36,13 @@ export function CommunityWidget({ kind }: { kind: Kind }) {
     enabled: allowed,
     queryFn: async () => {
       if (kind === 'events')
-        return (
-          await fetchEvents({ from: new Date().toISOString(), limit: 3 })
-        ).items.map((event) => ({
-          id: event.id,
-          title: event.title,
-          startsAt: event.startsAt,
-        }));
+        return (await fetchEvents({ period: 'upcoming', limit: 3 })).items.map(
+          (event) => ({
+            id: event.id,
+            title: event.title,
+            startsAt: event.startsAt,
+          }),
+        );
       if (kind === 'voting')
         return (await fetchPolls({ status: 'active', limit: 3 })).items.map(
           (poll) => ({ id: poll.id, title: poll.title }),

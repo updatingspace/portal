@@ -33,7 +33,7 @@ class UserPreferenceModelTests(TestCase):
         self.assertEqual(pref.accent_color, "#007AFF")
         self.assertEqual(pref.font_size, "medium")
         self.assertEqual(pref.language, "en")
-        self.assertEqual(pref.timezone, "UTC")
+        self.assertEqual(pref.timezone, "system")
         self.assertEqual(pref.profile_visibility, "members")
         self.assertTrue(pref.show_online_status)
         self.assertFalse(pref.show_vote_history)

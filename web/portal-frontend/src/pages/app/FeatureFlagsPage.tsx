@@ -1,3 +1,5 @@
+import { ApiError } from '../../api/client';
+import { ListSkeleton } from '../../shared/ui/portal/ListSkeleton';
 import { ContentDialog } from '../../shared/ui/portal/ContentDialog';
 import { useRef, useState } from 'react';
 import { Button, Switch, TextInput } from '@gravity-ui/uikit';
@@ -54,12 +56,17 @@ export function FeatureFlagsPage() {
       setCreateOpen(false);
       setKey('');
       setDescription('');
-    } catch {
+    } catch (reason) {
       setCreateError(
-        t(
-          'Не удалось создать функцию. Проверьте, не занят ли ключ, и повторите.',
-          'Unable to create the feature. Check whether the key is already in use and try again.',
-        ),
+        reason instanceof ApiError && reason.status === 409
+          ? t(
+              'Такой ключ уже существует. Обновите список.',
+              'This key already exists. Refresh the list.',
+            )
+          : t(
+              'Не удалось создать функцию. Введённые данные сохранены. Повторите попытку.',
+              'Unable to create the feature. Your entries are still here. Try again.',
+            ),
       );
     } finally {
       locks.current.delete('create');
@@ -96,9 +103,18 @@ export function FeatureFlagsPage() {
   return (
     <PageLayout
       title={t('Функции платформы', 'Platform features')}
+      description={t(
+        'Управляйте доступностью уже подключённых функций. Новый ключ должен поддерживаться приложением.',
+        'Control features supported by the application. New keys need to be connected in the application.',
+      )}
       actions={
         <>
-          <Button size="xl" view="action" onClick={() => setCreateOpen(true)}>
+          <Button
+            size="xl"
+            view="action"
+            disabled={loading}
+            onClick={() => setCreateOpen(true)}
+          >
             {t('Новая функция', 'New feature')}
           </Button>
           <Button
@@ -111,39 +127,54 @@ export function FeatureFlagsPage() {
       }
     >
       <div className="portal-stack">
-        <FormField label={t('Поиск функций', 'Search features')}>
-          {(props) => (
-            <TextInput {...props} value={search} onUpdate={setSearch} />
-          )}
-        </FormField>
+        {flags.length > 0 && (
+          <FormField label={t('Поиск функций', 'Search features')}>
+            {(props) => (
+              <TextInput
+                {...props}
+                size="xl"
+                value={search}
+                onUpdate={setSearch}
+                hasClear
+                placeholder={t('По названию или ключу', 'Name or key')}
+              />
+            )}
+          </FormField>
+        )}
         {error && (
           <InlineError onRetry={() => void reload()}>
             {t('Не удалось загрузить функции.', 'Unable to load features.')}
           </InlineError>
         )}
         {loading && !flags.length && (
-          <PageState
-            kind="loading"
-            title={t('Загружаем функции', 'Loading features')}
-          />
+          <ListSkeleton label={t('Загружаем функции', 'Loading features')} />
         )}
         {!loading && !error && !visible.length && (
-          <PageState
-            kind="empty"
-            title={
-              search
+          <section className="portal-list-empty" role="status">
+            <h2>
+              {search
                 ? t('Ничего не найдено', 'No matches')
-                : t('Функции ещё не созданы', 'No features yet')
-            }
-            action={
-              search && (
-                <Button onClick={() => setSearch('')}>
-                  {t('Сбросить поиск', 'Clear search')}
-                </Button>
-              )
-            }
-          />
+                : t('Функции ещё не созданы', 'No features yet')}
+            </h2>
+            <p>
+              {search
+                ? t(
+                    'Попробуйте другое название или ключ.',
+                    'Try a different name or key.',
+                  )
+                : t(
+                    'Добавьте первый флаг. Он будет выключен до вашего решения.',
+                    'Add your first flag. It stays disabled until you enable it.',
+                  )}
+            </p>
+            {search && (
+              <Button onClick={() => setSearch('')}>
+                {t('Сбросить поиск', 'Clear search')}
+              </Button>
+            )}
+          </section>
         )}
+
         {visible.map((flag) => (
           <article className="portal-feature-row" key={flag.key}>
             <div className="portal-feature-row__header">
@@ -195,6 +226,7 @@ export function FeatureFlagsPage() {
               {(props) => (
                 <TextInput
                   {...props}
+                  size="xl"
                   value={key}
                   onUpdate={setKey}
                   disabled={creating}
@@ -205,6 +237,7 @@ export function FeatureFlagsPage() {
               {(props) => (
                 <TextInput
                   {...props}
+                  size="xl"
                   value={description}
                   onUpdate={setDescription}
                   disabled={creating}

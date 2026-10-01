@@ -9,27 +9,37 @@ export const themeSourceSchema = z.enum(['portal', 'id']);
 export const languageSchema = z.enum(['en', 'ru']);
 export const fontSizeSchema = z.enum(['small', 'medium', 'large']);
 export const profileVisibilitySchema = z.enum(['public', 'members', 'private']);
-export const emailDigestSchema = z.enum(['instant', 'hourly', 'daily', 'weekly']);
+export const emailDigestSchema = z.enum([
+  'instant',
+  'hourly',
+  'daily',
+  'weekly',
+]);
 export const notificationChannelSchema = z.enum(['email', 'in_app', 'push']);
 
 // Color validation (hex format)
-export const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color format');
+export const hexColorSchema = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color format');
 
 // Timezone validation (IANA timezone names)
-export const timezoneSchema = z.string().min(1, 'Timezone is required').refine(
-  (timezone) => {
+export const timezoneSchema = z
+  .string()
+  .min(1, 'Timezone is required')
+  .refine((timezone) => {
     try {
+      if (timezone === 'system') return true;
       Intl.DateTimeFormat(undefined, { timeZone: timezone });
       return true;
     } catch {
       return false;
     }
-  },
-  'Invalid timezone'
-);
+  }, 'Invalid timezone');
 
 // Time format validation (HH:MM)
-export const timeFormatSchema = z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (use HH:MM)');
+export const timeFormatSchema = z
+  .string()
+  .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (use HH:MM)');
 
 // Appearance settings schema
 export const appearanceSettingsSchema = z.object({
@@ -41,7 +51,7 @@ export const appearanceSettingsSchema = z.object({
   reduce_motion: z.boolean().optional(),
 });
 
-// Localization settings schema  
+// Localization settings schema
 export const localizationSettingsSchema = z.object({
   language: languageSchema.optional(),
   timezone: timezoneSchema.optional(),
@@ -70,38 +80,45 @@ export const pushNotificationSettingsSchema = z.object({
 });
 
 // Quiet hours settings schema
-export const quietHoursSettingsSchema = z.object({
-  enabled: z.boolean().optional(),
-  start: timeFormatSchema.optional(),
-  end: timeFormatSchema.optional(),
-}).refine(
-  (data) => {
-    if (!data.enabled) return true;
-    if (!data.start || !data.end) return false;
-    
-    // Validate that start and end times are different
-    return data.start !== data.end;
-  },
-  {
-    message: 'Start and end times must be different',
-    path: ['end'],
-  }
-);
+export const quietHoursSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    start: timeFormatSchema.optional(),
+    end: timeFormatSchema.optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.enabled) return true;
+      if (!data.start || !data.end) return false;
+
+      // Validate that start and end times are different
+      return data.start !== data.end;
+    },
+    {
+      message: 'Start and end times must be different',
+      path: ['end'],
+    },
+  );
 
 // Notification type config schema (for polls, events, etc.)
-export const notificationTypeConfigSchema = z.record(z.string(), notificationChannelConfigSchema);
+export const notificationTypeConfigSchema = z.record(
+  z.string(),
+  notificationChannelConfigSchema,
+);
 
 // Full notification settings schema
 export const notificationSettingsSchema = z.object({
   email: emailNotificationSettingsSchema.optional(),
   in_app: inAppNotificationSettingsSchema.optional(),
   push: pushNotificationSettingsSchema.optional(),
-  types: z.object({
-    polls: notificationTypeConfigSchema.optional(),
-    events: notificationTypeConfigSchema.optional(),
-    community: notificationTypeConfigSchema.optional(),
-    system: notificationTypeConfigSchema.optional(),
-  }).optional(),
+  types: z
+    .object({
+      polls: notificationTypeConfigSchema.optional(),
+      events: notificationTypeConfigSchema.optional(),
+      community: notificationTypeConfigSchema.optional(),
+      system: notificationTypeConfigSchema.optional(),
+    })
+    .optional(),
   quiet_hours: quietHoursSettingsSchema.optional(),
 });
 
@@ -179,8 +196,12 @@ export const userPreferencesSchema = z.object({
 
 // Inferred TypeScript types from schemas
 export type AppearanceSettingsInput = z.infer<typeof appearanceSettingsSchema>;
-export type LocalizationSettingsInput = z.infer<typeof localizationSettingsSchema>;
-export type NotificationSettingsInput = z.infer<typeof notificationSettingsSchema>;
+export type LocalizationSettingsInput = z.infer<
+  typeof localizationSettingsSchema
+>;
+export type NotificationSettingsInput = z.infer<
+  typeof notificationSettingsSchema
+>;
 export type PrivacySettingsInput = z.infer<typeof privacySettingsSchema>;
 export type PreferencesUpdateInput = z.infer<typeof preferencesUpdateSchema>;
 export type UserPreferencesInput = z.infer<typeof userPreferencesSchema>;

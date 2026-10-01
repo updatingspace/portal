@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import React, { useState } from 'react';
 import { Button, Icon, Text } from '@gravity-ui/uikit';
 
@@ -26,6 +27,7 @@ export const FeedControlRail: React.FC<FeedControlRailProps> = ({
   setPeriod,
   resetFilters,
 }) => {
+  const t = useUITranslation();
   const compact = useMediaQuery('(max-width: 1100px)');
   const [open, setOpen] = useState(false);
   const hasFilters = source !== 'all' || sort !== 'best' || period !== 'week';
@@ -51,7 +53,7 @@ export const FeedControlRail: React.FC<FeedControlRailProps> = ({
         <Button
           view={hasFilters ? 'outlined-info' : 'flat'}
           size="xl"
-          aria-label="Фильтры ленты"
+          aria-label={t('Фильтры ленты', 'Feed filters')}
           onClick={() => setOpen(true)}
         >
           <Icon data={Sliders} size={20} />
@@ -60,7 +62,10 @@ export const FeedControlRail: React.FC<FeedControlRailProps> = ({
           )}
         </Button>
         {open && (
-          <ContentDialog title="Фильтры ленты" onClose={() => setOpen(false)}>
+          <ContentDialog
+            title={t('Фильтры ленты', 'Feed filters')}
+            onClose={() => setOpen(false)}
+          >
             {controls}
             <Button
               size="xl"
@@ -68,7 +73,7 @@ export const FeedControlRail: React.FC<FeedControlRailProps> = ({
               className="feed-filters__done"
               onClick={() => setOpen(false)}
             >
-              Показать записи
+              {t('Показать записи', 'Show posts')}
             </Button>
           </ContentDialog>
         )}
@@ -78,7 +83,7 @@ export const FeedControlRail: React.FC<FeedControlRailProps> = ({
     <aside className="feed-sidebar" data-qa="feed-sidebar">
       <section className="feed-panel">
         <Text as="h2" variant="subheader-2">
-          Фильтры
+          {t('Фильтры', 'Filters')}
         </Text>
         {controls}
       </section>

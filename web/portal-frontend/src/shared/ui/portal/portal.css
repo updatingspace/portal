@@ -581,3 +581,28 @@ a {
 .voting-schedule__fields > .portal-field {
   margin-block: 0;
 }
+
+.portal-list-skeleton {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+.portal-list-skeleton__row {
+  display: grid;
+  gap: 16px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--g-color-line-generic);
+}
+.portal-list-empty {
+  padding: 32px 0;
+  text-align: left;
+}
+.portal-list-empty h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.portal-list-empty p {
+  margin: 0 0 16px;
+  color: var(--g-color-text-secondary);
+}

@@ -180,9 +180,11 @@ locals {
   gamification_env = merge(
     local.common_service_env,
     {
-      ACCESS_BASE_URL      = local.access_api_url
-      ACTIVITY_SERVICE_URL = local.activity_api_url
-      YMQ_OUTBOX_QUEUE     = yandex_message_queue.outbox["gamification"].name
+      ACCESS_BASE_URL          = local.access_api_url
+      ACTIVITY_SERVICE_URL     = local.activity_api_url
+      ACHIEVEMENT_MEDIA_BUCKET = local.media_bucket_name
+      S3_ENDPOINT_URL          = "https://storage.yandexcloud.net"
+      YMQ_OUTBOX_QUEUE         = yandex_message_queue.outbox["gamification"].name
     },
     lookup(var.service_environment, "gamification", {}),
   )

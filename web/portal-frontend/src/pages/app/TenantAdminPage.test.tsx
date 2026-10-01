@@ -1,5 +1,5 @@
 import React from 'react';
-import {MemoryRouter} from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 
@@ -19,21 +19,38 @@ const TEST_ISO_DATE = '2025-01-01T00:00:00Z';
 
 vi.mock('@gravity-ui/uikit', () => ({
   Avatar: (props: React.ComponentProps<'div'>) => <div {...props} />,
-  Button: ({ ...props }: React.ComponentProps<'button'> & { loading?: boolean }) => (
+  Button: ({
+    ...props
+  }: React.ComponentProps<'button'> & { loading?: boolean }) => (
     <button {...props} />
   ),
-  Card: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
+  Card: ({ children, ...props }: React.ComponentProps<'div'>) => (
+    <div {...props}>{children}</div>
+  ),
   Icon: () => <span />,
   Label: (props: React.ComponentProps<'span'>) => <span {...props} />,
   Loader: () => <div data-testid="loader" />,
-  Select: ({ ...props }: React.ComponentProps<'div'> & { options?: unknown[]; onUpdate?: () => void; value?: unknown }) => (
-    <div data-testid="select" {...props} />
-  ),
+  Select: ({
+    ...props
+  }: React.ComponentProps<'div'> & {
+    options?: unknown[];
+    onUpdate?: () => void;
+    value?: unknown;
+  }) => <div data-testid="select" {...props} />,
   Switch: (props: React.ComponentProps<'div'>) => <div {...props} />,
   Table: (props: React.ComponentProps<'div'>) => <div {...props} />,
-  TextInput: ({ onUpdate, ...props }: React.ComponentProps<'input'> & { onUpdate?: (value: string) => void }) => {
-    const { ...rest } = props as React.ComponentProps<'input'> & { startContent?: React.ReactNode };
-    return <input onChange={(event) => onUpdate?.(event.target.value)} {...rest} />;
+  TextInput: ({
+    onUpdate,
+    ...props
+  }: React.ComponentProps<'input'> & {
+    onUpdate?: (value: string) => void;
+  }) => {
+    const { ...rest } = props as React.ComponentProps<'input'> & {
+      startContent?: React.ReactNode;
+    };
+    return (
+      <input onChange={(event) => onUpdate?.(event.target.value)} {...rest} />
+    );
   },
 }));
 
@@ -94,10 +111,18 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
     loading: false,
     reload: mockReload,
   }),
-  useTenantAdminEvents: () => ({ events: [], loading: false, reload: mockReload }),
+  useTenantAdminEvents: () => ({
+    events: [],
+    loading: false,
+    reload: mockReload,
+  }),
   usePermissionCatalog: () => ({
     permissions: [
-      { key: TEST_PERMISSION_KEY, description: 'Read tenant roles', service: TEST_ROLE_SERVICE },
+      {
+        key: TEST_PERMISSION_KEY,
+        description: 'Read tenant roles',
+        service: TEST_ROLE_SERVICE,
+      },
     ],
     loading: false,
     reload: mockReload,
@@ -107,10 +132,22 @@ vi.mock('../../modules/tenantAdmin/hooks', () => ({
 vi.mock('../../modules/tenantAdmin/api', () => ({
   SCOPE_TYPES: ['GLOBAL', 'TENANT', 'COMMUNITY', 'TEAM', 'SERVICE'],
   createTenantRole: vi.fn(() =>
-    Promise.resolve({ id: 2, tenant_id: TEST_TENANT_ID, service: TEST_ROLE_SERVICE, name: 'foo', permission_keys: [] }),
+    Promise.resolve({
+      id: 2,
+      tenant_id: TEST_TENANT_ID,
+      service: TEST_ROLE_SERVICE,
+      name: 'foo',
+      permission_keys: [],
+    }),
   ),
   updateTenantRole: vi.fn(() =>
-    Promise.resolve({ id: 1, tenant_id: TEST_TENANT_ID, service: TEST_ROLE_SERVICE, name: TEST_TENANT_ADMIN_ROLE, permission_keys: [] }),
+    Promise.resolve({
+      id: 1,
+      tenant_id: TEST_TENANT_ID,
+      service: TEST_ROLE_SERVICE,
+      name: TEST_TENANT_ADMIN_ROLE,
+      permission_keys: [],
+    }),
   ),
   deleteTenantRole: vi.fn(() => Promise.resolve({ ok: true })),
   createRoleBinding: vi.fn(() => Promise.resolve({})),
@@ -123,10 +160,18 @@ describe('TenantAdminPage', () => {
   });
 
   it('renders tenant admin UI', () => {
-    render(<MemoryRouter><TenantAdminPage /></MemoryRouter>);
-    expect(screen.getByRole('heading', {name:'Управление сообществом'})).toBeInTheDocument();
-    expect(screen.getByText('Роли и доступы')).toBeInTheDocument();
+    render(
+      <MemoryRouter>
+        <TenantAdminPage />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Управление сообществом' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Test User')).toBeInTheDocument();
     expect(screen.getAllByText('Роли').length).toBeGreaterThan(0);
-    expect(screen.getByPlaceholderText('Поиск по названию роли')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Поиск по имени или ID'),
+    ).toBeInTheDocument();
   });
 });

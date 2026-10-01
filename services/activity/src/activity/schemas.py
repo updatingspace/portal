@@ -467,3 +467,7 @@ class OutboxEventOut(Schema):
     created_at: datetime
     processed_at: datetime | None
     retry_count: int
+
+
+class NewsDeleteIn(Schema):
+    reason: str = Field(default="", max_length=500)

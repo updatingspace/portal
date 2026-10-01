@@ -6,6 +6,7 @@ Covers:
 - News reactions/comments
 - Media upload URL handshake
 """
+
 from __future__ import annotations
 
 import importlib
@@ -59,14 +60,18 @@ def _headers(
     }
 
 
-@override_settings(BFF_INTERNAL_HMAC_SECRET="test-secret", NEWS_MEDIA_BUCKET="unit-test-bucket")
+@override_settings(
+    BFF_INTERNAL_HMAC_SECRET="test-secret", NEWS_MEDIA_BUCKET="unit-test-bucket"
+)
 class NewsIntegrationTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.permissions = importlib.import_module("activity.permissions")
         cls.activity_api = importlib.import_module("activity.api")
-        cls._perm_patch = patch.object(cls.permissions, "has_permission", return_value=True)
+        cls._perm_patch = patch.object(
+            cls.permissions, "has_permission", return_value=True
+        )
         cls._perm_patch.start()
 
     @classmethod
@@ -129,7 +134,9 @@ class NewsIntegrationTests(TestCase):
             ),
         )
 
-    def _put_binary(self, path: str, body: bytes, request_id: str, *, content_type: str):
+    def _put_binary(
+        self, path: str, body: bytes, request_id: str, *, content_type: str
+    ):
         return self.client.put(
             path,
             data=body,
@@ -194,7 +201,11 @@ class NewsIntegrationTests(TestCase):
         }
 
         with (
-            patch.object(self.activity_api, "generate_download_url", return_value="https://cdn.test/news.jpg"),
+            patch.object(
+                self.activity_api,
+                "generate_download_url",
+                return_value="https://cdn.test/news.jpg",
+            ),
             patch.object(
                 self.activity_api.portal_client,
                 "list_profiles",
@@ -250,7 +261,10 @@ class NewsIntegrationTests(TestCase):
         feed_resp = self._get("/api/v1/v2/feed?limit=10", "rid-feed-lower-1")
         self.assertEqual(feed_resp.status_code, 200)
         feed = feed_resp.json()
-        self.assertTrue(feed["items"], "Expected news item to be visible with lowercase subscription scope")
+        self.assertTrue(
+            feed["items"],
+            "Expected news item to be visible with lowercase subscription scope",
+        )
         self.assertEqual(feed["items"][0]["type"], "news.posted")
 
     def test_news_reactions_and_comments_flow(self):
@@ -326,7 +340,9 @@ class NewsIntegrationTests(TestCase):
         self.assertEqual(second_root_resp.status_code, 200)
         second_root_comment = second_root_resp.json()
 
-        list_resp = self._get(f"/api/v1/news/{news_id}/comments?limit=10", "rid-comment-2")
+        list_resp = self._get(
+            f"/api/v1/news/{news_id}/comments?limit=10", "rid-comment-2"
+        )
         self.assertEqual(list_resp.status_code, 200)
         comments = list_resp.json()
         self.assertEqual(len(comments), 3)
@@ -395,8 +411,12 @@ class NewsIntegrationTests(TestCase):
             upload_headers={"Content-Type": "image/jpeg"},
             expires_in=900,
         )
-        with patch.object(self.activity_api, "generate_upload_url", return_value=mocked):
-            resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-1")
+        with patch.object(
+            self.activity_api, "generate_upload_url", return_value=mocked
+        ):
+            resp = self._post(
+                "/api/v1/news/media/upload-url", upload_payload, "rid-upload-1"
+            )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["key"], mocked.key)
@@ -419,11 +439,15 @@ class NewsIntegrationTests(TestCase):
                 "content_type": "image/png",
                 "size_bytes": 12,
             }
-            resp = self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-local-1")
+            resp = self._post(
+                "/api/v1/news/media/upload-url", upload_payload, "rid-upload-local-1"
+            )
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
             self.assertEqual(data["key"].split("/")[1], self.tenant_id)
-            self.assertTrue(data["upload_url"].startswith("/api/v1/activity/news/media/upload/"))
+            self.assertTrue(
+                data["upload_url"].startswith("/api/v1/activity/news/media/upload/")
+            )
 
             binary = b"\x89PNG\r\n\x1a\nlocal"
             put_resp = self._put_binary(
@@ -449,8 +473,14 @@ class NewsIntegrationTests(TestCase):
             "content_type": "image/jpeg",
             "size_bytes": 100,
         }
-        with self.assertRaisesRegex(RuntimeError, "NEWS_MEDIA_BUCKET is not configured"):
-            self._post("/api/v1/news/media/upload-url", upload_payload, "rid-upload-no-bucket-1")
+        with self.assertRaisesRegex(
+            RuntimeError, "NEWS_MEDIA_BUCKET is not configured"
+        ):
+            self._post(
+                "/api/v1/news/media/upload-url",
+                upload_payload,
+                "rid-upload-no-bucket-1",
+            )
 
     def test_feed_mark_read_updates_last_seen(self):
         FeedLastSeen.objects.create(
@@ -537,3 +567,36 @@ class NewsIntegrationTests(TestCase):
         self.assertEqual(list_resp.status_code, 200)
         items = list_resp.json()["items"]
         self.assertEqual(len(items), 1)
+
+    def test_signed_moderation_delete_records_submitted_reason(self):
+        from activity.audit import ActivityAuditEvent
+
+        post = NewsPost.objects.create(
+            tenant_id=self.tenant_id,
+            author_user_id=uuid.uuid4(),
+            body="Post",
+            scope_type="TENANT",
+            scope_id=self.tenant_id,
+        )
+        path = f"/api/v1/news/{post.id}"
+        body = json.dumps({"reason": "Spam links"}).encode()
+        with patch.object(self.activity_api, "_can_manage_news", return_value=True):
+            response = self.client.delete(
+                path,
+                data=body,
+                content_type="application/json",
+                **_headers(
+                    method="DELETE",
+                    path=path,
+                    body=body,
+                    tenant_id=self.tenant_id,
+                    tenant_slug=self.tenant_slug,
+                    user_id=self.user_id,
+                    request_id="moderation-http-test",
+                ),
+            )
+        self.assertEqual(response.status_code, 204, response.content)
+        audit = ActivityAuditEvent.objects.get(
+            target_id=str(post.id), action="news.deleted"
+        )
+        self.assertEqual(audit.metadata["reason"], "Spam links")

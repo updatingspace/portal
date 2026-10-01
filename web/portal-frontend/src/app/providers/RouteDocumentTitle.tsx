@@ -1,9 +1,12 @@
+import { useUITranslation } from '../../shared/ui/portal/PortalUI';
 import React, { useMemo } from 'react';
 import { useMatches } from 'react-router-dom';
 
 import { useDocumentTitle } from '../../shared/hooks/useDocumentTitle';
 
-type RouteTitleResolver = (params: Record<string, string | undefined>) => string | null | undefined;
+type RouteTitleResolver = (
+  params: Record<string, string | undefined>,
+) => string | null | undefined;
 
 type RouteTitleHandle = {
   title?: string | RouteTitleResolver;
@@ -40,7 +43,48 @@ export const RouteDocumentTitle: React.FC = () => {
 
   const pageTitle = useMemo(() => resolveRouteTitle(matches), [matches]);
 
-  useDocumentTitle(pageTitle);
+  const t = useUITranslation();
+  const titles: Record<string, string> = {
+    Overview: 'Обзор',
+    Лента: 'Activity feed',
+    Новость: 'Post',
+    События: 'Events',
+    'Создание события': 'Create event',
+    Событие: 'Event',
+    'Редактирование события': 'Edit event',
+    Опросы: 'Voting',
+    'Создание опроса': 'Create poll',
+    'Шаблоны опросов': 'Poll templates',
+    'Аналитика голосований': 'Voting analytics',
+    Опрос: 'Poll',
+    'Управление опросом': 'Manage poll',
+    'Результаты опроса': 'Poll results',
+    Профиль: 'Profile',
+    Настройки: 'Settings',
+    Администрирование: 'Administration',
+    'Управление сообществом': 'Community management',
+    'Функции платформы': 'Platform features',
+    Геймификация: 'Achievements',
+    'Новая ачивка': 'New achievement',
+    'Редактирование ачивки': 'Edit achievement',
+    'Карточка ачивки': 'Achievement',
+    Главная: 'Home',
+    Вход: 'Sign in',
+    'Активация приглашения': 'Invitation',
+    'Выбор сообщества': 'My communities',
+    Подписки: 'Following',
+    Подписчики: 'Followers',
+    Сообщества: 'Communities',
+    Ачивки: 'Achievements',
+    Друзья: 'Friends',
+  };
+  useDocumentTitle(
+    pageTitle === 'Overview'
+      ? t('Обзор', 'Overview')
+      : pageTitle
+        ? t(pageTitle, titles[pageTitle] ?? pageTitle)
+        : null,
+  );
 
   return null;
 };

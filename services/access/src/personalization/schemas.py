@@ -12,6 +12,7 @@ from pydantic import Field, field_validator
 
 class ThemeEnum(str, Enum):
     """Available theme options."""
+
     LIGHT = "light"
     DARK = "dark"
     AUTO = "auto"
@@ -19,18 +20,21 @@ class ThemeEnum(str, Enum):
 
 class ThemeSourceEnum(str, Enum):
     """Available theme source options."""
+
     PORTAL = "portal"
     ID = "id"
 
 
 class LanguageEnum(str, Enum):
     """Supported interface languages."""
+
     EN = "en"
     RU = "ru"
 
 
 class FontSizeEnum(str, Enum):
     """Available font size options."""
+
     SMALL = "small"
     MEDIUM = "medium"
     LARGE = "large"
@@ -38,6 +42,7 @@ class FontSizeEnum(str, Enum):
 
 class ProfileVisibilityEnum(str, Enum):
     """Profile visibility options."""
+
     PUBLIC = "public"
     MEMBERS = "members"
     PRIVATE = "private"
@@ -45,6 +50,7 @@ class ProfileVisibilityEnum(str, Enum):
 
 class EmailDigestEnum(str, Enum):
     """Email digest frequency options."""
+
     INSTANT = "instant"
     HOURLY = "hourly"
     DAILY = "daily"
@@ -53,6 +59,7 @@ class EmailDigestEnum(str, Enum):
 
 class NotificationChannelEnum(str, Enum):
     """Notification delivery channels."""
+
     EMAIL = "email"
     IN_APP = "in_app"
     PUSH = "push"
@@ -62,23 +69,46 @@ class NotificationChannelEnum(str, Enum):
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # Common IANA timezone names for quick validation
-COMMON_TIMEZONES = frozenset([
-    "UTC", "GMT",
-    "Europe/Moscow", "Europe/London", "Europe/Paris", "Europe/Berlin",
-    "Europe/Tallinn", "Europe/Helsinki", "Europe/Riga", "Europe/Vilnius",
-    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-    "America/Toronto", "America/Vancouver", "America/Sao_Paulo",
-    "Asia/Tokyo", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore",
-    "Asia/Dubai", "Asia/Kolkata", "Asia/Hong_Kong",
-    "Australia/Sydney", "Australia/Melbourne", "Australia/Perth",
-    "Pacific/Auckland", "Pacific/Honolulu",
-    "Africa/Johannesburg", "Africa/Cairo",
-])
+COMMON_TIMEZONES = frozenset(
+    [
+        "UTC",
+        "GMT",
+        "Europe/Moscow",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+        "Europe/Tallinn",
+        "Europe/Helsinki",
+        "Europe/Riga",
+        "Europe/Vilnius",
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Toronto",
+        "America/Vancouver",
+        "America/Sao_Paulo",
+        "Asia/Tokyo",
+        "Asia/Seoul",
+        "Asia/Shanghai",
+        "Asia/Singapore",
+        "Asia/Dubai",
+        "Asia/Kolkata",
+        "Asia/Hong_Kong",
+        "Australia/Sydney",
+        "Australia/Melbourne",
+        "Australia/Perth",
+        "Pacific/Auckland",
+        "Pacific/Honolulu",
+        "Africa/Johannesburg",
+        "Africa/Cairo",
+    ]
+)
 
 
 def validate_timezone(tz: str) -> str:
     """Validate IANA timezone string."""
-    if tz in COMMON_TIMEZONES:
+    if tz == "system" or tz in COMMON_TIMEZONES:
         return tz
     try:
         ZoneInfo(tz)
@@ -96,6 +126,7 @@ def validate_hex_color(color: str) -> str:
 
 class NotificationChannelConfigSchema(Schema):
     """Configuration for a notification channel."""
+
     enabled: bool = True
     channels: list[NotificationChannelEnum] = Field(default_factory=list)
 
@@ -111,22 +142,26 @@ class NotificationChannelConfigSchema(Schema):
 
 class EmailChannelSchema(Schema):
     """Email notification channel settings."""
+
     enabled: bool = True
     digest: EmailDigestEnum = EmailDigestEnum.INSTANT
 
 
 class InAppChannelSchema(Schema):
     """In-app notification channel settings."""
+
     enabled: bool = True
 
 
 class PushChannelSchema(Schema):
     """Push notification channel settings (MVP: disabled)."""
+
     enabled: bool = False
 
 
 class QuietHoursSchema(Schema):
     """Quiet hours configuration for notifications."""
+
     enabled: bool = False
     start: str = "22:00"  # HH:MM format
     end: str = "08:00"
@@ -141,6 +176,7 @@ class QuietHoursSchema(Schema):
 
 class NotificationSettingsSchema(Schema):
     """Full notification settings structure."""
+
     email: EmailChannelSchema = Field(default_factory=EmailChannelSchema)
     in_app: InAppChannelSchema = Field(default_factory=InAppChannelSchema)
     push: PushChannelSchema = Field(default_factory=PushChannelSchema)
@@ -150,6 +186,7 @@ class NotificationSettingsSchema(Schema):
 
 class AppearanceSchema(Schema):
     """User appearance/theme preferences."""
+
     theme: ThemeEnum = ThemeEnum.AUTO
     theme_source: ThemeSourceEnum = ThemeSourceEnum.PORTAL
     accent_color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#8B5CF6"
@@ -165,8 +202,9 @@ class AppearanceSchema(Schema):
 
 class LocalizationSchema(Schema):
     """User localization preferences."""
+
     language: LanguageEnum = LanguageEnum.EN
-    timezone: str = "UTC"
+    timezone: str = "system"
 
     @field_validator("timezone", mode="before")
     @classmethod
@@ -176,6 +214,7 @@ class LocalizationSchema(Schema):
 
 class PrivacySchema(Schema):
     """User privacy preferences."""
+
     profile_visibility: ProfileVisibilityEnum = ProfileVisibilityEnum.MEMBERS
     show_online_status: bool = True
     show_vote_history: bool = False

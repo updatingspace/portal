@@ -1,3 +1,4 @@
+import { ListSkeleton } from '../../../shared/ui/portal/ListSkeleton';
 import { ContentDialog } from '../../../shared/ui/portal/ContentDialog';
 import { SectionTabs } from '../../../shared/ui/portal/SectionTabs';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
@@ -35,11 +36,12 @@ export function EventsPage() {
   const { timezone, locale } = useFormatters();
   const [params, setParams] = useSearchParams();
   const [panel, setPanel] = useState<'filters' | 'calendar' | null>(null);
-  const [calendarReady, setCalendarReady] = useState(false);
+  const [calendarLocale, setCalendarLocale] = useState<string | null>(null);
+  const calendarReady = calendarLocale === locale;
   useEffect(() => {
     let current = true;
     settings.loadLocale(locale).then(() => {
-      if (current) setCalendarReady(true);
+      if (current) setCalendarLocale(locale);
     });
     return () => {
       current = false;
@@ -104,20 +106,6 @@ export function EventsPage() {
   );
   const filterControls = (
     <div className="portal-event-filters">
-      <FormField label={t('Поиск событий', 'Search events')}>
-        {(props) => (
-          <TextInput
-            {...props}
-            size="xl"
-            value={query}
-            onUpdate={(value) => update('q', value)}
-            placeholder={t(
-              'Название, место или описание',
-              'Title, location or description',
-            )}
-          />
-        )}
-      </FormField>
       <FormField label={t('Мой ответ', 'My response')}>
         {(props) => (
           <Select
@@ -212,7 +200,7 @@ export function EventsPage() {
           onUpdate={(value) => update('date', value.format('YYYY-MM-DD'))}
         />
       )}
-      <p>{timezone}</p>
+
       {selected && (
         <Button onClick={() => update('date', '')}>
           {t('Показать всё', 'Show all')}
@@ -257,37 +245,53 @@ export function EventsPage() {
             }
           />
           <div className="portal-event-list-tools">
-            <span>{timezone}</span>
-            {mobile && (
-              <>
-                <Button
-                  size="xl"
-                  view="flat"
-                  onClick={() => setPanel('calendar')}
-                >
-                  {t('Календарь', 'Calendar')}
-                </Button>
-                <Button
-                  size="xl"
-                  view="flat"
-                  onClick={() => setPanel('filters')}
-                >
-                  {t('Фильтры событий', 'Event filters')}
-                  {hasFilters ? ' •' : ''}
-                </Button>
-              </>
-            )}
-          </div>
-          {selected && (
+            <TextInput
+              size="xl"
+              value={query}
+              onUpdate={(value) => update('q', value)}
+              hasClear
+              placeholder={t('Найти событие', 'Find an event')}
+              controlProps={{
+                'aria-label': t('Поиск событий', 'Search events'),
+              }}
+            />
             <Button
               size="xl"
               view="outlined"
-              onClick={() => update('date', '')}
+              onClick={() => setPanel('filters')}
             >
-              {day} ×
+              {t('Фильтры', 'Filters')}
+              {hasFilters ? ' •' : ''}
             </Button>
-          )}
-          {!mobile && filterControls}
+            {mobile && (
+              <Button
+                size="xl"
+                view="flat"
+                onClick={() => setPanel('calendar')}
+              >
+                {t('Календарь', 'Calendar')}
+              </Button>
+            )}
+          </div>
+          <div className="portal-event-list-context">
+            <span title={timezone}>
+              {t('Часовой пояс:', 'Time zone:')}{' '}
+              {(timezone === 'Etc/UTC'
+                ? 'UTC'
+                : timezone.split('/').slice(-1)[0]
+              ).replaceAll('_', ' ')}
+            </span>
+            {hasFilters && (
+              <Button view="flat" onClick={reset}>
+                {t('Сбросить фильтры', 'Clear filters')}
+              </Button>
+            )}
+            {selected && (
+              <Button view="flat" onClick={() => update('date', '')}>
+                {selected.format('D MMM')} ×
+              </Button>
+            )}
+          </div>
           {isError && (
             <InlineError onRetry={() => void refetch()}>
               {t(
@@ -297,10 +301,7 @@ export function EventsPage() {
             </InlineError>
           )}
           {isLoading && (
-            <PageState
-              kind="loading"
-              title={t('Загружаем события', 'Loading events')}
-            />
+            <ListSkeleton label={t('Загружаем события', 'Loading events')} />
           )}
           {!isLoading && !isError && events.length === 0 && (
             <PageState
@@ -342,7 +343,7 @@ export function EventsPage() {
         </div>
         {!mobile && calendar}
       </div>
-      {mobile && panel && (
+      {panel && (
         <ContentDialog
           title={
             panel === 'calendar'

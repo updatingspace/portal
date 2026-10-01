@@ -1,3 +1,5 @@
+import { PostModerationDialog } from './PostModerationDialog';
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 /**
  * FeedItem Component
  *
@@ -256,9 +258,6 @@ export interface FeedItemProps {
   compact?: boolean;
   highlighted?: boolean;
   autoOpenComments?: boolean;
-  moderationMode?: boolean;
-  moderationSelected?: boolean;
-  onModerationToggle?: (newsId: string, selected: boolean) => void;
 }
 
 export const FeedItem: React.FC<FeedItemProps> = ({
@@ -267,9 +266,6 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   compact = false,
   highlighted = false,
   autoOpenComments = false,
-  moderationMode = false,
-  moderationSelected = false,
-  onModerationToggle,
 }) => {
   const { user } = useAuth();
   const mobile = useMediaQuery('(max-width: 719px)');
@@ -309,6 +305,8 @@ export const FeedItem: React.FC<FeedItemProps> = ({
   } | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
+  const t = useUITranslation();
+  const [moderationOpen, setModerationOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editBody, setEditBody] = useState(news?.body ?? '');
   const [editVisibility, setEditVisibility] = useState<
@@ -363,6 +361,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     return new URL(permalinkPath, window.location.origin).toString();
   }, [permalinkPath]);
 
+  const canModerate = Boolean(
+    user?.isSuperuser || user?.capabilities?.includes('activity.news.manage'),
+  );
   const canManage = Boolean(
     newsId &&
       user &&
@@ -394,7 +395,6 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       ? stripMarkdownHeading(news.body)
       : news.body.trim()
     : '';
-  const isModeratable = Boolean(newsId);
   const reactionDetailsFiltered = useMemo(
     () =>
       reactionDialogFilter === 'all'
@@ -519,12 +519,15 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         setRootHasMore(page.has_more);
         setRootLoaded(true);
       } catch (err) {
-        notifyApiError(err, 'Не удалось загрузить комментарии');
+        notifyApiError(
+          err,
+          t('Не удалось загрузить комментарии', 'Unable to load comments'),
+        );
       } finally {
         setLoadingRootComments(false);
       }
     },
-    [loadingRootComments, newsId, rootCursor],
+    [loadingRootComments, newsId, rootCursor, t],
   );
 
   const loadReplies = useCallback(
@@ -547,12 +550,15 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         setReplyCursors((prev) => ({ ...prev, [parentId]: page.next_cursor }));
         setReplyHasMore((prev) => ({ ...prev, [parentId]: page.has_more }));
       } catch (err) {
-        notifyApiError(err, 'Не удалось загрузить ответы');
+        notifyApiError(
+          err,
+          t('Не удалось загрузить ответы', 'Unable to load replies'),
+        );
       } finally {
         setReplyLoading((prev) => ({ ...prev, [parentId]: false }));
       }
     },
-    [newsId, replyCursors, replyLoading],
+    [newsId, replyCursors, replyLoading, t],
   );
 
   const applyReactions = useCallback(
@@ -727,7 +733,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       const details = await listNewsReactions(newsId, 200);
       setReactionDetails(details);
     } catch (err) {
-      notifyApiError(err, 'Не удалось загрузить список реакций');
+      notifyApiError(
+        err,
+        t('Не удалось загрузить список реакций', 'Unable to load reactions'),
+      );
     } finally {
       setReactionDetailsLoading(false);
     }
@@ -763,7 +772,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       }
     } catch (err) {
       applyReactions(rollback);
-      notifyApiError(err, 'Не удалось обновить реакцию');
+      notifyApiError(
+        err,
+        t('Не удалось обновить реакцию', 'Reaction not saved'),
+      );
     }
   };
 
@@ -828,7 +840,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       } else {
         setCommentBody(trimmed);
       }
-      notifyApiError(err, 'Не удалось отправить комментарий');
+      notifyApiError(
+        err,
+        t('Не удалось отправить комментарий', 'Comment not sent'),
+      );
     } finally {
       if (parentId) {
         setReplySaving((prev) => ({ ...prev, [key]: false }));
@@ -863,7 +878,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         my_liked: comment.my_liked,
         likes_count: comment.likes_count ?? 0,
       }));
-      notifyApiError(err, 'Не удалось обновить лайк комментария');
+      notifyApiError(
+        err,
+        t('Не удалось обновить лайк комментария', 'Reaction not saved'),
+      );
     } finally {
       setPendingCommentActions((prev) => ({ ...prev, [comment.id]: false }));
     }
@@ -876,7 +894,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
     patchCommentById(comment.id, (item) => ({
       ...item,
       deleted: true,
-      body: 'Комментарий удалён',
+      body: t('Комментарий удалён', 'Comment deleted'),
       can_delete: false,
       can_edit: false,
       can_reply: false,
@@ -886,7 +904,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       patchCommentById(comment.id, () => deleted);
     } catch (err) {
       patchCommentById(comment.id, () => previous);
-      notifyApiError(err, 'Не удалось удалить комментарий');
+      notifyApiError(
+        err,
+        t('Не удалось удалить комментарий', 'Unable to delete comment'),
+      );
     } finally {
       setPendingCommentActions((prev) => ({ ...prev, [comment.id]: false }));
     }
@@ -928,7 +949,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       }
       setEditOpen(false);
     } catch (err) {
-      notifyApiError(err, 'Не удалось обновить новость');
+      notifyApiError(err, t('Не удалось обновить новость', 'Post not saved'));
     } finally {
       setEditSaving(false);
     }
@@ -943,7 +964,10 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       removeDraftItem(queryClient, newsId);
       setDeleteOpen(false);
     } catch (err) {
-      notifyApiError(err, 'Не удалось удалить новость');
+      notifyApiError(
+        err,
+        t('Не удалось удалить новость', 'Unable to delete post'),
+      );
     } finally {
       setDeleteSaving(false);
     }
@@ -977,213 +1001,205 @@ export const FeedItem: React.FC<FeedItemProps> = ({
       items.push({
         text:
           copyLinkState === 'done'
-            ? 'Ссылка скопирована'
-            : 'Скопировать ссылку',
+            ? t('Ссылка скопирована', 'Link copied')
+            : t('Скопировать ссылку', 'Copy link'),
         action: () => {
           void copyPermalink();
         },
       });
     }
     items.push({
-      text: 'Редактировать',
+      text: t('Редактировать', 'Edit'),
       action: () => setEditOpen(true),
     });
     items.push({
-      text: 'Удалить',
-      action: () => setDeleteOpen(true),
+      text: canModerate
+        ? t('Модерация и история', 'Moderation and history')
+        : t('Удалить', 'Delete'),
+      action: () =>
+        canModerate ? setModerationOpen(true) : setDeleteOpen(true),
       theme: 'danger',
     });
     return items;
-  }, [absolutePermalink, canManage, copyLinkState, copyPermalink]);
+  }, [
+    absolutePermalink,
+    canManage,
+    canModerate,
+    copyLinkState,
+    copyPermalink,
+    t,
+  ]);
 
-  const renderCommentNode = useCallback(
-    (comment: NewsCommentDetail, depth = 0): React.ReactNode => {
-      const label = getDisplayName(comment.user_profile, comment.user_id, user);
-      const avatarUrl =
-        comment.user_id === user?.id
-          ? user.avatarUrl
-          : comment.user_profile?.avatar_url;
-      const hasReplies = (comment.replies_count ?? 0) > 0;
-      const isExpanded = replyExpanded[comment.id] === true;
-      const children = replyComments[comment.id] ?? [];
-      const isReplyBoxOpen = replyOpen[comment.id] === true;
-      const isActionPending = pendingCommentActions[comment.id] === true;
+  const renderCommentNode = (
+    comment: NewsCommentDetail,
+    depth = 0,
+  ): React.ReactNode => {
+    const label = getDisplayName(comment.user_profile, comment.user_id, user);
+    const avatarUrl =
+      comment.user_id === user?.id
+        ? user.avatarUrl
+        : comment.user_profile?.avatar_url;
+    const hasReplies = (comment.replies_count ?? 0) > 0;
+    const isExpanded = replyExpanded[comment.id] === true;
+    const children = replyComments[comment.id] ?? [];
+    const isReplyBoxOpen = replyOpen[comment.id] === true;
+    const isActionPending = pendingCommentActions[comment.id] === true;
 
-      return (
+    return (
+      <div
+        key={comment.id}
+        className="feed-comment-tree__node"
+        style={{ marginLeft: Math.min(depth, 4) * 14 }}
+      >
         <div
-          key={comment.id}
-          className="feed-comment-tree__node"
-          style={{ marginLeft: Math.min(depth, 4) * 14 }}
+          className={`feed-comment-tree__card${comment.deleted ? ' is-deleted' : ''}`}
         >
-          <div
-            className={`feed-comment-tree__card${comment.deleted ? ' is-deleted' : ''}`}
-          >
-            <div className="feed-comment-tree__header">
-              <div className="feed-comment-tree__meta">
-                <Avatar
-                  size="s"
-                  imgUrl={avatarUrl ?? undefined}
-                  text={label}
-                  title={label}
-                />
-                <Text variant="body-2">{label}</Text>
-                <Text
-                  variant="caption-2"
-                  color="secondary"
-                  className="feed-item__time--small"
-                >
-                  {formatDateTime(comment.created_at)}
-                </Text>
-              </div>
+          <div className="feed-comment-tree__header">
+            <div className="feed-comment-tree__meta">
+              <Avatar
+                size="s"
+                imgUrl={avatarUrl ?? undefined}
+                text={label}
+                title={label}
+              />
+              <Text variant="body-2">{label}</Text>
+              <Text
+                variant="caption-2"
+                color="secondary"
+                className="feed-item__time--small"
+              >
+                {formatDateTime(comment.created_at)}
+              </Text>
             </div>
-            <Text
-              variant="body-2"
-              color={comment.deleted ? 'secondary' : 'primary'}
+          </div>
+          <Text
+            variant="body-2"
+            color={comment.deleted ? 'secondary' : 'primary'}
+          >
+            {comment.body}
+          </Text>
+          <div className="feed-comment-tree__actions">
+            <button
+              type="button"
+              className={`feed-reaction${comment.my_liked ? ' is-active' : ''}`}
+              disabled={isActionPending || comment.deleted}
+              title={
+                comment.my_liked
+                  ? t('Нажмите, чтобы убрать лайк', 'Remove like')
+                  : t('Поставить лайк', 'Like')
+              }
+              onClick={() => void handleCommentLike(comment)}
             >
-              {comment.body}
-            </Text>
-            <div className="feed-comment-tree__actions">
+              <span>👍</span>
+              <span className="feed-reaction__count">
+                {comment.likes_count ?? 0}
+              </span>
+            </button>
+            {comment.can_reply && !comment.deleted && (
               <button
                 type="button"
-                className={`feed-reaction${comment.my_liked ? ' is-active' : ''}`}
-                disabled={isActionPending || comment.deleted}
-                title={
-                  comment.my_liked
-                    ? 'Нажмите, чтобы убрать лайк'
-                    : 'Поставить лайк'
-                }
-                onClick={() => void handleCommentLike(comment)}
+                className="feed-comment-toggle"
+                onClick={() => {
+                  setReplyOpen((prev) => ({
+                    ...prev,
+                    [comment.id]: !prev[comment.id],
+                  }));
+                }}
               >
-                <span>👍</span>
-                <span className="feed-reaction__count">
-                  {comment.likes_count ?? 0}
-                </span>
+                {t('Ответить', 'Reply')}
               </button>
-              {comment.can_reply && !comment.deleted && (
-                <button
-                  type="button"
-                  className="feed-comment-toggle"
-                  onClick={() => {
-                    setReplyOpen((prev) => ({
-                      ...prev,
-                      [comment.id]: !prev[comment.id],
-                    }));
-                  }}
-                >
-                  Ответить
-                </button>
-              )}
-              {comment.can_delete && !comment.deleted && (
-                <button
-                  type="button"
-                  className="feed-comment-toggle"
-                  onClick={() => void handleCommentDelete(comment)}
-                  disabled={isActionPending}
-                >
-                  Удалить
-                </button>
-              )}
-              {hasReplies && (
-                <button
-                  type="button"
-                  className="feed-comment-toggle"
-                  onClick={() => {
-                    const next = !isExpanded;
-                    setReplyExpanded((prev) => ({
-                      ...prev,
-                      [comment.id]: next,
-                    }));
-                    if (
-                      next &&
-                      (replyComments[comment.id]?.length ?? 0) === 0
-                    ) {
-                      void loadReplies(comment.id, true);
-                    }
-                  }}
-                >
-                  {isExpanded
-                    ? 'Скрыть ответы'
-                    : `Показать ответы (${comment.replies_count ?? 0})`}
-                </button>
-              )}
-            </div>
-
-            {isReplyBoxOpen && (
-              <div className="feed-comment-tree__reply">
-                <textarea
-                  value={replyBody[comment.id] ?? ''}
-                  onChange={(event) =>
-                    setReplyBody((prev) => ({
-                      ...prev,
-                      [comment.id]: event.target.value,
-                    }))
+            )}
+            {comment.can_delete && !comment.deleted && (
+              <button
+                type="button"
+                className="feed-comment-toggle"
+                onClick={() => void handleCommentDelete(comment)}
+                disabled={isActionPending}
+              >
+                {t('Удалить', 'Delete')}
+              </button>
+            )}
+            {hasReplies && (
+              <button
+                type="button"
+                className="feed-comment-toggle"
+                onClick={() => {
+                  const next = !isExpanded;
+                  setReplyExpanded((prev) => ({
+                    ...prev,
+                    [comment.id]: next,
+                  }));
+                  if (next && (replyComments[comment.id]?.length ?? 0) === 0) {
+                    void loadReplies(comment.id, true);
                   }
-                  placeholder="Ответить на комментарий..."
-                  rows={2}
-                />
-                <div className="feed-comment-box__actions">
-                  <Button
-                    view="normal"
-                    size="s"
-                    onClick={() =>
-                      setReplyOpen((prev) => ({ ...prev, [comment.id]: false }))
-                    }
-                  >
-                    Отмена
-                  </Button>
-                  <Button
-                    view="action"
-                    size="s"
-                    loading={replySaving[comment.id] === true}
-                    disabled={!(replyBody[comment.id] ?? '').trim()}
-                    onClick={() => void submitComment(comment.id)}
-                  >
-                    Отправить
-                  </Button>
-                </div>
-              </div>
+                }}
+              >
+                {isExpanded
+                  ? t('Скрыть ответы', 'Hide replies')
+                  : `Показать ответы (${comment.replies_count ?? 0})`}
+              </button>
             )}
           </div>
 
-          {isExpanded && (
-            <div className="feed-comment-tree__children">
-              {children.map((child) => renderCommentNode(child, depth + 1))}
-              {replyLoading[comment.id] && (
-                <div className="feed-reaction-roster__loading">
-                  <Loader size="s" />
-                </div>
-              )}
-              {replyHasMore[comment.id] && !replyLoading[comment.id] && (
-                <button
-                  type="button"
-                  className="feed-comment-toggle"
-                  onClick={() => void loadReplies(comment.id)}
+          {isReplyBoxOpen && (
+            <div className="feed-comment-tree__reply">
+              <textarea
+                value={replyBody[comment.id] ?? ''}
+                onChange={(event) =>
+                  setReplyBody((prev) => ({
+                    ...prev,
+                    [comment.id]: event.target.value,
+                  }))
+                }
+                placeholder={t('Ответить на комментарий...', 'Write a reply…')}
+                rows={2}
+              />
+              <div className="feed-comment-box__actions">
+                <Button
+                  view="normal"
+                  size="s"
+                  onClick={() =>
+                    setReplyOpen((prev) => ({ ...prev, [comment.id]: false }))
+                  }
                 >
-                  Показать ещё ответы
-                </button>
-              )}
+                  {t('Отмена', 'Cancel')}
+                </Button>
+                <Button
+                  view="action"
+                  size="s"
+                  loading={replySaving[comment.id] === true}
+                  disabled={!(replyBody[comment.id] ?? '').trim()}
+                  onClick={() => void submitComment(comment.id)}
+                >
+                  {t('Отправить', 'Send')}
+                </Button>
+              </div>
             </div>
           )}
         </div>
-      );
-    },
-    [
-      handleCommentDelete,
-      handleCommentLike,
-      loadReplies,
-      pendingCommentActions,
-      replyBody,
-      replyComments,
-      replyExpanded,
-      replyHasMore,
-      replyLoading,
-      replyOpen,
-      replySaving,
-      submitComment,
-      user,
-    ],
-  );
 
+        {isExpanded && (
+          <div className="feed-comment-tree__children">
+            {children.map((child) => renderCommentNode(child, depth + 1))}
+            {replyLoading[comment.id] && (
+              <div className="feed-reaction-roster__loading">
+                <Loader size="s" />
+              </div>
+            )}
+            {replyHasMore[comment.id] && !replyLoading[comment.id] && (
+              <button
+                type="button"
+                className="feed-comment-toggle"
+                onClick={() => void loadReplies(comment.id)}
+              >
+                {t('Показать ещё ответы', 'Show more replies')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
   const body = (
     <div
       ref={itemRef}
@@ -1222,24 +1238,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
             >
               {dateStr}
               {news?.status === 'draft'
-                ? ' · Черновик'
+                ? t('· Черновик', ' · Draft')
                 : item.visibility === 'private'
-                  ? ' · Только мне'
+                  ? t('· Только мне', ' · Only me')
                   : ''}
             </Text>
-            {moderationMode && isModeratable && (
-              <label className="feed-item__moderation-check">
-                <input
-                  type="checkbox"
-                  checked={moderationSelected}
-                  onChange={(event) => {
-                    if (!newsId || !onModerationToggle) return;
-                    onModerationToggle(newsId, event.target.checked);
-                  }}
-                />
-                <span>Выбрать</span>
-              </label>
-            )}
           </div>
           <div className="feed-item__header-right">
             {manageItems.length > 0 && (
@@ -1252,7 +1255,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                       view="flat"
                       size="xl"
                       className="feed-item__menu"
-                      aria-label="Действия публикации"
+                      aria-label={t('Действия публикации', 'Post actions')}
                     >
                       ⋯
                     </Button>
@@ -1336,7 +1339,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                           loading="lazy"
                         />
                         <div className="feed-media__youtube">
-                          <span>Смотреть видео</span>
+                          <span>{t('Смотреть видео', 'Watch video')}</span>
                         </div>
                       </a>
                     );
@@ -1360,8 +1363,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                       onClick={() => void handleReaction(reaction.emoji)}
                       title={
                         reaction.my_reacted
-                          ? 'Реакция установлена. Нажмите, чтобы убрать.'
-                          : 'Поставить реакцию'
+                          ? t(
+                              'Реакция установлена. Нажмите, чтобы убрать.',
+                              'Reacted. Click to remove.',
+                            )
+                          : t('Поставить реакцию', 'React')
                       }
                     >
                       <span>{reaction.emoji}</span>
@@ -1383,7 +1389,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                         {...props}
                         view="flat"
                         size="xl"
-                        aria-label="Добавить реакцию"
+                        aria-label={t('Добавить реакцию', 'Add reaction')}
                       >
                         <Icon data={FaceSmile} size={20} />
                       </Button>
@@ -1429,7 +1435,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                     </div>
                   ) : rootComments.length === 0 ? (
                     <Text variant="body-2" color="secondary">
-                      Пока нет комментариев.
+                      {t('Пока нет комментариев.', 'No comments yet.')}
                     </Text>
                   ) : (
                     <div className="feed-comment-tree">
@@ -1444,14 +1450,14 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                       className="feed-comment-toggle"
                       onClick={() => void loadRootComments()}
                     >
-                      Показать ещё комментарии
+                      {t('Показать ещё комментарии', 'Show more comments')}
                     </button>
                   )}
                 </div>
                 <textarea
                   value={commentBody}
                   onChange={(event) => setCommentBody(event.target.value)}
-                  placeholder="Написать комментарий..."
+                  placeholder={t('Написать комментарий...', 'Write a comment…')}
                   rows={2}
                 />
                 <div className="feed-comment-box__actions">
@@ -1461,7 +1467,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                     disabled={!commentBody.trim()}
                     onClick={() => void submitComment()}
                   >
-                    Отправить
+                    {t('Отправить', 'Send')}
                   </Button>
                 </div>
               </div>
@@ -1514,9 +1520,9 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         open={reactionDialogOpen}
         onClose={() => setReactionDialogOpen(false)}
         size="m"
-        aria-label="Реакции к новости"
+        aria-label={t('Реакции к новости', 'Post reactions')}
       >
-        <Dialog.Header caption="Реакции" />
+        <Dialog.Header caption={t('Реакции', 'Reactions')} />
         <Dialog.Body>
           <div className="feed-reaction-roster">
             <div className="feed-reaction-roster__filters">
@@ -1525,7 +1531,8 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 className={`feed-reaction-roster__filter${reactionDialogFilter === 'all' ? ' is-active' : ''}`}
                 onClick={() => setReactionDialogFilter('all')}
               >
-                Все {reactionsTotal}
+                {t('Все', 'All')}
+                {reactionsTotal}
               </button>
               {reactionSummary
                 .filter((row) => row.count > 0)
@@ -1546,7 +1553,7 @@ export const FeedItem: React.FC<FeedItemProps> = ({
               </div>
             ) : reactionDetailsFiltered.length === 0 ? (
               <Text variant="body-2" color="secondary">
-                Пока никто не отреагировал.
+                {t('Пока никто не отреагировал.', 'No reactions yet.')}
               </Text>
             ) : (
               <div className="feed-reaction-roster__list">
@@ -1591,16 +1598,16 @@ export const FeedItem: React.FC<FeedItemProps> = ({
         open={editOpen}
         onClose={() => setEditOpen(false)}
         size="l"
-        aria-label="Редактировать новость"
+        aria-label={t('Редактировать новость', 'Edit post')}
       >
-        <Dialog.Header caption="Редактировать новость" />
+        <Dialog.Header caption={t('Редактировать новость', 'Edit post')} />
         <Dialog.Body>
           <div className="feed-item__edit">
             <TextArea
               value={editBody}
               onUpdate={setEditBody}
               minRows={6}
-              placeholder="Измените текст новости"
+              placeholder={t('Измените текст новости', 'Edit post text')}
             />
             <Select
               value={[editStatus]}
@@ -1609,8 +1616,11 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 if (next) setEditStatus(next);
               }}
               options={[
-                { value: 'published', content: 'Опубликовать' },
-                { value: 'draft', content: 'Сохранить как черновик' },
+                { value: 'published', content: t('Опубликовать', 'Publish') },
+                {
+                  value: 'draft',
+                  content: t('Сохранить как черновик', 'Save as draft'),
+                },
               ]}
             />
             <Select
@@ -1625,39 +1635,61 @@ export const FeedItem: React.FC<FeedItemProps> = ({
                 if (next) setEditVisibility(next);
               }}
               options={[
-                { value: 'public', content: 'Публично' },
-                { value: 'private', content: 'Приватно' },
+                { value: 'public', content: t('Публично', 'Community') },
+                { value: 'private', content: t('Приватно', 'Only me') },
               ]}
               disabled={editStatus === 'draft'}
             />
             <Text variant="caption-2" color="secondary">
-              Заголовок берётся из первой строки вида `# Заголовок`. Теги и
-              YouTube-видео обновляются автоматически.
+              {t(
+                'Заголовок берётся из первой строки вида `# Заголовок`. Теги и\n              YouTube-видео обновляются автоматически.',
+                'Use # Title on the first line for a heading. Tags and videos update automatically.',
+              )}
             </Text>
           </div>
         </Dialog.Body>
         <Dialog.Footer
-          textButtonCancel="Отмена"
-          textButtonApply={editSaving ? 'Сохранение...' : 'Сохранить'}
+          textButtonCancel={t('Отмена', 'Cancel')}
+          textButtonApply={
+            editSaving ? t('Сохранение...', 'Saving…') : t('Сохранить', 'Save')
+          }
           onClickButtonCancel={() => setEditOpen(false)}
           onClickButtonApply={handleEditSave}
           loading={editSaving}
         />
       </Dialog>
+      {moderationOpen && newsId && canModerate && (
+        <PostModerationDialog
+          newsId={newsId}
+          title={String(news?.title || news?.body || '').slice(0, 120)}
+          onClose={() => setModerationOpen(false)}
+          onRemoved={() => {
+            removeFeedNews(queryClient, newsId);
+            removeDraftItem(queryClient, newsId);
+          }}
+        />
+      )}
       <Dialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        aria-label="Удалить новость"
+        aria-label={t('Удалить новость', 'Delete post')}
       >
-        <Dialog.Header caption="Удалить новость?" />
+        <Dialog.Header caption={t('Удалить новость?', 'Delete this post?')} />
         <Dialog.Body>
           <Text variant="body-2">
-            Новость будет удалена навсегда. Это действие нельзя отменить.
+            {t(
+              'Новость будет удалена навсегда. Это действие нельзя отменить.',
+              'The post will be deleted permanently. This cannot be undone.',
+            )}
           </Text>
         </Dialog.Body>
         <Dialog.Footer
-          textButtonCancel="Отмена"
-          textButtonApply={deleteSaving ? 'Удаление...' : 'Удалить'}
+          textButtonCancel={t('Отмена', 'Cancel')}
+          textButtonApply={
+            deleteSaving
+              ? t('Удаление...', 'Deleting…')
+              : t('Удалить', 'Delete')
+          }
           onClickButtonCancel={() => setDeleteOpen(false)}
           onClickButtonApply={handleDelete}
           loading={deleteSaving}

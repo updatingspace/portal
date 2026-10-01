@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { dateTime } from '@gravity-ui/date-utils';
 import { parseLocalDateTime } from '../../../shared/lib/dateTimeLocal';
 import { FormField } from '../../../shared/ui/portal/PortalUI';
@@ -19,6 +20,7 @@ export function ScheduleForm({
   onUpdate,
   disabled = false,
 }: ScheduleFormProps) {
+  const t = useUITranslation();
   const { timezone } = useFormatters();
   const controlValue = (value?: string | null) =>
     value
@@ -38,9 +40,15 @@ export function ScheduleForm({
   );
   return (
     <div className="voting-schedule">
-      <p className="voting-v2__muted">Часовой пояс: {timezone}</p>
+      <p className="voting-v2__muted">
+        {t('Часовой пояс:', 'Time zone:')}
+        {timezone}
+      </p>
       <div className="voting-schedule__fields">
-        <FormField label="Начало голосования" hint="Необязательно">
+        <FormField
+          label={t('Начало голосования', 'Voting starts')}
+          hint={t('Необязательно', 'Optional')}
+        >
           {(props) => (
             <input
               {...props}
@@ -58,9 +66,16 @@ export function ScheduleForm({
           )}
         </FormField>
         <FormField
-          label="Окончание голосования"
-          hint="Необязательно"
-          error={invalid ? 'Окончание должно быть позже начала.' : undefined}
+          label={t('Окончание голосования', 'Voting ends')}
+          hint={t('Необязательно', 'Optional')}
+          error={
+            invalid
+              ? t(
+                  'Окончание должно быть позже начала.',
+                  'End time must be after start time.',
+                )
+              : undefined
+          }
         >
           {(props) => (
             <input

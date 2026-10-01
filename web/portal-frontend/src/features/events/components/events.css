@@ -141,17 +141,6 @@
     margin-top: 8px;
   }
 }
-.portal-event-list-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: -20px;
-}
-.portal-event-list-tools > span {
-  margin-right: auto;
-  color: var(--portal-muted);
-  font-size: 14px;
-}
 @media (max-width: 719px) {
   .portal-event-card {
     border: 0;
@@ -203,24 +192,36 @@
   margin: 0;
 }
 
+.portal-event-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.portal-event-list-tools > .g-text-input {
+  flex: 1;
+  min-width: 0;
+}
+.portal-event-list-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--g-color-text-secondary);
+  font-size: 13px;
+}
 @media (max-width: 719px) {
   .portal-event-list-tools {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
   }
-  .portal-event-list-tools > span {
+  .portal-event-list-tools > .g-text-input {
     grid-column: 1 / -1;
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
-  .portal-event-list-tools .g-button {
-    min-width: 0;
+  .portal-event-list-tools > .g-button {
     width: 100%;
-    --g-button-padding: 8px;
   }
-  .portal-event-list-tools .g-button__text {
-    white-space: normal;
-    line-height: 1.25;
-  }
+}
+
+.portal-events-layout .portal-section-tabs {
+  margin-bottom: 0;
 }

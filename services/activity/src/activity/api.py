@@ -17,6 +17,7 @@ from ninja import Body, Router
 from ninja.errors import HttpError
 
 from activity import schemas
+from activity.audit import ActivityAuditEvent
 from activity.audit import log_audit_event as _log_audit
 from activity.connectors import install_connectors
 from activity.context import require_activity_context
@@ -166,8 +167,7 @@ def _build_news_payload(
             .order_by("-count", "emoji")
         )
         payload["reaction_counts"] = [
-            {"emoji": row["emoji"], "count": row["count"]}
-            for row in reaction_rows
+            {"emoji": row["emoji"], "count": row["count"]} for row in reaction_rows
         ]
         if ctx.user_id:
             payload["my_reactions"] = list(
@@ -225,9 +225,13 @@ def _build_news_activity_event(post: NewsPost) -> ActivityEvent:
 
 def _can_read_news(ctx, post: NewsPost) -> bool:
     if post.status == NewsStatus.DRAFT:
-        return bool(ctx.user_id and ctx.user_id == post.author_user_id) or _can_manage_news(ctx, post)
+        return bool(
+            ctx.user_id and ctx.user_id == post.author_user_id
+        ) or _can_manage_news(ctx, post)
     if post.visibility == Visibility.PRIVATE:
-        return bool(ctx.user_id and ctx.user_id == post.author_user_id) or _can_manage_news(ctx, post)
+        return bool(
+            ctx.user_id and ctx.user_id == post.author_user_id
+        ) or _can_manage_news(ctx, post)
     try:
         require_permission(
             ctx=ctx,
@@ -255,7 +259,9 @@ def _serialize_news_post(
 ) -> schemas.ActivityEventOut:
     actor_profile = None
     if post.author_user_id and actor_profiles:
-        actor_profile = _coerce_actor_profile(actor_profiles.get(str(post.author_user_id)))
+        actor_profile = _coerce_actor_profile(
+            actor_profiles.get(str(post.author_user_id))
+        )
     payload = _build_news_payload(post, ctx)
     event = _build_news_activity_event(post)
     event.title = _news_title(post)
@@ -383,7 +389,9 @@ def _resolve_news_scope(
         if scope_type == ScopeType.TENANT:
             scope_id = str(ctx.tenant_id)
         else:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "scope_id is required"))
+            raise HttpError(
+                400, error_payload("VALIDATION_ERROR", "scope_id is required")
+            )
     return str(scope_type), str(scope_id)
 
 
@@ -402,7 +410,9 @@ def _parse_uuid(value: str, *, code: str, message: str) -> UUID:
         raise HttpError(400, error_payload(code, message)) from exc
 
 
-def _coerce_actor_profile(profile: dict[str, Any] | None) -> schemas.ActorProfileOut | None:
+def _coerce_actor_profile(
+    profile: dict[str, Any] | None,
+) -> schemas.ActorProfileOut | None:
     if not profile:
         return None
     user_id = profile.get("user_id")
@@ -441,7 +451,9 @@ def _serialize_event(
                 return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
     actor_profile = None
     if item.actor_user_id and actor_profiles:
-        actor_profile = _coerce_actor_profile(actor_profiles.get(str(item.actor_user_id)))
+        actor_profile = _coerce_actor_profile(
+            actor_profiles.get(str(item.actor_user_id))
+        )
     return schemas.ActivityEventOut(
         id=item.id,
         tenant_id=item.tenant_id,
@@ -552,7 +564,11 @@ def feed_get(
         ctx,
         [str(item.actor_user_id) for item in items if item.actor_user_id],
     )
-    return {"items": [_serialize_event(item, ctx, actor_profiles=actor_profiles) for item in items]}
+    return {
+        "items": [
+            _serialize_event(item, ctx, actor_profiles=actor_profiles) for item in items
+        ]
+    }
 
 
 @router.get(
@@ -646,7 +662,12 @@ def feed_unread_count_long_poll(
 
 @router.post(
     "/news/media/upload-url",
-    response={200: schemas.NewsMediaUploadOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut},
+    response={
+        200: schemas.NewsMediaUploadOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+    },
     summary="Request upload URL for news media",
     operation_id="activity_news_media_upload_url",
 )
@@ -666,7 +687,11 @@ def news_media_upload_url(request, payload: schemas.NewsMediaUploadIn = REQUIRED
     if payload.size_bytes > max_size:
         raise HttpError(
             400,
-            error_payload("FILE_TOO_LARGE", "Image is слишком большой", details={"max_bytes": max_size}),
+            error_payload(
+                "FILE_TOO_LARGE",
+                "Image is слишком большой",
+                details={"max_bytes": max_size},
+            ),
         )
     if payload.content_type not in NEWS_ALLOWED_IMAGE_TYPES:
         raise HttpError(
@@ -701,16 +726,30 @@ def news_media_upload_file(request, token: str):
     try:
         parsed = parse_local_upload_token(token)
     except signing.SignatureExpired:
-        return _error_json_response(request, status=403, code="MEDIA_TOKEN_EXPIRED", message="Upload token expired")
+        return _error_json_response(
+            request,
+            status=403,
+            code="MEDIA_TOKEN_EXPIRED",
+            message="Upload token expired",
+        )
     except signing.BadSignature:
-        return _error_json_response(request, status=403, code="MEDIA_TOKEN_INVALID", message="Upload token is invalid")
+        return _error_json_response(
+            request,
+            status=403,
+            code="MEDIA_TOKEN_INVALID",
+            message="Upload token is invalid",
+        )
 
     if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=parsed.key):
-        return _error_json_response(request, status=403, code="FORBIDDEN", message="media key not allowed")
+        return _error_json_response(
+            request, status=403, code="FORBIDDEN", message="media key not allowed"
+        )
 
     body = request.body or b""
     if not body:
-        return _error_json_response(request, status=400, code="EMPTY_UPLOAD", message="Upload body is empty")
+        return _error_json_response(
+            request, status=400, code="EMPTY_UPLOAD", message="Upload body is empty"
+        )
     max_size = getattr(settings, "NEWS_MEDIA_MAX_IMAGE_BYTES", 10 * 1024 * 1024)
     if len(body) > max_size:
         return _error_json_response(
@@ -722,7 +761,12 @@ def news_media_upload_file(request, token: str):
         )
 
     if parsed.content_type and parsed.content_type not in NEWS_ALLOWED_IMAGE_TYPES:
-        return _error_json_response(request, status=400, code="INVALID_MEDIA_TYPE", message="Only images are allowed")
+        return _error_json_response(
+            request,
+            status=400,
+            code="INVALID_MEDIA_TYPE",
+            message="Only images are allowed",
+        )
 
     save_local_media_file(key=parsed.key, content=body)
     return HttpResponse(status=204)
@@ -740,19 +784,30 @@ def news_media_download_file(request, token_or_key: str):
         parsed = parse_local_download_token(token_or_key)
         key = parsed.key
     except signing.SignatureExpired:
-        return _error_json_response(request, status=403, code="MEDIA_TOKEN_EXPIRED", message="Media link expired")
+        return _error_json_response(
+            request,
+            status=403,
+            code="MEDIA_TOKEN_EXPIRED",
+            message="Media link expired",
+        )
     except signing.BadSignature:
         key = token_or_key
 
     if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=key):
-        return _error_json_response(request, status=403, code="FORBIDDEN", message="media key not allowed")
+        return _error_json_response(
+            request, status=403, code="FORBIDDEN", message="media key not allowed"
+        )
 
     try:
         path, content_type = load_local_media_file(key=key)
     except FileNotFoundError:
-        return _error_json_response(request, status=404, code="NOT_FOUND", message="Media file not found")
+        return _error_json_response(
+            request, status=404, code="NOT_FOUND", message="Media file not found"
+        )
     except ValueError:
-        return _error_json_response(request, status=400, code="INVALID_MEDIA_KEY", message="Invalid media key")
+        return _error_json_response(
+            request, status=400, code="INVALID_MEDIA_KEY", message="Invalid media key"
+        )
 
     response = FileResponse(path.open("rb"), content_type=content_type)
     response["Cache-Control"] = "private, max-age=60"
@@ -774,16 +829,23 @@ def news_drafts_list(request, limit: int = 20):
             tenant_id=ctx.tenant_id,
             author_user_id=ctx.user_id,
             status=NewsStatus.DRAFT,
-        )
-        .order_by("-updated_at", "-created_at")[: min(50, max(1, limit))]
+        ).order_by("-updated_at", "-created_at")[: min(50, max(1, limit))]
     )
     actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
-    return [_serialize_news_post(post, ctx, actor_profiles=actor_profiles) for post in drafts]
+    return [
+        _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
+        for post in drafts
+    ]
 
 
 @router.get(
     "/news/{news_id}",
-    response={200: schemas.ActivityEventOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: schemas.ActivityEventOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="Get single news post",
     operation_id="activity_news_get",
 )
@@ -802,97 +864,142 @@ def news_get(request, news_id: str):
 
 @router.post(
     "/news",
-    response={200: schemas.ActivityEventOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut},
+    response={
+        200: schemas.ActivityEventOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+    },
     summary="Create news post",
     operation_id="activity_news_create",
 )
 def news_create(request, payload: schemas.NewsCreateIn = REQUIRED_BODY):
-    ctx = require_activity_context(request, require_user=True)
-    require_not_suspended(ctx)
+    with transaction.atomic():
+        ctx = require_activity_context(request, require_user=True)
+        require_not_suspended(ctx)
 
-    body = (payload.body or "").strip()
-    if not body:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "body is required"))
-    if len(body) > 5000:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "body is too long"))
+        body = (payload.body or "").strip()
+        if not body:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "body is required"))
+        if len(body) > 5000:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "body is too long"))
 
-    tags = sanitize_tags(payload.tags or [])
-    if len(tags) > 10:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "too many tags"))
+        tags = sanitize_tags(payload.tags or [])
+        if len(tags) > 10:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "too many tags"))
 
-    media = normalize_media_payload([m.model_dump() for m in payload.media])
-    max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
-    if len(media) > max_media:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "too many media items"))
+        media = normalize_media_payload([m.model_dump() for m in payload.media])
+        max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
+        if len(media) > max_media:
+            raise HttpError(
+                400, error_payload("VALIDATION_ERROR", "too many media items")
+            )
 
-    for entry in media:
-        kind = entry.get("type")
-        if kind == "image":
-            key = entry.get("key")
-            if not isinstance(key, str) or not key:
-                raise HttpError(400, error_payload("VALIDATION_ERROR", "media key is required"))
-            if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=key):
-                raise HttpError(403, error_payload("FORBIDDEN", "media key not allowed"))
-            content_type = entry.get("content_type")
-            if content_type not in NEWS_ALLOWED_IMAGE_TYPES:
-                raise HttpError(400, error_payload("INVALID_MEDIA_TYPE", "Unsupported image type"))
-        elif kind == "youtube":
-            url = entry.get("url")
-            video_id = entry.get("video_id")
-            if not isinstance(url, str) or not url.strip():
-                raise HttpError(400, error_payload("VALIDATION_ERROR", "youtube url is required"))
-            if not isinstance(video_id, str) or not video_id.strip():
-                raise HttpError(400, error_payload("VALIDATION_ERROR", "youtube video_id is required"))
+        for entry in media:
+            kind = entry.get("type")
+            if kind == "image":
+                key = entry.get("key")
+                if not isinstance(key, str) or not key:
+                    raise HttpError(
+                        400, error_payload("VALIDATION_ERROR", "media key is required")
+                    )
+                if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=key):
+                    raise HttpError(
+                        403, error_payload("FORBIDDEN", "media key not allowed")
+                    )
+                content_type = entry.get("content_type")
+                if content_type not in NEWS_ALLOWED_IMAGE_TYPES:
+                    raise HttpError(
+                        400,
+                        error_payload("INVALID_MEDIA_TYPE", "Unsupported image type"),
+                    )
+            elif kind == "youtube":
+                url = entry.get("url")
+                video_id = entry.get("video_id")
+                if not isinstance(url, str) or not url.strip():
+                    raise HttpError(
+                        400,
+                        error_payload("VALIDATION_ERROR", "youtube url is required"),
+                    )
+                if not isinstance(video_id, str) or not video_id.strip():
+                    raise HttpError(
+                        400,
+                        error_payload(
+                            "VALIDATION_ERROR", "youtube video_id is required"
+                        ),
+                    )
 
-    visibility = payload.visibility
-    if visibility not in {v.value for v in Visibility}:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid visibility"))
-    status = payload.status
-    if status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid status"))
+        visibility = payload.visibility
+        if visibility not in {v.value for v in Visibility}:
+            raise HttpError(
+                400, error_payload("VALIDATION_ERROR", "Invalid visibility")
+            )
+        status = payload.status
+        if status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid status"))
 
-    scope_type, scope_id = _resolve_news_scope(
-        ctx=ctx,
-        visibility=visibility,
-        scope_type_raw=payload.scope_type,
-        scope_id_raw=payload.scope_id,
-    )
+        scope_type, scope_id = _resolve_news_scope(
+            ctx=ctx,
+            visibility=visibility,
+            scope_type_raw=payload.scope_type,
+            scope_id_raw=payload.scope_id,
+        )
 
-    require_permission(
-        ctx=ctx,
-        permission_key=Permissions.NEWS_CREATE,
-        scope_type=scope_type,
-        scope_id=str(scope_id),
-    )
+        require_permission(
+            ctx=ctx,
+            permission_key=Permissions.NEWS_CREATE,
+            scope_type=scope_type,
+            scope_id=str(scope_id),
+        )
 
-    post = NewsPost.objects.create(
-        tenant_id=ctx.tenant_id,
-        author_user_id=ctx.user_id,
-        title=payload.title or "",
-        body=body,
-        tags_json=tags,
-        media_json=media,
-        visibility=visibility,
-        status=status,
-        scope_type=scope_type,
-        scope_id=str(scope_id),
-        created_at=timezone.now(),
-        updated_at=timezone.now(),
-    )
-    _sync_news_activity_event(post)
-    _publish_news_change(post, kind="upsert", changed=["body", "status", "visibility", "media", "tags"])
+        post = NewsPost.objects.create(
+            tenant_id=ctx.tenant_id,
+            author_user_id=ctx.user_id,
+            title=payload.title or "",
+            body=body,
+            tags_json=tags,
+            media_json=media,
+            visibility=visibility,
+            status=status,
+            scope_type=scope_type,
+            scope_id=str(scope_id),
+            created_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="news.created",
+            target_type="news",
+            target_id=str(post.id),
+            request_id=ctx.request_id,
+        )
+        _sync_news_activity_event(post)
+        _publish_news_change(
+            post,
+            kind="upsert",
+            changed=["body", "status", "visibility", "media", "tags"],
+        )
 
-    actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
-    return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
+        actor_profiles = _fetch_actor_profiles(ctx, [str(ctx.user_id)])
+        return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
 
 
 @router.post(
     "/news/{news_id}/reactions",
-    response={200: list[schemas.NewsReactionOut], 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: list[schemas.NewsReactionOut],
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="Add or remove reaction",
     operation_id="activity_news_reactions",
 )
-def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUIRED_BODY):
+def news_reaction(
+    request, news_id: str, payload: schemas.NewsReactionIn = REQUIRED_BODY
+):
     ctx = require_activity_context(request, require_user=True)
     require_not_suspended(ctx)
 
@@ -956,7 +1063,12 @@ def news_reaction(request, news_id: str, payload: schemas.NewsReactionIn = REQUI
 
 @router.get(
     "/news/{news_id}/reactions",
-    response={200: list[schemas.NewsReactionDetailOut], 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: list[schemas.NewsReactionDetailOut],
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="List reactions on a news post",
     operation_id="activity_news_reactions_list",
 )
@@ -969,11 +1081,9 @@ def list_news_reactions(request, news_id: str, limit: int = 50, offset: int = 0)
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
     _ensure_news_readable(ctx, post)
 
-    reactions = (
-        NewsReaction.objects.filter(tenant_id=ctx.tenant_id, post=post)
-        .order_by("-created_at")
-        [offset:offset + limit]
-    )
+    reactions = NewsReaction.objects.filter(
+        tenant_id=ctx.tenant_id, post=post
+    ).order_by("-created_at")[offset : offset + limit]
     actor_profiles = _fetch_actor_profiles(
         ctx,
         [str(reaction.user_id) for reaction in reactions],
@@ -1027,7 +1137,9 @@ def news_track_view(request, news_id: str):
             post.save(update_fields=["updated_at"])
             _publish_news_change(post, kind="upsert", changed=["views"])
 
-    views_count = NewsPostView.objects.filter(tenant_id=ctx.tenant_id, post=post).count()
+    views_count = NewsPostView.objects.filter(
+        tenant_id=ctx.tenant_id, post=post
+    ).count()
     return schemas.NewsViewOut(views_count=views_count, counted=counted)
 
 
@@ -1048,86 +1160,143 @@ def _can_manage_news(ctx, post: NewsPost) -> bool:
 
 @router.patch(
     "/news/{news_id}",
-    response={200: schemas.ActivityEventOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: schemas.ActivityEventOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="Update news post",
     operation_id="activity_news_update",
 )
 def news_update(request, news_id: str, payload: schemas.NewsUpdateIn = REQUIRED_BODY):
-    ctx = require_activity_context(request, require_user=True)
-    require_not_suspended(ctx)
+    with transaction.atomic():
+        ctx = require_activity_context(request, require_user=True)
+        require_not_suspended(ctx)
 
-    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
-    if not post:
-        raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+        post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+        if not post:
+            raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
 
-    if not _can_manage_news(ctx, post):
-        raise HttpError(403, error_payload("FORBIDDEN", "Permission denied"))
+        if not _can_manage_news(ctx, post):
+            raise HttpError(403, error_payload("FORBIDDEN", "Permission denied"))
 
-    body = payload.body.strip() if payload.body is not None else post.body
-    if not body:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "body is required"))
-    if len(body) > 5000:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "body is too long"))
+        body = payload.body.strip() if payload.body is not None else post.body
+        if not body:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "body is required"))
+        if len(body) > 5000:
+            raise HttpError(400, error_payload("VALIDATION_ERROR", "body is too long"))
 
-    title = payload.title.strip() if payload.title is not None else post.title
-    if not title:
-        title = body[:120].strip() or "Новость"
+        title = payload.title.strip() if payload.title is not None else post.title
+        if not title:
+            title = body[:120].strip() or "Новость"
 
-    tags = post.tags_json
-    if payload.tags is not None:
-        tags = sanitize_tags(payload.tags or [])
-        if len(tags) > 10:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "too many tags"))
+        tags = post.tags_json
+        if payload.tags is not None:
+            tags = sanitize_tags(payload.tags or [])
+            if len(tags) > 10:
+                raise HttpError(400, error_payload("VALIDATION_ERROR", "too many tags"))
 
-    media = post.media_json
-    if payload.media is not None:
-        media = normalize_media_payload([m.model_dump() for m in payload.media])
-        max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
-        if len(media) > max_media:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "too many media items"))
-        for entry in media:
-            kind = entry.get("type")
-            if kind == "image":
-                key = entry.get("key")
-                if not isinstance(key, str) or not key:
-                    raise HttpError(400, error_payload("VALIDATION_ERROR", "media key is required"))
-                if not is_news_media_key_allowed(tenant_id=str(ctx.tenant_id), key=key):
-                    raise HttpError(403, error_payload("FORBIDDEN", "media key not allowed"))
-                content_type = entry.get("content_type")
-                if content_type not in NEWS_ALLOWED_IMAGE_TYPES:
-                    raise HttpError(400, error_payload("INVALID_MEDIA_TYPE", "Unsupported image type"))
-            elif kind == "youtube":
-                url = entry.get("url")
-                video_id = entry.get("video_id")
-                if not isinstance(url, str) or not url.strip():
-                    raise HttpError(400, error_payload("VALIDATION_ERROR", "youtube url is required"))
-                if not isinstance(video_id, str) or not video_id.strip():
-                    raise HttpError(400, error_payload("VALIDATION_ERROR", "youtube video_id is required"))
+        media = post.media_json
+        if payload.media is not None:
+            media = normalize_media_payload([m.model_dump() for m in payload.media])
+            max_media = getattr(settings, "NEWS_MEDIA_MAX_ATTACHMENTS", 8)
+            if len(media) > max_media:
+                raise HttpError(
+                    400, error_payload("VALIDATION_ERROR", "too many media items")
+                )
+            for entry in media:
+                kind = entry.get("type")
+                if kind == "image":
+                    key = entry.get("key")
+                    if not isinstance(key, str) or not key:
+                        raise HttpError(
+                            400,
+                            error_payload("VALIDATION_ERROR", "media key is required"),
+                        )
+                    if not is_news_media_key_allowed(
+                        tenant_id=str(ctx.tenant_id), key=key
+                    ):
+                        raise HttpError(
+                            403, error_payload("FORBIDDEN", "media key not allowed")
+                        )
+                    content_type = entry.get("content_type")
+                    if content_type not in NEWS_ALLOWED_IMAGE_TYPES:
+                        raise HttpError(
+                            400,
+                            error_payload(
+                                "INVALID_MEDIA_TYPE", "Unsupported image type"
+                            ),
+                        )
+                elif kind == "youtube":
+                    url = entry.get("url")
+                    video_id = entry.get("video_id")
+                    if not isinstance(url, str) or not url.strip():
+                        raise HttpError(
+                            400,
+                            error_payload(
+                                "VALIDATION_ERROR", "youtube url is required"
+                            ),
+                        )
+                    if not isinstance(video_id, str) or not video_id.strip():
+                        raise HttpError(
+                            400,
+                            error_payload(
+                                "VALIDATION_ERROR", "youtube video_id is required"
+                            ),
+                        )
 
-    visibility = post.visibility
-    if payload.visibility is not None:
-        if payload.visibility not in {v.value for v in Visibility}:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid visibility"))
-        visibility = payload.visibility
-    status = post.status
-    if payload.status is not None:
-        if payload.status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid status"))
-        status = payload.status
+        visibility = post.visibility
+        if payload.visibility is not None:
+            if payload.visibility not in {v.value for v in Visibility}:
+                raise HttpError(
+                    400, error_payload("VALIDATION_ERROR", "Invalid visibility")
+                )
+            visibility = payload.visibility
+        status = post.status
+        if payload.status is not None:
+            if payload.status not in {NewsStatus.PUBLISHED, NewsStatus.DRAFT}:
+                raise HttpError(
+                    400, error_payload("VALIDATION_ERROR", "Invalid status")
+                )
+            status = payload.status
 
-    post.title = title
-    post.body = body
-    post.tags_json = tags
-    post.media_json = media
-    post.visibility = visibility
-    post.status = status
-    post.updated_at = timezone.now()
-    post.save(update_fields=["title", "body", "tags_json", "media_json", "visibility", "status", "updated_at"])
+        post.title = title
+        post.body = body
+        post.tags_json = tags
+        post.media_json = media
+        post.visibility = visibility
+        post.status = status
+        post.updated_at = timezone.now()
+        post.save(
+            update_fields=[
+                "title",
+                "body",
+                "tags_json",
+                "media_json",
+                "visibility",
+                "status",
+                "updated_at",
+            ]
+        )
 
-    _sync_news_activity_event(post)
-    _publish_news_change(post, kind="upsert", changed=["body", "status", "visibility", "media", "tags"])
-    actor_profiles = _fetch_actor_profiles(ctx, [str(post.author_user_id)])
-    return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="news.updated",
+            target_type="news",
+            target_id=str(post.id),
+            request_id=ctx.request_id,
+        )
+        _sync_news_activity_event(post)
+        _publish_news_change(
+            post,
+            kind="upsert",
+            changed=["body", "status", "visibility", "media", "tags"],
+        )
+        actor_profiles = _fetch_actor_profiles(ctx, [str(post.author_user_id)])
+        return _serialize_news_post(post, ctx, actor_profiles=actor_profiles)
 
 
 @router.delete(
@@ -1136,28 +1305,73 @@ def news_update(request, news_id: str, payload: schemas.NewsUpdateIn = REQUIRED_
     summary="Delete news post",
     operation_id="activity_news_delete",
 )
-def news_delete(request, news_id: str):
+def news_delete(request, news_id: str, payload: schemas.NewsDeleteIn | None = None):
+    with transaction.atomic():
+        ctx = require_activity_context(request, require_user=True)
+        require_not_suspended(ctx)
+
+        post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
+        if not post:
+            raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+
+        if not _can_manage_news(ctx, post):
+            raise HttpError(403, error_payload("FORBIDDEN", "Permission denied"))
+
+        reason = (payload.reason if payload else "").strip()
+        if str(post.author_user_id) != str(ctx.user_id) and not reason:
+            raise HttpError(
+                400, error_payload("REASON_REQUIRED", "A moderation reason is required")
+            )
+        _log_audit(
+            tenant_id=ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            action="news.deleted",
+            target_type="news",
+            target_id=str(post.id),
+            metadata={"reason": reason},
+            request_id=ctx.request_id,
+        )
+        _publish_news_change(post, kind="delete", changed=["deleted"])
+        ActivityEvent.objects.filter(
+            tenant_id=ctx.tenant_id,
+            type="news.posted",
+            payload_json__news_id=str(post.id),
+        ).delete()
+        post.delete()
+        return 204, None
+
+
+@router.get("/news/{news_id}/audit", response=dict)
+def news_audit(request, news_id: str):
     ctx = require_activity_context(request, require_user=True)
-    require_not_suspended(ctx)
-
-    post = NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).first()
-    if not post:
+    require_permission(
+        ctx=ctx,
+        permission_key=Permissions.NEWS_MANAGE,
+        scope_type=ScopeType.TENANT,
+        scope_id=str(ctx.tenant_id),
+    )
+    if not NewsPost.objects.filter(id=news_id, tenant_id=ctx.tenant_id).exists():
         raise HttpError(404, error_payload("NOT_FOUND", "News post not found"))
+    entries = ActivityAuditEvent.objects.filter(
+        tenant_id=ctx.tenant_id, target_type="news", target_id=news_id
+    ).order_by("-created_at")[:50]
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "action": row.action,
+                "created_at": row.created_at.isoformat(),
+                "actor_user_id": str(row.actor_user_id),
+                "reason": str(row.metadata.get("reason", "")),
+            }
+            for row in entries
+        ]
+    }
 
-    if not _can_manage_news(ctx, post):
-        raise HttpError(403, error_payload("FORBIDDEN", "Permission denied"))
 
-    _publish_news_change(post, kind="delete", changed=["deleted"])
-    ActivityEvent.objects.filter(
-        tenant_id=ctx.tenant_id,
-        type="news.posted",
-        payload_json__news_id=str(post.id),
-    ).delete()
-    post.delete()
-    return 204, None
-
-
-def _comment_capabilities(ctx, post: NewsPost, comment: NewsComment) -> tuple[bool, bool, bool]:
+def _comment_capabilities(
+    ctx, post: NewsPost, comment: NewsComment
+) -> tuple[bool, bool, bool]:
     is_author = bool(ctx.user_id and comment.user_id and ctx.user_id == comment.user_id)
     can_manage = _can_manage_news(ctx, post)
     is_deleted = comment.deleted_at is not None
@@ -1200,7 +1414,13 @@ def _serialize_comment(
 
 @router.get(
     "/news/{news_id}/comments",
-    response={200: list[schemas.NewsCommentOut], 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: list[schemas.NewsCommentOut],
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="List comments",
     operation_id="activity_news_comments_list",
 )
@@ -1219,12 +1439,17 @@ def news_comments_list(
 
     limit = min(100, max(1, limit))
     comments = list(
-        NewsComment.objects.filter(tenant_id=ctx.tenant_id, post=post)
-        .order_by("created_at", "id")[:limit]
+        NewsComment.objects.filter(tenant_id=ctx.tenant_id, post=post).order_by(
+            "created_at", "id"
+        )[:limit]
     )
     actor_profiles = _fetch_actor_profiles(
         ctx,
-        [str(comment.user_id) for comment in comments if comment.user_id and comment.deleted_at is None],
+        [
+            str(comment.user_id)
+            for comment in comments
+            if comment.user_id and comment.deleted_at is None
+        ],
     )
     return [
         _serialize_comment(
@@ -1239,7 +1464,13 @@ def news_comments_list(
 
 @router.get(
     "/news/{news_id}/comments/page",
-    response={200: schemas.NewsCommentPageOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: schemas.NewsCommentPageOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="List comments with cursor pagination",
     operation_id="activity_news_comments_page",
 )
@@ -1272,7 +1503,9 @@ def news_comments_page(
         try:
             cursor_id = int(cursor)
         except ValueError as exc:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "Invalid cursor")) from exc
+            raise HttpError(
+                400, error_payload("VALIDATION_ERROR", "Invalid cursor")
+            ) from exc
         qs = qs.filter(id__gt=cursor_id)
 
     rows = list(qs.order_by("id")[: limit + 1])
@@ -1286,7 +1519,9 @@ def news_comments_page(
     replies_by_comment_id: dict[int, int] = {}
     if comment_ids:
         likes_rows = (
-            NewsCommentReaction.objects.filter(tenant_id=ctx.tenant_id, comment_id__in=comment_ids)
+            NewsCommentReaction.objects.filter(
+                tenant_id=ctx.tenant_id, comment_id__in=comment_ids
+            )
             .values("comment_id")
             .annotate(count=models.Count("id"))
         )
@@ -1313,7 +1548,11 @@ def news_comments_page(
 
     actor_profiles = _fetch_actor_profiles(
         ctx,
-        [str(comment.user_id) for comment in items if comment.user_id and comment.deleted_at is None],
+        [
+            str(comment.user_id)
+            for comment in items
+            if comment.user_id and comment.deleted_at is None
+        ],
     )
 
     return schemas.NewsCommentPageOut(
@@ -1337,11 +1576,19 @@ def news_comments_page(
 
 @router.post(
     "/news/{news_id}/comments",
-    response={200: schemas.NewsCommentOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: schemas.NewsCommentOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="Add comment",
     operation_id="activity_news_comments_create",
 )
-def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn = REQUIRED_BODY):
+def news_comments_create(
+    request, news_id: str, payload: schemas.NewsCommentIn = REQUIRED_BODY
+):
     ctx = require_activity_context(request, require_user=True)
     require_not_suspended(ctx)
 
@@ -1352,7 +1599,9 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
 
     body = payload.body.strip()
     if not body:
-        raise HttpError(400, error_payload("VALIDATION_ERROR", "Comment body is required"))
+        raise HttpError(
+            400, error_payload("VALIDATION_ERROR", "Comment body is required")
+        )
     if len(body) > 2000:
         raise HttpError(400, error_payload("VALIDATION_ERROR", "Comment is too long"))
 
@@ -1362,7 +1611,9 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
             id=payload.parent_id, tenant_id=ctx.tenant_id, post=post
         ).first()
         if not parent:
-            raise HttpError(400, error_payload("VALIDATION_ERROR", "Parent comment not found"))
+            raise HttpError(
+                400, error_payload("VALIDATION_ERROR", "Parent comment not found")
+            )
 
     comment = NewsComment.objects.create(
         tenant_id=ctx.tenant_id,
@@ -1382,7 +1633,13 @@ def news_comments_create(request, news_id: str, payload: schemas.NewsCommentIn =
 
 @router.post(
     "/news/{news_id}/comments/{comment_id}/likes",
-    response={200: schemas.NewsCommentLikeOut, 400: ErrorOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    response={
+        200: schemas.NewsCommentLikeOut,
+        400: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+        404: ErrorOut,
+    },
     summary="Add or remove like on comment",
     operation_id="activity_news_comment_like",
 )
@@ -1566,7 +1823,10 @@ def feed_get_v2(
         [str(item.actor_user_id) for item in result.items if item.actor_user_id],
     )
     return {
-        "items": [_serialize_event(item, ctx, actor_profiles=actor_profiles) for item in result.items],
+        "items": [
+            _serialize_event(item, ctx, actor_profiles=actor_profiles)
+            for item in result.items
+        ],
         "next_cursor": result.next_cursor,
         "has_more": result.has_more,
     }
@@ -1713,8 +1973,7 @@ def subscriptions_post(
     require_not_suspended(ctx)
     require_permission(ctx=ctx, permission_key=Permissions.FEED_READ)
     scopes = [
-        {"scope_type": s.scope_type, "scope_id": s.scope_id}
-        for s in payload.scopes
+        {"scope_type": s.scope_type, "scope_id": s.scope_id} for s in payload.scopes
     ]
     return upsert_subscription(
         tenant_id=ctx.tenant_id,
@@ -1733,7 +1992,9 @@ def subscriptions_list(request):
     ctx = require_activity_context(request, require_user=True)
     require_not_suspended(ctx)
     require_permission(ctx=ctx, permission_key=Permissions.FEED_READ)
-    sub = Subscription.objects.filter(tenant_id=ctx.tenant_id, user_id=ctx.user_id).first()
+    sub = Subscription.objects.filter(
+        tenant_id=ctx.tenant_id, user_id=ctx.user_id
+    ).first()
     items = [sub] if sub else []
     return {"items": items}
 
@@ -1796,9 +2057,7 @@ def ingest_webhook_minecraft(request):
     raw_linked_user_id = payload.get("linked_user_id")
     try:
         linked_user_id = (
-            uuid_from_str(raw_linked_user_id)
-            if raw_linked_user_id
-            else SYSTEM_USER_ID
+            uuid_from_str(raw_linked_user_id) if raw_linked_user_id else SYSTEM_USER_ID
         )
     except ValueError:
         raise HttpError(

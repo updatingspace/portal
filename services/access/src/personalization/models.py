@@ -37,10 +37,10 @@ class ProfileVisibilityChoice(models.TextChoices):
 
 class UserPreference(models.Model):
     """User personalization preferences.
-    
+
     Stores per-tenant user preferences including theme, language, notifications, and privacy settings.
     Multi-tenant: Each user can have different preferences per tenant.
-    
+
     Example:
         User Alex in tenant AEF: Dark theme, Russian
         User Alex in tenant EC: Light theme, English
@@ -92,7 +92,7 @@ class UserPreference(models.Model):
     )
     timezone = models.CharField(
         max_length=64,
-        default="UTC",
+        default="system",
         help_text="IANA timezone (e.g., Europe/Moscow, America/New_York)",
     )
 
@@ -159,7 +159,7 @@ class UserPreference(models.Model):
         cls, user_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> tuple[UserPreference, bool]:
         """Get or create preferences for user in tenant.
-        
+
         Returns:
             Tuple of (UserPreference instance, created flag)
         """
@@ -172,7 +172,7 @@ class UserPreference(models.Model):
     @classmethod
     def get_default_preferences(cls) -> dict[str, Any]:
         """Get default preference values for new users.
-        
+
         Returns:
             Dictionary of default field values
         """
@@ -184,7 +184,7 @@ class UserPreference(models.Model):
             "high_contrast": False,
             "reduce_motion": False,
             "language": LanguageChoice.EN,
-            "timezone": "UTC",
+            "timezone": "system",
             "notification_settings": cls.get_default_notification_settings(),
             "profile_visibility": ProfileVisibilityChoice.MEMBERS,
             "show_online_status": True,
@@ -198,7 +198,7 @@ class UserPreference(models.Model):
     @staticmethod
     def get_default_notification_settings() -> dict[str, Any]:
         """Get default notification settings structure.
-        
+
         Returns:
             Dictionary with notification preferences structure
         """
@@ -222,7 +222,10 @@ class UserPreference(models.Model):
                 "events": {
                     "new_event": {"enabled": True, "channels": ["email", "in_app"]},
                     "rsvp_reminder": {"enabled": True, "channels": ["email", "in_app"]},
-                    "event_starting": {"enabled": True, "channels": ["email", "in_app"]},
+                    "event_starting": {
+                        "enabled": True,
+                        "channels": ["email", "in_app"],
+                    },
                 },
                 "community": {
                     "new_member": {"enabled": False, "channels": []},
@@ -230,7 +233,10 @@ class UserPreference(models.Model):
                     "mention": {"enabled": True, "channels": ["email", "in_app"]},
                 },
                 "system": {
-                    "security_alert": {"enabled": True, "channels": ["email", "in_app"]},
+                    "security_alert": {
+                        "enabled": True,
+                        "channels": ["email", "in_app"],
+                    },
                     "product_update": {"enabled": True, "channels": ["in_app"]},
                 },
             },
@@ -243,9 +249,9 @@ class UserPreference(models.Model):
 
     def update_from_dict(self, data: dict[str, Any]) -> None:
         """Update preference fields from dictionary.
-        
+
         Supports partial updates (only provided fields are updated).
-        
+
         Args:
             data: Dictionary with field names and values
         """
@@ -274,7 +280,7 @@ class UserPreference(models.Model):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert preference to dictionary for API response.
-        
+
         Returns:
             Dictionary with all preference fields
         """

@@ -7,6 +7,7 @@ Test coverage includes:
 - API endpoints (GET, PUT, POST reset)
 - Schema validation (theme, timezone, color, etc.)
 """
+
 from __future__ import annotations
 
 import json
@@ -54,7 +55,7 @@ class TestUserPreferenceModel(TestCase):
         self.assertEqual(pref.language, LanguageChoice.EN)
         self.assertEqual(pref.font_size, FontSizeChoice.MEDIUM)
         self.assertEqual(pref.accent_color, "#8B5CF6")
-        self.assertEqual(pref.timezone, "UTC")
+        self.assertEqual(pref.timezone, "system")
         self.assertEqual(pref.profile_visibility, ProfileVisibilityChoice.MEMBERS)
         self.assertFalse(pref.high_contrast)
         self.assertFalse(pref.reduce_motion)
@@ -151,7 +152,7 @@ class TestUserPreferenceModel(TestCase):
         self.assertEqual(defaults["theme"], ThemeChoice.AUTO)
         self.assertEqual(defaults["theme_source"], ThemeSourceChoice.PORTAL)
         self.assertEqual(defaults["language"], LanguageChoice.EN)
-        self.assertEqual(defaults["timezone"], "UTC")
+        self.assertEqual(defaults["timezone"], "system")
         self.assertIn("notification_settings", defaults)
 
     def test_get_default_notification_settings(self):
@@ -173,11 +174,13 @@ class TestUserPreferenceModel(TestCase):
             tenant_id=self.tenant_id,
         )
 
-        pref.update_from_dict({
-            "theme": ThemeChoice.DARK,
-            "theme_source": ThemeSourceChoice.ID,
-            "language": LanguageChoice.RU,
-        })
+        pref.update_from_dict(
+            {
+                "theme": ThemeChoice.DARK,
+                "theme_source": ThemeSourceChoice.ID,
+                "language": LanguageChoice.RU,
+            }
+        )
         pref.save()
         pref.refresh_from_db()
 
@@ -195,11 +198,13 @@ class TestUserPreferenceModel(TestCase):
         )
 
         # Should not raise
-        pref.update_from_dict({
-            "unknown_field": "value",
-            "id": str(uuid.uuid4()),  # Should be ignored
-            "theme": ThemeChoice.LIGHT,
-        })
+        pref.update_from_dict(
+            {
+                "unknown_field": "value",
+                "id": str(uuid.uuid4()),  # Should be ignored
+                "theme": ThemeChoice.LIGHT,
+            }
+        )
 
         self.assertEqual(pref.theme, ThemeChoice.LIGHT)
 
@@ -346,7 +351,9 @@ class TestUserPreferenceService(TestCase):
         self.assertIn("notifications", defaults)
         self.assertIn("privacy", defaults)
         self.assertEqual(defaults["appearance"]["theme"], ThemeChoice.AUTO)
-        self.assertEqual(defaults["appearance"]["theme_source"], ThemeSourceChoice.PORTAL)
+        self.assertEqual(
+            defaults["appearance"]["theme_source"], ThemeSourceChoice.PORTAL
+        )
 
     def test_reset_to_defaults(self):
         """Test reset_to_defaults reverts all settings."""
@@ -667,6 +674,8 @@ class TestDashboardWidgetAPI(TestCase):
         self.assertEqual(widget.height, 4)
         self.assertEqual(widget.settings["limit"], 5)
         self.assertEqual(
-            DashboardWidget.objects.filter(layout=layout, widget_key="upcoming-events").count(),
+            DashboardWidget.objects.filter(
+                layout=layout, widget_key="upcoming-events"
+            ).count(),
             1,
         )

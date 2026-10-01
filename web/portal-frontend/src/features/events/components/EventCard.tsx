@@ -19,7 +19,7 @@ export function EventCard({
 }) {
   const base = useRouteBase();
   const t = useUITranslation();
-  const { formatDate, formatTime, timezone } = useFormatters();
+  const { formatDate, formatTime, formatDateTime } = useFormatters();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
@@ -72,8 +72,13 @@ export function EventCard({
           <Link to={`${base}/events/${event.id}`}>{event.title}</Link>
         </h3>
         <p>
-          {formatDate(event.startsAt, { day: 'numeric', month: 'long' })} ·{' '}
-          {formatTime(event.startsAt)}–{formatTime(event.endsAt)} · {timezone}
+          <time dateTime={event.startsAt}>{formatTime(event.startsAt)}</time>
+          {' – '}
+          <time dateTime={event.endsAt}>
+            {formatDate(event.startsAt) === formatDate(event.endsAt)
+              ? formatTime(event.endsAt)
+              : formatDateTime(event.endsAt)}
+          </time>
         </p>
         {event.description && (
           <p className="portal-event-card__description">{event.description}</p>

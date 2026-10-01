@@ -36,16 +36,17 @@ describe('buildAsideMenuItems', () => {
         '/t/aef/feed',
         '/t/aef/voting',
         '/t/aef/tenant-admin',
-        '/t/aef/admin',
         '/t/aef/feature-flags',
       ]),
     );
 
-    items.find((item) => item.id === 'voting')?.onItemClick?.(
-      { id: 'voting', title: 'Voting' },
-      false,
-      { preventDefault() {} },
-    );
+    expect(items.some((item) => item.id === 'admin')).toBe(false);
+
+    items
+      .find((item) => item.id === 'voting')
+      ?.onItemClick?.({ id: 'voting', title: 'Voting' }, false, {
+        preventDefault() {},
+      });
 
     expect(onNavigateCalls).toContain('/t/aef/voting');
   });

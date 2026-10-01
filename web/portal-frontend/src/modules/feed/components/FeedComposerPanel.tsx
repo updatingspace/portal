@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import React from 'react';
 import { Button, Card, Icon, Select, Text } from '@gravity-ui/uikit';
 import { Plus } from '@gravity-ui/icons';
@@ -52,6 +53,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
   newsMedia,
   handleRemoveMedia,
 }) => {
+  const t = useUITranslation();
   const mobile = useMediaQuery('(max-width: 719px)');
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -74,10 +76,10 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
 
   const submitLabel =
     publishMode === 'draft'
-      ? 'Сохранить черновик'
+      ? t('Сохранить черновик', 'Save draft')
       : publishMode === 'private'
-        ? 'Опубликовать приватно'
-        : 'Опубликовать в сообществе';
+        ? t('Опубликовать приватно', 'Publish privately')
+        : t('Опубликовать в сообществе', 'Publish to community');
 
   if (!canCreateNews) {
     return null;
@@ -93,17 +95,21 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
         .filter(Boolean)
         .join(' ')}
       data-qa="feed-composer"
-      aria-label="Композер новостей"
+      aria-label={t('Композер новостей', 'New post')}
     >
       {!mobile && (
         <div className="feed-composer__header">
-          <Text variant="subheader-2">Новая публикация</Text>
+          <Text variant="subheader-2">{t('Новая публикация', 'New post')}</Text>
           <Text
             variant="caption-2"
             color="secondary"
             className="feed-composer__shortcut"
           >
-            Быстрая отправка: Ctrl/Cmd + Enter
+            {typeof navigator !== 'undefined' &&
+            /Mac|iPhone|iPad/.test(navigator.platform)
+              ? '⌘'
+              : 'Ctrl'}{' '}
+            + Enter
           </Text>
         </div>
       )}
@@ -122,8 +128,11 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
           onChange={(event) => setComposerValue(event.target.value)}
           onFocus={() => setComposerOpen(true)}
           onKeyDown={handleComposerKeyDown}
-          placeholder="Поделитесь новостью или планами"
-          aria-label="Текст новости"
+          placeholder={t(
+            'Поделитесь новостью или планами',
+            'Share news or plans',
+          )}
+          aria-label={t('Текст новости', 'Post text')}
           rows={mobile ? 7 : 1}
           autoFocus={mobile}
         />
@@ -148,11 +157,11 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
                 event.stopPropagation();
                 fileInputRef.current?.click();
               }}
-              aria-label="Добавить изображения"
+              aria-label={t('Добавить изображения', 'Add images')}
               disabled={uploading || isCreatingNews}
             >
               <Icon data={Plus} />
-              Фото
+              {t('Фото', 'Photo')}
             </Button>
             <input
               ref={fileInputRef}
@@ -160,7 +169,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
               accept="image/*"
               multiple
               onChange={(event) => handleImageUpload(event.target.files)}
-              aria-label="Загрузка изображений"
+              aria-label={t('Загрузка изображений', 'Upload images')}
             />
           </div>
 
@@ -169,7 +178,7 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
               <Select
                 value={[publishMode]}
                 size="xl"
-                aria-label="Аудитория публикации"
+                aria-label={t('Аудитория публикации', 'Audience')}
                 onUpdate={(values) => {
                   const next = values[0] as
                     | 'public'
@@ -179,9 +188,9 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
                   if (next) setPublishMode(next);
                 }}
                 options={[
-                  { value: 'public', content: 'Сообществу' },
-                  { value: 'private', content: 'Только мне' },
-                  { value: 'draft', content: 'Черновик' },
+                  { value: 'public', content: t('Сообществу', 'Community') },
+                  { value: 'private', content: t('Только мне', 'Only me') },
+                  { value: 'draft', content: t('Черновик', 'Draft') },
                 ]}
               />
             </div>
@@ -195,7 +204,9 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
               aria-label={submitLabel}
               qa="composer-submit"
             >
-              {publishMode === 'draft' ? 'Сохранить черновик' : 'Опубликовать'}
+              {publishMode === 'draft'
+                ? t('Сохранить черновик', 'Save draft')
+                : t('Опубликовать', 'Publish')}
             </Button>
           </div>
         </div>
@@ -209,14 +220,17 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
               className="feed-composer__media-item"
             >
               {media.type === 'image' && media.url ? (
-                <img src={media.url} alt="Изображение для публикации" />
+                <img
+                  src={media.url}
+                  alt={t('Изображение для публикации', 'Post image')}
+                />
               ) : null}
               <button
                 type="button"
                 className="feed-composer__media-remove"
                 onClick={() => handleRemoveMedia(index)}
               >
-                Удалить
+                {t('Удалить', 'Delete')}
               </button>
             </div>
           ))}
@@ -231,14 +245,14 @@ export const FeedComposerPanel: React.FC<FeedComposerPanelProps> = ({
         className="feed-composer-launch"
         view="action"
         size="xl"
-        aria-label="Написать публикацию"
+        aria-label={t('Написать публикацию', 'Write a post')}
         onClick={() => setComposerOpen(true)}
       >
         <Icon data={Plus} size={20} />
       </Button>
       {composerOpen && (
         <ContentDialog
-          title="Новая публикация"
+          title={t('Новая публикация', 'New post')}
           busy={isCreatingNews || uploading}
           onClose={() => setComposerOpen(false)}
         >

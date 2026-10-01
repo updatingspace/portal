@@ -329,3 +329,66 @@
   width: 160px;
   aspect-ratio: 1;
 }
+
+.achievement-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 620px);
+  gap: 40px;
+  align-items: start;
+}
+.achievement-workspace__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: var(--g-color-base-generic);
+  border-radius: 16px;
+  text-align: center;
+}
+.achievement-workspace__preview > :first-child {
+  width: 136px;
+  height: 136px;
+  object-fit: contain;
+}
+.achievement-workspace__preview h2 {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.achievement-workspace__preview small {
+  color: var(--g-color-text-secondary);
+}
+.achievement-workspace__fields {
+  min-width: 0;
+}
+@media (max-width: 719px) {
+  .achievement-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .achievement-workspace__preview {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 8px 16px;
+    padding: 16px;
+    text-align: left;
+    align-items: center;
+  }
+  .achievement-workspace__preview > :first-child {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: 80px;
+    height: 80px;
+  }
+  .achievement-workspace__preview > h2,
+  .achievement-workspace__preview > .g-label,
+  .achievement-workspace__preview > .g-button {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .achievement-workspace__preview > small,
+  .achievement-workspace__preview > .portal-inline-error {
+    grid-column: 1 / -1;
+  }
+}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
-from django.db import models
+from django.db import IntegrityError, models
 from django.http import JsonResponse
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
@@ -16,7 +16,12 @@ from .schemas import (
     FeatureFlagsEvaluationOut,
     FeatureFlagUpdateIn,
 )
-from .service import create_or_update_flag, evaluate_flags, patch_flag
+from .service import (
+    FlagAlreadyExists,
+    create_or_update_flag,
+    evaluate_flags,
+    patch_flag,
+)
 
 api = NinjaAPI(
     title="UpdSpace Feature Flags",
@@ -88,8 +93,11 @@ def evaluate(request: Any):
     flags = list(FeatureFlag.objects.all().order_by("key"))
     mapping = evaluate_flags(flags)
     latest_updated_at: datetime | None = (
-        FeatureFlag.objects.aggregate(max_updated=models.Max("updated_at"))["max_updated"]
-        if flags else None
+        FeatureFlag.objects.aggregate(max_updated=models.Max("updated_at"))[
+            "max_updated"
+        ]
+        if flags
+        else None
     )
     return FeatureFlagsEvaluationOut(
         feature_flags=mapping,
@@ -130,7 +138,16 @@ def create_flag(request: Any, payload: FeatureFlagCreateIn):
             description=payload.description,
             enabled=payload.enabled,
             rollout=payload.rollout,
+            create_only=True,
         )
+    except (FlagAlreadyExists, IntegrityError) as exc:
+        raise HttpError(
+            409,
+            cast(
+                Any,
+                {"code": "ALREADY_EXISTS", "message": "Feature flag already exists"},
+            ),
+        ) from exc
     except ValueError as exc:
         raise HttpError(
             400,

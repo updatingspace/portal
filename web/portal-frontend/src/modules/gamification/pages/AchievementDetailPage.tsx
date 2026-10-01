@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Label, Select, TextInput, TextArea } from '@gravity-ui/uikit';
@@ -28,11 +29,12 @@ import { useConfirmation } from '../../../shared/ui/portal/useConfirmation';
 import './gamification.css';
 
 export function AchievementDetailPage() {
+  const t = useUITranslation();
   const { id = '' } = useParams<{ id: string }>();
   const { user } = useAuth();
   const base = useRouteBase();
   const navigate = useNavigate();
-  const { formatDateTime } = useFormatters();
+  const { formatDateTime, locale } = useFormatters();
   const canAssign = can(user, 'gamification.achievements.assign');
   const canRevoke = can(user, 'gamification.achievements.revoke');
   const { confirm, confirmationDialog } = useConfirmation();
@@ -56,7 +58,10 @@ export function AchievementDetailPage() {
     refetch,
   } = useAchievement(id);
   const title =
-    achievement?.nameI18n.ru || achievement?.nameI18n.en || 'Достижение';
+    achievement?.nameI18n[locale] ||
+    achievement?.nameI18n.en ||
+    achievement?.nameI18n.ru ||
+    t('Достижение', 'Achievement');
   useDocumentTitle(title);
   const grants = useGrantsList(tab === 'history' ? id : '', {
     visibility: visibility === 'all' ? undefined : visibility,
@@ -73,7 +78,12 @@ export function AchievementDetailPage() {
   const issue = async () => {
     if (lock.current) return;
     if (!recipient) {
-      setGrantError('Выберите участника из результатов поиска.');
+      setGrantError(
+        t(
+          'Выберите участника из результатов поиска.',
+          'Select a member from the search results.',
+        ),
+      );
       return;
     }
     lock.current = true;
@@ -91,10 +101,13 @@ export function AchievementDetailPage() {
       setRecipient('');
       setSearch('');
       setReason('');
-      setNotice('Награда выдана.');
+      setNotice(t('Награда выдана.', 'Award granted.'));
     } catch {
       setGrantError(
-        'Не удалось выдать награду. Выбранный участник и причина сохранены.',
+        t(
+          'Не удалось выдать награду. Выбранный участник и причина сохранены.',
+          'Unable to grant the award. Your selection and reason are preserved.',
+        ),
       );
     } finally {
       lock.current = false;
@@ -112,28 +125,40 @@ export function AchievementDetailPage() {
       await revoke.mutateAsync({ grantId: grant.id });
     } catch {
       setActionError(
-        'Не удалось подтвердить отзыв награды. Обновите историю перед повтором.',
+        t(
+          'Не удалось подтвердить отзыв награды. Обновите историю перед повтором.',
+          'Unable to confirm revocation. Refresh the history before trying again.',
+        ),
       );
     }
   };
   if (isLoading && !achievement)
-    return <PageState kind="loading" title="Загружаем достижение" />;
+    return (
+      <PageState
+        kind="loading"
+        title={t('Загружаем достижение', 'Loading achievement')}
+      />
+    );
   if (!achievement)
     return (
       <PageState
         kind={isError ? 'error' : 'not-found'}
         title={
-          isError ? 'Не удалось загрузить достижение' : 'Достижение не найдено'
+          isError
+            ? t('Не удалось загрузить достижение', 'Unable to load achievement')
+            : t('Достижение не найдено', 'Achievement not found')
         }
         action={
           <Button size="xl" onClick={() => navigate(`${base}/gamification`)}>
-            К достижениям
+            {t('К достижениям', 'Back to achievements')}
           </Button>
         }
         secondaryAction={
           isError &&
           (error as { status?: number })?.status !== 404 && (
-            <Button onClick={() => void refetch()}>Повторить</Button>
+            <Button onClick={() => void refetch()}>
+              {t('Повторить', 'Try again')}
+            </Button>
           )
         }
       />
@@ -148,11 +173,11 @@ export function AchievementDetailPage() {
             view="flat"
             onClick={() => navigate(`${base}/gamification`)}
           >
-            Назад
+            {t('Назад', 'Back')}
           </Button>
           {canAssign && (
             <Button size="xl" view="action" onClick={() => setGrantOpen(true)}>
-              Выдать награду
+              {t('Выдать награду', 'Grant award')}
             </Button>
           )}
           {achievement.canEdit &&
@@ -164,7 +189,7 @@ export function AchievementDetailPage() {
                   navigate(`${base}/gamification/achievements/${id}/edit`)
                 }
               >
-                Редактировать
+                {t('Редактировать', 'Edit')}
               </Button>
             )}
         </>
@@ -173,17 +198,20 @@ export function AchievementDetailPage() {
       {confirmationDialog}
       {isError && (
         <InlineError onRetry={() => void refetch()}>
-          Не удалось обновить достижение.
+          {t(
+            'Не удалось обновить достижение.',
+            'Unable to refresh achievement.',
+          )}
         </InlineError>
       )}
       {notice && <p role="status">{notice}</p>}
       <SectionTabs
-        label="Разделы достижения"
+        label={t('Разделы достижения', 'Achievement sections')}
         value={tab}
         onChange={setTab}
         items={[
-          { id: 'about', label: 'О награде' },
-          { id: 'history', label: 'История выдач' },
+          { id: 'about', label: t('О награде', 'About') },
+          { id: 'history', label: t('История выдач', 'Award history') },
         ]}
       />
       {tab === 'about' ? (
@@ -197,19 +225,25 @@ export function AchievementDetailPage() {
             alt={title}
           />
           <div>
-            <p>{achievement.description || 'Описание пока не добавлено.'}</p>
+            <p>
+              {achievement.description ||
+                t('Описание пока не добавлено.', 'No description yet.')}
+            </p>
             <details className="portal-disclosure">
-              <summary>Подробности</summary>
+              <summary>{t('Подробности', 'Details')}</summary>
               <p>
-                Статус:{' '}
+                {t('Статус:', 'Status:')}{' '}
                 {{
-                  draft: 'Черновик',
-                  published: 'Опубликовано',
-                  active: 'Активно',
-                  hidden: 'Скрыто',
-                }[achievement.status] || 'Уточняется'}
+                  draft: t('Черновик', 'Draft'),
+                  published: t('Опубликовано', 'Published'),
+                  active: t('Активно', 'Active'),
+                  hidden: t('Скрыто', 'Hidden'),
+                }[achievement.status] || t('Уточняется', 'Unavailable')}
               </p>
-              <p>Обновлено: {formatDateTime(achievement.updatedAt)}</p>
+              <p>
+                {t('Обновлено:', 'Updated:')}
+                {formatDateTime(achievement.updatedAt)}
+              </p>
             </details>
           </div>
         </section>
@@ -217,27 +251,33 @@ export function AchievementDetailPage() {
         <section className="achievement-history">
           <Select
             size="xl"
-            aria-label="Видимость выдач"
+            aria-label={t('Видимость выдач', 'Award visibility')}
             value={[visibility]}
             onUpdate={([value]) => setVisibility(value)}
             options={[
-              { value: 'all', content: 'Все выдачи' },
-              { value: 'public', content: 'Видимые сообществу' },
-              { value: 'private', content: 'Личные' },
+              { value: 'all', content: t('Все выдачи', 'All awards') },
+              {
+                value: 'public',
+                content: t('Видимые сообществу', 'Community awards'),
+              },
+              { value: 'private', content: t('Личные', 'Private') },
             ]}
           />
           {grants.isError && (
             <InlineError onRetry={() => void grants.refetch()}>
-              Не удалось загрузить историю выдач.
+              {t(
+                'Не удалось загрузить историю выдач.',
+                'Unable to load award history.',
+              )}
             </InlineError>
           )}
           {actionError && <InlineError>{actionError}</InlineError>}
           {grants.isLoading ? (
-            <p role="status">Загружаем историю…</p>
+            <p role="status">{t('Загружаем историю…', 'Loading history…')}</p>
           ) : (
             !grants.isError &&
             !grants.data?.pages.some((page) => page.items.length) && (
-              <p>Пока нет выдач.</p>
+              <p>{t('Пока нет выдач.', 'No awards granted yet.')}</p>
             )
           )}
           {grants.data?.pages
@@ -248,17 +288,20 @@ export function AchievementDetailPage() {
                   <strong>
                     {grant.recipientId === user?.id
                       ? user.displayName
-                      : 'Участник сообщества'}
+                      : t('Участник сообщества', 'Community member')}
                   </strong>
-                  <p>{grant.reason || 'Причина не указана'}</p>
+                  <p>
+                    {grant.reason ||
+                      t('Причина не указана', 'No reason provided')}
+                  </p>
                   <span>{formatDateTime(grant.createdAt)}</span>
                 </div>
                 <Label>
                   {grant.revokedAt
-                    ? 'Отозвана'
+                    ? t('Отозвана', 'Revoked')
                     : grant.visibility === 'public'
-                      ? 'Видна сообществу'
-                      : 'Личная'}
+                      ? t('Видна сообществу', 'Community')
+                      : t('Личная', 'Private')}
                 </Label>
                 {canRevoke && !grant.revokedAt && (
                   <Button
@@ -267,11 +310,13 @@ export function AchievementDetailPage() {
                     disabled={revoke.isPending}
                     onClick={() => void withdraw(grant)}
                   >
-                    Отозвать
+                    {t('Отозвать', 'Revoke')}
                   </Button>
                 )}
                 <details>
-                  <summary>Идентификатор участника</summary>
+                  <summary>
+                    {t('Идентификатор участника', 'Member identifier')}
+                  </summary>
                   <code>{grant.recipientId}</code>
                 </details>
               </article>
@@ -282,14 +327,14 @@ export function AchievementDetailPage() {
               loading={grants.isFetchingNextPage}
               onClick={() => void grants.fetchNextPage()}
             >
-              Загрузить ещё
+              {t('Загрузить ещё', 'Load more')}
             </Button>
           )}
         </section>
       )}
       {grantOpen && (
         <ContentDialog
-          title="Выдать награду"
+          title={t('Выдать награду', 'Grant award')}
           busy={create.isPending}
           onClose={() => setGrantOpen(false)}
         >
@@ -300,13 +345,16 @@ export function AchievementDetailPage() {
               void issue();
             }}
           >
-            <FormField label="Участник">
+            <FormField label={t('Участник', 'Member')}>
               {(props) => (
                 <TextInput
                   {...props}
                   size="xl"
                   value={search}
-                  placeholder="Введите имя или username"
+                  placeholder={t(
+                    'Введите имя или username',
+                    'Enter a name or username',
+                  )}
                   disabled={create.isPending}
                   onUpdate={(value) => {
                     setSearch(value);
@@ -317,15 +365,24 @@ export function AchievementDetailPage() {
             </FormField>
             {!recipient && search.trim().length >= 2 && (
               <div className="gamification-search-results">
-                {profiles.isLoading && <p role="status">Ищем участника…</p>}
+                {profiles.isLoading && (
+                  <p role="status">
+                    {t('Ищем участника…', 'Finding members…')}
+                  </p>
+                )}
                 {profiles.isError && (
                   <InlineError onRetry={() => void profiles.refetch()}>
-                    Не удалось найти участников.
+                    {t(
+                      'Не удалось найти участников.',
+                      'Unable to find members.',
+                    )}
                   </InlineError>
                 )}
                 {!profiles.isLoading &&
                   !profiles.isError &&
-                  !profiles.data?.length && <p>Участники не найдены.</p>}
+                  !profiles.data?.length && (
+                    <p>{t('Участники не найдены.', 'No members found.')}</p>
+                  )}
                 {profiles.data?.map((profile) => {
                   const name =
                     profile.displayName ||
@@ -333,7 +390,7 @@ export function AchievementDetailPage() {
                       .filter(Boolean)
                       .join(' ') ||
                     profile.username ||
-                    'Без имени';
+                    t('Без имени', 'Unnamed');
                   return (
                     <button
                       className="gamification-search-item"
@@ -351,8 +408,13 @@ export function AchievementDetailPage() {
                 })}
               </div>
             )}
-            {recipient && <p role="status">Участник выбран: {search}</p>}
-            <FormField label="Причина">
+            {recipient && (
+              <p role="status">
+                {t('Участник выбран:', 'Selected member:')}
+                {search}
+              </p>
+            )}
+            <FormField label={t('Причина', 'Reason')}>
               {(props) => (
                 <TextArea
                   {...props}
@@ -363,7 +425,7 @@ export function AchievementDetailPage() {
                 />
               )}
             </FormField>
-            <FormField label="Видимость награды">
+            <FormField label={t('Видимость награды', 'Award visibility')}>
               {(props) => (
                 <Select
                   {...props}
@@ -375,8 +437,17 @@ export function AchievementDetailPage() {
                     setGrantVisibility(value as GrantVisibility)
                   }
                   options={[
-                    { value: 'public', content: 'Видна участникам сообщества' },
-                    { value: 'private', content: 'Личная награда' },
+                    {
+                      value: 'public',
+                      content: t(
+                        'Видна участникам сообщества',
+                        'Visible to community members',
+                      ),
+                    },
+                    {
+                      value: 'private',
+                      content: t('Личная награда', 'Private award'),
+                    },
                   ]}
                 />
               )}
@@ -388,7 +459,7 @@ export function AchievementDetailPage() {
               type="submit"
               loading={create.isPending}
             >
-              Выдать
+              {t('Выдать', 'Grant')}
             </Button>
           </form>
         </ContentDialog>

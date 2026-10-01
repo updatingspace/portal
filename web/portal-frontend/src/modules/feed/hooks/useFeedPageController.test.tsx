@@ -15,7 +15,11 @@ const authState = {
   user: {
     id: 'u1',
     tenant: { id: 't1', slug: 'tenant' },
-    capabilities: ['activity.feed.read', 'activity.news.create', 'activity.news.manage'],
+    capabilities: [
+      'activity.feed.read',
+      'activity.news.create',
+      'activity.news.manage',
+    ],
     featureFlags: {},
   },
 };
@@ -29,10 +33,14 @@ vi.mock('react-router-dom', () => ({
 }));
 
 vi.mock('../../../features/rbac/can', () => ({
-  can: (user: { capabilities?: string[] } | null, required?: string | string[]) => {
+  can: (
+    user: { capabilities?: string[] } | null,
+    required?: string | string[],
+  ) => {
     if (!required) return true;
     if (!user?.capabilities) return false;
-    if (Array.isArray(required)) return required.some((r) => user.capabilities?.includes(r));
+    if (Array.isArray(required))
+      return required.some((r) => user.capabilities?.includes(r));
     return user.capabilities.includes(required);
   },
 }));
@@ -60,7 +68,12 @@ vi.mock('../../../api/activity', () => ({
     type: 'news.posted',
     occurredAt: new Date().toISOString(),
     title: 'news',
-    payloadJson: { news_id: 'news-remote', body: 'remote', tags: [], status: 'published' },
+    payloadJson: {
+      news_id: 'news-remote',
+      body: 'remote',
+      tags: [],
+      status: 'published',
+    },
     visibility: 'public',
     scopeType: 'TENANT',
     scopeId: 't1',
@@ -93,11 +106,20 @@ vi.mock('../../../hooks/useActivity', () => ({
   }),
   useUnreadCount: () => ({ count: 0 }),
   useMarkFeedAsRead: () => ({ mutate: vi.fn(), isPending: false }),
-  useCreateNews: () => ({ mutateAsync: (...args: unknown[]) => createNewsMutationMock(...args), isPending: false }),
+  useCreateNews: () => ({
+    mutateAsync: (...args: unknown[]) => createNewsMutationMock(...args),
+    isPending: false,
+  }),
   useDraftNews: () => ({ data: [] }),
   useNews: () => ({ data: null }),
-  useSubscriptions: () => ({ data: [{ rulesJson: { scopes: [{ scopeType: 'tenant', scopeId: 't1' }] } }], isLoading: false }),
-  useUpdateSubscriptions: () => ({ mutateAsync: (...args: unknown[]) => updateSubscriptionsMock(...args), isPending: false }),
+  useSubscriptions: () => ({
+    data: [{ rulesJson: { scopes: [{ scopeType: 'tenant', scopeId: 't1' }] } }],
+    isLoading: false,
+  }),
+  useUpdateSubscriptions: () => ({
+    mutateAsync: (...args: unknown[]) => updateSubscriptionsMock(...args),
+    isPending: false,
+  }),
 }));
 
 function createWrapper() {
@@ -116,7 +138,8 @@ describe('useFeedPageController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    (globalThis as unknown as { EventSource?: unknown }).EventSource = undefined;
+    (globalThis as unknown as { EventSource?: unknown }).EventSource =
+      undefined;
 
     globalThis.IntersectionObserver = class {
       observe() {}
@@ -134,7 +157,9 @@ describe('useFeedPageController', () => {
   it('publishes text-only news without requiring media', async () => {
     createNewsMutationMock.mockResolvedValue({ id: 1 });
 
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeedPageController(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.setComposerValue('Короткое обновление без вложений');
@@ -155,60 +180,36 @@ describe('useFeedPageController', () => {
 
   it('keeps the text visible while publishing and preserves edits when the response fails', async () => {
     let reject!: (error: Error) => void;
-    createNewsMutationMock.mockReturnValue(new Promise((_resolve, fail) => {reject = fail;}));
-    const {result} = renderHook(() => useFeedPageController(), {wrapper:createWrapper()});
+    createNewsMutationMock.mockReturnValue(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    );
+    const { result } = renderHook(() => useFeedPageController(), {
+      wrapper: createWrapper(),
+    });
     act(() => result.current.setComposerValue('Original text'));
     let operation!: Promise<void>;
-    act(() => {operation=result.current.handlePublishNews();});
+    act(() => {
+      operation = result.current.handlePublishNews();
+    });
     expect(result.current.composerValue).toBe('Original text');
-    act(() => result.current.setComposerValue('Original text, edited while sending'));
-    await act(async () => {reject(new Error('offline')); await operation;});
-    expect(result.current.composerValue).toBe('Original text, edited while sending');
-  });
-
-  it('validates moderation reason before batch action', async () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-
-    act(() => {
-      result.current.toggleModerationMode();
-    });
+    act(() =>
+      result.current.setComposerValue('Original text, edited while sending'),
+    );
     await act(async () => {
-      await result.current.handleModerationDeleteSelected();
+      reject(new Error('offline'));
+      await operation;
     });
-
-    expect(result.current.moderationError).toBe('Укажите причину модераторского действия');
-    expect(deleteNewsMock).not.toHaveBeenCalled();
-  });
-
-  it('validates selected items before batch action', async () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-
-    act(() => {
-      result.current.toggleModerationMode();
-      result.current.setModerationReason('spam cleanup');
-    });
-    await act(async () => {
-      await result.current.handleModerationDeleteSelected();
-    });
-
-    expect(result.current.moderationError).toBe('Выберите хотя бы одну новость');
-    expect(deleteNewsMock).not.toHaveBeenCalled();
-  });
-
-  it('limits moderation selection to 20 items', () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-
-    act(() => {
-      Array.from({ length: 30 }, (_, index) => `news-${index}`).forEach((newsId) => {
-        result.current.handleModerationToggle(newsId, true);
-      });
-    });
-
-    expect(result.current.selectedModerationIds).toHaveLength(20);
+    expect(result.current.composerValue).toBe(
+      'Original text, edited while sending',
+    );
   });
 
   it('runs fallback refetch interval when EventSource is unavailable', () => {
-    const { unmount } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
+    const { unmount } = renderHook(() => useFeedPageController(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       vi.advanceTimersByTime(15_000);
@@ -219,77 +220,27 @@ describe('useFeedPageController', () => {
   });
 
   it('closes a failed live connection and polls without reconnecting', () => {
-    const source = { close: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), onerror: null as (() => void) | null };
-    const EventSourceMock = vi.fn(function () { return source; });
+    const source = {
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      onerror: null as (() => void) | null,
+    };
+    const EventSourceMock = vi.fn(function () {
+      return source;
+    });
     vi.stubGlobal('EventSource', EventSourceMock);
-    const { unmount } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
+    const { unmount } = renderHook(() => useFeedPageController(), {
+      wrapper: createWrapper(),
+    });
     act(() => source.onerror?.());
     expect(source.close).toHaveBeenCalledTimes(1);
-    act(() => { vi.advanceTimersByTime(30_000); });
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
     expect(refetchMock).toHaveBeenCalledTimes(2);
     expect(EventSourceMock).toHaveBeenCalledTimes(1);
     unmount();
     vi.unstubAllGlobals();
-  });
-
-  it('toggles moderation mode with Alt+M hotkey', () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-    expect(result.current.moderationMode).toBe(false);
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
-    });
-    expect(result.current.moderationMode).toBe(true);
-  });
-
-  it('exits moderation mode with Escape hotkey', () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
-      result.current.setModerationReason('cleanup reason');
-      result.current.handleModerationToggle('news-1', true);
-    });
-    expect(result.current.moderationMode).toBe(true);
-    expect(result.current.selectedModerationIds).toHaveLength(1);
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    });
-
-    expect(result.current.moderationMode).toBe(false);
-    expect(result.current.selectedModerationIds).toHaveLength(0);
-    expect(result.current.moderationReason).toBe('');
-  });
-
-  it('ignores Alt+M when typing in input', () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-
-    act(() => {
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true, bubbles: true }));
-    });
-
-    expect(result.current.moderationMode).toBe(false);
-    input.remove();
-  });
-
-  it('does not exit moderation on Escape while typing in textarea', () => {
-    const { result } = renderHook(() => useFeedPageController(), { wrapper: createWrapper() });
-    const textarea = document.createElement('textarea');
-    document.body.appendChild(textarea);
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', altKey: true }));
-    });
-    expect(result.current.moderationMode).toBe(true);
-
-    act(() => {
-      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-
-    expect(result.current.moderationMode).toBe(true);
-    textarea.remove();
   });
 });

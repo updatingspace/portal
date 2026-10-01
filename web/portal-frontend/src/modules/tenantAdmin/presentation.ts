@@ -1,28 +1,106 @@
-import type { PermissionEntry, ScopeType, TenantAdminEvent, TenantRole } from './api';
+const RESOURCES_EN: Record<string, string> = {
+  profile: 'Profile',
+  applications: 'Access applications',
+  tenant_applications: 'Community applications',
+  communities: 'Groups',
+  teams: 'Teams',
+  posts: 'Posts',
+  roles: 'Roles',
+  role_bindings: 'Role assignments',
+  permissions: 'Permissions',
+  poll: 'Polls',
+  vote: 'Votes',
+  results: 'Results',
+  votings: 'Voting',
+  nominations: 'Questions',
+  event: 'Events',
+  rsvp: 'Participation',
+  attendance: 'Attendance',
+  feed: 'Feed',
+  sources: 'Sources',
+  admin: 'Administration',
+  news: 'Posts',
+  achievements: 'Achievements',
+  categories: 'Categories',
+  preferences: 'Preferences',
+  content: 'Content',
+  dashboards: 'Overview',
+};
+const ROLES_EN: Record<string, string> = {
+  owner: 'Owner',
+  admin: 'Administrator',
+  member: 'Member',
+  moderator: 'Moderator',
+  'tenant-admin': 'Community administrator',
+  viewer: 'Viewer',
+};
+const SERVICES_EN: Record<string, string> = {
+  portal: 'Community',
+  voting: 'Voting',
+  events: 'Events',
+  activity: 'Feed and posts',
+  gamification: 'Achievements',
+  personalization: 'Personalization',
+  access: 'Access management',
+};
+import { getLocale } from '../../shared/lib/locale';
+import type {
+  PermissionEntry,
+  ScopeType,
+  TenantAdminEvent,
+  TenantRole,
+} from './api';
 
 const SERVICES: Record<string, string> = {
-  portal: 'Сообщество', voting: 'Голосования', events: 'События',
-  activity: 'Лента и новости', gamification: 'Достижения', personalization: 'Персонализация',
+  portal: 'Сообщество',
+  voting: 'Голосования',
+  events: 'События',
+  activity: 'Лента и новости',
+  gamification: 'Достижения',
+  personalization: 'Персонализация',
   access: 'Управление доступом',
 };
 
 const ROLES: Record<string, string> = {
-  owner: 'Владелец', admin: 'Администратор', member: 'Участник', moderator: 'Модератор',
-  'tenant-admin': 'Администратор сообщества', viewer: 'Наблюдатель',
+  owner: 'Владелец',
+  admin: 'Администратор',
+  member: 'Участник',
+  moderator: 'Модератор',
+  'tenant-admin': 'Администратор сообщества',
+  viewer: 'Наблюдатель',
 };
 
 const RESOURCES: Record<string, string> = {
-  profile: 'Личный профиль', applications: 'Заявки пользователей', tenant_applications: 'Создание сообществ',
-  communities: 'Сообщества', teams: 'Команды', posts: 'Публикации', roles: 'Роли',
-  role_bindings: 'Назначение ролей', permissions: 'Права доступа', poll: 'Опросы', vote: 'Голоса',
-  results: 'Результаты', votings: 'Голосования', nominations: 'Номинации', event: 'События',
-  rsvp: 'Участие в событиях', attendance: 'Посещаемость', feed: 'Лента', sources: 'Источники',
-  admin: 'Администрирование', news: 'Новости', achievements: 'Достижения',
-  preferences: 'Личные настройки', content: 'Контент', dashboards: 'Главная страница',
+  profile: 'Личный профиль',
+  applications: 'Заявки пользователей',
+  tenant_applications: 'Создание сообществ',
+  communities: 'Сообщества',
+  teams: 'Команды',
+  posts: 'Публикации',
+  roles: 'Роли',
+  role_bindings: 'Назначение ролей',
+  permissions: 'Права доступа',
+  poll: 'Опросы',
+  vote: 'Голоса',
+  results: 'Результаты',
+  votings: 'Голосования',
+  nominations: 'Номинации',
+  event: 'События',
+  rsvp: 'Участие в событиях',
+  attendance: 'Посещаемость',
+  feed: 'Лента',
+  sources: 'Источники',
+  admin: 'Администрирование',
+  news: 'Новости',
+  achievements: 'Достижения',
+  preferences: 'Личные настройки',
+  content: 'Контент',
+  dashboards: 'Главная страница',
 };
 
 const PERMISSIONS: Record<string, string> = {
-  'portal.tenant_applications.review': 'Рассматривать заявки на создание сообществ',
+  'portal.tenant_applications.review':
+    'Рассматривать заявки на создание сообществ',
   'portal.profile.read_self': 'Просматривать свой профиль',
   'portal.profile.edit_self': 'Редактировать свой профиль',
   'portal.applications.review': 'Рассматривать заявки пользователей',
@@ -66,6 +144,7 @@ const PERMISSIONS: Record<string, string> = {
   'activity.admin.games': 'Управлять каталогом игр',
   'activity.news.create': 'Публиковать новости',
   'activity.news.manage': 'Управлять новостями',
+  'gamification.categories.manage': 'Создавать категории достижений',
   'gamification.achievements.read': 'Просматривать достижения',
   'gamification.achievements.create': 'Создавать достижения',
   'gamification.achievements.edit': 'Редактировать достижения',
@@ -80,15 +159,43 @@ const PERMISSIONS: Record<string, string> = {
   'personalization.dashboards.customize': 'Настраивать свою главную страницу',
 };
 
-export const serviceLabel = (service: string) => SERVICES[service] ?? service;
-export const roleLabel = (name: string) => ROLES[name] ?? name;
-export const resourceLabel = (resource: string) => RESOURCES[resource] ?? resource;
-export const permissionLabel = (permission: PermissionEntry | string): string => {
+export const serviceLabel = (service: string) =>
+  (getLocale() === 'en' ? SERVICES_EN : SERVICES)[service] ?? service;
+export const roleLabel = (name: string) =>
+  (getLocale() === 'en' ? ROLES_EN : ROLES)[name] ?? name;
+export const resourceLabel = (resource: string) =>
+  (getLocale() === 'en' ? RESOURCES_EN : RESOURCES)[resource] ?? resource;
+export const permissionLabel = (
+  permission: PermissionEntry | string,
+): string => {
   const key = typeof permission === 'string' ? permission : permission.key;
-  return PERMISSIONS[key] ?? (typeof permission === 'string' ? key : permission.description || key);
+  if (getLocale() === 'en')
+    return typeof permission === 'string'
+      ? key.split('.').slice(1).join(' ').replaceAll('_', ' ')
+      : permission.description || key;
+  return (
+    PERMISSIONS[key] ??
+    (typeof permission === 'string' ? key : permission.description || key)
+  );
 };
 
-export function scopeLabel(type: ScopeType | string, id: string, tenantId: string): string {
+export function scopeLabel(
+  type: ScopeType | string,
+  id: string,
+  tenantId: string,
+): string {
+  if (getLocale() === 'en')
+    return type === 'TENANT'
+      ? 'Entire community'
+      : type === 'GLOBAL'
+        ? 'Platform'
+        : type === 'TEAM'
+          ? 'Team'
+          : type === 'COMMUNITY'
+            ? 'Group'
+            : type === 'SERVICE'
+              ? serviceLabel(id)
+              : 'Limited scope';
   if (type === 'TENANT' && id === tenantId) return 'Всё сообщество';
   if (type === 'GLOBAL') return 'Вся платформа';
   if (type === 'SERVICE') return serviceLabel(id);
@@ -103,26 +210,65 @@ export function presentAuditEvent(
   memberName: (id: string) => string,
 ) {
   const meta = event.metadata ?? {};
-  const roleId = String(meta.role_id ?? (event.target_type === 'role' ? event.target_id : '') ?? '');
+  const roleId = String(
+    meta.role_id ?? (event.target_type === 'role' ? event.target_id : '') ?? '',
+  );
   const role = roles.find((item) => String(item.id) === roleId);
   // Prefer the historical name when the event captured it.
   const name = typeof meta.name === 'string' ? meta.name : role?.name;
-  const service = typeof meta.service === 'string' ? meta.service : role?.service;
+  const service =
+    typeof meta.service === 'string' ? meta.service : role?.service;
   const roleName = name ? roleLabel(name) : 'Роль недоступна';
-  const recipient = typeof meta.user_id === 'string' ? memberName(meta.user_id) : 'Участник';
+  const recipient =
+    typeof meta.user_id === 'string' ? memberName(meta.user_id) : 'Участник';
   const subject = service ? `${roleName} · ${serviceLabel(service)}` : roleName;
   const actions: Record<string, { title: string; description: string }> = {
-    tenant_owner_provisioned: { title: 'Предоставлен доступ владельцу', description: `Владелец: ${recipient}.${service ? ` Раздел: ${serviceLabel(service)}.` : ''}` },
-    binding_created: { title: 'Назначена роль', description: `${recipient} — ${subject}.` },
-    binding_deleted: { title: 'Роль снята', description: `${recipient} — ${subject}.` },
+    tenant_owner_provisioned: {
+      title: 'Предоставлен доступ владельцу',
+      description: `Владелец: ${recipient}.${service ? ` Раздел: ${serviceLabel(service)}.` : ''}`,
+    },
+    binding_created: {
+      title: 'Назначена роль',
+      description: `${recipient} — ${subject}.`,
+    },
+    binding_deleted: {
+      title: 'Роль снята',
+      description: `${recipient} — ${subject}.`,
+    },
     role_created: { title: 'Создана роль', description: subject },
     role_updated: { title: 'Изменена роль', description: subject },
     role_deleted: { title: 'Удалена роль', description: subject },
-    'dsar.exported': { title: 'Выгружены данные участника', description: 'Подготовлена выгрузка данных по запросу.' },
-    'dsar.erased': { title: 'Удалены данные участника', description: 'Обработан запрос на удаление данных.' },
+    'dsar.exported': {
+      title: 'Выгружены данные участника',
+      description: 'Подготовлена выгрузка данных по запросу.',
+    },
+    'dsar.erased': {
+      title: 'Удалены данные участника',
+      description: 'Обработан запрос на удаление данных.',
+    },
   };
+  if (getLocale() === 'en') {
+    const titles: Record<string, string> = {
+      tenant_owner_provisioned: 'Owner access granted',
+      binding_created: 'Role assigned',
+      binding_deleted: 'Role removed',
+      role_created: 'Role created',
+      role_updated: 'Role updated',
+      role_deleted: 'Role deleted',
+      'dsar.exported': 'Member data exported',
+      'dsar.erased': 'Member data erased',
+    };
+    return {
+      title: titles[event.action] || 'Access changed',
+      description: `${typeof meta.user_id === 'string' ? memberName(meta.user_id) + ' · ' : ''}${name ? roleLabel(name) : 'Role unavailable'}${service ? ' · ' + serviceLabel(service) : ''}`,
+      actor: memberName(event.performed_by),
+    };
+  }
   return {
-    ...(actions[event.action] ?? { title: 'Изменение доступа', description: 'Подробности события доступны в технических данных.' }),
+    ...(actions[event.action] ?? {
+      title: 'Изменение доступа',
+      description: 'Подробности события доступны в технических данных.',
+    }),
     actor: memberName(event.performed_by),
   };
 }

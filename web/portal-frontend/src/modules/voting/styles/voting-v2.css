@@ -562,3 +562,21 @@
     border-radius: 0;
   }
 }
+
+.polls-browser {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  max-width: 880px;
+}
+.polls-browser__list {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.polls-browser__manage {
+  margin-top: -12px;
+}
+.polls-browser > .portal-section-tabs {
+  margin-bottom: 0;
+}
