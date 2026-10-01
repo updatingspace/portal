@@ -135,6 +135,13 @@ for (const locale of ['ru', 'en'] as const) {
           width / 2,
         );
         await expect(account.locator('img')).toHaveJSProperty('complete', true);
+        await expect
+          .poll(() =>
+            account
+              .locator('img')
+              .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+          )
+          .toBeGreaterThan(0);
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,
