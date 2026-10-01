@@ -1,3 +1,4 @@
+import { useUITranslation } from '../../../shared/ui/portal/PortalUI';
 import { useSessionDraft } from '../../../shared/hooks/useSessionDraft';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -59,6 +60,7 @@ const getPeriodRange = (period: 'day' | 'week' | 'month' | 'all') => {
 };
 
 export function useFeedPageController() {
+  const t = useUITranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { newsId: focusedNewsId } = useParams<{ newsId?: string }>();
@@ -109,7 +111,21 @@ export function useFeedPageController() {
     draftRef.current = draftValue;
   }, [draftValue]);
   const publishLock = useRef(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishFailure, setPublishError] = useState<
+    'unknown' | 'rejected' | null
+  >(null);
+  const publishError =
+    publishFailure === 'unknown'
+      ? t(
+          'Не удалось подтвердить результат. Текст сохранён. Обновите ленту и проверьте публикацию перед повторной отправкой.',
+          'We could not confirm the result. Your draft is saved. Refresh the feed and check for the post before sending again.',
+        )
+      : publishFailure === 'rejected'
+        ? t(
+            'Не удалось сохранить публикацию. Введённые данные сохранены.',
+            'Unable to save the post. Your draft is saved.',
+          )
+        : null;
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [liveFallback, setLiveFallback] = useState(false);
@@ -396,17 +412,9 @@ export function useFeedPageController() {
     } catch (err) {
       const statusCode = (err as { status?: number }).status;
       setPublishError(
-        !statusCode || statusCode >= 500
-          ? 'Не удалось подтвердить результат. Текст сохранён. Обновите ленту и проверьте публикацию перед повторной отправкой.'
-          : 'Не удалось сохранить публикацию. Введённые данные сохранены.',
+        !statusCode || statusCode >= 500 ? 'unknown' : 'rejected',
       );
       setComposerOpen(true);
-      notifyApiError(
-        err,
-        publishMode === 'draft'
-          ? 'Не удалось сохранить черновик'
-          : 'Не удалось опубликовать новость',
-      );
     } finally {
       publishLock.current = false;
     }

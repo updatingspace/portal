@@ -48,3 +48,19 @@ def test_live_outbox_cursor_orders_by_column_not_constant():
     sql, _ = query.get_compiler(connection=connection).as_sql()
     assert "ORDER BY `id` DESC" in sql
     assert "ORDER BY 1" not in sql
+
+
+def test_news_reaction_aggregation_groups_by_emoji_not_select_position():
+    from django.db.models import Count
+
+    from activity.models import NewsReaction
+
+    patch_ydb_orm()
+    connection = DatabaseWrapper({"NAME": "default", "OPTIONS": {}})
+    query = (
+        NewsReaction.objects.filter(tenant_id=uuid4(), post_id=uuid4())
+        .values("emoji").annotate(count=Count("id")).order_by("-count", "emoji").query
+    )
+    sql, _ = query.get_compiler(connection=connection).as_sql()
+    assert "GROUP BY `act_news_reaction`.`emoji`" in sql
+    assert "GROUP BY 1" not in sql
