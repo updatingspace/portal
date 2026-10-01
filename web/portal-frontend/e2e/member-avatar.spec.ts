@@ -1,7 +1,42 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function expectReadableMemberCard(page: Page, theme: 'light' | 'dark') {
+  const card = page.locator('.tenant-admin__member-card');
+  await expect(card).toBeVisible();
+  const colors = await card.evaluate(element => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d')!;
+    const background = getComputedStyle(element).backgroundColor;
+    const pixel = () => Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+    context.fillStyle = background;
+    context.fillRect(0, 0, 1, 1);
+    const surface = pixel();
+    const text = ['.tenant-admin__member-name', '.tenant-admin__member-meta'].map(selector => {
+      context.fillStyle = background;
+      context.fillRect(0, 0, 1, 1);
+      context.fillStyle = getComputedStyle(element.querySelector(selector)!).color;
+      context.fillRect(0, 0, 1, 1);
+      return pixel();
+    });
+    return { surface, text };
+  });
+  const luminance = (rgb: number[]) => rgb
+    .map(value => value / 255)
+    .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const background = luminance(colors.surface);
+  if (theme === 'dark') expect(background, 'Member card must follow the dark theme').toBeLessThan(0.1);
+  else expect(background, 'Member card must follow the light theme').toBeGreaterThan(0.8);
+  for (const color of colors.text) {
+    const foreground = luminance(color);
+    expect((Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05),
+      'Member name and description must have at least 4.5:1 contrast').toBeGreaterThanOrEqual(4.5);
+  }
+}
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`member avatars use the signed-in profile in ${theme} theme`, async ({ page }, testInfo) => {
+  test(`member avatars and details stay readable in ${theme} theme`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const userId = '11111111-1111-4111-8111-111111111111';
     const otherId = '33333333-3333-4333-8333-333333333333';
@@ -68,6 +103,8 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: testInfo.outputPath(`member-avatar-${theme}.png`) });
     await ownRow.click();
     await expect(page.locator('.tenant-admin__member-card img')).toHaveAttribute('src', avatar);
+    await expectReadableMemberCard(page, theme);
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`member-dialog-mobile-${theme}.png`) });
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Роли', exact: true }).click();
     await page.locator('.tenant-admin__role-item').filter({ hasText: 'Владелец' }).click();
@@ -78,5 +115,8 @@ for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await expect(ownRow.locator('img')).toBeVisible();
     expect(await page.locator('body').evaluate(el => el.scrollWidth <= innerWidth)).toBe(true);
+    await ownRow.click();
+    await expectReadableMemberCard(page, theme);
+    await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`member-dialog-desktop-${theme}.png`) });
   });
 }
