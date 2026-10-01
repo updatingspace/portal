@@ -1,10 +1,11 @@
 /**
  * Tests for UserSettingsPanel component
  */
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { renderWithProviders, screen } from '@/test/test-utils';
+import * as personalizationApi from '../api/personalizationApi';
 import { UserSettingsPanel } from '../components/UserSettingsPanel';
 
 // Mock the personalization API
@@ -63,23 +64,30 @@ const authUser = {
 };
 
 describe('UserSettingsPanel', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     window.localStorage.setItem('portal_locale_v1', 'en');
     vi.clearAllMocks();
+    const preferences = await personalizationApi.fetchPreferences();
+    vi.mocked(personalizationApi.updatePreferences).mockImplementation(
+      async (changes) => ({
+        ...preferences,
+        appearance: { ...preferences.appearance, ...changes.appearance },
+      }),
+    );
   });
 
   it('renders loading state initially', () => {
     renderWithProviders(<UserSettingsPanel />, { authUser });
-    
+
     expect(screen.getByText('Loading preferences...')).toBeInTheDocument();
   });
 
   it('renders tabs after loading', async () => {
     renderWithProviders(<UserSettingsPanel />, { authUser });
-    
+
     // Wait for preferences to load
     await screen.findByText('Personalization');
-    
+
     // Check tabs are present
     expect(screen.getByText('Appearance')).toBeInTheDocument();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
@@ -88,39 +96,56 @@ describe('UserSettingsPanel', () => {
 
   it('switches between tabs correctly', async () => {
     renderWithProviders(<UserSettingsPanel />, { authUser });
-    
+
     // Wait for loading
     await screen.findByText('Personalization');
-    
+
     // Click on Notifications tab
     fireEvent.click(screen.getByText('Notifications'));
-    
+
     // Should show notifications settings
     expect(screen.getByText('Delivery Channels')).toBeInTheDocument();
-    
+
     // Click on Privacy tab
     fireEvent.click(screen.getByText('Privacy'));
-    
+
     // Should show privacy settings
     expect(screen.getByText('Profile Visibility')).toBeInTheDocument();
   });
 
   it('shows save status correctly', async () => {
     renderWithProviders(<UserSettingsPanel />, { authUser });
-    
+
     // Wait for loading
     await screen.findByText('Personalization');
-    
+
     // Initial state should not show unsaved changes
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
   });
 
+  it('does not ask to save after selecting a theme', async () => {
+    renderWithProviders(<UserSettingsPanel section="appearance" />, {
+      authUser,
+    });
+    fireEvent.click(await screen.findByTestId('theme-option-dark'));
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Save Now' }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('theme-option-dark')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+  });
+
   it('displays reset button', async () => {
     renderWithProviders(<UserSettingsPanel />, { authUser });
-    
+
     // Wait for loading
     await screen.findByText('Personalization');
-    
+
     // Check reset button is present
     expect(screen.getByText('Reset to Defaults')).toBeInTheDocument();
   });

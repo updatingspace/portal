@@ -3,7 +3,7 @@
  */
 import type { CSSProperties } from 'react';
 import { TextInput } from '@gravity-ui/uikit';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { usePersonalizationI18n } from '../../i18n';
 import './settings.css';
@@ -36,6 +36,9 @@ export function ColorPicker({
 }: ColorPickerProps) {
   const { t } = usePersonalizationI18n();
   const [inputValue, setInputValue] = useState(value);
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
   const previewStyle = {
     '--color-picker-preview-accent': value,
   } as CSSProperties;
@@ -85,7 +88,7 @@ export function ColorPicker({
           disabled={disabled}
           size="xl"
           placeholder="#2563EB"
-          aria-label={t('colors.aria.input')}
+          controlProps={{ 'aria-label': t('colors.aria.input') }}
           data-testid="color-input"
           style={{ width: 112 }}
         />

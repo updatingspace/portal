@@ -13,10 +13,8 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
 import { useCallback, useState } from 'react';
 
 import { useAuth } from '../../../contexts/AuthContext';
-import { useAutoSave } from '../hooks/useAutoSave';
 import { usePreferences } from '../hooks/usePreferences';
 import { usePersonalizationI18n } from '../i18n';
-import { useFormatters } from '@/shared/hooks/useFormatters';
 import type { PreferencesUpdatePayload } from '../types';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { NotificationsSettings } from './settings/NotificationsSettings';
@@ -42,7 +40,6 @@ export function UserSettingsPanel({
   const { user } = useAuth();
   const ui = useUITranslation();
   const mobile = useMediaQuery('(max-width: 719px)');
-  const { formatTime } = useFormatters();
   const [urlTab, setActiveTab] = useUrlState<TabId>('tab', 'appearance', [
     'appearance',
     'notifications',
@@ -76,73 +73,33 @@ export function UserSettingsPanel({
     isError,
     reload,
     isResetting,
+    saveError,
+    retrySave,
   } = usePreferences({ userId: user?.id, tenantId: user?.tenant?.id });
 
   // Form state for pending changes
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<PreferencesUpdatePayload>({});
-
-  // Auto-save hook
-  const autoSave = useAutoSave({
-    data: formData,
-    onSave: async (data) => {
-      await savePreferences(data);
-      // Keep the submitted delta as the clean baseline. Later edits remain dirty.
+  const apply = useCallback(
+    (changes: PreferencesUpdatePayload) => {
+      // The shared writer applies locally now and persists even if this page unmounts.
+      void savePreferences(changes).catch(() => {
+        /* Displayed by the shared error state below. */
+      });
     },
-    delay: 1000, // 1 second debounce
-    enabled: !isResetting,
-  });
-
-  // Handle preference updates
-  const handleAppearanceChange = useCallback(
-    (appearance: PreferencesUpdatePayload['appearance']) => {
-      setFormData((prev) => ({
-        ...prev,
-        appearance: { ...prev.appearance, ...appearance },
-      }));
-    },
-    [],
+    [savePreferences],
   );
-
-  const handleLocalizationChange = useCallback(
-    (localization: PreferencesUpdatePayload['localization']) => {
-      setFormData((prev) => ({
-        ...prev,
-        localization: { ...prev.localization, ...localization },
-      }));
-    },
-    [],
-  );
-
-  const handleNotificationsChange = useCallback(
-    (notifications: PreferencesUpdatePayload['notifications']) => {
-      setFormData((prev) => ({
-        ...prev,
-        notifications: { ...prev.notifications, ...notifications },
-      }));
-    },
-    [],
-  );
-
-  const handlePrivacyChange = useCallback(
-    (privacy: PreferencesUpdatePayload['privacy']) => {
-      setFormData((prev) => ({
-        ...prev,
-        privacy: { ...prev.privacy, ...privacy },
-      }));
-    },
-    [],
-  );
-
-  const handleReset = useCallback(async () => {
-    await resetToDefaults();
-    setFormData({});
-  }, [resetToDefaults]);
-
-  const handleSaveNow = useCallback(async () => {
-    await autoSave.save();
-  }, [autoSave]);
+  const handleAppearanceChange = (
+    appearance: PreferencesUpdatePayload['appearance'],
+  ) => apply({ appearance });
+  const handleLocalizationChange = (
+    localization: PreferencesUpdatePayload['localization'],
+  ) => apply({ localization });
+  const handleNotificationsChange = (
+    notifications: PreferencesUpdatePayload['notifications'],
+  ) => apply({ notifications });
+  const handlePrivacyChange = (privacy: PreferencesUpdatePayload['privacy']) =>
+    apply({ privacy });
 
   if (isLoading) {
     return (
@@ -166,86 +123,43 @@ export function UserSettingsPanel({
     );
   }
 
-  // Merge preferences with pending changes
-  const currentAppearance = {
-    ...preferences.appearance,
-    ...formData.appearance,
-    theme_source:
-      formData.appearance?.theme_source ??
-      preferences.appearance.theme_source ??
-      'portal',
-  };
-  const currentLocalization = {
-    ...preferences.localization,
-    ...formData.localization,
-  };
-  const currentNotifications = {
-    ...preferences.notifications,
-    ...formData.notifications,
-  };
-  const currentPrivacy = { ...preferences.privacy, ...formData.privacy };
-
   const isDisabled = isResetting;
-  const hasUnsavedChanges = autoSave.isDirty;
 
   return (
     <section className={`user-settings-panel ${className || ''}`}>
-      {/* Header with save status */}
-      <div className="user-settings-panel__header">
-        {!section && (
+      {!section && (
+        <div className="user-settings-panel__header">
           <div className="user-settings-panel__title">
             <Text variant="header-1">{t('userSettings.header.title')}</Text>
             <Text variant="body-2" color="secondary">
               {t('userSettings.header.subtitle')}
             </Text>
           </div>
-        )}
-        <div className="user-settings-panel__status" role="status">
-          {autoSave.isSaving && (
-            <Text variant="caption-2" color="info">
-              {t('userSettings.state.saving')}
-            </Text>
-          )}
-          {autoSave.lastSaved && !hasUnsavedChanges && (
-            <Text variant="caption-2" color="positive">
-              {t('userSettings.state.saved')} {formatTime(autoSave.lastSaved)}
-            </Text>
-          )}
-          {hasUnsavedChanges && !autoSave.isSaving && (
-            <Text variant="caption-2" color="warning">
-              {t('userSettings.state.unsaved')}
-            </Text>
-          )}
-          {autoSave.error && (
-            <Text variant="caption-2" color="danger">
-              {t('userSettings.state.saveFailed')}
-            </Text>
-          )}
+          <Button
+            onClick={() => {
+              setResetError(null);
+              setResetOpen(true);
+            }}
+            disabled={isDisabled}
+            size="s"
+            view="outlined-danger"
+          >
+            {t('userSettings.actions.resetDefaults')}
+          </Button>
         </div>
-
-        <div className="user-settings-panel__actions">
-          {hasUnsavedChanges && (
-            <Button
-              onClick={handleSaveNow}
-              disabled={isDisabled}
-              size="s"
-              view="action"
-            >
-              {t('userSettings.actions.saveNow')}
-            </Button>
+      )}
+      {saveError && (
+        <InlineError
+          onRetry={() => {
+            void retrySave().catch(() => {});
+          }}
+        >
+          {ui(
+            'Не удалось синхронизировать настройки. Ваш выбор сохранён на этом устройстве.',
+            'Could not sync settings. Your choice is kept on this device.',
           )}
-          {!section && (
-            <Button
-              onClick={handleReset}
-              disabled={isDisabled || autoSave.isSaving}
-              size="s"
-              view="outlined-danger"
-            >
-              {t('userSettings.actions.resetDefaults')}
-            </Button>
-          )}
-        </div>
-      </div>
+        </InlineError>
+      )}
 
       {/* Tabs Navigation */}
       <div className="user-settings-panel__tabs">
@@ -295,8 +209,11 @@ export function UserSettingsPanel({
                     ? 'appearance'
                     : 'all'
               }
-              appearance={currentAppearance}
-              localization={currentLocalization}
+              appearance={{
+                ...preferences.appearance,
+                theme_source: preferences.appearance.theme_source ?? 'portal',
+              }}
+              localization={preferences.localization}
               onAppearanceChange={handleAppearanceChange}
               onLocalizationChange={handleLocalizationChange}
               disabled={isDisabled}
@@ -305,14 +222,14 @@ export function UserSettingsPanel({
           )}
           {activeTab === 'notifications' && (
             <NotificationsSettings
-              notifications={currentNotifications}
+              notifications={preferences.notifications}
               onChange={handleNotificationsChange}
               disabled={isDisabled}
             />
           )}
           {activeTab === 'privacy' && (
             <PrivacySettings
-              privacy={currentPrivacy}
+              privacy={preferences.privacy}
               onChange={handlePrivacyChange}
               disabled={isDisabled}
             />
@@ -331,7 +248,7 @@ export function UserSettingsPanel({
               setResetError(null);
               setResetOpen(true);
             }}
-            disabled={isResetting || autoSave.isSaving || autoSave.isDirty}
+            disabled={isResetting}
           >
             {t('userSettings.actions.resetDefaults')}
           </Button>
@@ -350,7 +267,7 @@ export function UserSettingsPanel({
         onClose={() => setResetOpen(false)}
         onConfirm={async () => {
           try {
-            await handleReset();
+            await resetToDefaults();
             setResetOpen(false);
           } catch {
             setResetError(
