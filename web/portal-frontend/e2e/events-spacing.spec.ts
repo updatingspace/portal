@@ -67,6 +67,9 @@ test('loading, empty and error states stay attached to the event controls', asyn
   // The API client and query layer both retry a transient service failure.
   await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
   const error = await box(page.getByRole('alert'));
+  await centeredButton(
+    page.getByRole('alert').getByRole('button', { name: 'Try again' }),
+  );
   const errorContext = await box(page.locator('.portal-event-list-context'));
   expect(error.y - errorContext.y - errorContext.height).toBeLessThanOrEqual(
     24,
