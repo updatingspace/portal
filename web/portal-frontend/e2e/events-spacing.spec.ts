@@ -22,6 +22,61 @@ async function setup(page: Page, language: 'en' | 'ru') {
   );
 }
 
+test('loading, empty and error states stay attached to the event controls', async ({
+  page,
+}, info) => {
+  await setup(page, 'en');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  let release: () => void = () => {};
+  const loaded = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/v1/events/events/?**', async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: { items: [], meta: { total: 0, limit: 20, offset: 0 } },
+    });
+  });
+  await page.goto('/t/alpha/events');
+  await expect(
+    page.getByRole('status', { name: 'Loading events' }),
+  ).toBeVisible();
+  const controls = await box(page.locator('.portal-event-list-tools'));
+  release();
+  const empty = await box(
+    page.getByRole('heading', { name: 'No events yet' }),
+  );
+  const context = await box(page.locator('.portal-event-list-context'));
+  expect(empty.y - context.y - context.height).toBeLessThanOrEqual(24);
+  expect(await box(page.locator('.portal-event-list-tools'))).toEqual(
+    controls,
+  );
+  await page.screenshot({
+    path: info.outputPath('events-empty.png'),
+    fullPage: true,
+  });
+
+  await page.route('**/api/v1/events/events/?**', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: 'UNAVAILABLE', message: 'Unavailable' } },
+    }),
+  );
+  await page.reload();
+  // The API client and query layer both retry a transient service failure.
+  await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+  const error = await box(page.getByRole('alert'));
+  const errorContext = await box(page.locator('.portal-event-list-context'));
+  expect(error.y - errorContext.y - errorContext.height).toBeLessThanOrEqual(
+    24,
+  );
+  await page.screenshot({
+    path: info.outputPath('events-error.png'),
+    fullPage: true,
+  });
+});
+
 async function box(locator: Locator) {
   await expect(locator).toBeVisible();
   return (await locator.boundingBox())!;

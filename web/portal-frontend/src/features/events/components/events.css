@@ -88,6 +88,13 @@
   gap: 16px;
   min-width: 0;
 }
+.portal-events-layout > .portal-stack > .portal-state--empty {
+  margin: 0;
+  padding: 0;
+}
+.portal-events-layout > .portal-stack > .portal-inline-error {
+  margin-block: 0;
+}
 .portal-event-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
