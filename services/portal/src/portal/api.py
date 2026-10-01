@@ -1,15 +1,15 @@
 import uuid
 from uuid import UUID
 
+from core.errors import error_payload
+from core.schemas import ErrorOut
+from core.security import require_internal_signature
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from ninja import Body, Query, Router
 from ninja.errors import HttpError
 
-from core.errors import error_payload
-from core.schemas import ErrorOut
-from core.security import require_internal_signature
 from portal.access import AccessService
 from portal.audit import log_audit_event as _log_audit
 from portal.context import PortalContext
@@ -22,6 +22,7 @@ from portal.models import (
     Post,
     Team,
     TeamMembership,
+    TenantMembership,
 )
 from portal.schemas import (
     CommunityCreateIn,
@@ -328,7 +329,10 @@ def portal_profiles_list(
         scope_id=str(ctx.tenant_id),
     )
 
-    qs = PortalProfile.objects.filter(tenant=tenant)
+    # Profiles remain for post attribution; departed users are not active members
+    # or valid achievement recipients. Apply this filter before the list limit.
+    departed = list(TenantMembership.objects.filter(tenant=tenant, status="left").values_list("user_id", flat=True))
+    qs = PortalProfile.objects.filter(tenant=tenant).exclude(user_id__in=departed)
     if q:
         q = q.strip()
         if q:

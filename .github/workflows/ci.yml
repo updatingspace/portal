@@ -182,6 +182,11 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python scripts/check_ydb_auth_runtime.py
+      - name: Check membership exit against YDB
+        if: matrix.service == 'bff' || matrix.service == 'portal'
+        run: |
+          python src/manage.py migrate_ydb
+          MEMBERSHIP_SERVICE=${{ matrix.service }} python ../../scripts/ci/check_ydb_membership_leave.py
       - name: Check service YDB connection reuse
         if: contains(fromJSON('["portal", "activity", "events", "gamification", "voting"]'), matrix.service)
         run: python ../../scripts/ci/check_ydb_connection_lifecycle.py
@@ -243,7 +248,7 @@ jobs:
       - name: Critical user flows
         run: pnpm run test:e2e
       - name: WebKit layout regression
-        run: pnpm exec playwright test e2e/events-spacing.spec.ts e2e/feed-publication.spec.ts e2e/member-avatar.spec.ts e2e/community-chooser.spec.ts e2e/dashboard-editor.spec.ts e2e/preferences-autosave.spec.ts --browser=webkit --output=test-results-webkit
+        run: pnpm exec playwright test e2e/events-spacing.spec.ts e2e/feed-publication.spec.ts e2e/member-avatar.spec.ts e2e/community-chooser.spec.ts e2e/dashboard-editor.spec.ts e2e/preferences-autosave.spec.ts e2e/community-membership.spec.ts --browser=webkit --output=test-results-webkit
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

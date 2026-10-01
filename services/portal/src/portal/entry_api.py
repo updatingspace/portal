@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from core.errors import error_payload
+from core.http import require_request_id
+from core.security import require_internal_signature
 from django.http import HttpRequest
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from pydantic import Field
 
-from core.errors import error_payload
-from core.http import require_request_id
-from core.security import require_internal_signature
 from portal.access import AccessService
 from portal.context import (
     PortalContext,
@@ -17,6 +17,7 @@ from portal.context import (
     _parse_uuid,
     require_portal_context,
 )
+from portal.memberships import leave_tenant_membership
 from portal.models import (
     Tenant,
     TenantApplication,
@@ -83,6 +84,12 @@ def application_out(
             }
         )
     return result
+
+
+@router.post("/portal/entry/memberships/{tenant_id}/leave")
+def leave_membership(request: HttpRequest, tenant_id: UUID) -> dict[str, str]:
+    ctx = entry_context(request)
+    return leave_tenant_membership(tenant_id=tenant_id, user_id=ctx.user_id, request_id=ctx.request_id)
 
 
 @router.get("/portal/entry/memberships", response=list[dict])

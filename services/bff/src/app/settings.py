@@ -41,6 +41,9 @@ def read_env_list(name: str) -> list[str]:
 
 
 DEBUG = read_env_flag("DJANGO_DEBUG", False)
+# Enable only after canonical Portal memberships have been provisioned.
+# Leaving is disabled until private requests use this live membership gate.
+BFF_ENFORCE_ACTIVE_MEMBERSHIP = read_env_flag("BFF_ENFORCE_ACTIVE_MEMBERSHIP", False)
 ALLOW_INSECURE_DEFAULTS = DEBUG and read_env_flag(
     "DJANGO_ALLOW_INSECURE_DEFAULTS"
 )

@@ -289,9 +289,9 @@ for (const theme of ['light', 'dark'] as const)
       ),
     ).toBe(true);
     await page.getByRole('link', { name: 'Все настройки' }).click();
-    await page.getByRole('link', { name: 'Сообщество', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Сменить сообщество', exact: true })
-      .click();
-    await expect(page).toHaveURL(/choose-tenant$/);
+    await expect(page.getByRole('link', {name: 'Сообщество', exact: true})).toHaveCount(0);
+    await page.getByRole('button', {name: 'Покинуть…', exact: true}).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', {name: 'Отмена', exact: true}).click();
+    await expect(page).toHaveURL(/settings$/);
   });
