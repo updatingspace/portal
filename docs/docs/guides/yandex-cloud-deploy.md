@@ -356,3 +356,18 @@ SMOKE_HOST_HEADER=aef.t.updspace.com \
 - `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` должны быть примонтированы только в контейнеры, которые реально публикуют в `YMQ` или пишут в `Object Storage`.
 - Перед production cutover нужно сузить folder-level IAM роли service accounts; текущий baseline rollout всё ещё шире, чем целевой least-privilege.
 - Все production secrets должны приезжать через `Lockbox`, а не через plain-text `service_environment`.
+
+### Загрузка фото из браузера
+
+У приватного media bucket должна быть CORS-конфигурация для точного домена
+Portal и tenant wildcard: `https://portal.<public_zone>` и
+`https://*.<tenant_wildcard_subdomain>.<public_zone>`. Terraform задаёт
+`GET`, `HEAD`, `PUT`, разрешённый заголовок `content-type` и expose `ETag`.
+CORS не делает bucket публичным: загрузка и чтение продолжают требовать
+временную подписанную ссылку, выданную после проверки прав через BFF.
+
+После выпуска проверяйте не только выдачу upload URL, но и браузерный
+`OPTIONS` для `PUT` с `Origin` портала, затем загрузку и чтение отдельного
+тестового изображения. Тестовый объект удаляется после проверки.
+`403` / `NoSuchCORSConfiguration` на preflight означает, что браузер
+не выполнит загрузку, даже если сама подписанная ссылка корректна.

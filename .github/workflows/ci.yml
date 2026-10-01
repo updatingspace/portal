@@ -191,6 +191,11 @@ jobs:
         run: |
           python src/manage.py migrate_ydb
           python ../../scripts/ci/check_ydb_ui_filters.py
+      - name: Check news lifecycle against YDB
+        if: matrix.service == 'activity'
+        run: |
+          python src/manage.py migrate_ydb
+          python ../../scripts/ci/check_ydb_news.py
       - name: Check feature flag writes against YDB
         if: matrix.service == 'featureflags'
         run: |
@@ -232,7 +237,7 @@ jobs:
       - name: Critical user flows
         run: pnpm run test:e2e
       - name: WebKit layout regression
-        run: pnpm exec playwright test e2e/events-spacing.spec.ts --browser=webkit --output=test-results-webkit
+        run: pnpm exec playwright test e2e/events-spacing.spec.ts e2e/feed-publication.spec.ts --browser=webkit --output=test-results-webkit
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

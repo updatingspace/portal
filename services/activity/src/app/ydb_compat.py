@@ -194,6 +194,9 @@ def _patch_ydb_query_parameters() -> None:
     from ydb_backend.backend.operations import DatabaseOperations
     from ydb_dbapi import IsolationLevel
 
+    # YDB treats GROUP BY 1 as a constant, not the first projected column.
+    DatabaseWrapper.features_class.allows_group_by_select_index = False
+
     original_converters = DatabaseOperations.get_db_converters
 
     def _datetime_value(value, expression, connection):

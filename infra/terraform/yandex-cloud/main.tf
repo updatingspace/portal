@@ -93,6 +93,14 @@ resource "yandex_storage_bucket" "media" {
   secret_key    = yandex_iam_service_account_static_access_key.automation.secret_key
   bucket        = local.media_bucket_name
   force_destroy = var.object_storage_force_destroy
+
+  cors_rule {
+    allowed_origins = ["https://${local.portal_gateway_domain}", "https://${local.tenant_gateway_domain}"]
+    allowed_methods = ["GET", "HEAD", "PUT"]
+    allowed_headers = ["content-type"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
 }
 
 resource "yandex_ydb_database_serverless" "portal" {

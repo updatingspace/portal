@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { I18nContext } from '../../../app/providers/i18nContext';
 import { useFeedPageController } from './useFeedPageController';
 
 const refetchMock = vi.fn();
@@ -122,7 +123,7 @@ vi.mock('../../../hooks/useActivity', () => ({
   }),
 }));
 
-function createWrapper() {
+function createWrapper(locale: 'en' | 'ru' = 'ru') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -130,7 +131,16 @@ function createWrapper() {
     },
   });
   return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <I18nContext.Provider
+      value={{
+        locale,
+        timezone: 'UTC',
+        changeLocale: vi.fn(),
+        changeTimezone: vi.fn(),
+      }}
+    >
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </I18nContext.Provider>
   );
 }
 
@@ -205,6 +215,33 @@ describe('useFeedPageController', () => {
       'Original text, edited while sending',
     );
   });
+
+  it.each([
+    ['en', 500, 'We could not confirm the result.'],
+    ['ru', 500, 'Не удалось подтвердить результат.'],
+    ['en', 403, 'Unable to save the post.'],
+    ['ru', 403, 'Не удалось сохранить публикацию.'],
+  ] as const)(
+    'keeps a single localized error and draft for %s / %i',
+    async (locale, status, message) => {
+      createNewsMutationMock.mockRejectedValue(
+        Object.assign(new Error('feed upstream returned error'), { status }),
+      );
+      const { result } = renderHook(() => useFeedPageController(), {
+        wrapper: createWrapper(locale),
+      });
+      act(() => result.current.setComposerValue('Keep this draft'));
+      await act(async () => {
+        await result.current.handlePublishNews();
+      });
+      expect(result.current.publishError).toContain(message);
+      expect(result.current.publishError).not.toContain('upstream');
+      expect(result.current.composerValue).toBe('Keep this draft');
+      expect(result.current.composerOpen).toBe(true);
+      expect(createNewsMutationMock).toHaveBeenCalledTimes(1);
+      expect(notifyApiErrorMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('runs fallback refetch interval when EventSource is unavailable', () => {
     const { unmount } = renderHook(() => useFeedPageController(), {

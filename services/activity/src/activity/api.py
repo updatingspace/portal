@@ -130,7 +130,7 @@ def _find_news_event(post: NewsPost) -> ActivityEvent | None:
     return ActivityEvent.objects.filter(
         tenant_id=post.tenant_id,
         type="news.posted",
-        payload_json__news_id=str(post.id),
+        source_ref=_news_source_ref(post),
     ).first()
 
 
@@ -1335,7 +1335,7 @@ def news_delete(request, news_id: str, payload: schemas.NewsDeleteIn | None = No
         ActivityEvent.objects.filter(
             tenant_id=ctx.tenant_id,
             type="news.posted",
-            payload_json__news_id=str(post.id),
+            source_ref=_news_source_ref(post),
         ).delete()
         post.delete()
         return 204, None
