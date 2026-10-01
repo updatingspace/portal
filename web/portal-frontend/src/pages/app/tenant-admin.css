@@ -918,6 +918,10 @@
   flex: 1;
   min-width: 0;
 }
+.tenant-member-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+}
 .tenant-member-summary strong {
   overflow-wrap: anywhere;
 }

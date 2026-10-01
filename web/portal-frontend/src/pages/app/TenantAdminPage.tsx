@@ -1,4 +1,5 @@
 import { ScopePicker } from '../../modules/tenantAdmin/components/ScopePicker';
+import { MemberAvatar } from '../../modules/tenantAdmin/components/MemberAvatar';
 import { AdminApplicationsPage } from '../../modules/portal/pages/AdminApplicationsPage';
 import { InlineError, useUITranslation } from '../../shared/ui/portal/PortalUI';
 import { SectionTabs } from '../../shared/ui/portal/SectionTabs';
@@ -7,7 +8,6 @@ import { useUrlState } from '../../shared/hooks/useUrlState';
 import { useConfirmation } from '../../shared/ui/portal/useConfirmation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Avatar,
   Button,
   Card,
   Icon,
@@ -939,7 +939,11 @@ export const TenantAdminPage: React.FC = () => {
                           key={member.id}
                           onClick={() => setSelectedMemberId(member.userId)}
                         >
-                          <Avatar size="m" text={member.initials} />
+                          <MemberAvatar
+                            size="m"
+                            userId={member.userId}
+                            text={member.initials}
+                          />
                           <span className="tenant-member-summary">
                             <strong>{member.displayName}</strong>
                             <small>
@@ -960,7 +964,11 @@ export const TenantAdminPage: React.FC = () => {
                   onClose={() => setSelectedMemberId(null)}
                 >
                   <div className="tenant-admin__member-card">
-                    <Avatar size="l" text={getInitials(selectedMember)} />
+                    <MemberAvatar
+                      size="l"
+                      userId={selectedMemberId ?? undefined}
+                      text={getInitials(selectedMember)}
+                    />
                     <div>
                       <div className="tenant-admin__member-name">
                         {selectedMember
@@ -1592,8 +1600,9 @@ export const TenantAdminPage: React.FC = () => {
                                       key={binding.id}
                                       className="tenant-admin__role-member"
                                     >
-                                      <Avatar
+                                      <MemberAvatar
                                         size="s"
+                                        userId={binding.user_id}
                                         text={getInitials(member)}
                                       />
                                       <div>
