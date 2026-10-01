@@ -77,6 +77,22 @@ class RequestIdMiddleware(MiddlewareMixin):
         return response
 
 
+class MultipartProxyBodyMiddleware(MiddlewareMixin):
+    """Retain signed upload bytes before CSRF parses the multipart stream."""
+
+    def process_request(self, request: HttpRequest) -> None:
+        if (
+            request.method == "POST"
+            and request.content_type == "multipart/form-data"
+            and request.path.startswith("/api/v1/")
+            and getattr(request, "auth_ctx", None) is not None
+        ):
+            # HttpRequest.body caches the exact boundary and binary content, and
+            # enforces DATA_UPLOAD_MAX_MEMORY_SIZE before reading. Authentication
+            # and rate limiting run first; normal CSRF validation still follows.
+            _ = request.body
+
+
 class ErrorMappingMiddleware(MiddlewareMixin):
     def process_exception(self, request: HttpRequest, exception: Exception):
         if not request.path.startswith("/api/v1/"):
