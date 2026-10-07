@@ -213,6 +213,7 @@ locals {
       BFF_UPSTREAM_VOTING_INVOKE_URL       = local.voting_api_url
       BFF_SESSION_RATE_LIMIT_PER_MIN       = "60"
       BFF_FEED_STREAMING_ENABLED           = "false"
+      BFF_ENFORCE_ACTIVE_MEMBERSHIP        = "true"
       ID_BASE_URL                          = local.id_internal_api_url
       ID_PUBLIC_BASE_URL                   = local.id_public_base_url
       YC_API_GATEWAY_DOMAIN                = local.tenant_gateway_domain

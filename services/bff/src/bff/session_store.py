@@ -166,6 +166,17 @@ class SessionStore:
         session = BffSession.objects.select_related("tenant").filter(id=session_id).first()
         return self._to_session_data(session) if session else None
 
+    def clear_user_tenant(self, *, user_id: str, tenant_id: str) -> None:
+        """Drop the departed tenant from every session without logging out."""
+        sessions = BffSession.objects.filter(user_id=user_id, revoked_at__isnull=True)
+        sessions.filter(active_tenant_id=tenant_id).update(
+            active_tenant_id=None, active_tenant_slug="", active_tenant_set_at=None,
+        )
+        tenant = Tenant.objects.filter(id=tenant_id).first()
+        if tenant:
+            sessions.filter(last_tenant_slug=tenant.slug).update(last_tenant_slug="")
+        self.invalidate_user_tenants_cache(user_id)
+
     def cache_user_tenants(
         self,
         user_id: str,

@@ -113,3 +113,8 @@ export function reviewTenantApplication(
 ): Promise<ReviewableTenantApplication> {
   return request(`/entry/admin/tenant-applications/${encodeURIComponent(id)}/${decision}`, { method: 'POST' });
 }
+
+export async function leaveTenant(tenantId: string): Promise<void> {
+  const result = await request<{tenant_id: string; status: string}>(`/entry/memberships/${encodeURIComponent(tenantId)}/leave`, {method: 'POST', noRetry: true});
+  if (result.tenant_id !== tenantId || result.status !== 'left') throw new Error('Invalid membership response');
+}
