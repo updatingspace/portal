@@ -5,26 +5,15 @@ permissions:
 
 on:
   workflow_dispatch:
-    inputs:
-      apply:
-        description: "One-time apply (Terraform apply + frontend publish + migrate YDB + smoke). Default stays plan-only; no standing secret change."
-        type: boolean
-        default: false
-  pull_request:
-    branches:
-      - main
-      - master
-  push:
-    branches:
-      - main
-      - master
 
+# Cloud runtime was retired after the verified 2026-10-09 home k3s migration.
 concurrency:
   group: deploy-yc-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   generate-build-id:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Generate BUILD_ID
     runs-on: ubuntu-latest
     outputs:
@@ -39,6 +28,7 @@ jobs:
           echo "BUILD_ID=${BUILD_ID}" >> "$GITHUB_OUTPUT"
 
   validate-deploy-secrets:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Validate deploy secrets
     runs-on: ubuntu-latest
     steps:
@@ -84,6 +74,7 @@ jobs:
           fi
 
   build-push-images:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Build image (${{ matrix.image }})
     runs-on: ubuntu-latest
     needs:
@@ -159,9 +150,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   terraform-apply:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: OpenTofu plan/apply
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     needs:
       - build-push-images
       - generate-build-id
@@ -248,12 +239,12 @@ jobs:
           echo "lockbox_secret_version_id=$(tofu -chdir=infra/terraform/yandex-cloud output -raw runtime_lockbox_secret_version_id)" >> "$GITHUB_OUTPUT"
 
   frontend-publish:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Publish frontend bundle
     runs-on: ubuntu-latest
     needs:
       - terraform-apply
       - generate-build-id
-    if: needs.terraform-apply.outputs.applied == 'true'
     defaults:
       run:
         working-directory: web/portal-frontend
@@ -285,11 +276,11 @@ jobs:
         run: ../../scripts/ci/deploy-frontend-object-storage.sh
 
   ydb-migrations:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Migrate YDB (${{ matrix.service }})
     runs-on: ubuntu-latest
     needs:
       - terraform-apply
-    if: needs.terraform-apply.outputs.applied == 'true'
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -348,12 +339,12 @@ jobs:
           exit 1
 
   smoke:
+    if: ${{ false }} # Retired YC workflow; home k3s is authoritative.
     name: Smoke public gateway
     runs-on: ubuntu-latest
     needs:
       - frontend-publish
       - ydb-migrations
-    if: needs.ydb-migrations.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - name: Run public smoke checks
